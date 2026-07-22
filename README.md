@@ -85,13 +85,41 @@ local-input/
 The important resource folder is the final `android/` directory. It contains
 the resource categories directly.
 
-### 3. Use the repository directly
+### 3. One-command setup, install, and server start
+
+After putting the APK and resources in the layout from step 2, run this one
+command from the repository root:
+
+```sh
+python3 -m liminal_gate.tester_setup --port 8696 --emulator emulator-5570
+```
+
+Replace the port and emulator serial with yours. The command validates the
+inputs, creates the local manifests, creates a local signing key on first use,
+patches and signs the APK, installs it on that one emulator, then starts the
+local server in the foreground. It asks for the signing-key password only on
+first setup and saves it locally in `user-data/keystore-password.txt` with
+owner-only permissions. Press Control-C when you finish testing.
+
+If only one emulator is ready, omit `--emulator`. If several are ready, the
+command lists their serials and asks you to rerun with the intended one. It
+automatically uses the newest usable Android SDK Build Tools installation on
+macOS. For another SDK location, set `ANDROID_SDK_ROOT` or pass, for example,
+`--build-tools /path/to/sdk/build-tools/36.0.0`.
+
+This starts a server for your selected local emulator only. Do not port-forward
+it or use it as a hosted/public service.
+
+To build the APK without installing or starting the server, add
+`--prepare-only`.
+
+### 4. Manual setup (only if you need to troubleshoot)
 
 The basic tester path needs no Python package installation or virtual
 environment. Run every `python3 -m liminal_gate...` command below from this
 repository.
 
-### 4. Validate and map the local inputs
+### 4a. Validate and map the local inputs
 
 ```sh
 python3 -m liminal_gate.input_importer \
@@ -109,7 +137,7 @@ These commands do not start a server or alter the APK. The first validates the
 expected local layout. The second creates the local resource manifest used by
 the server.
 
-### 5. Create a local test signing key
+### 4b. Create a local test signing key
 
 You only need to do this once. Run this from the repository root and choose a
 password when prompted:
@@ -141,7 +169,7 @@ chmod 600 user-data/keystore-password.txt
 Enter the same password you chose for `keytool`. The README uses this one file
 for both keystore and key passwords.
 
-### 6. Create and sign the redirected APK
+### 4c. Create and sign the redirected APK
 
 For the standard Android emulator, the app reaches your host through
 `10.0.2.2`. Choose an unused local port now; the redirected APK and server
@@ -201,7 +229,7 @@ Success prints `wrote signed APK: user-data/liminal-gate-test.apk`. If you
 change `LIMINAL_GATE_PORT` later, repeat this plan, patch, sign, and install
 sequence before starting the server on the new port.
 
-### 7. Start the server and install the APK
+### 4d. Start the server and install the APK
 
 In the terminal that will run the server, set the same port again (environment
 variables do not carry into another terminal). Keep it running while you test:
@@ -232,7 +260,7 @@ Replace `emulator-5556` with your intended emulator. If you exported
 adb install -r user-data/liminal-gate-test.apk
 ```
 
-### 8. What to test
+### 5. What to test
 
 Use a fresh state file, then complete the normal client flow:
 

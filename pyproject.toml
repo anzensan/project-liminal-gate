@@ -23,3 +23,4 @@ liminal-gate-import-story-progression = "liminal_gate.story_progression_importer
 liminal-gate-build-resource-catalog = "liminal_gate.resource_catalog_builder:main"
 liminal-gate-bootstrap-server = "liminal_gate.bootstrap_server:main"
 liminal-gate-import-bootstrap-profile = "liminal_gate.bootstrap_profile_importer:main"
+liminal-gate-tester-setup = "liminal_gate.tester_setup:main"
