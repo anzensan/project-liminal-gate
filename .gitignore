@@ -1,0 +1,17 @@
+# User-supplied materials and generated state must never be committed.
+user-data/
+state/
+logs/
+build/
+dist/
+*.apk
+*.ipa
+*.zip
+*.7z
+*.bin
+*.key
+*.pem
+*.p12
+*.jsonl
+__pycache__/
+*.py[cod]

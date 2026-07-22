@@ -1,0 +1,25 @@
+[project]
+name = "project-liminal-gate"
+version = "0.1.0"
+description = "Source-available, noncommercial compatibility-server foundation"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+master-import = ["UnityPy==1.25.2", "TypeTreeGeneratorAPI==0.0.10"]
+
+[project.scripts]
+liminal-gate = "liminal_gate.server:main"
+liminal-gate-release-preflight = "liminal_gate.release_preflight:main"
+liminal-gate-release-audit = "liminal_gate.release_audit:main"
+liminal-gate-apply-apk-plan = "liminal_gate.apk_patcher:main"
+liminal-gate-generate-il2cpp-plan = "liminal_gate.il2cpp_plan_generator:main"
+liminal-gate-generate-legacy-client-plan = "liminal_gate.legacy_client_apk_plan:main"
+liminal-gate-validate-story-catalog = "liminal_gate.story_catalog:main"
+liminal-gate-normalize-story-catalog = "liminal_gate.story_catalog_normalizer:main"
+liminal-gate-sign-apk = "liminal_gate.apk_signer:main"
+liminal-gate-import-input = "liminal_gate.input_importer:main"
+liminal-gate-import-battledata = "liminal_gate.battledata_importer:main"
+liminal-gate-import-story-progression = "liminal_gate.story_progression_importer:main"
+liminal-gate-build-resource-catalog = "liminal_gate.resource_catalog_builder:main"
+liminal-gate-bootstrap-server = "liminal_gate.bootstrap_server:main"
+liminal-gate-import-bootstrap-profile = "liminal_gate.bootstrap_profile_importer:main"

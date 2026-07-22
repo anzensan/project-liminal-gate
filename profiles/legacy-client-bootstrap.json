@@ -1,0 +1,430 @@
+{
+  "schema_version": 1,
+  "routes": {
+    "time": "/gd/get_current_time",
+    "status": "/gd/get_server_status",
+    "signup": "/gd/signup",
+    "login": "/gd/login",
+    "userdata": "/gd/userdata",
+    "userdata_after_close": "/gd/userdata_after_close",
+    "multiplay_enable": "/gd/multiplay_enable",
+    "special_event": "/gd/get_special_event_param",
+    "do_slot": "/gd/do_slot",
+    "start_quest": "/gd/start_quest",
+    "clear_quest": "/gd/clear_quest",
+    "continue": "/gd/continue",
+    "change_uname": "/gd/change_uname",
+    "refill_stamina": "/gd/refill_stamina",
+    "unlock_metal_zone": "/gd/unlock_metal_zone",
+    "achived": "/gd/achived",
+    "read_messages": "/gd/read_messages",
+    "delete_messages": "/gd/delete_messages",
+    "get_current_exchange": "/gd/get_current_exchange",
+    "exchange": "/gd/exchange",
+    "add_exchange_count": "/gd/add_exchange_count",
+    "statusup_item": "/gd/use_statusup_item",
+    "add_job": "/gd/add_job",
+    "rebirth": "/gd/rebirth",
+    "summon_skill_unlock": "/gd/summon_skill_unlock",
+    "sell_buddy": "/gd/sell_buddy",
+    "sell_buddies": "/gd/sell_buddies",
+    "buddy_strengthen": "/gd/buddy_strengthen",
+    "buddy_evolve": "/gd/buddy_evolve",
+    "do_buddy_slot": "/gd/do_buddy_slot"
+  },
+  "response_signing": {
+    "algorithm": "md5-uppercase-slice",
+    "salt": "mist_guardians_keycode",
+    "digest_start": 16,
+    "digest_end": 32
+  },
+  "responses": {
+    "status": {
+      "success": true
+    },
+    "multiplay_enable": {
+      "success": true,
+      "enable": false,
+      "enablemain": false
+    },
+    "special_event": {
+      "success": true
+    },
+    "signup": {
+      "success": true,
+      "id": "{uuid}"
+    },
+    "login": {
+      "success": true,
+      "id": "{uuid}",
+      "name": "Player",
+      "notifications": [],
+      "friendRequests": [],
+      "friends": [],
+      "weeklyChallenge": {
+        "clearSecL": 0,
+        "chapter": 0,
+        "section": 0,
+        "num": 0,
+        "startDate": 0.0,
+        "rankingMax": 0,
+        "presentsL": [],
+        "presentsH": [],
+        "presentsR": []
+      }
+    }
+  },
+  "account_binding": {
+    "signup_response_field": "id",
+    "login_query_field": "uuid"
+  },
+  "userdata_seed": {
+    "lastupdate": 1.0,
+    "chrdata": [],
+    "teamMembers": []
+  },
+  "tutorial_summons": [
+    {
+      "body": "kind=10&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+      "phase": "initial",
+      "next_phase": "grace_granted",
+      "response": {
+        "success": true,
+        "coins": 0,
+        "energy": 0,
+        "freeEnergy": 0,
+        "teamMembers": [3],
+        "chrdata": [
+          {
+            "id": 3,
+            "jobID": 0,
+            "jobLevels": [1],
+            "jobSlots": [],
+            "isNew": true,
+            "levelAdded": 1
+          }
+        ]
+      }
+    },
+    {
+      "body": "kind=11&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+      "phase": "grace_granted",
+      "next_phase": "amisandra_granted",
+      "response": {
+        "success": true,
+        "coins": 0,
+        "energy": 0,
+        "freeEnergy": 0,
+        "teamMembers": [3, 25],
+        "chrdata": [
+          {
+            "id": 25,
+            "jobID": 0,
+            "jobLevels": [15],
+            "jobSlots": [],
+            "isNew": true,
+            "levelAdded": 15
+          }
+        ]
+      }
+    },
+    {
+      "body": "kind=12&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+      "phase": "chapter1_1_cleared",
+      "next_phase": "knight_granted",
+      "response": {
+        "success": true,
+        "coins": 0,
+        "energy": 0,
+        "freeEnergy": 0,
+        "teamMembers": [3, 25],
+        "chrdata": [
+          {
+            "id": 64,
+            "jobID": 0,
+            "jobLevels": [10],
+            "jobSlots": [],
+            "isNew": true,
+            "levelAdded": 10
+          }
+        ]
+      }
+    }
+  ],
+  "tutorial_writes": [
+    {
+      "fields": [
+        ["progressCode", "50331713"],
+        ["worldMapNo", "0"],
+        ["chrdata", "[{\"id\":25,\"buddy\":0,\"date\":0.0,\"jobSlots\":[0.0,0.0,0.0],\"jobLevels\":[344051727.0,0.0,0.0],\"jobID\":0,\"flags\":0,\"skillBoost\":0}]"],
+        ["teamMembers", "[3,25,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0]"],
+        ["teamMembers_VS", "[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"],
+        ["teamBuddies_VS", "[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"],
+        ["teamNo", "1"],
+        ["teamNo_VS", "1"],
+        ["summonId", "1"],
+        ["lastUpdate", "1"]
+      ],
+      "phase": "amisandra_granted",
+      "next_phase": "tutorial_userdata",
+      "response": {
+        "success": true,
+        "lastupdate": 1.0
+      },
+      "userdata_update": {
+        "lastupdate": 1.0,
+        "progressCode": 50331713,
+        "worldMapNo": 0,
+        "teamMembers": [3, 25, 0, 0, 0, 0]
+      }
+    },
+    {
+      "fields": [
+        ["progressCode", "16777281"],
+        ["worldMapNo", "0"],
+        ["lastUpdate", "1"]
+      ],
+      "phase": "tutorial_userdata",
+      "next_phase": "chapter1_map",
+      "response": {
+        "success": true,
+        "lastupdate": 1.0
+      },
+      "userdata_update": {
+        "lastupdate": 1.0,
+        "progressCode": 16777281,
+        "worldMapNo": 0
+      }
+    },
+    {
+      "fields": [
+        ["progressCode", "16777345"],
+        ["worldMapNo", "0"],
+        ["lastUpdate", "1"]
+      ],
+      "phase": "chapter1_5_cleared",
+      "next_phase": "free_roam",
+      "response": {
+        "success": true,
+        "lastupdate": 1.0
+      },
+      "userdata_update": {
+        "lastupdate": 1.0,
+        "progressCode": 16777345,
+        "worldMapNo": 0
+      }
+    }
+  ],
+  "story_starts": [
+    {
+      "body": "stamina=1&coins=0&chapter=1&section=1&lastUpdate=1",
+      "phase": "chapter1_map",
+      "next_phase": "chapter1_1_active",
+      "response": {
+        "success": true,
+        "refillStartTime": 0.0
+      }
+    },
+    {
+      "body": "stamina=1&coins=0&chapter=1&section=2&lastUpdate=1",
+      "phase": "knight_party",
+      "next_phase": "chapter1_2_active",
+      "response": {
+        "success": true,
+        "refillStartTime": 0.0
+      }
+    },
+    {
+      "body": "stamina=1&coins=0&chapter=1&section=3&lastUpdate=1",
+      "phase": "warrior_party",
+      "next_phase": "chapter1_3_active",
+      "response": {"success": true, "refillStartTime": 0.0}
+    },
+    {
+      "body": "stamina=1&coins=0&chapter=1&section=4&lastUpdate=1",
+      "phase": "chapter1_3_cleared",
+      "next_phase": "chapter1_4_active",
+      "response": {"success": true, "refillStartTime": 0.0}
+    },
+    {
+      "body": "stamina=1&coins=0&chapter=1&section=5&lastUpdate=1",
+      "phase": "chapter1_4_cleared",
+      "next_phase": "chapter1_5_active",
+      "response": {"success": true, "refillStartTime": 0.0}
+    },
+    {
+      "body": "stamina=5&coins=0&chapter=2&section=1&lastUpdate=1",
+      "phase": "free_roam",
+      "next_phase": "chapter2_1_active",
+      "response": {"success": true, "refillStartTime": 0.0}
+    }
+  ],
+  "story_clears": [
+    {
+      "field_names": [
+        "progressCode",
+        "worldMapNo",
+        "valuables",
+        "chrdata",
+        "itemList",
+        "summonList",
+        "battle_result",
+        "itmp0",
+        "itmp1",
+        "lastUpdate"
+      ],
+      "fixed_fields": {
+        "progressCode": "16777282",
+        "worldMapNo": "0",
+        "itmp0": "0",
+        "itmp1": "0",
+        "lastUpdate": "1"
+      },
+      "json_fields": {
+        "valuables": "object",
+        "chrdata": "array",
+        "itemList": "array",
+        "summonList": "array",
+        "battle_result": "object"
+      },
+      "phase": "chapter1_1_active",
+      "next_phase": "chapter1_1_cleared",
+      "response": {
+        "success": true,
+        "lastupdate": 1.0
+      },
+      "userdata_update": {
+        "lastupdate": 1.0,
+        "progressCode": 16777282,
+        "worldMapNo": 0,
+        "coins": 30
+      }
+    },
+    {
+      "field_names": [
+        "progressCode",
+        "worldMapNo",
+        "valuables",
+        "chrdata",
+        "itemList",
+        "summonList",
+        "battle_result",
+        "itmp0",
+        "itmp1",
+        "lastUpdate"
+      ],
+      "fixed_fields": {
+        "progressCode": "16777283",
+        "worldMapNo": "0",
+        "itmp0": "0",
+        "itmp1": "0",
+        "lastUpdate": "1"
+      },
+      "json_fields": {
+        "valuables": "object",
+        "chrdata": "array",
+        "itemList": "array",
+        "summonList": "array",
+        "battle_result": "object"
+      },
+      "phase": "chapter1_2_active",
+      "next_phase": "warrior_granted",
+      "response": {
+        "success": true,
+        "lastupdate": 1.0,
+        "chrdata": [
+          {"id": 3, "jobID": 0, "jobLevels": [3145731.0, 0.0, 0.0], "jobSlots": [], "flags": 0},
+          {"id": 25, "jobID": 0, "jobLevels": [347197455.0, 0.0, 0.0], "jobSlots": [], "flags": 0},
+          {"id": 64, "jobID": 0, "jobLevels": [69689354.0, 0.0, 0.0], "jobSlots": [], "flags": 1},
+          {"id": 63, "jobID": 0, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [], "flags": 0, "isNew": true, "levelAdded": 1}
+        ],
+        "sentMessage": false
+      },
+      "userdata_update": {
+        "lastupdate": 1.0,
+        "progressCode": 16777283,
+        "worldMapNo": 0,
+        "coins": 50,
+        "teamMembers": [3, 25, 64, 0, 0, 0]
+      }
+    },
+    {
+      "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
+      "fixed_fields": {"progressCode": "16777284", "worldMapNo": "0", "itmp0": "0", "itmp1": "0", "lastUpdate": "1"},
+      "json_fields": {"valuables": "object", "chrdata": "array", "itemList": "array", "summonList": "array", "battle_result": "object"},
+      "phase": "chapter1_3_active",
+      "next_phase": "chapter1_3_cleared",
+      "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777284, "worldMapNo": 0, "coins": 90, "teamMembers": [3, 25, 64, 63, 0, 0]}
+    },
+    {
+      "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
+      "fixed_fields": {"progressCode": "16777285", "worldMapNo": "0", "itmp0": "0", "itmp1": "0", "lastUpdate": "1"},
+      "json_fields": {"valuables": "object", "chrdata": "array", "itemList": "array", "summonList": "array", "battle_result": "object"},
+      "phase": "chapter1_4_active",
+      "next_phase": "chapter1_4_cleared",
+      "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777285, "worldMapNo": 0, "coins": 140, "teamMembers": [3, 25, 64, 63, 0, 0]}
+    },
+    {
+      "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
+      "fixed_fields": {"progressCode": "50331777", "worldMapNo": "0", "itmp0": "0", "itmp1": "0", "lastUpdate": "1"},
+      "json_fields": {"valuables": "object", "chrdata": "array", "itemList": "array", "summonList": "array", "battle_result": "object"},
+      "phase": "chapter1_5_active",
+      "next_phase": "chapter1_5_cleared",
+      "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 50331777, "worldMapNo": 0, "coins": 218, "teamMembers": [3, 25, 64, 63, 0, 0]}
+    },
+    {
+      "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
+      "fixed_fields": {"progressCode": "16777346", "worldMapNo": "0", "itmp0": "0", "itmp1": "0", "lastUpdate": "1"},
+      "json_fields": {"valuables": "object", "chrdata": "array", "itemList": "array", "summonList": "array", "battle_result": "object"},
+      "phase": "chapter2_1_active",
+      "next_phase": "free_roam",
+      "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777346, "worldMapNo": 0, "coins": 210, "valuables": {"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 210}, "teamMembers": [3, 25, 64, 63, 0, 0]}
+    }
+  ],
+  "structural_writes": [
+    {
+      "field_names": ["chrdata", "lastUpdate"],
+      "fixed_fields": {"lastUpdate": "1"},
+      "json_fields": {"chrdata": "array"},
+      "phase": "knight_granted",
+      "next_phase": "knight_written",
+      "response": {"success": true, "lastupdate": 1.0},
+      "userdata_update": {"lastupdate": 1.0}
+    },
+    {
+      "field_names": ["chrdata", "teamMembers", "teamMembers_VS", "teamBuddies_VS", "teamNo", "teamNo_VS", "summonId", "lastUpdate"],
+      "fixed_fields": {"teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1"},
+      "json_fields": {"chrdata": "array", "teamMembers": "array", "teamMembers_VS": "array", "teamBuddies_VS": "array"},
+      "phase": "knight_written",
+      "next_phase": "knight_party",
+      "response": {"success": true, "lastupdate": 1.0},
+      "userdata_update": {"lastupdate": 1.0, "teamMembers": [3, 25, 64, 0, 0, 0]}
+    },
+    {
+      "field_names": ["chrdata", "teamMembers", "teamMembers_VS", "teamBuddies_VS", "teamNo", "teamNo_VS", "summonId", "lastUpdate"],
+      "fixed_fields": {"teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1"},
+      "json_fields": {"chrdata": "array", "teamMembers": "array", "teamMembers_VS": "array", "teamBuddies_VS": "array"},
+      "phase": "warrior_granted",
+      "next_phase": "warrior_party",
+      "response": {"success": true, "lastupdate": 1.0},
+      "userdata_update": {"lastupdate": 1.0, "teamMembers": [3, 25, 64, 63, 0, 0]}
+    },
+    {
+      "field_names": ["teamMembers", "teamMembers_VS", "teamBuddies_VS", "teamNo", "teamNo_VS", "summonId", "lastUpdate"],
+      "fixed_fields": {"teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1"},
+      "json_fields": {"teamMembers": "array", "teamMembers_VS": "array", "teamBuddies_VS": "array"},
+      "phase": "free_roam",
+      "next_phase": "free_roam",
+      "response": {"success": true, "lastupdate": 1.0},
+      "userdata_update": {"lastupdate": 1.0}
+    }
+  ],
+  "continue_policy": {
+    "client_cost": 1,
+    "coin_cost": 100
+  }
+}

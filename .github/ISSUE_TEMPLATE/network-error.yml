@@ -1,0 +1,64 @@
+name: Network error
+description: Report a reproducible client-to-local-server failure.
+title: "network: "
+labels:
+  - network
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting this. Include the exact steps that reached the
+        failure so the compatibility boundary can be reproduced. Do not attach
+        an APK, game asset, raw traffic capture, account state, token, digest,
+        password, signing key, or any other private data.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Start from a clean local state and list every command, launch action, and client action in order.
+      placeholder: |
+        1. Run ...
+        2. Launch the locally patched client ...
+        3. Tap ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State what you expected the local server/client to do.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the visible error and a sanitized server/client log excerpt if available.
+    validations:
+      required: true
+  - type: input
+    id: route
+    attributes:
+      label: Last route or operation reached
+      description: A path or operation name only. Do not include its query string.
+      placeholder: /gd/get_server_status
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Python version, client build identifier you own, and whether this used an emulator or device.
+      placeholder: |
+        OS: ...
+        Python: ...
+        Client build: ...
+        Device/emulator: ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed tokens, digests, query strings, account data, captures, APKs, assets, keys, and passwords.
+          required: true
