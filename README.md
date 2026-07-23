@@ -8,9 +8,11 @@ Donations support all of my development projects, not only Project Liminal Gate.
 > Terra Battle or any original game material; this project remains source-only
 > and separately licensed.
 
-Project Liminal Gate is a local compatibility server for a narrow, playable
-preservation test path. The currently verified path reaches and clears Chapter
-2-1. It is not a complete replacement for the original online service.
+Project Liminal Gate is a local compatibility server for a playable
+preservation path. The currently verified original-client path reaches and
+clears Chapter 2-1. The guided setup also enables a bulk ordinary-story policy
+for Chapter 2-2 through Chapter 42; it is not a claim that every later reward,
+drop, or scripted scene has been historically reproduced.
 
 ## What you need
 
@@ -216,6 +218,34 @@ local server in the foreground. It asks for the signing-key password only on
 first setup and saves it locally in `user-data/keystore-password.txt` with
 owner-only permissions. Press Control-C when you finish testing.
 
+The guided server includes the ordinary Chapter 2-42 progression policy. After
+the verified Chapter 2-1 boundary, it accepts the normal client story flow,
+unlocks stages in order, and handles chapter-map reveals without requiring a
+separate server handler for each stage. It does **not** bundle an original
+reward/drop table: ordinary clear results use the client-reported local result,
+and unusual scripted stages may still stop with a Network Error until they are
+given a specific compatibility rule.
+
+It also enables local ordinary Pacts: **Pact of Fellowship** (`kind=0`) spends
+3,000 Coins per pull, while **Pact of Truth** (`kind=1`) spends 5 Energy per
+pull and accepts the normal 1, 5, or 10-pull form. New local accounts receive
+50 free Energy so a tester can use Truth immediately. The included pools are
+bounded local policy; selection is uniform and duplicate gains are local
+defaults, not a claim about the retired service's per-character odds. Fate,
+ticket, campaign, and event-specific Pact variants remain unsupported.
+
+The 50-Energy starter grant applies when a local account is first created. To
+test it after upgrading an existing setup, use a new local data directory and
+clear only this test app's data before choosing **New Game** again:
+
+```sh
+python3 -m liminal_gate.tester_setup --data-dir user-data/pact-test --port 8696 --emulator emulator-5570
+```
+
+Then use the reset commands in [What to test](#5-what-to-test) with your own
+emulator serial and package name. This preserves your earlier `user-data/`
+test state.
+
 If only one emulator is ready, omit `--emulator`. If several are ready, the
 command lists their serials and asks you to rerun with the intended one. It
 automatically uses the newest usable Android SDK Build Tools installation on
@@ -415,7 +445,7 @@ it does not remove the APK or alter another emulator.
 | Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
 | Resource-manifest error on server start | Confirm the resource root, then rerun `python3 -m liminal_gate.resource_catalog_builder`. |
-| A request fails after Chapter 2-1 | That is outside the current basic tester path. Record the route and steps if it happens before the stated boundary. |
+| A request fails after Chapter 2-1 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
 
 For a local client-to-server failure, open the GitHub **Network error** issue
 form with the setup commands, client actions, last screen reached, expected

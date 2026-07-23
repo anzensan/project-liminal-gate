@@ -81,7 +81,10 @@
   "userdata_seed": {
     "lastupdate": 1.0,
     "chrdata": [],
-    "teamMembers": []
+    "teamMembers": [],
+    "coins": 0,
+    "energy": 0,
+    "freeEnergy": 50
   },
   "tutorial_summons": [
     {

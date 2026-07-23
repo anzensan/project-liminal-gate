@@ -31,7 +31,7 @@ from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, load_companion_evolution_catalog
 from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionDrawCatalogError, load_companion_draw_catalog
-from liminal_gate.pact_draw_catalog import PactDrawCatalog, PactDrawCatalogError, load_pact_draw_catalog
+from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, load_achievement_catalog
 from liminal_gate.message_catalog import MessageCatalog, MessageCatalogError, load_message_catalog
 from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, load_exchange_catalog
@@ -41,7 +41,7 @@ from liminal_gate.job_catalog import JobCatalog, JobCatalogError, load_job_catal
 from liminal_gate.settlement_catalog import SettlementCatalog, SettlementCatalogError, load_settlement_catalog
 from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError, load_statusup_catalog
 from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StoryStage, load_story_catalog
-from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, load_story_progression_catalog
+from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, load_summon_skill_catalog
 
@@ -1108,7 +1108,7 @@ class BootstrapState:
             self._persist_locked()
             return "success", payload
 
-    def draw_ordinary_pact(self, token: str, request_id: str, body: bytes, catalog: PactDrawCatalog | None) -> tuple[str, dict[str, Any] | None]:
+    def draw_ordinary_pact(self, token: str, request_id: str, body: bytes, catalog: PactDrawCatalog | BundledPactPolicy | None) -> tuple[str, dict[str, Any] | None]:
         """Settle only the evidence-backed normal coin Pact form.
 
         Pool, rates, costs, duplicate effects, and level ceiling are all
@@ -1124,15 +1124,23 @@ class BootstrapState:
             cached = requests.get(request_id)
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
-            count = _parse_ordinary_pact_draw(body)
-            if catalog is None or count is None:
+            parsed = _parse_ordinary_pact_draw(body)
+            if catalog is None or parsed is None:
                 return "unsupported_ordinary_pact", None
+            kind, count = parsed
+            draws, cost = catalog.draws_for_kind(kind), catalog.cost_for_kind(kind)
+            if not draws or cost is None:
+                return "unsupported_ordinary_pact", None
+            currency, unit_cost = cost
             userdata = account["userdata"]
             rows = userdata.get("chrdata")
             if not isinstance(rows, list) or type(userdata.get("coins")) is not int or type(userdata.get("energy", 0)) is not int or type(userdata.get("freeEnergy", 0)) is not int:
                 return "unsupported_ordinary_pact", None
-            if userdata["coins"] < catalog.coin_cost * count:
+            total_cost = unit_cost * count
+            if currency == "coins" and userdata["coins"] < total_cost:
                 payload = {"success": False, "errorCode": 2}
+            elif currency == "energy" and userdata["energy"] + userdata["freeEnergy"] < total_cost:
+                payload = {"success": False, "errorCode": 1}
             else:
                 candidates = copy.deepcopy(rows)
                 by_id = {row.get("id"): row for row in candidates if isinstance(row, dict) and type(row.get("id")) is int}
@@ -1142,7 +1150,7 @@ class BootstrapState:
                 for _ in range(count):
                     if any(type(row.get("skillBoost", 0)) is not int for row in by_id.values()):
                         return "unsupported_ordinary_pact", None
-                    eligible = [draw for draw in catalog.draws if not isinstance(by_id.get(draw.character_id), dict) or by_id[draw.character_id].get("skillBoost", 0) < catalog.max_skill_boost]
+                    eligible = [draw for draw in draws if not isinstance(by_id.get(draw.character_id), dict) or by_id[draw.character_id].get("skillBoost", 0) < catalog.max_skill_boost]
                     if not eligible:
                         payload = {"success": False, "errorCode": 3}
                         break
@@ -1167,7 +1175,12 @@ class BootstrapState:
                         current["jobLevels"][0], current["skillBoost"] = level, boost
                         results.append({"id": selected.character_id, "jobID": int(current.get("jobID", 0)), "jobLevels": [level], "jobSlots": list(current.get("jobSlots", [])), "isNew": False, "levelAdded": level - old_level, "boostUp": boost - old_boost, "skillBoost": boost})
                 else:
-                    userdata["coins"] -= catalog.coin_cost * count
+                    if currency == "coins":
+                        userdata["coins"] -= total_cost
+                    else:
+                        free_spend = min(userdata["freeEnergy"], total_cost)
+                        userdata["freeEnergy"] -= free_spend
+                        userdata["energy"] -= total_cost - free_spend
                     userdata["chrdata"] = candidates
                     payload = {"success": True, "coins": userdata["coins"], "energy": userdata["energy"], "freeEnergy": userdata["freeEnergy"], "chrdata": results}
             payload = _canonical_payload(payload)
@@ -1226,7 +1239,11 @@ class BootstrapState:
             if values is None:
                 return "unsupported_start_quest", None
             stage = catalog.by_identity().get((values["chapter"], values["section"]))
-            if stage is None or values["stamina"] != stage.stamina or values["coins"] != stage.coins:
+            if (
+                stage is None
+                or stage.stamina is not None and values["stamina"] != stage.stamina
+                or stage.coins is not None and values["coins"] != stage.coins
+            ):
                 return "unsupported_start_quest", None
             if isinstance(catalog, StoryProgressionCatalog):
                 current = int(account["userdata"].get("progressCode", 0))
@@ -1500,7 +1517,7 @@ class BootstrapServer(ThreadingHTTPServer):
         companion_strengthen_catalog: CompanionStrengthenCatalog | None = None,
         companion_evolution_catalog: CompanionEvolutionCatalog | None = None,
         companion_draw_catalog: CompanionDrawCatalog | None = None,
-        pact_draw_catalog: PactDrawCatalog | None = None,
+        pact_draw_catalog: PactDrawCatalog | BundledPactPolicy | None = None,
         achievement_catalog: AchievementCatalog | None = None,
         message_catalog: MessageCatalog | None = None,
         exchange_catalog: ExchangeCatalog | None = None,
@@ -2151,7 +2168,7 @@ def _parse_companion_draw(body: bytes) -> tuple[int, int] | None:
     return values["kind"], values["count"]
 
 
-def _parse_ordinary_pact_draw(body: bytes) -> int | None:
+def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int] | None:
     try:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
@@ -2159,9 +2176,12 @@ def _parse_ordinary_pact_draw(body: bytes) -> int | None:
     if tuple(name for name, _ in pairs) != ("kind", "count", "luckType", "campaignChrID", "eventFlag", "lastUpdate"):
         return None
     values = dict(pairs)
-    if values["kind"] != "0" or values["luckType"] != "false" or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or int(values["count"]) not in {1, 10} or not values["lastUpdate"].isdecimal():
+    if values["kind"] not in {"0", "1"} or values["luckType"] != "false" or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or not values["lastUpdate"].isdecimal():
         return None
-    return int(values["count"])
+    kind, count = int(values["kind"]), int(values["count"])
+    if count not in ({1, 10} if kind == 0 else {1, 5, 10}):
+        return None
+    return kind, count
 
 
 def _parse_companion_userdata_write(body: bytes) -> list[dict[str, Any]] | None:
@@ -2508,6 +2528,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resource-manifest", type=Path, help="user-local explicit resource mapping manifest")
     parser.add_argument("--story-catalog", type=Path, help="user-local normalized generic-story catalog")
     parser.add_argument("--story-progression-catalog", type=Path, help="user-derived reviewed core-story progression catalog")
+    parser.add_argument("--core-story", action="store_true", help="enable the bundled ordinary Chapter 2--42 progression policy without reward data")
     parser.add_argument("--settlement-catalog", type=Path, help="optional user-local generic-story identity/reward constraints")
     parser.add_argument("--story-outcome-catalog", type=Path, help="user-local generic-story reported-outcome bounds and Companion drop levels")
     parser.add_argument("--clear-state-catalog", type=Path, help="user-local generic-story character EXP and Skill-Boost constraints")
@@ -2520,6 +2541,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-evolution-catalog", type=Path, help="user-local Companion evolution rows and costs")
     parser.add_argument("--companion-draw-catalog", type=Path, help="user-local Companion draw pool and costs")
     parser.add_argument("--pact-draw-catalog", type=Path, help="user-local ordinary Pact pool, rates, and duplicate policy")
+    parser.add_argument("--pacts", action="store_true", help="enable the bundled local Fellowship and Truth Pact policy")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
@@ -2529,9 +2551,9 @@ def parse_args() -> argparse.Namespace:
 def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     fields = (
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest",
-        "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
+        "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -2547,14 +2569,14 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         profile=args.profile, state_file=args.state_file,
         host="127.0.0.1" if args.host is None else args.host, port=8080 if args.port is None else args.port,
         event_log=args.event_log, resource_root=args.resource_root, resource_manifest=args.resource_manifest,
-        story_catalog=args.story_catalog, settlement_catalog=args.settlement_catalog,
+        story_catalog=args.story_catalog, core_story=getattr(args, "core_story", False), settlement_catalog=args.settlement_catalog,
         story_progression_catalog=args.story_progression_catalog,
         story_outcome_catalog=args.story_outcome_catalog, clear_state_catalog=args.clear_state_catalog, statusup_catalog=args.statusup_catalog,
         job_catalog=args.job_catalog, rebirth_catalog=args.rebirth_catalog,
         summon_skill_catalog=args.summon_skill_catalog, companion_catalog=args.companion_catalog,
         companion_strengthen_catalog=args.companion_strengthen_catalog,
         companion_evolution_catalog=args.companion_evolution_catalog,
-        companion_draw_catalog=args.companion_draw_catalog, pact_draw_catalog=args.pact_draw_catalog,
+        companion_draw_catalog=args.companion_draw_catalog, pact_draw_catalog=args.pact_draw_catalog, pacts=getattr(args, "pacts", False),
         achievement_catalog=args.achievement_catalog,
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
@@ -2569,7 +2591,9 @@ def main() -> int:
             raise ProfileError("--resource-root and --resource-manifest must be supplied together")
         resources = None if args.resource_root is None else load_resource_catalog(args.resource_manifest, args.resource_root)
         stories = None if args.story_catalog is None else load_story_catalog(args.story_catalog)
-        progression = None if args.story_progression_catalog is None else load_story_progression_catalog(args.story_progression_catalog)
+        if args.core_story and args.story_progression_catalog is not None:
+            raise ProfileError("--core-story cannot be combined with --story-progression-catalog")
+        progression = build_core_story_policy() if args.core_story else (None if args.story_progression_catalog is None else load_story_progression_catalog(args.story_progression_catalog))
         if stories is not None and progression is not None:
             raise ProfileError("--story-catalog and --story-progression-catalog cannot be combined")
         settlements = None if args.settlement_catalog is None else load_settlement_catalog(args.settlement_catalog)
@@ -2583,7 +2607,9 @@ def main() -> int:
         companion_strengthen = None if args.companion_strengthen_catalog is None else load_companion_strengthen_catalog(args.companion_strengthen_catalog)
         companion_evolution = None if args.companion_evolution_catalog is None else load_companion_evolution_catalog(args.companion_evolution_catalog)
         companion_draw = None if args.companion_draw_catalog is None else load_companion_draw_catalog(args.companion_draw_catalog)
-        pact_draw = None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog)
+        if args.pacts and args.pact_draw_catalog is not None:
+            raise ProfileError("--pacts cannot be combined with --pact-draw-catalog")
+        pact_draw = build_bundled_pact_policy() if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))
         achievements = None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog)
         messages = None if args.message_catalog is None else load_message_catalog(args.message_catalog)
         exchanges = None if args.exchange_catalog is None else load_exchange_catalog(args.exchange_catalog)

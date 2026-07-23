@@ -6,8 +6,10 @@ publishing original data, captures, account state, or generated catalogs.
 
 ## Runnable now
 
-- Local bootstrap, account state, tutorial, and bounded Chapter 1/2 flow.
-- User-local generic and locally derived Chapter 2--42 story start/clear paths.
+- Local bootstrap, account state, tutorial, and verified Chapter 1/2 flow.
+- Built-in ordinary Chapter 2--42 story start/clear/map-reveal progression;
+  optional locally derived catalogs can additionally validate start values.
+- Built-in local Fellowship/Truth Pact draws with durable result replay.
 - Local APK routing/guarded patch/sign workflow.
 - Catalog-gated job, status-up, Rebirth, and Battle Summon skill progression slices.
 - Hash-validated serving of a user-owned mirrored resource tree.
@@ -16,8 +18,8 @@ publishing original data, captures, account state, or generated catalogs.
 
 | Family | Required user-local input/state | Current boundary |
 | --- | --- | --- |
-| Story rewards and drops | Character, item, summon, encounter, and reward catalogs | The locally derived Chapter 2--42 order/progress/map reveal path is available. Clear coins remain a trusted-local client report; exact item/summon settlement, first-clear policy, and authoritative encounter rewards remain incomplete. |
-| Tavern and Companions | Companion master rows, draw policy/cadence, equipment rules | Catalog-gated draw, sale, strengthen, evolution, and post-draw inventory persistence are available; no historic pool or equipment lifecycle is bundled. |
+| Story rewards and drops | Character, item, summon, encounter, and reward catalogs | Bulk ordinary Chapter 2--42 order/progress/map reveal is available. Clear coins remain a trusted-local client report; exact item/summon settlement, first-clear policy, authoritative encounter rewards, and scripted-stage exceptions remain incomplete. |
+| Tavern and Companions | Companion master rows, draw policy/cadence, equipment rules | Built-in local Fellowship/Truth Pacts cover normal pulls; Fate/ticket/campaign/event variants, historic odds, party selection, Companion systems, and equipment lifecycle remain incomplete. |
 | Battle Summons | Summon acquisition, ownership, party selection, and any remaining skill tiers | Skill unlock is catalog-gated; acquisition and authoritative lifecycle remain absent. |
 | Optional/event stages | Named stage manifests, rewards, schedules where applicable | No public event/archive catalog importer. |
 | Trading Post | User-local item/coin offer catalog | Nested browse and bounded item exchange are available; Companion offers and untrusted count credit remain absent. |

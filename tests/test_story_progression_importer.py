@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from liminal_gate.story_progression_catalog import build_core_story_policy
 from liminal_gate.story_progression_importer import StoryProgressionImportError, build_story_progression, progress_low_bits
 
 
@@ -31,3 +32,11 @@ class StoryProgressionImporterTest(unittest.TestCase):
         metadata["stages"].pop()
         with self.assertRaisesRegex(StoryProgressionImportError, "section counts"):
             build_story_progression(metadata)
+
+    def test_built_in_policy_contains_only_ordered_progression(self) -> None:
+        policy = build_core_story_policy()
+        stages = policy.by_identity()
+        self.assertEqual(393, len(stages))
+        self.assertEqual((3, 1), (stages[(2, 5)].successor_chapter, stages[(2, 5)].successor_section))
+        self.assertIsNone(stages[(2, 2)].stamina)
+        self.assertIsNone(stages[(2, 2)].coins)

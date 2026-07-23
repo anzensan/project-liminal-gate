@@ -9,7 +9,7 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.story_progression_catalog import load_story_progression_catalog
+from liminal_gate.story_progression_catalog import build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_progression_importer import build_story_progression
 from liminal_gate.settlement_catalog import load_settlement_catalog
 from tests.test_story_progression_importer import _metadata
@@ -116,3 +116,18 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         persisted = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.assertEqual(0x010000C1, persisted["accounts"][self.account_id]["userdata"]["progressCode"])
         self.assertEqual(7, persisted["accounts"][self.account_id]["userdata"]["coins"])
+
+    def test_built_in_policy_accepts_client_start_values_for_ordinary_stage(self) -> None:
+        self.stop_server()
+        self.server = BootstrapServer(
+            ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
+            story_progression_catalog=build_core_story_policy(),
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+        status, payload = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=policy-start-2-5",
+            [("stamina", "17"), ("coins", "42"), ("chapter", "2"), ("section", "5"), ("lastUpdate", "1")],
+        )
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])

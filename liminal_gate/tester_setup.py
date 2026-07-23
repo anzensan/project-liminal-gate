@@ -151,6 +151,8 @@ def server_arguments(resource_root: Path, data_directory: Path, port: int) -> li
         "--event-log", str(data_directory / "events.jsonl"),
         "--resource-root", str(resource_root),
         "--resource-manifest", str(data_directory / "resources.json"),
+        "--core-story",
+        "--pacts",
     ]
 
 

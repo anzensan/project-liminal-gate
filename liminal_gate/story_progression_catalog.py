@@ -14,8 +14,8 @@ class StoryProgressionCatalogError(ValueError):
 class StoryProgressionStage:
     chapter: int
     section: int
-    stamina: int
-    coins: int
+    stamina: int | None
+    coins: int | None
     successor_chapter: int
     successor_section: int
     successor_low_progress: int
@@ -50,6 +50,35 @@ class StoryProgressionCatalog:
     def expected_reveal_progress(current_progress: int) -> int | None:
         """Accept only the client map write that clears the show-progress bit."""
         return current_progress & ~0x02000000 if current_progress & 0x03000000 == 0x03000000 else None
+
+
+def build_core_story_policy() -> StoryProgressionCatalog:
+    """Build the local ordinary-story policy used by the guided tester path.
+
+    This contains only the recovered ordered Chapter 2--42 identities and
+    successor progression.  ``None`` start values deliberately mean the
+    user's client supplies its own nonnegative stamina/coin fields; this is a
+    local compatibility policy, not a bundled reward or cost table.
+    """
+    identities = [
+        (chapter, section)
+        for chapter in range(2, 43)
+        for section in range(1, 6 if chapter in {2, 3} else 4 if chapter == 42 else 11)
+    ]
+    stages = tuple(
+        StoryProgressionStage(
+            chapter=chapter,
+            section=section,
+            stamina=None,
+            coins=None,
+            successor_chapter=43 if index + 1 == len(identities) else identities[index + 1][0],
+            successor_section=1 if index + 1 == len(identities) else identities[index + 1][1],
+            successor_low_progress=(43 << 6) | 1 if index + 1 == len(identities) else (identities[index + 1][0] << 6) | identities[index + 1][1],
+            chapter_boundary=index + 1 == len(identities) or identities[index + 1][0] != chapter,
+        )
+        for index, (chapter, section) in enumerate(identities)
+    )
+    return StoryProgressionCatalog(stages)
 
 
 def load_story_progression_catalog(path: Path) -> StoryProgressionCatalog:

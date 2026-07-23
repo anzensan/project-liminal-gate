@@ -1,13 +1,20 @@
 # Advanced local configuration
 
-This page is for operators extending the basic Chapter 2-1 tester path. None
-of these inputs are required for the README quick start. Each catalog stays
-local and is supplied by the operator.
+This page is for operators tightening or extending the guided core-story path.
+The README quick start enables its built-in ordinary Chapter 2--42 progression
+policy automatically. Each optional catalog stays local and is supplied by the
+operator.
 
 ## Core-story progression
 
-With optional local Unity/IL2CPP parser dependencies and locally derived dummy
-assemblies, extract the reviewed APK's stage metadata:
+The guided setup uses `--core-story`: it carries only the ordered Chapter 2--42
+identities and successor/map-reveal rules. It deliberately accepts each
+ordinary stage's nonnegative client-sent stamina and coin fields and does not
+bundle a cost/reward table.
+
+For a stricter local installation, derive the reviewed APK's stage metadata
+with optional local Unity/IL2CPP parser dependencies and locally derived dummy
+assemblies:
 
 ```sh
 python3 -m pip install '.[master-import]'
@@ -23,10 +30,10 @@ liminal-gate-import-story-progression \
 
 Start the server with
 `--story-progression-catalog user-data/derived/core-story-progression.json` to
-use the locally derived ordered Chapter 2--42 sequence. It cannot be combined
-with `--story-catalog`. The derived path validates ordering/progress and uses a
-client-reported nonnegative Coin result unless a settlement catalog overrides
-that stage.
+validate the local APK-derived stage start stamina/coins as well as ordering
+and progress. It cannot be combined with `--core-story` or `--story-catalog`.
+The derived path uses a client-reported nonnegative Coin result unless a
+settlement catalog overrides that stage.
 
 `--story-catalog` instead accepts an operator-authored normalized catalog.
 Validate one with:
@@ -74,6 +81,10 @@ catalog is passed at launch:
 
 All mutations are designed to persist local state and replay an identical
 request safely across restart. Unsupported variants return an explicit error.
+
+The guided setup enables `--pacts`, a built-in local Fellowship/Truth policy.
+Use `--pact-draw-catalog` instead when you need a custom Fellowship-only pool;
+it cannot be combined with `--pacts`.
 
 ## Local server configuration file
 

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from liminal_gate.pact_draw_catalog import PactDrawCatalogError, load_pact_draw_catalog
+from liminal_gate.pact_draw_catalog import PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
 
 
 class PactDrawCatalogTest(unittest.TestCase):
@@ -33,3 +33,10 @@ duplicate_skill_boost = 5
             path = Path(directory) / "pact.json"; path.write_text(document, encoding="utf-8")
             with self.assertRaises(PactDrawCatalogError):
                 load_pact_draw_catalog(path)
+
+    def test_bundled_policy_exposes_fellowship_and_truth(self) -> None:
+        policy = build_bundled_pact_policy()
+        self.assertEqual(("coins", 3000), policy.cost_for_kind(0))
+        self.assertEqual(("energy", 5), policy.cost_for_kind(1))
+        self.assertEqual(103, len(policy.draws_for_kind(0)))
+        self.assertEqual(122, len(policy.draws_for_kind(1)))

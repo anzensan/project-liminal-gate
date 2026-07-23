@@ -63,6 +63,22 @@ class ServerConfigTest(unittest.TestCase):
         config = load_server_config(configuration_path)
         self.assertEqual(self.root / "catalogs" / "progression.json", config.story_progression_catalog)
 
+    def test_core_story_policy_flag_is_loaded_strictly(self) -> None:
+        configuration_path = self.root / "server.toml"
+        configuration_path.write_text(
+            'schema_version = 1\nprovenance = "user-supplied"\nprofile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\ncore_story = true\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(load_server_config(configuration_path).core_story)
+
+    def test_pact_policy_flag_is_loaded_strictly(self) -> None:
+        configuration_path = self.root / "server.toml"
+        configuration_path.write_text(
+            'schema_version = 1\nprovenance = "user-supplied"\nprofile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\npacts = true\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(load_server_config(configuration_path).pacts)
+
     def test_unknown_keys_and_non_user_provenance_fail(self) -> None:
         configuration_path = self.root / "server.toml"
         configuration_path.write_text(

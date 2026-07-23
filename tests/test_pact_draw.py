@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.pact_draw_catalog import load_pact_draw_catalog
+from liminal_gate.pact_draw_catalog import build_bundled_pact_policy, load_pact_draw_catalog
 
 
 class PactDrawTest(unittest.TestCase):
@@ -52,3 +52,23 @@ class PactDrawTest(unittest.TestCase):
                 self.assertEqual((200, first), post(restarted, "one"))
             finally:
                 restarted.shutdown(); restarted_thread.join(); restarted.server_close()
+
+    def test_http_bundled_truth_pact_spends_starter_energy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.json"
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=build_bundled_pact_policy())
+            thread = threading.Thread(target=server.serve_forever); thread.start()
+            try:
+                server.state.create_account("token", "account", {"coins": 0, "energy": 0, "freeEnergy": 5, "chrdata": []})
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/do_slot?otk=token&requestID=truth-one", body="kind=1&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
+                response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
+                self.assertEqual(200, response.status)
+                self.assertTrue(payload["success"])
+                self.assertEqual(0, payload["freeEnergy"])
+                self.assertEqual(1, len(payload["chrdata"]))
+                self.assertIn(payload["chrdata"][0]["id"], {draw.character_id for draw in build_bundled_pact_policy().truth_draws})
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
