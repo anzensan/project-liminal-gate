@@ -14,6 +14,21 @@ clears Chapter 2-1. The guided setup also enables a bulk ordinary-story policy
 for Chapter 2-2 through Chapter 42; it is not a claim that every later reward,
 drop, or scripted scene has been historically reproduced.
 
+## Current tester status
+
+The guided setup now enables ordinary story progression beyond the tutorial,
+through Chapter 42, and local ordinary Pacts:
+
+- **Pact of Fellowship** uses Coins.
+- **Pact of Truth** uses Energy; new local accounts receive 50 free Energy.
+
+This remains a tester build. The original-client path is verified only through
+Chapter 2-1, so later story stages may need individual compatibility fixes.
+Fate, ticket, campaign, and event Pact variants are intentionally unsupported.
+If you encounter a Network Error, please [open a GitHub issue](https://github.com/anzensan/project-liminal-gate/issues)
+with the action you took, OS and emulator version, and the relevant lines from
+`user-data/events.jsonl`.
+
 ## What you need
 
 - Python 3.11 or newer, with `python3` available in a Terminal.
