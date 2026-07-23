@@ -63,9 +63,24 @@ directory and adding that directory to `PATH`. Do not continue until all four
 checks above succeed. To keep the Android paths for future Terminal windows,
 add the three `export` lines to `~/.zshrc` and open a new Terminal window.
 
-On Linux or Windows, use the equivalent SDK location and PATH entries; the
-commands below still need to be run from a shell with `python3`, `adb`,
-`java`, and `keytool` available.
+On Linux, use the equivalent SDK location and PATH entries. On Windows, open
+**PowerShell** and use the Android SDK location normally created by Android
+Studio:
+
+```powershell
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+$env:Path = "$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:ANDROID_HOME\cmdline-tools\latest\bin;$env:Path"
+Get-Command adb, java, keytool
+py -3 --version
+adb version
+```
+
+If `python3 --version` works on your Windows installation, you can use the
+commands below exactly as written. Otherwise replace each `python3 -m` with
+`py -3 -m`. If `adb`, `java`, or `keytool` is not found, install the missing
+SDK/JDK component in Android Studio, reopen PowerShell, and repeat these
+checks.
 
 ## Quick start: emulator tester path
 
@@ -94,6 +109,13 @@ open it; see [Create and manage virtual devices](https://developer.android.com/s
 Choose **Create device**, select a phone profile, choose a recent Android
 system image, and start the new device. Use a fresh emulator profile for this
 test build when possible.
+
+The current known-good Windows report used a **Pixel 6 with Android 12** and
+completed the verified path through Chapter 2-1. Some newer Android API levels
+have caused the original APK to crash when opening game areas; that appears to
+be an APK/emulator compatibility limitation, not a local-server response. If
+you see an immediate crash on a newer image, retry with a Pixel 6 Android 12
+system image before investigating server logs.
 
 Wait until the emulator has finished booting, then confirm that `adb` can see
 it and print its serial number:
@@ -153,6 +175,14 @@ find "$HOME/Downloads" "$HOME/Desktop" -name 'terra-battle-5.5.7-170.apk' -print
 find "$HOME/Downloads" "$HOME/Desktop" -type d -path '*/data_u2017/android' -print 2>/dev/null
 ```
 
+The equivalent PowerShell searches are:
+
+```powershell
+Get-ChildItem "$HOME\Downloads", "$HOME\Desktop" -Recurse -File -Filter "terra-battle-5.5.7-170.apk" -ErrorAction SilentlyContinue
+Get-ChildItem "$HOME\Downloads", "$HOME\Desktop" -Recurse -Directory -ErrorAction SilentlyContinue |
+  Where-Object { $_.FullName -like "*\data_u2017\android" }
+```
+
 ### 3. One-command setup, install, and server start
 
 After putting the APK and resources in the layout from step 2, run this one
@@ -168,6 +198,12 @@ lsof -nP -iTCP:8696 -sTCP:LISTEN
 No output means the port is probably free. If a process is listed, choose a
 different port and use that same number in both the setup command and any
 manual server command.
+
+In PowerShell, use this equivalent check:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8696 -State Listen -ErrorAction SilentlyContinue
+```
 
 ```sh
 python3 -m liminal_gate.tester_setup --port 8696 --emulator emulator-5570
