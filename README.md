@@ -14,44 +14,99 @@ preservation test path. The currently verified path reaches and clears Chapter
 
 ## What you need
 
-- Python 3.11 or newer.
-- An Android emulator with `adb` available.
-- Android SDK Build Tools: `zipalign` and `apksigner`.
-- Java's `keytool` command for creating a local test signing key.
+- Python 3.11 or newer, with `python3` available in a Terminal.
+- Android Studio, including the Android Emulator and SDK tools.
+- Android SDK Platform-Tools, which provides `adb`.
+- Android SDK Build Tools, which provide `zipalign` and `apksigner`.
+- A JDK, which provides Java's `keytool` command for creating a local test
+  signing key. Android Studio's bundled JDK is sufficient if its `bin`
+  directory is on your `PATH`.
 - A local Terra Battle Android 5.5.7-170 APK and matching Android resources.
 
 The APK and resources stay on your machine; this repository does not include
 them. Keep all local inputs and generated files outside Git.
 
+### Install and check the tools first
+
+These are shell commands, so use **Terminal** on macOS (or a comparable shell
+on Linux/Windows), not the Python prompt and not an Android Studio code
+window. On macOS, install Android Studio from the official Android Developers
+site, then open **Android Studio → Settings → Languages & Frameworks → Android
+SDK** (on some versions: **More Actions → SDK Manager** on the welcome screen).
+In **SDK Tools**, select **Android SDK Platform-Tools**, **Android Emulator**,
+and **Android SDK Build-Tools**, then click **Apply**. The [Android SDK Manager
+documentation](https://developer.android.com/tools/sdkmanager) explains the
+same screen.
+
+On macOS, make the tools available in the current Terminal window:
+
+```sh
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+```
+
+If `adb` still cannot be found, check that the SDK directory exists and that
+Platform-Tools was installed:
+
+```sh
+ls "$ANDROID_HOME/platform-tools/adb"
+adb version
+java -version
+keytool -help >/dev/null && echo "keytool is ready"
+python3 --version
+```
+
+If `java` or `keytool` is missing, install a JDK and reopen Terminal. You can
+also use Android Studio's bundled runtime by locating its `Contents/jbr/bin`
+directory and adding that directory to `PATH`. Do not continue until all four
+checks above succeed. To keep the Android paths for future Terminal windows,
+add the three `export` lines to `~/.zshrc` and open a new Terminal window.
+
+On Linux or Windows, use the equivalent SDK location and PATH entries; the
+commands below still need to be run from a shell with `python3`, `adb`,
+`java`, and `keytool` available.
+
 ## Quick start: emulator tester path
 
-### 0. Open a terminal in the project folder
+### 0. Open a Terminal in the project folder
 
-Change into the folder you cloned or downloaded. It must contain `README.md`
-and the `liminal_gate/` directory:
+Change into the folder you cloned or downloaded. The prompt should end in
+`project-liminal-gate`; it must contain `README.md` and the `liminal_gate/`
+directory:
 
 ```sh
 cd /path/to/project-liminal-gate
 ls README.md liminal_gate
 ```
 
-Do not run the remaining commands from your home directory or another project.
+Do not run the remaining commands from your home directory, from inside the
+`liminal_gate/` subdirectory, or from another project. If the shell reports
+`getcwd: cannot access parent directories`, first run `cd ~`, then `cd` back
+to the real project directory.
 
 ### 1. Create and start an emulator
 
-In Android Studio, open **Device Manager**, choose **Create device**, select a
-phone profile, choose a recent Android system image, and start the new device.
-Use a fresh emulator profile for this test build when possible.
+In Android Studio, open **Device Manager**. From the welcome screen, choose
+**More Actions → Virtual Device Manager**. With a project open, choose
+**View → Tool Windows → Device Manager**. These are the two official ways to
+open it; see [Create and manage virtual devices](https://developer.android.com/studio/run/managing-avds).
+Choose **Create device**, select a phone profile, choose a recent Android
+system image, and start the new device. Use a fresh emulator profile for this
+test build when possible.
 
-Confirm that `adb` can see it, including its serial number:
+Wait until the emulator has finished booting, then confirm that `adb` can see
+it and print its serial number:
 
 ```sh
 adb devices -l
 ```
 
-Find the intended emulator's serial (for example, `emulator-5556`). If you have
-other emulators or Android devices connected, use that serial explicitly in the
-install command below. You can also pin this terminal to it:
+The output should contain a line like `emulator-5570 device ...`. The first
+column (`emulator-5570`) is the serial needed by the setup command. If it says
+`offline` or `unauthorized`, wait for boot to finish and run the command again.
+If you have other emulators or Android devices connected, use the intended
+serial explicitly:
 
 ```sh
 export ANDROID_SERIAL=emulator-5556
@@ -69,7 +124,12 @@ Create the local workspace first:
 mkdir -p local-input/resources/data_u2017/android user-data
 ```
 
-Then place your existing APK and resource categories in this layout:
+Then place your existing APK and resource categories in this layout. This
+project does not provide download links or instructions for obtaining the APK
+or resource pack. If you already have them, use Finder/Spotlight or a local
+`find` search to locate them; the resource directory you need is the one whose
+last two components are `data_u2017/android` and whose immediate children are
+folders such as `BG`, `Scenario`, and `Pieces`:
 
 ```text
 local-input/
@@ -85,10 +145,29 @@ local-input/
 The important resource folder is the final `android/` directory. It contains
 the resource categories directly.
 
+For example, these searches only locate files already on your computer; they
+do not download anything:
+
+```sh
+find "$HOME/Downloads" "$HOME/Desktop" -name 'terra-battle-5.5.7-170.apk' -print 2>/dev/null
+find "$HOME/Downloads" "$HOME/Desktop" -type d -path '*/data_u2017/android' -print 2>/dev/null
+```
+
 ### 3. One-command setup, install, and server start
 
 After putting the APK and resources in the layout from step 2, run this one
 command from the repository root:
+
+Choose a free local TCP port first. For example, this checks whether port 8696
+is already in use on macOS:
+
+```sh
+lsof -nP -iTCP:8696 -sTCP:LISTEN
+```
+
+No output means the port is probably free. If a process is listed, choose a
+different port and use that same number in both the setup command and any
+manual server command.
 
 ```sh
 python3 -m liminal_gate.tester_setup --port 8696 --emulator emulator-5570
