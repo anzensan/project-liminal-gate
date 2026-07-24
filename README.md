@@ -222,8 +222,8 @@ Get-ChildItem "$HOME\Downloads", "$HOME\Desktop" -Recurse -Directory -ErrorActio
 After putting the APK and resources in the layout from step 2, run this one
 command from the repository root:
 
-Install the one local image-extraction dependency first. It derives the Pact
-banner PNGs from your own resource bundles into `user-data/`; it does not
+Optional: install the local image-extraction dependency to derive the normal
+Pact banner PNGs from your own resource bundles into `user-data/`. It does not
 download or include game images in this repository:
 
 ```sh
@@ -231,7 +231,10 @@ python3 -m pip install ".[master-import]"
 ```
 
 On Windows, use `py -3 -m pip install ".[master-import]"` when you use
-`py -3` for the other commands.
+`py -3` for the other commands. If UnityPy or a required local Banner bundle
+is unavailable, setup reports the exact reason and continues; normal
+Fellowship and Truth Pacts remain usable, but their retired web-banner images
+will not be shown.
 
 Choose a free local TCP port first. For example, this checks whether port 8696
 is already in use on macOS:

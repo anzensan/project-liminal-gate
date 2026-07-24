@@ -20,12 +20,11 @@ INVERSE_TABLE_OFFSET = 0x601CAD
 TABLE_SIZE = 256
 FORWARD_TABLE_SHA1 = "d2b37ec3ab3e6174465daf8661396e710fb31867"
 INVERSE_TABLE_SHA1 = "35f949bc321303b064a418f45a93bb5b2056c0b1"
-PactBanner = tuple[str, str]
-PACT_BANNERS: tuple[PactBanner, ...] = (
-    ("sl_truth_01", "f66e8ffea74d9c1be227039f35cc0ec9sl_truth_01.bin"),
-    ("sl_friend_01", "79261d8212253267c8852fcdac65c803sl_friend_01.bin"),
-    ("slb_truth_01", "a8d4944c472e83b3b4b044d8a5be8953slb_truth_01.bin"),
-    ("slb_friend_01", "e2a4f7553d46450a19a88158315d959dslb_friend_01.bin"),
+PACT_BANNERS = (
+    "sl_truth_01",
+    "sl_friend_01",
+    "slb_truth_01",
+    "slb_friend_01",
 )
 
 
@@ -74,6 +73,14 @@ def decrypt_enca(source: bytes, inverse_table: bytes) -> bytes:
     return bytes(plain)
 
 
+def _find_banner_bundle(resource_root: Path, name: str) -> Path:
+    matches = tuple(sorted((resource_root / "Banner").glob(f"*{name}.bin")))
+    if len(matches) != 1:
+        detail = "is unavailable" if not matches else "is ambiguous"
+        raise PactBannerImportError(f"required local Pact banner {detail}: Banner/*{name}.bin")
+    return matches[0]
+
+
 def prepare_pact_banners(apk: Path, resource_root: Path, output_root: Path) -> Path:
     """Extract four user-local Unity texture bundles as locally served PNGs."""
     try:
@@ -85,14 +92,12 @@ def prepare_pact_banners(apk: Path, resource_root: Path, output_root: Path) -> P
     inverse = _load_inverse_table(apk)
     banner_root = output_root / "banners"
     banner_root.mkdir(parents=True, exist_ok=True)
-    for name, filename in PACT_BANNERS:
-        source = resource_root / "Banner" / filename
-        if not source.is_file():
-            raise PactBannerImportError(f"required local Pact banner is unavailable: Banner/{filename}")
+    for name in PACT_BANNERS:
+        source = _find_banner_bundle(resource_root, name)
         environment = UnityPy.load(decrypt_enca(source.read_bytes(), inverse))
         texture = next((item.read() for item in environment.objects if item.type.name == "Texture2D"), None)
         if texture is None:
-            raise PactBannerImportError(f"local Pact banner has no Texture2D: Banner/{filename}")
+            raise PactBannerImportError(f"local Pact banner has no Texture2D: {source.name}")
         output = banner_root / f"{name}_en.png"
         with tempfile.NamedTemporaryFile(dir=banner_root, suffix=".png", delete=False) as stream:
             temporary = Path(stream.name)
