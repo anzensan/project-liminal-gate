@@ -159,6 +159,25 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual(0, body["coins"])
         self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0}, body["valuables"])
 
+    def test_event_log_records_safe_form_diagnostics_for_rejected_write(self) -> None:
+        self.request("/local/signup?uuid=local-account&otk=signup-token")
+        self.request("/local/login?uuid=local-account&otk=login-token")
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "POST", "/local/userdata?otk=login-token&requestID=map-write",
+            body="progressCode=7&worldMapNo=0&lastUpdate=1&username=private",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        self.assertEqual(501, response.status)
+        response.read()
+        connection.close()
+        event = json.loads(self.event_log_path.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual("unsupported_userdata_write", event["error"])
+        self.assertEqual(["progressCode", "worldMapNo", "lastUpdate", "username"], event["request_fields"])
+        self.assertEqual({"progressCode": "7", "worldMapNo": "0", "lastUpdate": "1"}, event["request_values"])
+        self.assertNotIn("private", self.event_log_path.read_text(encoding="utf-8"))
+
 
 class IncludedBootstrapProfileTest(unittest.TestCase):
     def setUp(self) -> None:

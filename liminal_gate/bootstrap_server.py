@@ -1506,14 +1506,33 @@ class BootstrapState:
             temporary.unlink(missing_ok=True)
 
 
+def _safe_form_diagnostics(body: bytes) -> dict[str, Any]:
+    """Record a small, non-secret view of a form request for local debugging."""
+    try:
+        fields = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+    except (UnicodeDecodeError, ValueError):
+        return {"request_body_sha256": hashlib.sha256(body).hexdigest()}
+    details: dict[str, Any] = {"request_fields": [name for name, _ in fields]}
+    safe_values = {
+        name: value for name, value in fields
+        if name in {"progressCode", "worldMapNo", "lastUpdate", "chapter", "section"}
+    }
+    if safe_values:
+        details["request_values"] = safe_values
+    return details
+
+
 class EventRecorder:
-    """Append route-level diagnostics without retaining client secrets or bodies."""
+    """Append route diagnostics without retaining tokens or request bodies."""
 
     def __init__(self, path: Path | None) -> None:
         self.path = path
         self.lock = Lock()
 
-    def record(self, method: str, target: str, status: HTTPStatus) -> None:
+    def record(
+        self, method: str, target: str, status: HTTPStatus,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         if self.path is None:
             return
         event = {
@@ -1522,6 +1541,8 @@ class EventRecorder:
             "status": status.value,
             "timestamp_utc": int(time.time()),
         }
+        if details:
+            event.update(details)
         encoded = json.dumps(event, separators=(",", ":"), sort_keys=True) + "\n"
         with self.lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -1724,6 +1745,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid_content_length"})
             return
         body = self.rfile.read(length)
+        self._event_details = _safe_form_diagnostics(body)
         query = dict(parse_qsl(target.query, keep_blank_values=True))
         token = query.get("otk")
         request_id = query.get("requestID")
@@ -1877,7 +1899,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
 
     def _signed(self, status: HTTPStatus, token: str, payload: dict[str, Any]) -> None:
         body = _signed_json(token, payload, self.server.profile.signing)
-        self.server.events.record(self.command, self.path, status)
+        self.server.events.record(self.command, self.path, status, getattr(self, "_event_details", None))
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -1886,7 +1908,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
 
     def _json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
         body = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
-        self.server.events.record(self.command, self.path, status)
+        details = dict(getattr(self, "_event_details", {}) or {})
+        if isinstance(payload.get("error"), str):
+            details["error"] = payload["error"]
+        self.server.events.record(self.command, self.path, status, details)
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
