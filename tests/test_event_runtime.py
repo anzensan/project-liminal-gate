@@ -18,7 +18,7 @@ class EventRuntimeTest(unittest.TestCase):
     def test_event_start_is_accepted_over_real_http_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)
-            state.create_account(token, "account", {"coins": 0, "progressCode": 77, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
+            state.create_account(token, "account", {"coins": 0, "progressCode": 16777346, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
             state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
             profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
@@ -43,14 +43,14 @@ class EventRuntimeTest(unittest.TestCase):
     def test_event_clear_grants_character_over_real_http_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)
-            state.create_account(token, "account", {"coins": 0, "progressCode": 77, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
+            state.create_account(token, "account", {"coins": 0, "progressCode": 16777346, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
             state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
             profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
             thread = threading.Thread(target=server.serve_forever); thread.start()
             start = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
-            clear = urlencode({"progressCode": 77, "worldMapNo": 0, "valuables": json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0}), "chrdata": json.dumps([character(3)]), "itemList": "[]", "summonList": "[]", "battle_result": json.dumps({"coins": 0, "buddies": [], "items": {}, "exp": 0, "section": 1, "monsters": [], "summons": [], "luckynum": 0, "chapter": 2000, "unableluckdrop": False, "boostup": [0] * 6}), "itmp0": 0, "itmp1": 0, "lastUpdate": 1}).encode()
+            clear = urlencode({"progressCode": 16777346, "worldMapNo": 0, "valuables": json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0}), "chrdata": json.dumps([character(3)]), "itemList": "[]", "summonList": "[]", "battle_result": json.dumps({"coins": 0, "buddies": [], "items": {}, "exp": 0, "section": 1, "monsters": [], "summons": [], "luckynum": 0, "chapter": 2000, "unableluckdrop": False, "boostup": [0] * 6}), "itmp0": 0, "itmp1": 0, "lastUpdate": 1}).encode()
             try:
                 connection = HTTPConnection(*server.server_address)
                 connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-start", body=start, headers={"Content-Type": "application/x-www-form-urlencoded"})
@@ -68,6 +68,35 @@ class EventRuntimeTest(unittest.TestCase):
             self.assertEqual(200, userdata_response.status)
             granted = next(row for row in userdata["chrdata"] if row["id"] == 25)
             self.assertEqual([1.0], granted["jobLevels"])
+
+    def test_party_save_after_interrupted_event_returns_account_to_free_roam(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)
+            state.create_account(token, "account", {"coins": 0, "progressCode": 77, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
+            state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
+            catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
+            thread = threading.Thread(target=server.serve_forever); thread.start()
+            start = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
+            party = urlencode({
+                "chrdata": json.dumps([character(3)]), "teamMembers": json.dumps([3, 0, 0, 0, 0, 0]),
+                "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
+                "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
+            }).encode()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-start", body=start, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                self.assertEqual(200, connection.getresponse().status); connection.close()
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", f"/gd/userdata?otk={token}&requestID=decline-resume", body=party, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertTrue(payload["success"])
+            self.assertEqual("free_roam", state.accounts["account"]["tutorial_phase"])
+            self.assertIsNone(state.accounts["account"]["active_generic_story"])
 
     def test_event_clear_grants_character_once_and_replays_after_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

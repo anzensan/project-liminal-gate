@@ -197,6 +197,22 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertTrue(event["resolved_account_is_active"])
         self.assertNotIn("private", self.event_log_path.read_text(encoding="utf-8"))
 
+    def test_event_log_records_only_clear_settlement_aggregates(self) -> None:
+        self.request("/local/signup?uuid=local-account&otk=signup-token")
+        body = urlencode({
+            "progressCode": "7", "worldMapNo": "0", "lastUpdate": "1",
+            "valuables": json.dumps({"coins": 321, "private": "no"}),
+            "battle_result": json.dumps({"chapter": 2000, "section": 1, "coins": 110, "exp": 1718, "roster": "private"}),
+            "chrdata": "private-roster",
+        })
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request("POST", "/local/userdata?otk=signup-token&requestID=clear-diagnostics", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        response = connection.getresponse(); response.read(); connection.close()
+        event = json.loads(self.event_log_path.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(321, event["reported_wallet_coins"])
+        self.assertEqual({"chapter": 2000, "section": 1, "coins": 110, "exp": 1718}, event["reported_battle_result"])
+        self.assertNotIn("private", self.event_log_path.read_text(encoding="utf-8"))
+
 
 class IncludedBootstrapProfileTest(unittest.TestCase):
     def setUp(self) -> None:

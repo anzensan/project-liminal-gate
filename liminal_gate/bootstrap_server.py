@@ -1289,7 +1289,9 @@ class BootstrapState:
             account = self.accounts.get(self.tokens.get(token))
             if account is None:
                 return "unknown_account", None
-            if account.get("tutorial_phase") != "free_roam":
+            phase = account.get("tutorial_phase")
+            abandoning_active_story = phase == "generic_story_active" and party is not None
+            if phase != "free_roam" and not abandoning_active_story:
                 return "tutorial_state_conflict", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
@@ -1304,6 +1306,13 @@ class BootstrapState:
             userdata["chrdata"] = copy.deepcopy(characters)
             if party is not None:
                 userdata.update(copy.deepcopy(party))
+            if abandoning_active_story:
+                # After the client declines its interrupted-battle resume
+                # prompt, it immediately sends its normal party-save form.
+                # Treat that exact durable write as an explicit local abandon,
+                # rather than leaving the account trapped in the active stage.
+                account["tutorial_phase"] = "free_roam"
+                account["active_generic_story"] = None
             userdata["lastupdate"] = 1.0
             payload = _canonical_payload({"success": True, "lastupdate": 1.0})
             requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
@@ -1404,16 +1413,17 @@ class BootstrapState:
             )
             expected_progress = catalog.expected_clear_progress(int(userdata.get("progressCode", 0)), identity) if dynamic else int(userdata.get("progressCode", 0)) if event else stage.clear_progress_code
             expected_coins = int(userdata.get("coins", 0)) + clear_coins
-            if (
-                account.setdefault("tutorial_phase", "initial") != "generic_story_active"
-                or active != {"chapter": identity[0], "section": identity[1]}
-                or expected_progress is None
-                or clear["progressCode"] != expected_progress
-                or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
-                or clear["valuables"].get("coins") != expected_coins
-                or clear["battle_result"].get("coins") != clear_coins
-            ):
-                return "tutorial_state_conflict", None
+            checks = (
+                ("phase", account.setdefault("tutorial_phase", "initial") == "generic_story_active"),
+                ("active_stage", active == {"chapter": identity[0], "section": identity[1]}),
+                ("progress", expected_progress is not None and clear["progressCode"] == expected_progress),
+                ("world_map", clear["worldMapNo"] == int(userdata.get("worldMapNo", 0))),
+                ("wallet", clear["valuables"].get("coins") == expected_coins),
+                ("battle_coins", clear["battle_result"].get("coins") == clear_coins),
+            )
+            failed = next((name for name, passed in checks if not passed), None)
+            if failed is not None:
+                return (f"event_clear_{failed}_conflict" if event else "tutorial_state_conflict"), None
             if settlement_catalog is not None and not _settlement_matches(userdata, clear, identity, settlement_catalog):
                 return "invalid_local_settlement", None
             if clear_state_catalog is not None and not _clear_state_matches(userdata, clear, clear_state_catalog):
@@ -1607,6 +1617,25 @@ def _safe_form_diagnostics(body: bytes) -> dict[str, Any]:
     }
     if safe_values:
         details["request_values"] = safe_values
+    # A quest-clear retry is the only durable source for the client-reported
+    # local settlement.  Preserve just its aggregate numeric values so an
+    # operator can report a Network Error without exposing roster, item, or
+    # account data in the default local event log.
+    raw = dict(fields)
+    try:
+        valuables = json.loads(raw["valuables"]) if "valuables" in raw else None
+        battle = json.loads(raw["battle_result"]) if "battle_result" in raw else None
+    except json.JSONDecodeError:
+        valuables = battle = None
+    if isinstance(valuables, dict) and type(valuables.get("coins")) is int:
+        details["reported_wallet_coins"] = valuables["coins"]
+    if isinstance(battle, dict):
+        settlement = {
+            name: battle[name] for name in ("chapter", "section", "coins", "exp")
+            if type(battle.get(name)) is int
+        }
+        if settlement:
+            details["reported_battle_result"] = settlement
     return details
 
 
@@ -1857,7 +1886,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         elif target.path == profile.routes.get("userdata"):
             transitions, kind = profile.tutorial_writes, "write"
             free_roam = self.server.state.allows_story_progression(token)
-            party_write = _parse_free_roam_party_userdata_write(body) if free_roam else None
+            party_write = _parse_free_roam_party_userdata_write(body)
             character_write = _parse_free_roam_character_userdata_write(body) if free_roam and party_write is None else None
             companion_write = _parse_companion_userdata_write(body) if free_roam and party_write is None and character_write is None else None
             if party_write is not None:
@@ -1958,10 +1987,24 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         elif kind == "start" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not any(item["body"].encode("utf-8") == body for item in transitions):
             catalog = self.server.event_catalog if self.server.event_catalog is not None and _parse_generic_story_start(body) is not None and tuple(_parse_generic_story_start(body)[key] for key in ("chapter", "section")) in self.server.event_catalog.by_identity() else self.server.story_catalog or self.server.story_progression_catalog
             result, payload = self.server.state.apply_generic_story_start(token, request_id, body, catalog) if catalog is not None else ("unsupported_start_quest", None)
-        elif kind == "clear" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not _profile_clear_matches(body, transitions):
-            clear = _parse_generic_story_clear(body); identity = None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
-            catalog = self.server.event_catalog if self.server.event_catalog is not None and identity in self.server.event_catalog.by_identity() else self.server.story_catalog or self.server.story_progression_catalog
-            result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog) if catalog is not None else ("unsupported_clear_quest", None)
+        elif kind == "clear" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None):
+            clear = _parse_generic_story_clear(body)
+            identity = None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
+            event = self.server.event_catalog if self.server.event_catalog is not None and identity in self.server.event_catalog.by_identity() else None
+            # An event clear can share the exact generic wire grammar and even
+            # a progress value with an earlier profile stage.  Its configured
+            # chapter/section identity is the more specific contract.
+            if event is not None or not _profile_clear_matches(body, transitions):
+                catalog = event or self.server.story_catalog or self.server.story_progression_catalog
+                result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog) if catalog is not None else ("unsupported_clear_quest", None)
+            else:
+                result, payload = self.server.state.apply_tutorial_transition(
+                    token,
+                    request_id,
+                    body,
+                    transitions,
+                    kind=kind,
+                )
         else:
             result, payload = self.server.state.apply_tutorial_transition(
                 token,
@@ -1977,6 +2020,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "unknown_account": HTTPStatus.UNAUTHORIZED,
             "request_collision": HTTPStatus.CONFLICT,
             "tutorial_state_conflict": HTTPStatus.CONFLICT,
+            "event_clear_phase_conflict": HTTPStatus.CONFLICT,
+            "event_clear_active_stage_conflict": HTTPStatus.CONFLICT,
+            "event_clear_progress_conflict": HTTPStatus.CONFLICT,
+            "event_clear_world_map_conflict": HTTPStatus.CONFLICT,
+            "event_clear_wallet_conflict": HTTPStatus.CONFLICT,
+            "event_clear_battle_coins_conflict": HTTPStatus.CONFLICT,
             "unsupported_summon": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_userdata_write": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_story_progression_reveal": HTTPStatus.NOT_IMPLEMENTED,
