@@ -53,7 +53,7 @@ class PactDrawTest(unittest.TestCase):
             finally:
                 restarted.shutdown(); restarted_thread.join(); restarted.server_close()
 
-    def test_http_bundled_truth_pact_spends_starter_energy(self) -> None:
+    def test_http_bundled_truth_pacts_use_client_displayed_cost_and_persist_wallet_after_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
@@ -61,14 +61,30 @@ class PactDrawTest(unittest.TestCase):
             server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=build_bundled_pact_policy())
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
-                server.state.create_account("token", "account", {"coins": 0, "energy": 0, "freeEnergy": 5, "chrdata": []})
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", "/gd/do_slot?otk=token&requestID=truth-one", body="kind=1&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
-                response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
-                self.assertEqual(200, response.status)
-                self.assertTrue(payload["success"])
-                self.assertEqual(0, payload["freeEnergy"])
-                self.assertEqual(1, len(payload["chrdata"]))
-                self.assertIn(payload["chrdata"][0]["id"], {draw.character_id for draw in build_bundled_pact_policy().truth_draws})
+                server.state.create_account("token", "account", {"coins": 0, "energy": 0, "freeEnergy": 50, "chrdata": []})
+
+                def draw(request_id: str, count: int) -> tuple[int, dict[str, object]]:
+                    connection = HTTPConnection(*server.server_address)
+                    connection.request("POST", f"/gd/do_slot?otk=token&requestID={request_id}", body=f"kind=1&count={count}&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
+                    response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
+                    return response.status, payload
+
+                status, first = draw("truth-one", 1)
+                self.assertEqual(200, status)
+                self.assertTrue(first["success"])
+                self.assertEqual(47, first["freeEnergy"])
+                self.assertEqual(1, len(first["chrdata"]))
+                status, ten = draw("truth-ten", 10)
+                self.assertEqual(200, status)
+                self.assertTrue(ten["success"])
+                self.assertEqual(17, ten["freeEnergy"])
+                self.assertEqual(10, len(ten["chrdata"]))
+                self.assertIn(ten["chrdata"][0]["id"], {draw.character_id for draw in build_bundled_pact_policy().truth_draws})
             finally:
                 server.shutdown(); thread.join(); server.server_close()
+            restarted = BootstrapState(state_path)
+            persisted = restarted.userdata_for("token")
+            self.assertIsNotNone(persisted)
+            assert persisted is not None
+            self.assertEqual(17, persisted["freeEnergy"])
+            self.assertEqual(17, persisted["valuables"]["freeEnergy"])

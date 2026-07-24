@@ -353,7 +353,7 @@ and unusual scripted stages may still stop with a Network Error until they are
 given a specific compatibility rule.
 
 It also enables local ordinary Pacts: **Pact of Fellowship** (`kind=0`) spends
-3,000 Coins per pull, while **Pact of Truth** (`kind=1`) spends 5 Energy per
+3,000 Coins per pull, while **Pact of Truth** (`kind=1`) spends 3 Energy per
 pull and accepts the normal 1, 5, or 10-pull form. New local accounts receive
 50 free Energy so a tester can use Truth immediately. The included pools are
 bounded local policy; selection is uniform and duplicate gains are local

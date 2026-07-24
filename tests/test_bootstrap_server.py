@@ -713,7 +713,7 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(16777346, after_chapter2_1["progressCode"])
         self.assertEqual(210, after_chapter2_1["coins"])
-        self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 210}, after_chapter2_1["valuables"])
+        self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 50, "energyGooglePlay": 0, "coins": 210}, after_chapter2_1["valuables"])
         status, repeated_knight = self.post(
             f"/gd/do_slot?otk={login_token}&requestID=knight-grant-new", knight_body
         )
@@ -849,11 +849,21 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, payload = self.post(f"/gd/userdata?otk={token}&requestID=party-close", party_body)
         self.assertEqual(200, status)
         self.assertTrue(payload["success"])
+        party_only_body = urlencode({
+            "teamMembers": json.dumps([3, 0, 0, 0, 0, 0]),
+            "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
+            "teamNo": "2", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
+        })
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=party-only-close", party_only_body)
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+        self.assertEqual((status, payload), self.post(f"/gd/userdata?otk={token}&requestID=party-only-close", party_only_body))
         self.restart()
         status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-party")
         self.assertEqual(200, status)
         self.assertEqual(characters, userdata["chrdata"])
         self.assertEqual([3, 0, 0, 0, 0, 0], userdata["teamMembers"])
+        self.assertEqual(2, userdata["teamNo"])
 
     def test_local_news_page_and_favicon_are_not_protocol_errors(self) -> None:
         connection = HTTPConnection(*self.server.server_address)

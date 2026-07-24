@@ -366,17 +366,17 @@ class BootstrapState:
                 return None
             userdata = account["userdata"]
             changed = False
-            # Older local saves retained the flattened currency mirror but not
-            # the client-consumed userdata.valuables container. Project that
-            # already-persisted local state once instead of returning a
-            # zero-balance client default after a restart.
-            if "valuables" not in userdata and type(userdata.get("coins")) is int:
+            # The client reads the nested ``valuables`` object on login, while
+            # local mutations update the flat wallet fields.  Rebuild the
+            # nested projection on every read so a Pact/quest mutation cannot
+            # reappear as an old wallet after a restart.
+            if type(userdata.get("coins")) is int:
                 currency_fields = (
                     "energyAppStore", "energy", "energyAndApp", "freeEnergy",
                     "energyGooglePlay", "coins",
                 )
                 values = {name: userdata.get(name, 0) for name in currency_fields}
-                if all(type(value) is int and value >= 0 for value in values.values()):
+                if all(type(value) is int and value >= 0 for value in values.values()) and userdata.get("valuables") != values:
                     userdata["valuables"] = values
                     changed = True
             # The client reads ChrData.jobLevels with LitJson's double accessor.
@@ -1281,7 +1281,7 @@ class BootstrapState:
             return "success", payload
 
     def update_character_userdata(
-        self, token: str, request_id: str, body: bytes, characters: list[dict[str, Any]],
+        self, token: str, request_id: str, body: bytes, characters: list[dict[str, Any]] | None,
         party: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Persist a client-authored free-roam roster or party layout locally."""
@@ -1303,8 +1303,16 @@ class BootstrapState:
                     else ("request_collision", None)
                 )
             userdata = account["userdata"]
-            userdata["chrdata"] = copy.deepcopy(characters)
+            if characters is not None:
+                userdata["chrdata"] = copy.deepcopy(characters)
             if party is not None:
+                roster = userdata.get("chrdata")
+                roster_ids = {
+                    row.get("id") for row in roster
+                    if isinstance(row, dict) and type(row.get("id")) is int and row["id"] > 0
+                } if isinstance(roster, list) else set()
+                if not {member for member in party["teamMembers"] if member}.issubset(roster_ids):
+                    return "tutorial_state_conflict", None
                 userdata.update(copy.deepcopy(party))
             if abandoning_active_story:
                 # After the client declines its interrupted-battle resume
@@ -1887,11 +1895,15 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             transitions, kind = profile.tutorial_writes, "write"
             free_roam = self.server.state.allows_story_progression(token)
             party_write = _parse_free_roam_party_userdata_write(body)
+            party_layout_write = _parse_free_roam_party_layout_userdata_write(body) if party_write is None else None
             character_write = _parse_free_roam_character_userdata_write(body) if free_roam and party_write is None else None
             companion_write = _parse_companion_userdata_write(body) if free_roam and party_write is None and character_write is None else None
             if party_write is not None:
                 characters, party = party_write
                 result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, party)
+                transitions, kind = (), "party_userdata"
+            elif party_layout_write is not None:
+                result, payload = self.server.state.update_character_userdata(token, request_id, body, None, party_layout_write)
                 transitions, kind = (), "party_userdata"
             elif character_write is not None:
                 result, payload = self.server.state.update_character_userdata(token, request_id, body, character_write)
@@ -2495,6 +2507,38 @@ def _parse_free_roam_party_userdata_write(
     if len(ids) != len(set(ids)) or not {member for member in team_members if member}.issubset(set(ids)):
         return None
     return characters, {
+        "teamMembers": team_members,
+        "teamMembers_VS": versus_members,
+        "teamBuddies_VS": versus_buddies,
+        "teamNo": team_no,
+        "teamNo_VS": versus_team_no,
+        "summonId": summon_id,
+    }
+
+
+def _parse_free_roam_party_layout_userdata_write(body: bytes) -> dict[str, Any] | None:
+    """Accept the client's later party-only save without replacing its roster."""
+    fields = (
+        "teamMembers", "teamMembers_VS", "teamBuddies_VS",
+        "teamNo", "teamNo_VS", "summonId", "lastUpdate",
+    )
+    try:
+        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+        if tuple(name for name, _ in pairs) != fields or int(pairs[-1][1]) < 0:
+            return None
+        values = dict(pairs)
+        team_members = json.loads(values["teamMembers"])
+        versus_members = json.loads(values["teamMembers_VS"])
+        versus_buddies = json.loads(values["teamBuddies_VS"])
+        team_no, versus_team_no, summon_id = (int(values[name]) for name in ("teamNo", "teamNo_VS", "summonId"))
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return None
+    if (
+        not all(isinstance(rows, list) and all(type(value) is int and value >= 0 for value in rows) for rows in (team_members, versus_members, versus_buddies))
+        or team_no < 0 or versus_team_no < 0 or summon_id < 0
+    ):
+        return None
+    return {
         "teamMembers": team_members,
         "teamMembers_VS": versus_members,
         "teamBuddies_VS": versus_buddies,
