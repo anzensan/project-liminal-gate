@@ -43,6 +43,7 @@ from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError,
 from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StoryStage, load_story_catalog
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
+from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_event_catalog
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, load_summon_skill_catalog
 
 
@@ -378,6 +379,19 @@ class BootstrapState:
                 if all(type(value) is int and value >= 0 for value in values.values()):
                     userdata["valuables"] = values
                     changed = True
+            # The client reads ChrData.jobLevels with LitJson's double accessor.
+            # Locally persisted values can otherwise be integers after a manual
+            # test seed or a permissive local write, which makes the client fail
+            # while parsing an otherwise successful userdata response.
+            rows = userdata.get("chrdata")
+            if isinstance(rows, list):
+                for row in rows:
+                    levels = row.get("jobLevels") if isinstance(row, dict) else None
+                    if isinstance(levels, list):
+                        for index, value in enumerate(levels):
+                            if type(value) is int:
+                                levels[index] = float(value)
+                                changed = True
             if not account.setdefault("initial_userdata_served", False):
                 account["initial_userdata_served"] = True
                 changed = True
@@ -1297,7 +1311,7 @@ class BootstrapState:
             return "success", payload
 
     def apply_generic_story_start(
-        self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog,
+        self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog | EventCatalog,
         settlement_catalog: SettlementCatalog | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Start one catalog-declared local story stage after the tutorial."""
@@ -1338,7 +1352,7 @@ class BootstrapState:
             return "success", payload
 
     def apply_generic_story_clear(
-        self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog,
+        self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog | EventCatalog,
         settlement_catalog: SettlementCatalog | None = None,
         outcome_catalog: StoryOutcomeCatalog | None = None,
         clear_state_catalog: ClearStateCatalog | None = None,
@@ -1372,13 +1386,14 @@ class BootstrapState:
             active = account.get("active_generic_story")
             userdata = account["userdata"]
             dynamic = isinstance(catalog, StoryProgressionCatalog)
+            event = isinstance(catalog, EventCatalog)
             reward_rule = None if settlement_catalog is None else settlement_catalog.rules.get(identity)
             clear_coins = (
                 reward_rule.clear_coins
                 if dynamic and reward_rule is not None and reward_rule.clear_coins is not None
                 else clear["battle_result"]["coins"] if dynamic else stage.clear_coins
             )
-            expected_progress = catalog.expected_clear_progress(int(userdata.get("progressCode", 0)), identity) if dynamic else stage.clear_progress_code
+            expected_progress = catalog.expected_clear_progress(int(userdata.get("progressCode", 0)), identity) if dynamic else int(userdata.get("progressCode", 0)) if event else stage.clear_progress_code
             expected_coins = int(userdata.get("coins", 0)) + clear_coins
             if (
                 account.setdefault("tutorial_phase", "initial") != "generic_story_active"
@@ -1416,6 +1431,12 @@ class BootstrapState:
             })
             if buddy_info is not None:
                 userdata["buddyInfo"] = buddy_info
+            if event:
+                by_id = {row.get("id"): row for row in userdata["chrdata"] if isinstance(row, dict)}
+                for character_id in stage.character_ids:
+                    if character_id not in by_id:
+                        row = {"id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": True, "levelAdded": 1}
+                        userdata["chrdata"].append(row); by_id[character_id] = row
             payload = {
                 "success": True,
                 "lastupdate": 1.0,
@@ -1634,6 +1655,7 @@ class BootstrapServer(ThreadingHTTPServer):
         exchange_catalog: ExchangeCatalog | None = None,
         clear_state_catalog: ClearStateCatalog | None = None,
         story_progression_catalog: StoryProgressionCatalog | None = None,
+        event_catalog: EventCatalog | None = None,
         public_data_root: Path | None = None,
     ) -> None:
         self.profile = profile
@@ -1643,6 +1665,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.public_data_root = public_data_root.resolve() if public_data_root is not None else None
         self.story_catalog = story_catalog
         self.story_progression_catalog = story_progression_catalog
+        self.event_catalog = event_catalog
         self.settlement_catalog = settlement_catalog
         self.story_outcome_catalog = story_outcome_catalog
         self.statusup_catalog = statusup_catalog
@@ -1729,6 +1752,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             payload = _render(profile.responses["login"], token, account_id)
             payload["name"] = self.server.state.accounts[account_id].get("username", payload.get("name", "Player"))
             payload["messageList"] = self.server.state.login_messages(account_id)
+            if self.server.event_catalog is not None:
+                payload["eventFlags"] = self.server.event_catalog.flags()
             self._signed(HTTPStatus.OK, token, payload)
             return
         if target.path == profile.routes.get("userdata"):
@@ -1845,6 +1870,17 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                     transitions, kind = profile.structural_writes, "structural"
         elif target.path == profile.routes.get("start_quest"):
             transitions, kind = profile.story_starts, "start"
+            parsed_start = _parse_generic_story_start(body)
+            if (
+                self.server.event_catalog is not None
+                and parsed_start is not None
+                and (parsed_start["chapter"], parsed_start["section"])
+                in self.server.event_catalog.by_identity()
+            ):
+                result, payload = self.server.state.apply_generic_story_start(
+                    token, request_id, body, self.server.event_catalog
+                )
+                transitions, kind = (), "event_start"
         elif target.path == profile.routes.get("continue"):
             result, payload = self.server.state.apply_generic_story_continue(
                 token, request_id, body, profile.continue_policy
@@ -1901,7 +1937,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             transitions, kind = profile.story_clears, "clear"
         result: str
         payload: dict[str, Any] | None
-        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact"}:
+        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact", "event_start"}:
             pass
         elif (
             kind == "write"
@@ -1910,10 +1946,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             and _parse_story_progression_reveal(body) is not None
         ):
             result, payload = self.server.state.apply_story_progression_reveal(token, request_id, body, self.server.story_progression_catalog)
-        elif kind == "start" and (self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not any(item["body"].encode("utf-8") == body for item in transitions):
-            result, payload = self.server.state.apply_generic_story_start(token, request_id, body, self.server.story_catalog or self.server.story_progression_catalog)
-        elif kind == "clear" and (self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not _profile_clear_matches(body, transitions):
-            result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, self.server.story_catalog or self.server.story_progression_catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog)
+        elif kind == "start" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not any(item["body"].encode("utf-8") == body for item in transitions):
+            catalog = self.server.event_catalog if self.server.event_catalog is not None and _parse_generic_story_start(body) is not None and tuple(_parse_generic_story_start(body)[key] for key in ("chapter", "section")) in self.server.event_catalog.by_identity() else self.server.story_catalog or self.server.story_progression_catalog
+            result, payload = self.server.state.apply_generic_story_start(token, request_id, body, catalog) if catalog is not None else ("unsupported_start_quest", None)
+        elif kind == "clear" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not _profile_clear_matches(body, transitions):
+            clear = _parse_generic_story_clear(body); identity = None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
+            catalog = self.server.event_catalog if self.server.event_catalog is not None and identity in self.server.event_catalog.by_identity() else self.server.story_catalog or self.server.story_progression_catalog
+            result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog) if catalog is not None else ("unsupported_clear_quest", None)
         else:
             result, payload = self.server.state.apply_tutorial_transition(
                 token,
@@ -2748,6 +2787,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-evolution-catalog", type=Path, help="user-local Companion evolution rows and costs")
     parser.add_argument("--companion-draw-catalog", type=Path, help="user-local Companion draw pool and costs")
     parser.add_argument("--pact-draw-catalog", type=Path, help="user-local ordinary Pact pool, rates, and duplicate policy")
+    parser.add_argument("--event-catalog", type=Path, help="user-local event stages, flags, and character grants")
+    parser.add_argument("--character-catalog", type=Path, help="matching user-derived character catalog for local event grants")
     parser.add_argument("--pacts", action="store_true", help="enable the bundled local Fellowship and Truth Pact policy")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
@@ -2760,7 +2801,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -2784,6 +2825,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         companion_strengthen_catalog=args.companion_strengthen_catalog,
         companion_evolution_catalog=args.companion_evolution_catalog,
         companion_draw_catalog=args.companion_draw_catalog, pact_draw_catalog=args.pact_draw_catalog, pacts=getattr(args, "pacts", False),
+        event_catalog=args.event_catalog, character_catalog=args.character_catalog,
         achievement_catalog=args.achievement_catalog,
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
@@ -2817,6 +2859,9 @@ def main() -> int:
         if args.pacts and args.pact_draw_catalog is not None:
             raise ProfileError("--pacts cannot be combined with --pact-draw-catalog")
         pact_draw = build_bundled_pact_policy() if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))
+        if (args.event_catalog is None) != (args.character_catalog is None):
+            raise ProfileError("--event-catalog and --character-catalog must be supplied together")
+        events = None if args.event_catalog is None else load_event_catalog(args.event_catalog, args.character_catalog)
         achievements = None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog)
         messages = None if args.message_catalog is None else load_message_catalog(args.message_catalog)
         exchanges = None if args.exchange_catalog is None else load_exchange_catalog(args.exchange_catalog)
@@ -2843,9 +2888,10 @@ def main() -> int:
             exchanges,
             clear_state_catalog=clear_states,
             story_progression_catalog=progression,
+            event_catalog=events,
             public_data_root=args.public_data_root,
         )
-    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
+    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error
     print(f"bootstrap compatibility server listening on http://{args.host}:{args.port}")
     server.serve_forever()

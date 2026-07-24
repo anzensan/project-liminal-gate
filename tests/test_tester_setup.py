@@ -5,10 +5,20 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, find_build_tools, resolve_resource_root, run_server, select_emulator, server_arguments, write_password_file
+from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, find_build_tools, prepare_local_tester, resolve_resource_root, run_server, select_emulator, server_arguments, write_password_file
 
 
 class TesterSetupTest(unittest.TestCase):
+
+    def test_optional_dummy_dll_directory_derives_local_character_catalog(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); apk = root / "game.apk"; resources = root / "resources"; data = root / "user-data"; dummy = root / "DummyDll"
+            apk.write_bytes(b"apk"); dummy.mkdir()
+            for category in REQUIRED_RESOURCE_CATEGORIES:
+                (resources / category).mkdir(parents=True, exist_ok=True)
+            with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.load_character_master_tree", return_value={"infos": [{"ID": 3, "chrType": 1, "isLambda": 0, "rebirthFromID": 0, "rarity": 4, "Jobs": [30]}]}), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
+                prepare_local_tester(apk, resources, data, 8696, None, dummy)
+            self.assertTrue((data / "character-catalog.json").is_file())
     def test_requires_explicit_choice_when_multiple_emulators_are_ready(self) -> None:
         with patch("liminal_gate.tester_setup._adb_devices", return_value=("emulator-5554", "emulator-5570")):
             with self.assertRaisesRegex(TesterSetupError, "--emulator"):

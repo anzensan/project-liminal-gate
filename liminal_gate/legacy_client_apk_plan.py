@@ -20,6 +20,23 @@ API_BASE_LITERAL = b"https://gdappserver.appspot.com/"
 RESOURCE_BASE_LITERAL = b"http://storage.googleapis.com/gdresources/data_u2017/android/"
 WEBSITE_BASE_LITERAL = b"http://www.terra-battle.com"
 
+# The retired Unity IAP bootstrap always reports PurchasingUnavailable (zero).
+# These source-byte-guarded branches dismiss only that startup modal; they do
+# not create a store, authorize a purchase, or alter any wallet value.
+IAP_MODAL_PATCHES = (
+    ("lib/arm64-v8a/libil2cpp.so", 0xFED20C, "e8000037", "410c0034"),
+    ("lib/armeabi-v7a/libil2cpp.so", 0xB0EA4C, "000050e3", "000051e3"),
+    ("lib/armeabi-v7a/libil2cpp.so", 0xB0EA50, "0600001a", "6c00000a"),
+)
+
+# The offline title flow otherwise waits forever at its retired Terms branch.
+# These retain the original local ConfirmedTOS save behavior while skipping only
+# the unavailable confirmation branch.
+TERMS_CONFIRMATION_PATCHES = (
+    ("lib/arm64-v8a/libil2cpp.so", 0xD2E324, "e1010054", "1f2003d5"),
+    ("lib/armeabi-v7a/libil2cpp.so", 0x7CADDC, "0c00001a", "0000a0e1"),
+)
+
 def normalize_server_origin(value: str) -> str:
     """Accept an ASCII HTTP(S) origin without a path, query, or fragment."""
     if not value or value != value.strip() or not value.isascii():
@@ -45,7 +62,9 @@ def generate_legacy_client_plan(source_apk: Path, server_origin: str) -> dict[st
         (RESOURCE_BASE_LITERAL, (origin + "/resources/").encode("ascii")),
         (WEBSITE_BASE_LITERAL, origin.encode("ascii")),
     )
-    return generate_plan(source_apk, METADATA_MEMBER, replacements)
+    plan = generate_plan(source_apk, METADATA_MEMBER, replacements)
+    plan["patches"].extend({"member": member, "offset": offset, "expected_hex": old, "replacement_hex": new} for member, offset, old, new in (*IAP_MODAL_PATCHES, *TERMS_CONFIRMATION_PATCHES))
+    return plan
 
 
 def parse_args() -> argparse.Namespace:

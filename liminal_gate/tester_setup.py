@@ -24,6 +24,7 @@ from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
+from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_character_master_tree, sha256_file, write_character_catalog
 
 
 class TesterSetupError(RuntimeError):
@@ -168,6 +169,7 @@ def ensure_keystore(keystore: Path, password_file: Path) -> None:
 
 def prepare_local_tester(
     apk: Path, resource_root: Path, data_directory: Path, port: int, build_tools: Path | None,
+    dummy_dll_dir: Path | None = None,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
     if not 1 <= port <= 65535:
@@ -177,6 +179,11 @@ def prepare_local_tester(
     try:
         imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True)
         write_import_manifest(data_directory / "input-manifest", imported)
+        if dummy_dll_dir is not None:
+            character_catalog = build_character_catalog(
+                load_character_master_tree(apk, dummy_dll_dir), sha256_file(apk),
+            )
+            write_character_catalog(data_directory / "character-catalog.json", character_catalog)
         manifest = build_resource_manifest(resource_root)
         resource_manifest = data_directory / "resources.json"
         write_resource_manifest(resource_manifest, manifest)
@@ -194,7 +201,7 @@ def prepare_local_tester(
         zipalign, apksigner = find_build_tools(build_tools)
         signed = data_directory / "liminal-gate-test.apk"
         sign_apk(unsigned, signed, zipalign, apksigner, keystore, KEY_ALIAS, password_file, password_file)
-    except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, ValueError) as error:
+    except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, CharacterCatalogImportError, ValueError) as error:
         raise TesterSetupError(str(error)) from error
     print(f"Prepared local test APK: {signed}")
     return signed
@@ -229,6 +236,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--emulator", help="adb serial; required only when more than one device is ready")
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--build-tools", type=Path, help="Android SDK Build Tools version directory")
+    parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json")
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
     return parser.parse_args()
 
@@ -236,7 +244,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        signed = prepare_local_tester(args.apk, args.resource_root, args.data_dir, args.port, args.build_tools)
+        signed = prepare_local_tester(args.apk, args.resource_root, args.data_dir, args.port, args.build_tools, args.dummy_dll_dir)
         if args.prepare_only:
             return 0
         emulator = select_emulator(args.adb, args.emulator)

@@ -160,6 +160,19 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual(0, body["coins"])
         self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0}, body["valuables"])
 
+    def test_userdata_normalizes_persisted_character_job_levels_to_doubles(self) -> None:
+        self.request("/local/signup?uuid=local-account&otk=signup-token")
+        with self.server.state.lock:
+            self.server.state.accounts["local-account"]["userdata"]["chrdata"] = [
+                {"id": 3, "jobID": 0, "jobLevels": [1, 0, 0], "jobSlots": []}
+            ]
+            self.server.state._persist_locked()
+        status, body = self.request("/local/userdata?otk=signup-token")
+        self.assertEqual(200, status)
+        self.assertEqual([1.0, 0.0, 0.0], body["chrdata"][0]["jobLevels"])
+        saved = json.loads(self.state_path.read_text(encoding="utf-8"))
+        self.assertEqual([1.0, 0.0, 0.0], saved["accounts"]["local-account"]["userdata"]["chrdata"][0]["jobLevels"])
+
     def test_event_log_records_safe_form_diagnostics_for_rejected_write(self) -> None:
         self.request("/local/signup?uuid=local-account&otk=signup-token")
         self.request("/local/login?uuid=local-account&otk=login-token")

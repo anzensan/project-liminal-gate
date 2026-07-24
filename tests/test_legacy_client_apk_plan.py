@@ -14,6 +14,8 @@ from liminal_gate.legacy_client_apk_plan import (
     METADATA_MEMBER,
     RESOURCE_BASE_LITERAL,
     WEBSITE_BASE_LITERAL,
+    IAP_MODAL_PATCHES,
+    TERMS_CONFIRMATION_PATCHES,
     generate_legacy_client_plan,
     normalize_server_origin,
 )
@@ -35,13 +37,21 @@ class LegacyClientApkPlanTest(unittest.TestCase):
             cursor += len(literal)
         with zipfile.ZipFile(self.source, "w") as archive:
             archive.writestr(METADATA_MEMBER, metadata)
+            libraries = {}
+            for member, offset, old, _new in (*IAP_MODAL_PATCHES, *TERMS_CONFIRMATION_PATCHES):
+                payload = libraries.setdefault(member, bytearray())
+                if len(payload) < offset + len(bytes.fromhex(old)):
+                    payload.extend(b"\0" * (offset + len(bytes.fromhex(old)) - len(payload)))
+                payload[offset:offset + len(bytes.fromhex(old))] = bytes.fromhex(old)
+            for member, payload in libraries.items():
+                archive.writestr(member, payload)
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
     def test_generates_and_applies_three_literal_local_routing_plan(self) -> None:
         plan = generate_legacy_client_plan(self.source, "http://192.168.1.10:8642/")
-        self.assertEqual(6, len(plan["patches"]))
+        self.assertEqual(11, len(plan["patches"]))
         plan_path = self.root / "plan.json"
         plan_path.write_text(json.dumps(plan), encoding="utf-8")
         output = self.root / "patched.apk"
@@ -69,8 +79,9 @@ class LegacyClientApkPlanTest(unittest.TestCase):
         with self.assertRaisesRegex(PlanGenerationError, "no longer"):
             generate_legacy_client_plan(self.source, "https://a-very-long-hostname-that-will-not-fit.example:8642")
 
-    def test_plan_contains_only_metadata_routing_patches(self) -> None:
+    def test_plan_contains_routing_and_exact_local_startup_patches(self) -> None:
         plan = generate_legacy_client_plan(self.source, "http://192.168.1.10:8642")
-        self.assertEqual(6, len(plan["patches"]))
-        self.assertTrue(all(patch["member"] == METADATA_MEMBER for patch in plan["patches"]))
+        self.assertEqual(11, len(plan["patches"]))
+        binary = plan["patches"][6:]
+        self.assertEqual([(member, offset, old, new) for member, offset, old, new in (*IAP_MODAL_PATCHES, *TERMS_CONFIRMATION_PATCHES)], [(patch["member"], patch["offset"], patch["expected_hex"], patch["replacement_hex"]) for patch in binary])
         self.assertNotIn("source_apk", plan)
