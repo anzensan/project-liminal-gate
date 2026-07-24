@@ -265,6 +265,7 @@ class BootstrapState:
         self.path = path
         self.lock = Lock()
         self.tokens: dict[str, str] = {}
+        self.active_account_id: str | None = None
         self.accounts = self._load()
 
     def create_account(self, token: str, account_id: str, seed: dict[str, Any], message_catalog: MessageCatalog | None = None, exchange_catalog: ExchangeCatalog | None = None) -> None:
@@ -286,33 +287,45 @@ class BootstrapState:
                     "exchange_total": 0,
                     "exchange_requests": {},
                 }
+            changed = self.tokens.get(token) != account_id or self.active_account_id != account_id
             if self.tokens.get(token) != account_id:
                 self.tokens[token] = account_id
+            self.active_account_id = account_id
+            if changed:
                 self._persist_locked()
 
     def bind_login_token(self, token: str, account_id: str) -> bool:
         with self.lock:
             if account_id not in self.accounts:
                 return False
+            changed = self.tokens.get(token) != account_id or self.active_account_id != account_id
             if self.tokens.get(token) != account_id:
                 self.tokens[token] = account_id
+            self.active_account_id = account_id
+            if changed:
                 self._persist_locked()
             return True
 
     def bind_rotated_token(self, token: str) -> bool:
-        """Bind a client-rotated OTK only when one local account exists.
+        """Bind a client-rotated OTK to the active local account.
 
         The surviving client replaces its OTK after the signup/login exchange,
-        while later mutations carry only the replacement token.  A fresh local
-        server has one account; with multiple accounts, an unbound token remains
-        deliberately unauthorized rather than guessing an owner.
+        while later mutations carry only the replacement token.  Signup and
+        login durably record that account as active, so a local state which has
+        retained older test accounts can still resume the current client.  Old
+        state files without that marker retain the conservative single-account
+        fallback rather than guessing an owner.
         """
         with self.lock:
             if token in self.tokens:
                 return True
-            if len(self.accounts) != 1:
+            account_id = self.active_account_id
+            if account_id is None and len(self.accounts) == 1:
+                account_id = next(iter(self.accounts))
+                self.active_account_id = account_id
+            if account_id not in self.accounts:
                 return False
-            self.tokens[token] = next(iter(self.accounts))
+            self.tokens[token] = account_id
             self._persist_locked()
             return True
 
@@ -1439,10 +1452,14 @@ class BootstrapState:
             raise ProfileError("local bootstrap state is invalid")
         accounts = document["accounts"]
         self.tokens = document["tokens"]
+        active_account_id = document.get("active_account_id")
         if not all(isinstance(token, str) and isinstance(value, dict) and isinstance(value.get("userdata"), dict) for token, value in accounts.items()):
             raise ProfileError("local bootstrap state contains invalid account data")
         if not all(isinstance(token, str) and isinstance(account_id, str) and account_id in accounts for token, account_id in self.tokens.items()):
             raise ProfileError("local bootstrap state contains invalid token bindings")
+        if active_account_id is not None and (not isinstance(active_account_id, str) or active_account_id not in accounts):
+            raise ProfileError("local bootstrap state contains an invalid active account")
+        self.active_account_id = active_account_id
         for account in accounts.values():
             account.setdefault("tutorial_phase", "initial")
             account.setdefault("tutorial_requests", {})
@@ -1469,7 +1486,7 @@ class BootstrapState:
 
     def _persist_locked(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        encoded = (json.dumps({"accounts": self.accounts, "tokens": self.tokens}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        encoded = (json.dumps({"accounts": self.accounts, "active_account_id": self.active_account_id, "tokens": self.tokens}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
         with tempfile.NamedTemporaryFile(dir=self.path.parent, delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(encoded)

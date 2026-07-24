@@ -683,7 +683,7 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(501, status)
         self.assertEqual("unsupported_summon", payload["error"])
 
-    def test_mutation_binds_a_single_account_rotated_token_durably(self) -> None:
+    def test_mutation_binds_rotated_token_to_active_account_durably(self) -> None:
         signup_token = "0123456789ABCDEF"
         account_id = "0123456789ABCDEF0123456789ABCDEF"
         status, _ = self.request(
@@ -709,10 +709,31 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, payload = self.post(
             "/gd/do_slot?otk=unbound-token&digest2=client-value&requestID=ambiguous-token-request", body
         )
-        self.assertEqual(401, status)
-        self.assertEqual("unknown_account", payload["error"])
+        self.assertEqual(409, status)
+        self.assertEqual("tutorial_state_conflict", payload["error"])
+        self.assertEqual("second-local-account", self.server.state.tokens["unbound-token"])
+        self.restart()
+        status, payload = self.post(
+            "/gd/do_slot?otk=unbound-token&digest2=retry-value&requestID=ambiguous-token-request", body
+        )
+        self.assertEqual(409, status)
+        self.assertEqual("tutorial_state_conflict", payload["error"])
 
-    def test_user_data_binds_a_single_account_rotated_token_durably(self) -> None:
+    def test_legacy_multi_account_state_keeps_unbound_rotated_token_unauthorized(self) -> None:
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+        self.state_path.write_text(json.dumps({
+            "accounts": {
+                "first": {"userdata": {}},
+                "second": {"userdata": {}},
+            },
+            "tokens": {},
+        }), encoding="utf-8")
+        state = BootstrapState(self.state_path)
+        self.assertFalse(state.bind_rotated_token("unbound-token"))
+
+    def test_user_data_binds_rotated_token_to_active_account_durably(self) -> None:
         signup_token = "0123456789ABCDEF"
         account_id = "0123456789ABCDEF0123456789ABCDEF"
         status, _ = self.request(
@@ -744,8 +765,9 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, payload = self.request(
             "/gd/userdata?otk=unbound-token&digest2=client-value&requestID=ambiguous-userdata"
         )
-        self.assertEqual(401, status)
-        self.assertEqual("unknown_local_account", payload["error"])
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+        self.assertEqual("second-local-account", self.server.state.tokens["unbound-token"])
 
     def test_local_news_page_and_favicon_are_not_protocol_errors(self) -> None:
         connection = HTTPConnection(*self.server.server_address)
