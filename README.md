@@ -327,7 +327,10 @@ Get-NetTCPConnection -LocalPort 8696 -State Listen -ErrorAction SilentlyContinue
 python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 ```
 
-Replace the port and serial with yours. The command validates the inputs,
+Replace the port and serial with yours. At the start, it asks which supported
+local policies to enable: ordinary story progression, local normal Pacts, and
+(only if you have the required local files) an event catalog. Press Enter to
+accept the recommended defaults. The command validates the inputs,
 creates the local manifests, creates a local signing key on first use, patches
 and signs the APK, installs it on that one device, then starts the local server
 in the foreground. It asks for the signing-key password only on first setup and
@@ -378,6 +381,8 @@ port-forward it or use it as a hosted/public service.
 
 To build the APK without installing or starting the server, add
 `--prepare-only`.
+
+For a non-interactive repeat of the standard setup, add `--no-configure`.
 
 ### Optional: enable a reviewed local event catalog
 

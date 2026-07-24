@@ -15,7 +15,8 @@ import shutil
 import stat
 import subprocess
 import sys
-from typing import Sequence
+from dataclasses import dataclass
+from typing import Callable, Sequence
 
 from liminal_gate.apk_patcher import PatchPlanError, apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import ApkSigningError, sign_apk
@@ -30,6 +31,16 @@ from liminal_gate.character_catalog_importer import CharacterCatalogImportError,
 
 class TesterSetupError(RuntimeError):
     """The local tester environment is incomplete or ambiguous."""
+
+
+@dataclass(frozen=True)
+class LocalServerOptions:
+    """Supported, explicit local policies selected during tester setup."""
+
+    core_story: bool = True
+    pacts: bool = True
+    event_catalog: Path | None = None
+    dummy_dll_dir: Path | None = None
 
 
 DEFAULT_APK = Path("local-input/terra-battle-5.5.7-170.apk")
@@ -308,7 +319,10 @@ def prepare_local_tester(
     return signed
 
 
-def server_arguments(resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None) -> list[str]:
+def server_arguments(
+    resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
+    core_story: bool = True, pacts: bool = True,
+) -> list[str]:
     arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
         "--profile", "profiles/legacy-client-bootstrap.json",
@@ -318,15 +332,55 @@ def server_arguments(resource_root: Path, data_directory: Path, port: int, event
         "--resource-root", str(resource_root),
         "--resource-manifest", str(data_directory / "resources.json"),
         "--public-data-root", str(data_directory / "public_data"),
-        "--core-story",
-        "--pacts",
     ]
+    if core_story:
+        arguments.append("--core-story")
+    if pacts:
+        arguments.append("--pacts")
     if event_catalog is not None:
         arguments.extend((
             "--event-catalog", str(event_catalog.resolve()),
             "--character-catalog", str((data_directory / "character-catalog.json").resolve()),
         ))
     return arguments
+
+
+def _ask_yes_no(prompt: str, default: bool, ask: Callable[[str], str] = input) -> bool:
+    suffix = "Y/n" if default else "y/N"
+    while True:
+        answer = ask(f"{prompt} [{suffix}] ").strip().lower()
+        if not answer:
+            return default
+        if answer in {"y", "yes"}:
+            return True
+        if answer in {"n", "no"}:
+            return False
+        print("Please answer y or n.")
+
+
+def choose_local_server_options(
+    event_catalog: Path | None, dummy_dll_dir: Path | None, ask: Callable[[str], str] = input,
+) -> LocalServerOptions:
+    """Prompt only for supported local policies; preserve explicit CLI paths."""
+    print("\nLocal server options")
+    print("Only options with an implemented, local compatibility policy are shown.")
+    core_story = _ask_yes_no("Enable ordinary Chapter 2--42 progression", True, ask)
+    pacts = _ask_yes_no("Enable local Pact of Fellowship and Pact of Truth", True, ask)
+    print("Custom story drop rates are not a supported setup option yet: ordinary stage rewards remain client-reported local results.")
+    enable_events = _ask_yes_no("Enable a reviewed local event catalog", event_catalog is not None, ask)
+    if not enable_events:
+        return LocalServerOptions(core_story, pacts)
+    if event_catalog is None:
+        raw = ask("Path to your local event catalog JSON: ").strip()
+        if not raw:
+            raise TesterSetupError("an event catalog path is required when local events are enabled")
+        event_catalog = Path(raw)
+    if dummy_dll_dir is None:
+        raw = ask("Path to your local Il2CppDumper DummyDll directory: ").strip()
+        if not raw:
+            raise TesterSetupError("a DummyDll directory is required when local events are enabled")
+        dummy_dll_dir = Path(raw)
+    return LocalServerOptions(core_story, pacts, event_catalog, dummy_dll_dir)
 
 
 def run_server(arguments: Sequence[str]) -> None:
@@ -355,6 +409,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-tools", type=Path, help="Android SDK Build Tools version directory")
     parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json")
     parser.add_argument("--event-catalog", type=Path, help="optional user-local event-stage catalog; requires --dummy-dll-dir")
+    parser.add_argument("--no-configure", dest="configure", action="store_false", help="skip interactive local-server options and use the standard defaults")
+    parser.set_defaults(configure=True)
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
     parser.add_argument(
         "--replace-existing", action="store_true",
@@ -369,6 +425,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
+        options = (
+            choose_local_server_options(args.event_catalog, args.dummy_dll_dir)
+            if args.configure and sys.stdin.isatty()
+            else LocalServerOptions(event_catalog=args.event_catalog, dummy_dll_dir=args.dummy_dll_dir)
+        )
         # Chosen before the APK is built so an ambiguous target, or an address
         # the target cannot reach, is reported in seconds rather than after the
         # resource inventory and signing have already run.
@@ -378,13 +439,16 @@ def main() -> int:
             check_device_host_suits_device(device, args.device_host)
         signed = prepare_local_tester(
             args.apk, args.resource_root, args.data_dir, args.port, args.build_tools,
-            args.dummy_dll_dir, args.event_catalog, args.device_host,
+            options.dummy_dll_dir, options.event_catalog, args.device_host,
         )
         if device is None:
             return 0
         install_apk(args.adb, device, signed, replace_existing=args.replace_existing)
         print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
-        run_server(server_arguments(args.resource_root.resolve(), args.data_dir, args.port, args.event_catalog))
+        run_server(server_arguments(
+            args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
+            options.core_story, options.pacts,
+        ))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error
     return 0

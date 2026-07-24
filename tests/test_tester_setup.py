@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, find_build_tools, install_apk, prepare_local_tester, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
+from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, find_build_tools, install_apk, prepare_local_tester, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -149,6 +149,19 @@ class TesterSetupTest(unittest.TestCase):
                 (resources / category).mkdir(parents=True, exist_ok=True)
             with self.assertRaisesRegex(TesterSetupError, "--dummy-dll-dir"):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
+
+    def test_interactive_options_can_disable_bundled_pacts_and_story(self) -> None:
+        answers = iter(("n", "n", "n"))
+        options = choose_local_server_options(None, None, lambda _: next(answers))
+        self.assertFalse(options.core_story)
+        self.assertFalse(options.pacts)
+        self.assertIsNone(options.event_catalog)
+
+    def test_interactive_options_require_local_event_inputs(self) -> None:
+        answers = iter(("", "", "y", "local/events.json", "local/DummyDll"))
+        options = choose_local_server_options(None, None, lambda _: next(answers))
+        self.assertEqual(Path("local/events.json"), options.event_catalog)
+        self.assertEqual(Path("local/DummyDll"), options.dummy_dll_dir)
 
     def test_runs_server_with_argument_sequence(self) -> None:
         arguments = ["python", "-m", "liminal_gate.bootstrap_server", "--resource-root", r"C:\\Local Files\\android"]
