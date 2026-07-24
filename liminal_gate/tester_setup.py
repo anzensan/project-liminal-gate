@@ -20,7 +20,8 @@ from typing import Sequence
 from liminal_gate.apk_patcher import PatchPlanError, apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import ApkSigningError, sign_apk
 from liminal_gate.input_importer import ImportError, build_import_manifest, write_import_manifest
-from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
+from liminal_gate.il2cpp_plan_generator import PlanGenerationError
+from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan, normalize_server_origin
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
@@ -35,6 +36,12 @@ DEFAULT_APK = Path("local-input/terra-battle-5.5.7-170.apk")
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
 DEFAULT_DATA = Path("user-data")
 KEY_ALIAS = "liminal-gate-test"
+# Inside an Android emulator this alias reaches the host machine's loopback.
+# A physical phone or tablet must instead be given the host's own LAN address.
+EMULATOR_LOOPBACK_HOST = "10.0.2.2"
+# From the client's perspective these name the phone, tablet, or emulator
+# itself, never the machine running the server.
+LOOPBACK_HOSTS = frozenset({"localhost", "::1", "0.0.0.0"})
 ZIPALIGN_NAMES = ("zipalign", "zipalign.exe")
 APKSIGNER_NAMES = ("apksigner", "apksigner.bat", "apksigner.exe")
 REQUIRED_RESOURCE_CATEGORIES = ("BG", "BGM", "Banner", "BuddyImages", "BuddyThumbs", "Illust", "Pieces", "SE", "Scenario")
@@ -53,18 +60,75 @@ def _adb_devices(adb: str) -> tuple[str, ...]:
     return tuple(devices)
 
 
-def select_emulator(adb: str, requested: str | None) -> str:
+def select_device(adb: str, requested: str | None) -> str:
+    """Choose the one adb target to install on, without guessing between several.
+
+    An emulator serial and a physical phone or tablet serial are equally valid
+    here; `adb devices` reports both the same way.
+    """
     devices = _adb_devices(adb)
     if requested is not None:
         if requested not in devices:
             available = ", ".join(devices) if devices else "none"
-            raise TesterSetupError(f"requested emulator {requested!r} is not ready (available: {available})")
+            raise TesterSetupError(f"requested device {requested!r} is not ready (available: {available})")
         return requested
     if len(devices) == 1:
         return devices[0]
     if not devices:
-        raise TesterSetupError("no ready Android emulator found; start one and rerun")
-    raise TesterSetupError("multiple Android devices are ready; rerun with --emulator one of: " + ", ".join(devices))
+        raise TesterSetupError(
+            "no ready Android device found; start an emulator, or connect a phone or tablet "
+            "with USB debugging enabled and accept its authorization prompt, then rerun"
+        )
+    raise TesterSetupError("multiple Android devices are ready; rerun with --device one of: " + ", ".join(devices))
+
+
+def build_server_origin(device_host: str, port: int) -> str:
+    """Build the origin baked into the client, checking it before any patching.
+
+    Every rejection here describes the mistake in terms of what was passed, not
+    of the resulting URL, because the address is compiled into the APK and a
+    wrong one produces a client that fails only later, at launch.
+    """
+    host = device_host.strip()
+    if not host or any(character.isspace() for character in host):
+        raise TesterSetupError("--device-host must be a host name or address with no spaces")
+    if "://" in host or "/" in host:
+        raise TesterSetupError(f"--device-host must be only a host or address, not a URL (got {device_host!r})")
+    if ":" in host:
+        # Both a mistakenly appended port and a bare IPv6 address land here; an
+        # unbracketed IPv6 address would otherwise build a malformed origin.
+        raise TesterSetupError(
+            f"--device-host must not contain a port or a bare IPv6 address (got {device_host!r}); "
+            f"pass only the address, and set the port with --port"
+        )
+    if host.lower() in LOOPBACK_HOSTS or host.startswith("127."):
+        raise TesterSetupError(
+            f"--device-host {device_host!r} refers to the client's own device, not to this machine. "
+            f"Use {EMULATOR_LOOPBACK_HOST} for an Android emulator, or this machine's LAN address "
+            f"for a physical phone or tablet."
+        )
+    try:
+        return normalize_server_origin(f"http://{host}:{port}")
+    except PlanGenerationError as error:
+        raise TesterSetupError(str(error)) from error
+
+
+def check_device_host_suits_device(device: str, device_host: str) -> None:
+    """Refuse the emulator-only address when the target is not an emulator.
+
+    `10.0.2.2` exists only inside an emulator, so pairing it with a physical
+    serial silently produces an APK that cannot reach the server at all. The
+    check is escapable by passing the address explicitly, because an emulator
+    attached over TCP does not use an `emulator-` serial.
+    """
+    if device_host != EMULATOR_LOOPBACK_HOST or device.startswith("emulator-"):
+        return
+    raise TesterSetupError(
+        f"{device!r} does not look like an emulator, and --device-host is still the emulator-only "
+        f"address {EMULATOR_LOOPBACK_HOST}, which a physical phone or tablet cannot reach. "
+        f"Pass --device-host with this machine's LAN address (for example --device-host 192.168.1.10), "
+        f"or pass --device-host {EMULATOR_LOOPBACK_HOST} explicitly if this really is an emulator."
+    )
 
 
 def resolve_resource_root(requested: Path) -> Path:
@@ -170,12 +234,16 @@ def ensure_keystore(keystore: Path, password_file: Path) -> None:
 def prepare_local_tester(
     apk: Path, resource_root: Path, data_directory: Path, port: int, build_tools: Path | None,
     dummy_dll_dir: Path | None = None, event_catalog: Path | None = None,
+    device_host: str = EMULATOR_LOOPBACK_HOST,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
     if not 1 <= port <= 65535:
         raise TesterSetupError("--port must be an integer from 1 through 65535")
     if event_catalog is not None and dummy_dll_dir is None:
         raise TesterSetupError("--event-catalog requires --dummy-dll-dir so setup can derive the matching local character catalog")
+    # Resolved before the input hashing below, so a rejected address fails in
+    # seconds instead of after the whole resource tree has been inventoried.
+    server_origin = build_server_origin(device_host, port)
     apk, resource_root = apk.resolve(), resolve_resource_root(resource_root)
     data_directory.mkdir(parents=True, exist_ok=True)
     try:
@@ -193,7 +261,7 @@ def prepare_local_tester(
             prepare_pact_banners(apk, resource_root, data_directory / "public_data")
         except PactBannerImportError as error:
             print(f"Pact banner preparation skipped: {error}")
-        plan = generate_legacy_client_plan(apk, f"http://10.0.2.2:{port}")
+        plan = generate_legacy_client_plan(apk, server_origin)
         plan_path = data_directory / "local-server-plan.json"
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         unsigned = data_directory / "liminal-gate-unsigned.apk"
@@ -206,6 +274,7 @@ def prepare_local_tester(
     except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, CharacterCatalogImportError, ValueError) as error:
         raise TesterSetupError(str(error)) from error
     print(f"Prepared local test APK: {signed}")
+    print(f"This build reaches the server at {server_origin} and only that address.")
     return signed
 
 
@@ -241,7 +310,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resource-root", type=Path, default=DEFAULT_RESOURCES)
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--port", type=int, default=8002)
-    parser.add_argument("--emulator", help="adb serial; required only when more than one device is ready")
+    parser.add_argument(
+        "--device", "--emulator", dest="device",
+        help="adb serial of the emulator, phone, or tablet; required only when more than one device is ready",
+    )
+    parser.add_argument(
+        "--device-host", default=EMULATOR_LOOPBACK_HOST,
+        help=(
+            "address this client should use to reach the server. Leave unset for an emulator. "
+            "For a physical phone or tablet, pass this machine's LAN address, for example 192.168.1.10"
+        ),
+    )
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--build-tools", type=Path, help="Android SDK Build Tools version directory")
     parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json")
@@ -253,12 +332,21 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        signed = prepare_local_tester(args.apk, args.resource_root, args.data_dir, args.port, args.build_tools, args.dummy_dll_dir, args.event_catalog)
-        if args.prepare_only:
+        # Chosen before the APK is built so an ambiguous target, or an address
+        # the target cannot reach, is reported in seconds rather than after the
+        # resource inventory and signing have already run.
+        device = None
+        if not args.prepare_only:
+            device = select_device(args.adb, args.device)
+            check_device_host_suits_device(device, args.device_host)
+        signed = prepare_local_tester(
+            args.apk, args.resource_root, args.data_dir, args.port, args.build_tools,
+            args.dummy_dll_dir, args.event_catalog, args.device_host,
+        )
+        if device is None:
             return 0
-        emulator = select_emulator(args.adb, args.emulator)
-        subprocess.run((args.adb, "-s", emulator, "install", "-r", str(signed)), check=True)
-        print(f"Installed on {emulator}. Starting the local server; press Control-C when finished.")
+        subprocess.run((args.adb, "-s", device, "install", "-r", str(signed)), check=True)
+        print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(args.resource_root.resolve(), args.data_dir, args.port, args.event_catalog))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error

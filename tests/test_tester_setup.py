@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, find_build_tools, prepare_local_tester, resolve_resource_root, run_server, select_emulator, server_arguments, write_password_file
+from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, find_build_tools, prepare_local_tester, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -19,11 +19,54 @@ class TesterSetupTest(unittest.TestCase):
             with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.load_character_master_tree", return_value={"infos": [{"ID": 3, "chrType": 1, "isLambda": 0, "rebirthFromID": 0, "rarity": 4, "Jobs": [30]}]}), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
                 prepare_local_tester(apk, resources, data, 8696, None, dummy)
             self.assertTrue((data / "character-catalog.json").is_file())
-    def test_requires_explicit_choice_when_multiple_emulators_are_ready(self) -> None:
+    def test_requires_explicit_choice_when_multiple_devices_are_ready(self) -> None:
         with patch("liminal_gate.tester_setup._adb_devices", return_value=("emulator-5554", "emulator-5570")):
-            with self.assertRaisesRegex(TesterSetupError, "--emulator"):
-                select_emulator("adb", None)
-            self.assertEqual("emulator-5570", select_emulator("adb", "emulator-5570"))
+            with self.assertRaisesRegex(TesterSetupError, "--device"):
+                select_device("adb", None)
+            self.assertEqual("emulator-5570", select_device("adb", "emulator-5570"))
+
+    def test_selects_a_physical_device_serial(self) -> None:
+        with patch("liminal_gate.tester_setup._adb_devices", return_value=("R52T80ABCDE",)):
+            self.assertEqual("R52T80ABCDE", select_device("adb", None))
+            self.assertEqual("R52T80ABCDE", select_device("adb", "R52T80ABCDE"))
+
+    def test_device_host_defaults_to_the_emulator_loopback_alias(self) -> None:
+        self.assertEqual("http://10.0.2.2:8696", build_server_origin(EMULATOR_LOOPBACK_HOST, 8696))
+
+    def test_device_host_accepts_any_lan_address_with_a_four_digit_port(self) -> None:
+        # The longest IPv4 address with the longest permitted port is the exact
+        # worst case the guarded routing literals can still express.
+        self.assertEqual("http://192.168.100.100:8696", build_server_origin("192.168.100.100", 8696))
+
+    def test_device_host_rejects_an_origin_the_routing_literals_cannot_hold(self) -> None:
+        with self.assertRaisesRegex(TesterSetupError, "at most 27"):
+            build_server_origin("192.168.100.100", 18696)
+        with self.assertRaisesRegex(TesterSetupError, "at most 27"):
+            build_server_origin("liminal-gate.local", 8696)
+
+    def test_device_host_rejects_a_url_instead_of_a_host(self) -> None:
+        with self.assertRaisesRegex(TesterSetupError, "not a URL"):
+            build_server_origin("http://192.168.1.10", 8696)
+
+    def test_device_host_rejects_an_embedded_port_or_bare_ipv6(self) -> None:
+        for value in ("192.168.1.10:8696", "::1"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(TesterSetupError, "must not contain a port"):
+                    build_server_origin(value, 8696)
+
+    def test_device_host_rejects_an_address_meaning_the_client_itself(self) -> None:
+        # These would build a client that talks to the phone or emulator rather
+        # than to the machine running the server.
+        for value in ("localhost", "127.0.0.1", "0.0.0.0"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(TesterSetupError, "client's own device"):
+                    build_server_origin(value, 8696)
+
+    def test_physical_device_refuses_the_emulator_only_address(self) -> None:
+        check_device_host_suits_device("emulator-5570", EMULATOR_LOOPBACK_HOST)
+        check_device_host_suits_device("R52T80ABCDE", "192.168.1.10")
+        with self.assertRaisesRegex(TesterSetupError, "does not look like an emulator"):
+            check_device_host_suits_device("R52T80ABCDE", EMULATOR_LOOPBACK_HOST)
 
     def test_detects_android_resource_root_below_common_parent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

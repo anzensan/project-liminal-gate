@@ -99,7 +99,7 @@ also supply your locally generated Il2CppDumper `DummyDll` directory:
 ```sh
 python3 -m liminal_gate.tester_setup \
   --port 8696 \
-  --emulator emulator-5570 \
+  --device emulator-5570 \
   --dummy-dll-dir /path/to/DummyDll \
   --event-catalog /path/to/local-events.json
 ```

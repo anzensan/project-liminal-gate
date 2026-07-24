@@ -25,9 +25,13 @@ through Chapter 42, and local ordinary Pacts:
 This remains a tester build. The original-client path is verified only through
 Chapter 2-1, so later story stages may need individual compatibility fixes.
 Fate, ticket, campaign, and event Pact variants are intentionally unsupported.
+You can test on an Android emulator or on a physical phone or tablet; see
+[Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet)
+for the device path.
+
 If you encounter a Network Error, please [open a GitHub issue](https://github.com/anzensan/project-liminal-gate/issues)
-with the action you took, OS and emulator version, and the relevant lines from
-`user-data/events.jsonl`.
+with the action you took, OS and emulator or device version, and the relevant
+lines from `user-data/events.jsonl`.
 
 ## What you need
 
@@ -113,7 +117,7 @@ Build Tools version directory once:
 
 ```powershell
 $env:ANDROID_SDK_ROOT = "$env:LOCALAPPDATA\Android\Sdk"
-py -3 -m liminal_gate.tester_setup --build-tools "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.0.0" --port 8696 --emulator emulator-5570
+py -3 -m liminal_gate.tester_setup --build-tools "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.0.0" --port 8696 --device emulator-5570
 ```
 
 ## Quick start: emulator tester path
@@ -146,17 +150,22 @@ test build when possible.
 
 The current known-good Windows report used a **Pixel 6 with Android 12** and
 completed the verified path through Chapter 2-1. Some newer Android API levels
-have caused the original APK to crash when opening game areas; that appears to
-be an APK/emulator compatibility limitation, not a local-server response. If
-you see an immediate crash on a newer image, retry with a Pixel 6 Android 12
-system image before investigating server logs.
+have caused the original APK to crash when opening game areas **on emulator
+system images**. This has not been reproduced on physical hardware: a Samsung
+tablet running a current Android release runs the same build correctly. Treat it
+as an emulator image limitation rather than a general Android version limit, and
+not as a local-server response. If you see an immediate crash on a newer image,
+retry with a Pixel 6 Android 12 system image before investigating server logs.
 
 Avoid Android 16 system images that use **16 KB page size**: the original APK
 is not compatible with that emulator configuration. A standard, non-16-KB
-Android 12 image is the recommended tester baseline. The current setup already
+Android 12 image is the recommended emulator baseline. The current setup already
 recognizes Windows `zipalign.exe` and `apksigner.bat`; if it still reports those
 tools missing, update to the latest project revision before editing any Python
 files.
+
+If you would rather test on a real phone or tablet, skip this step and see
+[Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet).
 
 Wait until the emulator has finished booting, then confirm that `adb` can see
 it and print its serial number:
@@ -267,15 +276,21 @@ Get-NetTCPConnection -LocalPort 8696 -State Listen -ErrorAction SilentlyContinue
 ```
 
 ```sh
-python3 -m liminal_gate.tester_setup --port 8696 --emulator emulator-5570
+python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 ```
 
-Replace the port and emulator serial with yours. The command validates the
-inputs, creates the local manifests, creates a local signing key on first use,
-patches and signs the APK, installs it on that one emulator, then starts the
-local server in the foreground. It asks for the signing-key password only on
-first setup and saves it locally in `user-data/keystore-password.txt` with
-owner-only permissions. Press Control-C when you finish testing.
+Replace the port and serial with yours. The command validates the inputs,
+creates the local manifests, creates a local signing key on first use, patches
+and signs the APK, installs it on that one device, then starts the local server
+in the foreground. It asks for the signing-key password only on first setup and
+saves it locally in `user-data/keystore-password.txt` with owner-only
+permissions. Press Control-C when you finish testing.
+
+`--device` takes an emulator serial or a physical phone or tablet serial;
+`--emulator` still works as an older name for the same option. Installing on a
+physical device additionally needs `--device-host`, because the default address
+only works inside an emulator — see
+[Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet).
 
 The guided server includes the ordinary Chapter 2-42 progression policy. After
 the verified Chapter 2-1 boundary, it accepts the normal client story flow,
@@ -298,21 +313,20 @@ test it after upgrading an existing setup, use a new local data directory and
 clear only this test app's data before choosing **New Game** again:
 
 ```sh
-python3 -m liminal_gate.tester_setup --data-dir user-data/pact-test --port 8696 --emulator emulator-5570
+python3 -m liminal_gate.tester_setup --data-dir user-data/pact-test --port 8696 --device emulator-5570
 ```
 
 Then use the reset commands in [What to test](#5-what-to-test) with your own
-emulator serial and package name. This preserves your earlier `user-data/`
-test state.
+serial and package name. This preserves your earlier `user-data/` test state.
 
-If only one emulator is ready, omit `--emulator`. If several are ready, the
-command lists their serials and asks you to rerun with the intended one. It
+If only one emulator or device is ready, omit `--device`. If several are ready,
+the command lists their serials and asks you to rerun with the intended one. It
 automatically uses the newest usable Android SDK Build Tools installation on
 macOS. For another SDK location, set `ANDROID_SDK_ROOT` or pass, for example,
 `--build-tools /path/to/sdk/build-tools/36.0.0`.
 
-This starts a server for your selected local emulator only. Do not port-forward
-it or use it as a hosted/public service.
+This starts a server for the one emulator or device you selected. Do not
+port-forward it or use it as a hosted/public service.
 
 To build the APK without installing or starting the server, add
 `--prepare-only`.
@@ -384,8 +398,14 @@ for both keystore and key passwords.
 ### 4c. Create and sign the redirected APK
 
 For the standard Android emulator, the app reaches your host through
-`10.0.2.2`. Choose an unused local port now; the redirected APK and server
-must use the same value. This guide uses `8002`, but any unused port works:
+`10.0.2.2`. For a physical phone or tablet, substitute this machine's LAN
+address everywhere `10.0.2.2` appears below, as described in
+[Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet).
+
+Choose an unused local port now; the redirected APK and server must use the
+same value. This guide uses `8002`, but any unused port with **four digits or
+fewer** works — see [Choose a port](#d-choose-a-port-with-at-most-four-digits)
+for why longer ports are rejected:
 
 ```sh
 export LIMINAL_GATE_PORT=8002
@@ -483,20 +503,151 @@ Use a fresh state file, then complete the normal client flow:
 5. Stop and relaunch the app with the same server state. Progress and the
    210-Coin display should resume.
 
-Chapter 2-2 is the current expected stopping point. The emulator's app data
-and the server state file are a matched pair. To begin another clean test
-without overwriting an earlier run, use another state-file name, such as
-`--state-file user-data/tester-2.json`, and clear data for this test app on
-the selected emulator before choosing **New Game** again:
+Chapter 2-2 is the current expected stopping point. The app data on the
+emulator or device and the server state file are a matched pair. To begin
+another clean test without overwriting an earlier run, use another state-file
+name, such as `--state-file user-data/tester-2.json`, and clear data for this
+test app on the selected emulator or device before choosing **New Game** again:
 
 ```sh
 adb -s emulator-5556 shell pm list packages | grep -Ei 'terra|mist'
 adb -s emulator-5556 shell pm clear YOUR_TERRA_BATTLE_PACKAGE
 ```
 
-Replace `emulator-5556` and `YOUR_TERRA_BATTLE_PACKAGE` with the values shown
-by the first command. This clears only that app's local data on that emulator;
-it does not remove the APK or alter another emulator.
+Replace `emulator-5556` with your own serial — a physical device serial works
+the same way — and `YOUR_TERRA_BATTLE_PACKAGE` with the value shown by the
+first command. This clears only that app's local data on that one target; it
+does not remove the APK or affect anything else.
+
+## Install on a physical phone or tablet
+
+The emulator path above reaches the server through `10.0.2.2`, an alias that
+only exists inside an Android emulator. A real device has to be told this
+machine's own address on your network instead. Everything else — the file
+layout in step 2, the signing key, the server itself — is unchanged.
+
+This is still a private, local-network setup. Do not port-forward the server,
+expose it to the internet, or use it as a hosted service.
+
+### A. Prepare the device
+
+Enable **Developer options** (Settings → About → tap **Build number** seven
+times), then turn on **USB debugging** inside Developer options. Connect the
+device by USB, and accept the **Allow USB debugging** prompt that appears on
+the device screen. Then confirm your computer can see it:
+
+```sh
+adb devices -l
+```
+
+A physical device shows a hardware serial rather than an `emulator-NNNN` name,
+for example `R52T80ABCDE   device  ...`. If it says `unauthorized`, the
+on-device prompt has not been accepted yet. If nothing is listed, try a
+different cable — charge-only USB cables are a common cause.
+
+### B. Find this machine's network address
+
+```sh
+ipconfig getifaddr en0        # macOS, Wi-Fi
+hostname -I | awk '{print $1}'  # Linux
+```
+
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -ne 'WellKnown' }
+```
+
+You want a private LAN address, normally starting `192.168.`, `10.`, or
+`172.16.`–`172.31.`. The phone or tablet must be on **the same network**: the
+same router, and not on a guest or client-isolated Wi-Fi network, which blocks
+devices from reaching each other.
+
+### C. Keep that address from changing
+
+The server address is compiled into the APK when it is patched. This is the
+single most important thing to understand about the device path:
+
+> **If this machine's address changes, the installed app stops working.** It
+> will not find the new address by itself. You have to rerun setup and
+> reinstall the APK.
+
+Most home routers hand out addresses by DHCP and can change them after a reboot
+or a lease expiry. Pick one of these, best first:
+
+1. **Reserve the address on your router (recommended).** In the router's admin
+   page, find DHCP reservations (sometimes "static lease" or "bind IP to MAC")
+   and reserve the current address for this machine's MAC address. The machine
+   keeps using DHCP, so nothing changes locally, but the address stops moving.
+2. **Configure a static address on this machine.** Set it manually in your OS
+   network settings, choosing an address **outside** the router's DHCP range so
+   nothing else is handed the same one.
+3. **Do nothing and accept the breakage.** Fine for a single afternoon of
+   testing. When the address changes, rerun the setup command with the new one;
+   your saved game data in `user-data/` is not affected.
+
+### D. Choose a port with at most four digits
+
+The redirect works by overwriting text already inside the APK, and the
+replacement can never be longer than what it replaces. That leaves room for
+**27 characters total**, counting `http://`, the address, the colon, and the
+port.
+
+The longest possible IPv4 address is 15 characters, so:
+
+```text
+http://192.168.100.100:8696     27 characters  works
+http://192.168.100.100:18696    28 characters  rejected
+```
+
+Any address on your network fits **as long as the port has four digits or
+fewer**. Setup checks this before it touches the APK and tells you the measured
+length if it does not fit. Host *names* are usually too long and are not
+recommended in any case, because Android does not reliably resolve local
+`.local` names.
+
+### E. Run setup against the device
+
+Use the address from step B and the serial from step A:
+
+```sh
+python3 -m liminal_gate.tester_setup \
+  --device-host 192.168.1.10 \
+  --device R52T80ABCDE \
+  --port 8696
+```
+
+Setup prints the address it baked in, so you can confirm it:
+
+```text
+This build reaches the server at http://192.168.1.10:8696 and only that address.
+```
+
+`--device` may be omitted when only one device is connected. It accepts an
+emulator serial equally well, so `--emulator` still works as an older name for
+the same option. To build the APK without installing, add `--prepare-only`.
+
+Setup checks the target before it builds anything. If the selected serial does
+not look like an emulator and `--device-host` was left at its emulator-only
+default, it stops and says so, rather than producing an APK that cannot reach
+the server. An emulator attached over TCP has an address-style serial and can
+trip this too; pass `--device-host 10.0.2.2` explicitly in that case.
+
+Addresses meaning "this same device" are also rejected: `localhost`,
+`127.0.0.1`, and `0.0.0.0` name the phone or tablet itself from the client's
+point of view, never the machine running the server. Pass only the address in
+`--device-host`, and set the port with `--port`.
+
+### F. First run over Wi-Fi
+
+The first launch downloads the whole local resource set — roughly 11,800 files.
+Over Wi-Fi this takes noticeably longer than the emulator path, which reads
+from this machine's own loopback. Keep the device awake and plugged in, prefer
+a 5 GHz network, and let the first run finish before judging performance.
+
+If the app shows Network Error immediately at launch, check in this order:
+the two devices are on the same network; the server is running and was started
+with `--host 0.0.0.0`; the address printed by setup still matches the output of
+step B; and any firewall on this machine allows inbound connections on your
+chosen port.
 
 ## Troubleshooting
 
@@ -507,6 +658,13 @@ it does not remove the APK or alter another emulator.
 | The signing command exits without output | Update an older checkout with `git pull --ff-only`, then rerun the command. A successful current version prints the signed APK path. |
 | `APK signing failed: zipalign/apksigner is unavailable` | Set `BUILD_TOOLS` to one of the directories printed by `ls "$SDK_ROOT/build-tools"`; do not use the literal placeholder path from an older guide. |
 | `adb devices` shows no emulator | Start an emulator from Android Studio Device Manager, then run `adb devices` again. |
+| `adb devices` does not list a connected phone or tablet | Enable USB debugging and accept the on-device authorization prompt; if still absent, try another USB cable, since charge-only cables carry no data. |
+| `server origin ... allow at most 27` | The address and port do not fit in the space available inside the APK. Use a port with four digits or fewer, and an IP address rather than a host name. See [Choose a port](#d-choose-a-port-with-at-most-four-digits). |
+| `does not look like an emulator, and --device-host is still ...` | You are installing to a physical device but did not pass `--device-host`. Pass this machine's LAN address. If the target really is an emulator attached over TCP, pass `--device-host 10.0.2.2` explicitly. |
+| `--device-host ... refers to the client's own device` | `localhost`, `127.0.0.1`, and `0.0.0.0` mean the phone or tablet itself. Use `10.0.2.2` for an emulator or this machine's LAN address for a device. |
+| `--device-host must not contain a port` | Pass only the address in `--device-host` and set the port separately with `--port`. |
+| A device that worked yesterday now shows Network Error | This machine's network address probably changed. Recheck it, then rerun setup and reinstall. See [Keep that address from changing](#c-keep-that-address-from-changing). |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | A build signed with a different key is already installed. Uninstall that app from the device, then install again. |
 | `keytool: command not found` | Install a JDK, then reopen the terminal and rerun the signing-key step. |
 | Input validation rejects the resource root | Use `local-input/resources/data_u2017/android`, not `local-input/resources`. |
 | Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |

@@ -17,6 +17,7 @@ from liminal_gate.legacy_client_apk_plan import (
     IAP_MODAL_PATCHES,
     TERMS_CONFIRMATION_PATCHES,
     generate_legacy_client_plan,
+    max_server_origin_length,
     normalize_server_origin,
 )
 
@@ -76,8 +77,11 @@ class LegacyClientApkPlanTest(unittest.TestCase):
             with self.subTest(origin=origin):
                 with self.assertRaises(PlanGenerationError):
                     normalize_server_origin(origin)
-        with self.assertRaisesRegex(PlanGenerationError, "no longer"):
+        # Rejected while normalizing the origin, before any APK work, and with
+        # the measured length rather than a generic literal-size failure.
+        with self.assertRaisesRegex(PlanGenerationError, "is 59 characters; .* at most 27"):
             generate_legacy_client_plan(self.source, "https://a-very-long-hostname-that-will-not-fit.example:8642")
+        self.assertEqual(27, max_server_origin_length())
 
     def test_plan_contains_routing_and_exact_local_startup_patches(self) -> None:
         plan = generate_legacy_client_plan(self.source, "http://192.168.1.10:8642")

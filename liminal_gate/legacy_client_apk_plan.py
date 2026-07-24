@@ -37,6 +37,21 @@ TERMS_CONFIRMATION_PATCHES = (
     ("lib/armeabi-v7a/libil2cpp.so", 0x7CADDC, "0c00001a", "0000a0e1"),
 )
 
+def max_server_origin_length() -> int:
+    """The longest origin the guarded literal replacements can still express.
+
+    A metadata string-literal patch may only shrink its source literal, so each
+    routing replacement bounds the origin by the room left in the literal it
+    overwrites.  The website literal is replaced by the bare origin and is the
+    shortest of the three, so it sets the real limit.
+    """
+    return min(
+        len(API_BASE_LITERAL) - len(b"/"),
+        len(RESOURCE_BASE_LITERAL) - len(b"/resources/"),
+        len(WEBSITE_BASE_LITERAL),
+    )
+
+
 def normalize_server_origin(value: str) -> str:
     """Accept an ASCII HTTP(S) origin without a path, query, or fragment."""
     if not value or value != value.strip() or not value.isascii():
@@ -51,6 +66,16 @@ def normalize_server_origin(value: str) -> str:
         origin.encode("ascii")
     except UnicodeEncodeError as error:  # Defensive; isascii above should catch this.
         raise PlanGenerationError("server origin must be ASCII") from error
+    limit = max_server_origin_length()
+    if len(origin) > limit:
+        # Reported here rather than as a generic literal failure deep in the
+        # patch generator, because the usual cause is a chosen address and port
+        # that the tester can still change.
+        raise PlanGenerationError(
+            f"server origin {origin!r} is {len(origin)} characters; the guarded routing "
+            f"literals allow at most {limit}. An IPv4 address always fits when the port "
+            f"has at most four digits; choose a shorter port or a shorter host name."
+        )
     return origin
 
 
