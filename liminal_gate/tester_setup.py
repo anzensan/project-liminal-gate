@@ -358,16 +358,36 @@ def _ask_yes_no(prompt: str, default: bool, ask: Callable[[str], str] = input) -
         print("Please answer y or n.")
 
 
+def _ask_play_mode(ask: Callable[[str], str]) -> tuple[bool, bool]:
+    """Choose a player-facing setup mode instead of exposing server flags."""
+    print("\nWhat would you like to test?")
+    print("  1. Recommended — play the story and use normal Pacts")
+    print("  2. Story only — play normal chapters, without Pacts")
+    print("  3. Pacts only — test the Tavern Pacts, without later story chapters")
+    print("  4. Minimal — login and the tutorial only (for troubleshooting)")
+    while True:
+        answer = ask("Choose 1-4 [1]: ").strip()
+        if not answer or answer == "1":
+            return True, True
+        if answer == "2":
+            return True, False
+        if answer == "3":
+            return False, True
+        if answer == "4":
+            return False, False
+        print("Please enter 1, 2, 3, or 4.")
+
+
 def choose_local_server_options(
     event_catalog: Path | None, dummy_dll_dir: Path | None, ask: Callable[[str], str] = input,
 ) -> LocalServerOptions:
     """Prompt only for supported local policies; preserve explicit CLI paths."""
-    print("\nLocal server options")
-    print("Only options with an implemented, local compatibility policy are shown.")
-    core_story = _ask_yes_no("Enable ordinary Chapter 2--42 progression", True, ask)
-    pacts = _ask_yes_no("Enable local Pact of Fellowship and Pact of Truth", True, ask)
-    print("Custom story drop rates are not a supported setup option yet: ordinary stage rewards remain client-reported local results.")
-    enable_events = _ask_yes_no("Enable a reviewed local event catalog", event_catalog is not None, ask)
+    print("\nLocal setup")
+    core_story, pacts = _ask_play_mode(ask)
+    print("Custom drop-rate controls are not available yet.")
+    enable_events = _ask_yes_no(
+        "Do you already have an advanced local event catalog and DummyDll files", event_catalog is not None, ask,
+    )
     if not enable_events:
         return LocalServerOptions(core_story, pacts)
     if event_catalog is None:

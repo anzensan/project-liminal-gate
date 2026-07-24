@@ -150,15 +150,15 @@ class TesterSetupTest(unittest.TestCase):
             with self.assertRaisesRegex(TesterSetupError, "--dummy-dll-dir"):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
 
-    def test_interactive_options_can_disable_bundled_pacts_and_story(self) -> None:
-        answers = iter(("n", "n", "n"))
+    def test_interactive_options_can_choose_minimal_setup(self) -> None:
+        answers = iter(("4", "n"))
         options = choose_local_server_options(None, None, lambda _: next(answers))
         self.assertFalse(options.core_story)
         self.assertFalse(options.pacts)
         self.assertIsNone(options.event_catalog)
 
     def test_interactive_options_require_local_event_inputs(self) -> None:
-        answers = iter(("", "", "y", "local/events.json", "local/DummyDll"))
+        answers = iter(("", "y", "local/events.json", "local/DummyDll"))
         options = choose_local_server_options(None, None, lambda _: next(answers))
         self.assertEqual(Path("local/events.json"), options.event_catalog)
         self.assertEqual(Path("local/DummyDll"), options.dummy_dll_dir)
