@@ -23,6 +23,7 @@ from liminal_gate.input_importer import ImportError, build_import_manifest, writ
 from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
+from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
 
 
 class TesterSetupError(RuntimeError):
@@ -157,6 +158,7 @@ def prepare_local_tester(
         manifest = build_resource_manifest(resource_root)
         resource_manifest = data_directory / "resources.json"
         write_resource_manifest(resource_manifest, manifest)
+        prepare_pact_banners(apk, resource_root, data_directory / "public_data")
         plan = generate_legacy_client_plan(apk, f"http://10.0.2.2:{port}")
         plan_path = data_directory / "local-server-plan.json"
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -167,7 +169,7 @@ def prepare_local_tester(
         zipalign, apksigner = find_build_tools(build_tools)
         signed = data_directory / "liminal-gate-test.apk"
         sign_apk(unsigned, signed, zipalign, apksigner, keystore, KEY_ALIAS, password_file, password_file)
-    except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, ValueError) as error:
+    except (OSError, ImportError, PactBannerImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, ValueError) as error:
         raise TesterSetupError(str(error)) from error
     print(f"Prepared local test APK: {signed}")
     return signed
@@ -182,6 +184,7 @@ def server_arguments(resource_root: Path, data_directory: Path, port: int) -> li
         "--event-log", str(data_directory / "events.jsonl"),
         "--resource-root", str(resource_root),
         "--resource-manifest", str(data_directory / "resources.json"),
+        "--public-data-root", str(data_directory / "public_data"),
         "--core-story",
         "--pacts",
     ]

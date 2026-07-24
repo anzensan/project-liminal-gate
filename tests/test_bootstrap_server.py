@@ -18,6 +18,7 @@ class BootstrapServerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         root = Path(self.temporary_directory.name)
+        self.root = root
         profile_path = root / "profile.json"
         profile_path.write_text(json.dumps({
             "schema_version": 1,
@@ -107,6 +108,31 @@ class BootstrapServerTest(unittest.TestCase):
             [{key: event[key] for key in ("method", "path", "status")} for event in events],
         )
         self.assertNotIn("otk=unknown", self.event_log_path.read_text(encoding="utf-8"))
+
+    def test_serves_derived_local_pact_banner(self) -> None:
+        banners = self.root / "public_data" / "banners"
+        banners.mkdir(parents=True)
+        payload = b"\x89PNG\r\n\x1a\nlocal"
+        (banners / "sl_truth_01_en.png").write_bytes(payload)
+        server = BootstrapServer(
+            ("127.0.0.1", 0), self.server.profile, BootstrapState(self.state_path), public_data_root=self.root / "public_data"
+        )
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            connection = HTTPConnection(*server.server_address)
+            connection.request("GET", "/public_data/banners/sl_truth_01_en.png")
+            response = connection.getresponse()
+            body = response.read()
+            content_type = response.getheader("Content-Type")
+            connection.close()
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+        self.assertEqual(200, response.status)
+        self.assertEqual("image/png", content_type)
+        self.assertEqual(payload, body)
 
     def test_account_survives_server_restart(self) -> None:
         _, signup = self.request("/local/signup?uuid=local-account&otk=signup-token")

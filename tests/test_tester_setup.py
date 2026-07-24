@@ -43,6 +43,7 @@ class TesterSetupTest(unittest.TestCase):
         self.assertIn("8696", arguments)
         self.assertIn("user-data/bootstrap-state.json", arguments)
         self.assertIn("user-data/resources.json", arguments)
+        self.assertIn("user-data/public_data", arguments)
         self.assertIn("0.0.0.0", arguments)
 
     def test_runs_server_with_argument_sequence(self) -> None:

@@ -12,7 +12,7 @@ class ServerConfigError(ValueError):
 
 
 _PATH_FIELDS = (
-    "profile", "state_file", "event_log", "resource_root", "resource_manifest",
+    "profile", "state_file", "event_log", "resource_root", "resource_manifest", "public_data_root",
     "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "statusup_catalog",
     "clear_state_catalog",
     "job_catalog", "rebirth_catalog", "summon_skill_catalog", "companion_catalog",
@@ -37,6 +37,7 @@ class ServerConfig:
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
+    public_data_root: Path | None = None
     story_catalog: Path | None = None
     story_progression_catalog: Path | None = None
     settlement_catalog: Path | None = None

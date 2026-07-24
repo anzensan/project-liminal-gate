@@ -47,6 +47,13 @@ from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCat
 
 
 PROFILE_SCHEMA_VERSION = 1
+PACT_BANNER_FILES = {
+    "/public_data/banners/sl_truth_01_en.png": "sl_truth_01_en.png",
+    "/public_data/banners/slb_truth_01_en.png": "slb_truth_01_en.png",
+    "/public_data/banners/sl_friend_01_en.png": "sl_friend_01_en.png",
+    "/public_data/banners/slb_friend_01_en.png": "slb_friend_01_en.png",
+    "/public_data/banners/sl_luck_01_en.png": "sl_truth_01_en.png",
+}
 
 
 class ProfileError(ValueError):
@@ -1523,11 +1530,13 @@ class BootstrapServer(ThreadingHTTPServer):
         exchange_catalog: ExchangeCatalog | None = None,
         clear_state_catalog: ClearStateCatalog | None = None,
         story_progression_catalog: StoryProgressionCatalog | None = None,
+        public_data_root: Path | None = None,
     ) -> None:
         self.profile = profile
         self.state = state
         self.events = EventRecorder(event_log)
         self.resource_catalog = resource_catalog
+        self.public_data_root = public_data_root.resolve() if public_data_root is not None else None
         self.story_catalog = story_catalog
         self.story_progression_catalog = story_progression_catalog
         self.settlement_catalog = settlement_catalog
@@ -1563,6 +1572,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return
         if target.path == "/favicon.ico":
             self._empty(HTTPStatus.NO_CONTENT)
+            return
+        banner_name = PACT_BANNER_FILES.get(target.path)
+        if banner_name is not None and self.server.public_data_root is not None:
+            banner = self.server.public_data_root / "banners" / banner_name
+            if banner.is_file() and banner.resolve().is_relative_to(self.server.public_data_root):
+                self._file(HTTPStatus.OK, banner, "image/png")
+            else:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "local_banner_not_found"})
             return
         resource = self.server.resource_catalog.resolve(target.path) if self.server.resource_catalog else None
         if resource is not None:
@@ -1875,6 +1892,15 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         self.end_headers()
         if include_body:
             self.wfile.write(body)
+
+    def _file(self, status: HTTPStatus, path: Path, content_type: str) -> None:
+        body = path.read_bytes()
+        self.server.events.record(self.command, self.path, status)
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -2526,6 +2552,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--resource-root", type=Path, help="user-local root containing manifest-mapped files")
     parser.add_argument("--resource-manifest", type=Path, help="user-local explicit resource mapping manifest")
+    parser.add_argument("--public-data-root", type=Path, help="user-local derived PNGs for supported public-data image paths")
     parser.add_argument("--story-catalog", type=Path, help="user-local normalized generic-story catalog")
     parser.add_argument("--story-progression-catalog", type=Path, help="user-derived reviewed core-story progression catalog")
     parser.add_argument("--core-story", action="store_true", help="enable the bundled ordinary Chapter 2--42 progression policy without reward data")
@@ -2550,7 +2577,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     fields = (
-        "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest",
+        "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
         "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "achievement_catalog", "message_catalog", "exchange_catalog",
@@ -2568,7 +2595,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     return ServerConfig(
         profile=args.profile, state_file=args.state_file,
         host="127.0.0.1" if args.host is None else args.host, port=8080 if args.port is None else args.port,
-        event_log=args.event_log, resource_root=args.resource_root, resource_manifest=args.resource_manifest,
+        event_log=args.event_log, resource_root=args.resource_root, resource_manifest=args.resource_manifest, public_data_root=getattr(args, "public_data_root", None),
         story_catalog=args.story_catalog, core_story=getattr(args, "core_story", False), settlement_catalog=args.settlement_catalog,
         story_progression_catalog=args.story_progression_catalog,
         story_outcome_catalog=args.story_outcome_catalog, clear_state_catalog=args.clear_state_catalog, statusup_catalog=args.statusup_catalog,
@@ -2636,6 +2663,7 @@ def main() -> int:
             exchanges,
             clear_state_catalog=clear_states,
             story_progression_catalog=progression,
+            public_data_root=args.public_data_root,
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error
