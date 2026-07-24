@@ -169,11 +169,13 @@ def ensure_keystore(keystore: Path, password_file: Path) -> None:
 
 def prepare_local_tester(
     apk: Path, resource_root: Path, data_directory: Path, port: int, build_tools: Path | None,
-    dummy_dll_dir: Path | None = None,
+    dummy_dll_dir: Path | None = None, event_catalog: Path | None = None,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
     if not 1 <= port <= 65535:
         raise TesterSetupError("--port must be an integer from 1 through 65535")
+    if event_catalog is not None and dummy_dll_dir is None:
+        raise TesterSetupError("--event-catalog requires --dummy-dll-dir so setup can derive the matching local character catalog")
     apk, resource_root = apk.resolve(), resolve_resource_root(resource_root)
     data_directory.mkdir(parents=True, exist_ok=True)
     try:
@@ -207,8 +209,8 @@ def prepare_local_tester(
     return signed
 
 
-def server_arguments(resource_root: Path, data_directory: Path, port: int) -> list[str]:
-    return [
+def server_arguments(resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None) -> list[str]:
+    arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
         "--profile", "profiles/legacy-client-bootstrap.json",
         "--state-file", str(data_directory / "bootstrap-state.json"),
@@ -220,6 +222,12 @@ def server_arguments(resource_root: Path, data_directory: Path, port: int) -> li
         "--core-story",
         "--pacts",
     ]
+    if event_catalog is not None:
+        arguments.extend((
+            "--event-catalog", str(event_catalog.resolve()),
+            "--character-catalog", str((data_directory / "character-catalog.json").resolve()),
+        ))
+    return arguments
 
 
 def run_server(arguments: Sequence[str]) -> None:
@@ -237,6 +245,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--build-tools", type=Path, help="Android SDK Build Tools version directory")
     parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json")
+    parser.add_argument("--event-catalog", type=Path, help="optional user-local event-stage catalog; requires --dummy-dll-dir")
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
     return parser.parse_args()
 
@@ -244,13 +253,13 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        signed = prepare_local_tester(args.apk, args.resource_root, args.data_dir, args.port, args.build_tools, args.dummy_dll_dir)
+        signed = prepare_local_tester(args.apk, args.resource_root, args.data_dir, args.port, args.build_tools, args.dummy_dll_dir, args.event_catalog)
         if args.prepare_only:
             return 0
         emulator = select_emulator(args.adb, args.emulator)
         subprocess.run((args.adb, "-s", emulator, "install", "-r", str(signed)), check=True)
         print(f"Installed on {emulator}. Starting the local server; press Control-C when finished.")
-        run_server(server_arguments(args.resource_root.resolve(), args.data_dir, args.port))
+        run_server(server_arguments(args.resource_root.resolve(), args.data_dir, args.port, args.event_catalog))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error
     return 0

@@ -86,6 +86,31 @@ The guided setup enables `--pacts`, a built-in local Fellowship/Truth policy.
 Use `--pact-draw-catalog` instead when you need a custom Fellowship-only pool;
 it cannot be combined with `--pacts`.
 
+## Local event stages and character grants
+
+Event support is deliberately opt-in and operator-local. An event catalog must
+contain only stages whose start and clear behavior you have independently
+tested with the client. Its character IDs are validated against a matching
+catalog derived from your own local APK; neither catalog belongs in Git.
+
+The normal tester command can launch an approved local event catalog once you
+also supply your locally generated Il2CppDumper `DummyDll` directory:
+
+```sh
+python3 -m liminal_gate.tester_setup \
+  --port 8696 \
+  --emulator emulator-5570 \
+  --dummy-dll-dir /path/to/DummyDll \
+  --event-catalog /path/to/local-events.json
+```
+
+Setup writes the derived `user-data/character-catalog.json`, then starts the
+server with both that file and the supplied event catalog. It rejects an event
+catalog without `--dummy-dll-dir`, rather than accepting unverified character
+IDs. A stage needs its observed chapter, section, entry stamina/Coins, clear
+Coins, visibility flag, and character grant IDs; do not add a stage merely
+because it appears in a menu.
+
 ## Local server configuration file
 
 For a longer-lived setup, keep launcher paths in a TOML file outside the

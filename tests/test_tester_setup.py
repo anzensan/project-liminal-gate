@@ -65,6 +65,24 @@ class TesterSetupTest(unittest.TestCase):
         self.assertIn("user-data/public_data", arguments)
         self.assertIn("0.0.0.0", arguments)
 
+    def test_event_catalog_is_started_with_the_matching_local_character_catalog(self) -> None:
+        data = Path("user-data")
+        event_catalog = Path("local-config/events.json")
+        arguments = server_arguments(Path("local-input/resources/data_u2017/android"), data, 8696, event_catalog)
+        self.assertEqual(
+            ["--event-catalog", str(event_catalog.resolve()), "--character-catalog", str((data / "character-catalog.json").resolve())],
+            arguments[-4:],
+        )
+
+    def test_event_catalog_requires_dummy_dll_for_matching_character_catalog(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); apk = root / "game.apk"; resources = root / "resources"
+            apk.write_bytes(b"apk")
+            for category in REQUIRED_RESOURCE_CATEGORIES:
+                (resources / category).mkdir(parents=True, exist_ok=True)
+            with self.assertRaisesRegex(TesterSetupError, "--dummy-dll-dir"):
+                prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
+
     def test_runs_server_with_argument_sequence(self) -> None:
         arguments = ["python", "-m", "liminal_gate.bootstrap_server", "--resource-root", r"C:\\Local Files\\android"]
         with patch("liminal_gate.tester_setup.subprocess.run") as run:

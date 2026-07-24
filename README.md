@@ -317,6 +317,14 @@ it or use it as a hosted/public service.
 To build the APK without installing or starting the server, add
 `--prepare-only`.
 
+### Optional: enable a reviewed local event catalog
+
+Events are not enabled by default. If you have independently prepared a
+reviewed event catalog and the matching local `DummyDll` directory, add
+`--dummy-dll-dir` and `--event-catalog` to the normal setup command. Setup
+derives the required local character catalog and passes both local files to the
+server. See [Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
+
 ### 4. Manual setup (only if you need to troubleshoot)
 
 The basic tester path needs no Python package installation or virtual
