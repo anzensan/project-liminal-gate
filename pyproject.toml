@@ -4,6 +4,13 @@ version = "0.1.0"
 description = "Source-available, noncommercial compatibility-server foundation"
 requires-python = ">=3.11"
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["liminal_gate"]
+
 [project.optional-dependencies]
 master-import = ["UnityPy==1.25.2", "TypeTreeGeneratorAPI==0.0.10"]
 
