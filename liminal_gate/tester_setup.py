@@ -187,6 +187,11 @@ def server_arguments(resource_root: Path, data_directory: Path, port: int) -> li
     ]
 
 
+def run_server(arguments: Sequence[str]) -> None:
+    """Run the local server in the foreground with platform-safe argument quoting."""
+    subprocess.run(arguments, check=True)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=Path, default=DEFAULT_APK)
@@ -209,7 +214,7 @@ def main() -> int:
         emulator = select_emulator(args.adb, args.emulator)
         subprocess.run((args.adb, "-s", emulator, "install", "-r", str(signed)), check=True)
         print(f"Installed on {emulator}. Starting the local server; press Control-C when finished.")
-        os.execv(sys.executable, server_arguments(args.resource_root.resolve(), args.data_dir, args.port))
+        run_server(server_arguments(args.resource_root.resolve(), args.data_dir, args.port))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error
     return 0

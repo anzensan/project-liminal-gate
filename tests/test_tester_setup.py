@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import TesterSetupError, find_build_tools, select_emulator, server_arguments, write_password_file
+from liminal_gate.tester_setup import TesterSetupError, find_build_tools, run_server, select_emulator, server_arguments, write_password_file
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -44,3 +44,9 @@ class TesterSetupTest(unittest.TestCase):
         self.assertIn("user-data/bootstrap-state.json", arguments)
         self.assertIn("user-data/resources.json", arguments)
         self.assertIn("0.0.0.0", arguments)
+
+    def test_runs_server_with_argument_sequence(self) -> None:
+        arguments = ["python", "-m", "liminal_gate.bootstrap_server", "--resource-root", r"C:\\Local Files\\android"]
+        with patch("liminal_gate.tester_setup.subprocess.run") as run:
+            run_server(arguments)
+        run.assert_called_once_with(arguments, check=True)
