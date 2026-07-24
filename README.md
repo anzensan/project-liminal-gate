@@ -164,6 +164,38 @@ recognizes Windows `zipalign.exe` and `apksigner.bat`; if it still reports those
 tools missing, update to the latest project revision before editing any Python
 files.
 
+#### Start the emulator with `-gpu swangle`, especially on macOS
+
+The emulator's default graphics backend can leave the app on a **permanently
+black screen**. The app has not crashed and the server is not at fault: it
+launches, talks to the server, and downloads resources normally, but the
+emulator's OpenGL translator cannot complete the framebuffer Unity asks for, so
+nothing is ever drawn. On macOS the default `-gpu auto` selects the Apple Metal
+GLES translator, which fails this way.
+
+Android Studio's Device Manager gives no way to pass this flag, so start the
+emulator from a terminal instead:
+
+```sh
+"$HOME/Library/Android/sdk/emulator/emulator" -avd YOUR_AVD_NAME -gpu swangle
+```
+
+On Windows and Linux use the `emulator` binary in your own SDK directory. List
+your AVD names with `emulator -list-avds`. `swangle` selects ANGLE with
+SwiftShader, which renders correctly.
+
+To confirm this is the problem rather than guess, count the framebuffer errors
+while the black screen is showing:
+
+```sh
+adb logcat -d | grep -c 0x506
+```
+
+Thousands of `0x506` errors from `emuglGLESv2_enc` mean the graphics backend,
+not the server. Zero means look elsewhere. This is worth checking early,
+because the server log keeps showing successful `200` responses throughout, so
+the failure looks like a server problem and is not one.
+
 If you would rather test on a real phone or tablet, skip this step and see
 [Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet).
 
@@ -676,6 +708,7 @@ chosen port.
 | What you see | What to do |
 | --- | --- |
 | `No module named liminal_gate` | Run the command from the repository root: the folder containing `README.md` and `liminal_gate/`. |
+| Black screen after launching the app, no crash, server log shows `200` responses | The emulator's graphics backend cannot complete Unity's framebuffer. Restart the emulator from a terminal with `-gpu swangle`. Confirm with `adb logcat -d \| grep -c 0x506`: thousands of those errors mean graphics, not the server. See [Start the emulator with `-gpu swangle`](#start-the-emulator-with--gpu-swangle-especially-on-macos). |
 | `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [step 3](#3-one-command-setup-install-and-server-start). |
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the optional dependency as above if you want the images. |
 | `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data using the reset commands above. |
