@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import TesterSetupError, find_build_tools, run_server, select_emulator, server_arguments, write_password_file
+from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, find_build_tools, resolve_resource_root, run_server, select_emulator, server_arguments, write_password_file
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -14,6 +14,15 @@ class TesterSetupTest(unittest.TestCase):
             with self.assertRaisesRegex(TesterSetupError, "--emulator"):
                 select_emulator("adb", None)
             self.assertEqual("emulator-5570", select_emulator("adb", "emulator-5570"))
+
+    def test_detects_android_resource_root_below_common_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "gdresources" / "data_u2017" / "android"
+            for category in REQUIRED_RESOURCE_CATEGORIES:
+                (root / category).mkdir(parents=True)
+            self.assertEqual(root.resolve(), resolve_resource_root(root.parents[2]))
+            with self.assertRaisesRegex(TesterSetupError, "data_u2017/android"):
+                resolve_resource_root(root.parent / "datau2017")
 
     def test_finds_supplied_build_tools_and_writes_private_password_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

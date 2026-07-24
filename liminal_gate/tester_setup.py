@@ -36,6 +36,7 @@ DEFAULT_DATA = Path("user-data")
 KEY_ALIAS = "liminal-gate-test"
 ZIPALIGN_NAMES = ("zipalign", "zipalign.exe")
 APKSIGNER_NAMES = ("apksigner", "apksigner.bat", "apksigner.exe")
+REQUIRED_RESOURCE_CATEGORIES = ("BG", "BGM", "Banner", "BuddyImages", "BuddyThumbs", "Illust", "Pieces", "SE", "Scenario")
 
 
 def _adb_devices(adb: str) -> tuple[str, ...]:
@@ -63,6 +64,27 @@ def select_emulator(adb: str, requested: str | None) -> str:
     if not devices:
         raise TesterSetupError("no ready Android emulator found; start one and rerun")
     raise TesterSetupError("multiple Android devices are ready; rerun with --emulator one of: " + ", ".join(devices))
+
+
+def resolve_resource_root(requested: Path) -> Path:
+    """Validate the final Android resource folder or find it beneath a common parent."""
+    candidates = (
+        requested,
+        requested / "android",
+        requested / "data_u2017" / "android",
+        requested / "gdresources" / "data_u2017" / "android",
+    )
+    for candidate in candidates:
+        if candidate.is_dir() and all((candidate / category).is_dir() for category in REQUIRED_RESOURCE_CATEGORIES):
+            resolved = candidate.resolve()
+            if resolved != requested.resolve():
+                print(f"Using detected Android resource root: {resolved}")
+            return resolved
+    expected = "data_u2017/android containing " + ", ".join(REQUIRED_RESOURCE_CATEGORIES)
+    if not requested.exists():
+        raise TesterSetupError(f"resource path does not exist: {requested}; expected {expected}")
+    missing = [category for category in REQUIRED_RESOURCE_CATEGORIES if not (requested / category).is_dir()]
+    raise TesterSetupError(f"resource path is not the final Android resource folder; expected {expected} (missing here: {', '.join(missing)})")
 
 
 def _sdk_roots() -> tuple[Path, ...]:
@@ -150,7 +172,7 @@ def prepare_local_tester(
     """Build the redirected, locally signed APK and return its path."""
     if not 1 <= port <= 65535:
         raise TesterSetupError("--port must be an integer from 1 through 65535")
-    apk, resource_root = apk.resolve(), resource_root.resolve()
+    apk, resource_root = apk.resolve(), resolve_resource_root(resource_root)
     data_directory.mkdir(parents=True, exist_ok=True)
     try:
         imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True)

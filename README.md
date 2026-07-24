@@ -151,6 +151,13 @@ be an APK/emulator compatibility limitation, not a local-server response. If
 you see an immediate crash on a newer image, retry with a Pixel 6 Android 12
 system image before investigating server logs.
 
+Avoid Android 16 system images that use **16 KB page size**: the original APK
+is not compatible with that emulator configuration. A standard, non-16-KB
+Android 12 image is the recommended tester baseline. The current setup already
+recognizes Windows `zipalign.exe` and `apksigner.bat`; if it still reports those
+tools missing, update to the latest project revision before editing any Python
+files.
+
 Wait until the emulator has finished booting, then confirm that `adb` can see
 it and print its serial number:
 
@@ -200,6 +207,12 @@ local-input/
 
 The important resource folder is the final `android/` directory. It contains
 the resource categories directly.
+
+The setup command validates this before it modifies the APK. You may pass the
+final `data_u2017/android` directory, or a parent directory that contains
+`gdresources/data_u2017/android`; it detects the final Android folder and
+prints the path it selected. Do not spell the folder `datau2017`—the underscore
+in `data_u2017` is required.
 
 For example, these searches only locate files already on your computer; they
 do not download anything:
@@ -491,6 +504,7 @@ it does not remove the APK or alter another emulator.
 | Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
 | Resource-manifest error on server start | Confirm the resource root, then rerun `python3 -m liminal_gate.resource_catalog_builder`. |
+| Sound is distorted, cuts out, or does not return | Check `user-data/events.jsonl` for `404` requests beneath `/resources/SE/`. A missing sound bundle in the local resource set can cause this; include those paths in the issue report. |
 | A request fails after Chapter 2-1 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
 
 For a local client-to-server failure, open the GitHub **Network error** issue
