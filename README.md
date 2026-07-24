@@ -99,6 +99,23 @@ commands below exactly as written. Otherwise replace each `python3 -m` with
 SDK/JDK component in Android Studio, reopen PowerShell, and repeat these
 checks.
 
+The guided setup automatically checks `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and
+Android Studio's usual Windows location, `%LOCALAPPDATA%\\Android\\Sdk`. If it
+still reports that `zipalign` and `apksigner` are missing, first confirm the
+files exist (replace `36.0.0` with the version installed on your PC):
+
+```powershell
+Get-ChildItem "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.0.0\zipalign.exe", "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.0.0\apksigner.bat"
+```
+
+Then either set the SDK root and rerun the normal command, or pass that exact
+Build Tools version directory once:
+
+```powershell
+$env:ANDROID_SDK_ROOT = "$env:LOCALAPPDATA\Android\Sdk"
+py -3 -m liminal_gate.tester_setup --build-tools "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.0.0" --port 8696 --emulator emulator-5570
+```
+
 ## Quick start: emulator tester path
 
 ### 0. Open a Terminal in the project folder

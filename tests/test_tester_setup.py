@@ -28,6 +28,16 @@ class TesterSetupTest(unittest.TestCase):
             self.assertEqual("local-secret", password.read_text(encoding="utf-8"))
             self.assertEqual(0o600, password.stat().st_mode & 0o777)
 
+    def test_finds_standard_windows_build_tools_with_windows_executable_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            local_app_data = Path(temporary)
+            tools = local_app_data / "Android/Sdk/build-tools/36.0.0"
+            tools.mkdir(parents=True)
+            for name in ("zipalign.exe", "apksigner.bat"):
+                (tools / name).write_text("local", encoding="utf-8")
+            with patch.dict("liminal_gate.tester_setup.os.environ", {"LOCALAPPDATA": str(local_app_data)}, clear=True):
+                self.assertEqual((tools / "zipalign.exe", tools / "apksigner.bat"), find_build_tools(None))
+
     def test_server_arguments_keep_resource_and_state_files_local(self) -> None:
         arguments = server_arguments(Path("local-input/resources/data_u2017/android"), Path("user-data"), 8696)
         self.assertIn("8696", arguments)

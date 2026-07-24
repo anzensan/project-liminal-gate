@@ -33,6 +33,8 @@ DEFAULT_APK = Path("local-input/terra-battle-5.5.7-170.apk")
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
 DEFAULT_DATA = Path("user-data")
 KEY_ALIAS = "liminal-gate-test"
+ZIPALIGN_NAMES = ("zipalign", "zipalign.exe")
+APKSIGNER_NAMES = ("apksigner", "apksigner.bat", "apksigner.exe")
 
 
 def _adb_devices(adb: str) -> tuple[str, ...]:
@@ -62,23 +64,52 @@ def select_emulator(adb: str, requested: str | None) -> str:
     raise TesterSetupError("multiple Android devices are ready; rerun with --emulator one of: " + ", ".join(devices))
 
 
-def find_build_tools(explicit: Path | None) -> tuple[Path, Path]:
-    if explicit is not None:
-        root = explicit
-        choices = (root,)
-    else:
-        sdk_root = Path(os.environ.get("ANDROID_SDK_ROOT", Path.home() / "Library/Android/sdk"))
+def _sdk_roots() -> tuple[Path, ...]:
+    """Return likely Android SDK roots, preferring explicit shell configuration."""
+    configured = tuple(
+        Path(value) for value in (os.environ.get("ANDROID_SDK_ROOT"), os.environ.get("ANDROID_HOME")) if value
+    )
+    defaults = (
+        Path(os.environ["LOCALAPPDATA"]) / "Android/Sdk" if os.environ.get("LOCALAPPDATA") else None,
+        Path.home() / "Library/Android/sdk",
+        Path.home() / "Android/Sdk",
+    )
+    roots: list[Path] = []
+    for root in (*configured, *defaults):
+        if root is not None and root not in roots:
+            roots.append(root)
+    return tuple(roots)
+
+
+def _build_tool_choices(roots: tuple[Path, ...]) -> tuple[Path, ...]:
+    choices: list[Path] = []
+    for sdk_root in roots:
         build_tools_root = sdk_root / "build-tools"
-        choices = tuple(sorted(
+        if not build_tools_root.is_dir():
+            continue
+        choices.extend(sorted(
             (path for path in build_tools_root.iterdir() if path.is_dir()),
             key=lambda path: tuple((0, int(part)) if part.isdigit() else (1, part) for part in path.name.replace("-", ".").split(".")),
             reverse=True,
-        )) if build_tools_root.is_dir() else ()
+        ))
+    return tuple(choices)
+
+
+def _find_tool(directory: Path, names: tuple[str, ...]) -> Path | None:
+    return next((directory / name for name in names if (directory / name).is_file()), None)
+
+
+def find_build_tools(explicit: Path | None) -> tuple[Path, Path]:
+    choices = (explicit,) if explicit is not None else _build_tool_choices(_sdk_roots())
     for candidate in choices:
-        zipalign, apksigner = candidate / "zipalign", candidate / "apksigner"
-        if zipalign.is_file() and apksigner.is_file():
+        zipalign = _find_tool(candidate, ZIPALIGN_NAMES)
+        apksigner = _find_tool(candidate, APKSIGNER_NAMES)
+        if zipalign is not None and apksigner is not None:
             return zipalign, apksigner
-    location = str(explicit) if explicit is not None else "$ANDROID_SDK_ROOT/build-tools or ~/Library/Android/sdk/build-tools"
+    location = str(explicit) if explicit is not None else (
+        "$ANDROID_SDK_ROOT/build-tools, $ANDROID_HOME/build-tools, "
+        "%LOCALAPPDATA%\\Android\\Sdk\\build-tools, ~/Library/Android/sdk/build-tools, or ~/Android/Sdk/build-tools"
+    )
     raise TesterSetupError(f"could not find zipalign and apksigner under {location}; install Android SDK Build Tools or pass --build-tools")
 
 
