@@ -7,13 +7,26 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import re
 import tempfile
 
 from liminal_gate.resource_catalog import RESOURCE_MANIFEST_SCHEMA_VERSION, ResourceCatalogError, _sha256_file
 
 
+_CACHE_PREFIX = re.compile(r"^[0-9a-f]{32}(?P<name>.+)$")
+
+
+def _logical_relative_path(relative: str) -> str:
+    """Translate the known cache-prefixed Android filename form to its URL name."""
+    path = Path(relative)
+    match = _CACHE_PREFIX.fullmatch(path.name)
+    if match is None:
+        return relative
+    return path.with_name(match.group("name")).as_posix()
+
+
 def build_resource_manifest(resource_root: Path) -> dict[str, object]:
-    """Map every regular user-local file beneath root to its mirrored URL path."""
+    """Map every regular user-local file beneath root to its client resource URL."""
     try:
         root = resource_root.resolve(strict=True)
     except OSError as error:
@@ -21,6 +34,7 @@ def build_resource_manifest(resource_root: Path) -> dict[str, object]:
     if not root.is_dir():
         raise ResourceCatalogError("resource root must be a directory")
     resources: list[dict[str, str]] = []
+    mapped_paths: set[str] = set()
     for candidate in sorted(root.rglob("*")):
         if candidate.is_symlink():
             raise ResourceCatalogError("resource root must not contain symbolic links")
@@ -29,9 +43,14 @@ def build_resource_manifest(resource_root: Path) -> dict[str, object]:
         relative = candidate.relative_to(root).as_posix()
         if not relative or ".." in Path(relative).parts:
             raise ResourceCatalogError("resource root contains an unsafe file path")
+        logical_relative = _logical_relative_path(relative)
+        path = "/resources/" + logical_relative
+        if path in mapped_paths:
+            raise ResourceCatalogError(f"resource root maps more than one file to {path}")
+        mapped_paths.add(path)
         content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
         resources.append({
-            "path": "/resources/" + relative,
+            "path": path,
             "file": relative,
             "sha256": _sha256_file(candidate),
             "content_type": content_type,
