@@ -41,6 +41,8 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         self.server.state.create_account(self.token, self.account_id, {
             "coins": 0, "worldMapNo": 0, "progressCode": 0x01000085,
             "chrdata": [self.character], "itemList": [0], "summonList": [0],
+            "freeEnergy": 50, "energy": 0, "energyAppStore": 0,
+            "energyGooglePlay": 0, "energyAndApp": 0,
         })
         with self.server.state.lock:
             account = self.server.state.accounts[self.account_id]
@@ -116,6 +118,8 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         persisted = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.assertEqual(0x010000C1, persisted["accounts"][self.account_id]["userdata"]["progressCode"])
         self.assertEqual(7, persisted["accounts"][self.account_id]["userdata"]["coins"])
+        self.assertEqual(50, persisted["accounts"][self.account_id]["userdata"]["freeEnergy"])
+        self.assertEqual(50, persisted["accounts"][self.account_id]["userdata"]["valuables"]["freeEnergy"])
 
     def test_built_in_policy_accepts_client_start_values_for_ordinary_stage(self) -> None:
         self.stop_server()

@@ -1266,6 +1266,36 @@ class BootstrapState:
             self._persist_locked()
             return "success", payload
 
+    def update_character_userdata(
+        self, token: str, request_id: str, body: bytes, characters: list[dict[str, Any]],
+        party: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Persist a client-authored free-roam roster or party layout locally."""
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return "unknown_account", None
+            if account.get("tutorial_phase") != "free_roam":
+                return "tutorial_state_conflict", None
+            requests = account.setdefault("tutorial_requests", {})
+            digest = hashlib.sha256(body).hexdigest()
+            cached = requests.get(request_id)
+            if cached is not None:
+                return (
+                    ("replay", _canonical_payload(cached["payload"]))
+                    if cached.get("body_sha256") == digest
+                    else ("request_collision", None)
+                )
+            userdata = account["userdata"]
+            userdata["chrdata"] = copy.deepcopy(characters)
+            if party is not None:
+                userdata.update(copy.deepcopy(party))
+            userdata["lastupdate"] = 1.0
+            payload = _canonical_payload({"success": True, "lastupdate": 1.0})
+            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            self._persist_locked()
+            return "success", payload
+
     def apply_generic_story_start(
         self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog,
         settlement_catalog: SettlementCatalog | None = None,
@@ -1367,11 +1397,19 @@ class BootstrapState:
             buddy_info = None if outcome_catalog is None else _outcome_buddy_info(userdata, clear, identity, outcome_catalog, clear_state_catalog)
             if outcome_catalog is not None and buddy_info is None:
                 return "invalid_local_outcome", None
+            wallet_fields = (
+                "energyAppStore", "energy", "energyAndApp", "freeEnergy",
+                "energyGooglePlay", "coins",
+            )
+            canonical_valuables = {
+                field: expected_coins if field == "coins" else int(userdata.get(field, 0))
+                for field in wallet_fields
+            }
             userdata.update({
                 "lastupdate": 1.0,
                 "progressCode": expected_progress,
                 "coins": expected_coins,
-                "valuables": copy.deepcopy(clear["valuables"]),
+                "valuables": canonical_valuables,
                 "chrdata": copy.deepcopy(clear["chrdata"]),
                 "itemList": copy.deepcopy(clear["itemList"]),
                 "summonList": copy.deepcopy(clear["summonList"]),
@@ -1784,8 +1822,18 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             transitions, kind = (), "do_buddy_slot"
         elif target.path == profile.routes.get("userdata"):
             transitions, kind = profile.tutorial_writes, "write"
-            companion_write = _parse_companion_userdata_write(body)
-            if companion_write is not None:
+            free_roam = self.server.state.allows_story_progression(token)
+            party_write = _parse_free_roam_party_userdata_write(body) if free_roam else None
+            character_write = _parse_free_roam_character_userdata_write(body) if free_roam and party_write is None else None
+            companion_write = _parse_companion_userdata_write(body) if free_roam and party_write is None and character_write is None else None
+            if party_write is not None:
+                characters, party = party_write
+                result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, party)
+                transitions, kind = (), "party_userdata"
+            elif character_write is not None:
+                result, payload = self.server.state.update_character_userdata(token, request_id, body, character_write)
+                transitions, kind = (), "character_userdata"
+            elif companion_write is not None:
                 result, payload = self.server.state.update_companion_userdata(token, request_id, body, companion_write)
                 transitions, kind = (), "companion_userdata"
             if profile.structural_writes:
@@ -1853,7 +1901,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             transitions, kind = profile.story_clears, "clear"
         result: str
         payload: dict[str, Any] | None
-        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "ordinary_pact"}:
+        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact"}:
             pass
         elif (
             kind == "write"
@@ -2301,6 +2349,62 @@ def _parse_companion_userdata_write(body: bytes) -> list[dict[str, Any]] | None:
         return None
     ids = [companion["iid"] for companion in companions]
     return companions if len(ids) == len(set(ids)) else None
+
+
+def _parse_free_roam_character_userdata_write(body: bytes) -> list[dict[str, Any]] | None:
+    try:
+        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+        if tuple(name for name, _ in pairs) != ("chrdata", "lastUpdate") or int(pairs[1][1]) < 0:
+            return None
+        characters = json.loads(pairs[0][1])
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(characters, list) or not all(
+        isinstance(character, dict) and type(character.get("id")) is int and character["id"] > 0
+        for character in characters
+    ):
+        return None
+    ids = [character["id"] for character in characters]
+    return characters if len(ids) == len(set(ids)) else None
+
+
+def _parse_free_roam_party_userdata_write(
+    body: bytes,
+) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+    fields = (
+        "chrdata", "teamMembers", "teamMembers_VS", "teamBuddies_VS",
+        "teamNo", "teamNo_VS", "summonId", "lastUpdate",
+    )
+    try:
+        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+        if tuple(name for name, _ in pairs) != fields or int(pairs[-1][1]) < 0:
+            return None
+        values = dict(pairs)
+        characters = json.loads(values["chrdata"])
+        team_members = json.loads(values["teamMembers"])
+        versus_members = json.loads(values["teamMembers_VS"])
+        versus_buddies = json.loads(values["teamBuddies_VS"])
+        team_no, versus_team_no, summon_id = (int(values[name]) for name in ("teamNo", "teamNo_VS", "summonId"))
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(characters, list)
+        or not all(isinstance(character, dict) and type(character.get("id")) is int and character["id"] > 0 for character in characters)
+        or not all(isinstance(values, list) and all(type(value) is int and value >= 0 for value in values) for values in (team_members, versus_members, versus_buddies))
+        or team_no < 0 or versus_team_no < 0 or summon_id < 0
+    ):
+        return None
+    ids = [character["id"] for character in characters]
+    if len(ids) != len(set(ids)) or not {member for member in team_members if member}.issubset(set(ids)):
+        return None
+    return characters, {
+        "teamMembers": team_members,
+        "teamMembers_VS": versus_members,
+        "teamBuddies_VS": versus_buddies,
+        "teamNo": team_no,
+        "teamNo_VS": versus_team_no,
+        "summonId": summon_id,
+    }
 
 
 def _draw_companion_id(catalog: CompanionDrawCatalog) -> int:

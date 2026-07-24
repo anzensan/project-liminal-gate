@@ -797,6 +797,35 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertTrue(payload["success"])
         self.assertEqual("second-local-account", self.server.state.tokens["unbound-token"])
 
+    def test_free_roam_character_and_party_writes_persist_and_replay(self) -> None:
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            self.server.state._persist_locked()
+        characters = [{"id": 3, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": False}]
+        character_body = urlencode({"chrdata": json.dumps(characters), "lastUpdate": "1"})
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=character-close", character_body)
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+        self.assertEqual((status, payload), self.post(f"/gd/userdata?otk={token}&requestID=character-close", character_body))
+        party_body = urlencode({
+            "chrdata": json.dumps(characters), "teamMembers": json.dumps([3, 0, 0, 0, 0, 0]),
+            "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
+            "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
+        })
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=party-close", party_body)
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+        self.restart()
+        status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-party")
+        self.assertEqual(200, status)
+        self.assertEqual(characters, userdata["chrdata"])
+        self.assertEqual([3, 0, 0, 0, 0, 0], userdata["teamMembers"])
+
     def test_local_news_page_and_favicon_are_not_protocol_errors(self) -> None:
         connection = HTTPConnection(*self.server.server_address)
         connection.request("GET", "/en/news/app")
