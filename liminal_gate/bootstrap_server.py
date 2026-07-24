@@ -337,6 +337,20 @@ class BootstrapState:
             self._persist_locked()
             return True
 
+    def safe_account_context(self, token: str) -> dict[str, Any]:
+        """Return non-secret account-routing diagnostics for a local request."""
+        with self.lock:
+            account_id = self.tokens.get(token)
+            account = self.accounts.get(account_id)
+            active = self.accounts.get(self.active_account_id)
+            return {
+                "resolved_account_id": account_id,
+                "resolved_account_phase": None if account is None else account.get("tutorial_phase"),
+                "active_account_id": self.active_account_id,
+                "active_account_phase": None if active is None else active.get("tutorial_phase"),
+                "resolved_account_is_active": account_id == self.active_account_id,
+            }
+
     def userdata_for(self, token: str) -> dict[str, Any] | None:
         with self.lock:
             account_id = self.tokens.get(token)
@@ -1755,6 +1769,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         if not self.server.state.bind_rotated_token(token):
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_account"})
             return
+        self._event_details.update(self.server.state.safe_account_context(token))
         if target.path == profile.routes.get("do_slot"):
             result, payload = self.server.state.draw_ordinary_pact(token, request_id, body, self.server.pact_draw_catalog)
             transitions, kind = (profile.tutorial_summons, "summon") if result == "unsupported_ordinary_pact" else ((), "ordinary_pact")

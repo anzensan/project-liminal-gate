@@ -176,6 +176,11 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual("unsupported_userdata_write", event["error"])
         self.assertEqual(["progressCode", "worldMapNo", "lastUpdate", "username"], event["request_fields"])
         self.assertEqual({"progressCode": "7", "worldMapNo": "0", "lastUpdate": "1"}, event["request_values"])
+        self.assertEqual("local-account", event["resolved_account_id"])
+        self.assertEqual("initial", event["resolved_account_phase"])
+        self.assertEqual("local-account", event["active_account_id"])
+        self.assertEqual("initial", event["active_account_phase"])
+        self.assertTrue(event["resolved_account_is_active"])
         self.assertNotIn("private", self.event_log_path.read_text(encoding="utf-8"))
 
 
