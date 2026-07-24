@@ -636,6 +636,12 @@ Addresses meaning "this same device" are also rejected: `localhost`,
 point of view, never the machine running the server. Pass only the address in
 `--device-host`, and set the port with `--port`.
 
+If a build from a different checkout is already installed, Android refuses to
+replace it, because each checkout creates its own local test signing key. Add
+`--replace-existing` to uninstall it first. That clears the app's local data on
+the device, so it downloads resources again and starts a new local account;
+setup never does it without being asked.
+
 ### F. First run over Wi-Fi
 
 The first launch downloads the whole local resource set — roughly 11,800 files.
@@ -664,7 +670,7 @@ chosen port.
 | `--device-host ... refers to the client's own device` | `localhost`, `127.0.0.1`, and `0.0.0.0` mean the phone or tablet itself. Use `10.0.2.2` for an emulator or this machine's LAN address for a device. |
 | `--device-host must not contain a port` | Pass only the address in `--device-host` and set the port separately with `--port`. |
 | A device that worked yesterday now shows Network Error | This machine's network address probably changed. Recheck it, then rerun setup and reinstall. See [Keep that address from changing](#c-keep-that-address-from-changing). |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | A build signed with a different key is already installed. Uninstall that app from the device, then install again. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | A build made from a different checkout, with a different local test key, is already installed. Rerun with `--replace-existing`, or uninstall it yourself with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either way that app's local data is cleared, so it downloads resources again and starts a new local account. |
 | `keytool: command not found` | Install a JDK, then reopen the terminal and rerun the signing-key step. |
 | Input validation rejects the resource root | Use `local-input/resources/data_u2017/android`, not `local-input/resources`. |
 | Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |

@@ -42,6 +42,7 @@ EMULATOR_LOOPBACK_HOST = "10.0.2.2"
 # From the client's perspective these name the phone, tablet, or emulator
 # itself, never the machine running the server.
 LOOPBACK_HOSTS = frozenset({"localhost", "::1", "0.0.0.0"})
+PACKAGE_NAME = "com.mistwalkercorp.guardians"
 ZIPALIGN_NAMES = ("zipalign", "zipalign.exe")
 APKSIGNER_NAMES = ("apksigner", "apksigner.bat", "apksigner.exe")
 REQUIRED_RESOURCE_CATEGORIES = ("BG", "BGM", "Banner", "BuddyImages", "BuddyThumbs", "Illust", "Pieces", "SE", "Scenario")
@@ -111,6 +112,35 @@ def build_server_origin(device_host: str, port: int) -> str:
         return normalize_server_origin(f"http://{host}:{port}")
     except PlanGenerationError as error:
         raise TesterSetupError(str(error)) from error
+
+
+def install_apk(adb: str, device: str, apk: Path, replace_existing: bool = False) -> None:
+    """Install the signed local APK, explaining a signing-key conflict.
+
+    A build made from a different checkout carries a different local test key,
+    and Android refuses to replace an installed package whose signature differs.
+    The only remedy is uninstalling first, which also clears that app's local
+    data, so it is never done implicitly.
+    """
+    result = subprocess.run(
+        (adb, "-s", device, "install", "-r", str(apk)), text=True, capture_output=True,
+    )
+    if result.returncode == 0:
+        return
+    output = f"{result.stdout}\n{result.stderr}"
+    if "INSTALL_FAILED_UPDATE_INCOMPATIBLE" not in output and "signatures do not match" not in output:
+        raise TesterSetupError(f"adb install failed: {output.strip() or result.returncode}")
+    if not replace_existing:
+        raise TesterSetupError(
+            f"{PACKAGE_NAME} is already installed on {device} from a build signed with a different "
+            f"local key, so Android refused to replace it. Rerun with --replace-existing to uninstall "
+            f"it first, or uninstall it yourself with: "
+            f"{adb} -s {device} uninstall {PACKAGE_NAME}. Either way the app's local data on that "
+            f"device is cleared, so it downloads resources again and starts a new local account."
+        )
+    print(f"Uninstalling the differently signed {PACKAGE_NAME} from {device} before installing.")
+    subprocess.run((adb, "-s", device, "uninstall", PACKAGE_NAME), check=True)
+    subprocess.run((adb, "-s", device, "install", "-r", str(apk)), check=True)
 
 
 def check_device_host_suits_device(device: str, device_host: str) -> None:
@@ -326,6 +356,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json")
     parser.add_argument("--event-catalog", type=Path, help="optional user-local event-stage catalog; requires --dummy-dll-dir")
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
+    parser.add_argument(
+        "--replace-existing", action="store_true",
+        help=(
+            "uninstall an already installed build signed with a different local key before installing. "
+            "This clears that app's local data on the device"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -345,7 +382,7 @@ def main() -> int:
         )
         if device is None:
             return 0
-        subprocess.run((args.adb, "-s", device, "install", "-r", str(signed)), check=True)
+        install_apk(args.adb, device, signed, replace_existing=args.replace_existing)
         print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(args.resource_root.resolve(), args.data_dir, args.port, args.event_catalog))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import subprocess
 import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, find_build_tools, prepare_local_tester, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
+from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, find_build_tools, install_apk, prepare_local_tester, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -61,6 +62,29 @@ class TesterSetupTest(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaisesRegex(TesterSetupError, "client's own device"):
                     build_server_origin(value, 8696)
+
+    def test_signature_conflict_explains_the_fix_without_uninstalling(self) -> None:
+        conflict = subprocess.CompletedProcess(
+            (), 1, stdout="", stderr="Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]",
+        )
+        with patch("liminal_gate.tester_setup.subprocess.run", return_value=conflict) as run:
+            with self.assertRaisesRegex(TesterSetupError, "--replace-existing"):
+                install_apk("adb", "emulator-5556", Path("built.apk"))
+            self.assertEqual(1, run.call_count, "must not uninstall without being asked")
+
+    def test_replace_existing_uninstalls_then_installs(self) -> None:
+        conflict = subprocess.CompletedProcess(
+            (), 1, stdout="", stderr="Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]",
+        )
+        with patch("liminal_gate.tester_setup.subprocess.run", side_effect=[conflict, None, None]) as run:
+            install_apk("adb", "emulator-5556", Path("built.apk"), replace_existing=True)
+        self.assertIn("uninstall", run.call_args_list[1].args[0])
+
+    def test_other_install_failures_are_reported_verbatim(self) -> None:
+        failure = subprocess.CompletedProcess((), 1, stdout="", stderr="Failure [INSTALL_FAILED_NO_MATCHING_ABIS]")
+        with patch("liminal_gate.tester_setup.subprocess.run", return_value=failure):
+            with self.assertRaisesRegex(TesterSetupError, "NO_MATCHING_ABIS"):
+                install_apk("adb", "emulator-5556", Path("built.apk"))
 
     def test_physical_device_refuses_the_emulator_only_address(self) -> None:
         check_device_host_suits_device("emulator-5570", EMULATOR_LOOPBACK_HOST)
