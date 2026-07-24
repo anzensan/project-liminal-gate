@@ -351,6 +351,12 @@ class BootstrapState:
                 "resolved_account_is_active": account_id == self.active_account_id,
             }
 
+    def allows_story_progression(self, token: str) -> bool:
+        """Whether a token has crossed the opening tutorial boundary."""
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            return account is not None and account.get("tutorial_phase") == "free_roam"
+
     def userdata_for(self, token: str) -> dict[str, Any] | None:
         with self.lock:
             account_id = self.tokens.get(token)
@@ -1849,7 +1855,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         payload: dict[str, Any] | None
         if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "ordinary_pact"}:
             pass
-        elif kind == "write" and self.server.story_progression_catalog is not None and _parse_story_progression_reveal(body) is not None:
+        elif (
+            kind == "write"
+            and self.server.story_progression_catalog is not None
+            and self.server.state.allows_story_progression(token)
+            and _parse_story_progression_reveal(body) is not None
+        ):
             result, payload = self.server.state.apply_story_progression_reveal(token, request_id, body, self.server.story_progression_catalog)
         elif kind == "start" and (self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not any(item["body"].encode("utf-8") == body for item in transitions):
             result, payload = self.server.state.apply_generic_story_start(token, request_id, body, self.server.story_catalog or self.server.story_progression_catalog)

@@ -9,6 +9,7 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.story_progression_catalog import build_core_story_policy
 
 
 PUBLIC_ROOT = Path(__file__).resolve().parents[1]
@@ -336,6 +337,7 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         )
         self.assertEqual(501, status)
         self.assertEqual("unsupported_userdata_write", reordered_map["error"])
+        self.server.story_progression_catalog = build_core_story_policy()
         status, map_payload = self.post(
             f"/gd/userdata?otk={login_token}&digest2=client-value&requestID=map-write", map_body
         )
