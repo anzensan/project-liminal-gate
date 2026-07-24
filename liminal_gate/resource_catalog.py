@@ -27,9 +27,16 @@ class ResourceCatalog:
 
     def __init__(self, entries: dict[str, ResourceEntry]) -> None:
         self.entries = entries
+        self.casefolded_entries: dict[str, ResourceEntry | None] = {}
+        for entry in entries.values():
+            key = entry.path.casefold()
+            if key not in self.casefolded_entries:
+                self.casefolded_entries[key] = entry
+            elif self.casefolded_entries[key] != entry:
+                self.casefolded_entries[key] = None
 
     def resolve(self, path: str) -> ResourceEntry | None:
-        return self.entries.get(path)
+        return self.entries.get(path) or self.casefolded_entries.get(path.casefold())
 
 
 def load_resource_catalog(manifest: Path, resource_root: Path) -> ResourceCatalog:

@@ -55,17 +55,22 @@ class ResourceCatalogBuilderTest(unittest.TestCase):
 
     def test_maps_cache_prefixed_android_bundle_to_the_client_resource_path(self) -> None:
         bundle = self.resources / "SE" / "bdb3334db029db0ef76e06637e4de9b9sun3.bin"
+        sun_hm = self.resources / "SE" / "33050eb51335cc0e0a868bcf80100e4fsunhm.bin"
         bundle.parent.mkdir()
         bundle.write_bytes(b"local unity bundle")
+        sun_hm.write_bytes(b"local unity bundle")
         manifest = build_resource_manifest(self.resources)
-        entry = next(item for item in manifest["resources"] if item["file"] == "SE/bdb3334db029db0ef76e06637e4de9b9sun3.bin")
-        self.assertEqual("/resources/SE/sun3.bin", entry["path"])
+        paths = {item["path"] for item in manifest["resources"] if item["file"] == "SE/bdb3334db029db0ef76e06637e4de9b9sun3.bin"}
+        self.assertEqual({"/resources/SE/bdb3334db029db0ef76e06637e4de9b9sun3.bin", "/resources/SE/sun3.bin"}, paths)
         manifest_path = self.root / "generated" / "resources.json"
         write_resource_manifest(manifest_path, manifest)
         catalog = load_resource_catalog(manifest_path, self.resources)
         resolved = catalog.resolve("/resources/SE/sun3.bin")
         self.assertIsNotNone(resolved)
         self.assertEqual(bundle.resolve(), resolved.file)
+        case_variant = catalog.resolve("/resources/SE/sunHM.bin")
+        self.assertIsNotNone(case_variant)
+        self.assertEqual(sun_hm.resolve(), case_variant.file)
 
     def test_rejects_symlink_and_empty_tree(self) -> None:
         empty = self.root / "empty"

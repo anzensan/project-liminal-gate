@@ -43,18 +43,20 @@ def build_resource_manifest(resource_root: Path) -> dict[str, object]:
         relative = candidate.relative_to(root).as_posix()
         if not relative or ".." in Path(relative).parts:
             raise ResourceCatalogError("resource root contains an unsafe file path")
-        logical_relative = _logical_relative_path(relative)
-        path = "/resources/" + logical_relative
-        if path in mapped_paths:
-            raise ResourceCatalogError(f"resource root maps more than one file to {path}")
-        mapped_paths.add(path)
         content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
-        resources.append({
-            "path": path,
-            "file": relative,
-            "sha256": _sha256_file(candidate),
-            "content_type": content_type,
-        })
+        digest = _sha256_file(candidate)
+        aliases = (relative, _logical_relative_path(relative))
+        for alias in dict.fromkeys(aliases):
+            path = "/resources/" + alias
+            if path in mapped_paths:
+                raise ResourceCatalogError(f"resource root maps more than one file to {path}")
+            mapped_paths.add(path)
+            resources.append({
+                "path": path,
+                "file": relative,
+                "sha256": digest,
+                "content_type": content_type,
+            })
     if not resources:
         raise ResourceCatalogError("resource root contains no regular files")
     return {"schema_version": RESOURCE_MANIFEST_SCHEMA_VERSION, "resources": resources}
