@@ -16,6 +16,10 @@ For a stricter local installation, derive the reviewed APK's stage metadata
 with optional local Unity/IL2CPP parser dependencies and locally derived dummy
 assemblies:
 
+If `pip install` reports `externally-managed-environment`, install into a
+virtual environment first (`python3 -m venv .venv && source .venv/bin/activate`)
+and run the commands below from that activated environment.
+
 ```sh
 python3 -m pip install '.[master-import]'
 liminal-gate-import-battledata \

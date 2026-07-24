@@ -252,6 +252,22 @@ download or include game images in this repository:
 python3 -m pip install ".[master-import]"
 ```
 
+If that fails with **`error: externally-managed-environment`**, your Python
+does not allow installing packages system-wide. This is normal for Homebrew
+Python on macOS and for the system Python on many Linux distributions. Create a
+virtual environment in the project folder instead:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install ".[master-import]"
+```
+
+Once activated, run the setup command from that same terminal, or it will not
+find the newly installed package. Activate it again with
+`source .venv/bin/activate` in any new terminal. On Windows the activation
+command is `.venv\Scripts\activate` instead.
+
 On Windows, use `py -3 -m pip install ".[master-import]"` when you use
 `py -3` for the other commands. If UnityPy or a required local Banner bundle
 is unavailable, setup reports the exact reason and continues; normal
@@ -660,6 +676,8 @@ chosen port.
 | What you see | What to do |
 | --- | --- |
 | `No module named liminal_gate` | Run the command from the repository root: the folder containing `README.md` and `liminal_gate/`. |
+| `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [step 3](#3-one-command-setup-install-and-server-start). |
+| `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the optional dependency as above if you want the images. |
 | `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data using the reset commands above. |
 | The signing command exits without output | Update an older checkout with `git pull --ff-only`, then rerun the command. A successful current version prints the signed APK path. |
 | `APK signing failed: zipalign/apksigner is unavailable` | Set `BUILD_TOOLS` to one of the directories printed by `ls "$SDK_ROOT/build-tools"`; do not use the literal placeholder path from an older guide. |
