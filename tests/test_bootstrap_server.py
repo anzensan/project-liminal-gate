@@ -706,6 +706,8 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(409, status)
         self.assertEqual("tutorial_state_conflict", payload["error"])
         self.server.state.create_account("second-token", "second-local-account", self.server.profile.userdata_seed)
+        self.assertTrue(self.server.state.bind_rotated_token(rotated_token))
+        self.assertEqual("second-local-account", self.server.state.tokens[rotated_token])
         status, payload = self.post(
             "/gd/do_slot?otk=unbound-token&digest2=client-value&requestID=ambiguous-token-request", body
         )

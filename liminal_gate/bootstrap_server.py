@@ -317,9 +317,17 @@ class BootstrapState:
         fallback rather than guessing an owner.
         """
         with self.lock:
-            if token in self.tokens:
-                return True
             account_id = self.active_account_id
+            # A tester's emulator can retain an older OTK while the server
+            # state has accumulated abandoned accounts from earlier setup
+            # attempts.  This is a single-player local server: once signup or
+            # login identifies the active save, route every subsequent client
+            # token to that save rather than resurrecting an abandoned one.
+            if account_id in self.accounts:
+                if self.tokens.get(token) != account_id:
+                    self.tokens[token] = account_id
+                    self._persist_locked()
+                return True
             if account_id is None and len(self.accounts) == 1:
                 account_id = next(iter(self.accounts))
                 self.active_account_id = account_id
@@ -1645,14 +1653,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             self._signed(HTTPStatus.OK, token, payload)
             return
         if target.path == profile.routes.get("userdata"):
-            userdata = self.server.state.userdata_for(token)
             # The surviving client may rotate its OTK immediately after a
             # successful login, before its first read-only userdata request.
-            # The same bounded single-account binding already protects the
-            # mutation path below; apply it here so a restart/login resume does
-            # not turn that observed rotation into a client Network Error.
-            if userdata is None and self.server.state.bind_rotated_token(token):
+            # Bind before reading so an older emulator token cannot select an
+            # abandoned local account after the active save has been resumed.
+            if self.server.state.bind_rotated_token(token):
                 userdata = self.server.state.userdata_for(token)
+            else:
+                userdata = None
             if userdata is None:
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_local_account"})
                 return
