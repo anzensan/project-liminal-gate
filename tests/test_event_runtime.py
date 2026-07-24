@@ -29,11 +29,16 @@ class EventRuntimeTest(unittest.TestCase):
                 body = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
                 connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-start", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
                 response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-reenter", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                reenter = connection.getresponse(); reenter_payload = json.loads(reenter.read()); connection.close()
             finally:
                 server.shutdown(); thread.join(); server.server_close()
             self.assertEqual(200, response.status)
             self.assertTrue(payload["success"])
             self.assertEqual(0.0, payload["refillStartTime"])
+            self.assertEqual(200, reenter.status)
+            self.assertEqual(payload, reenter_payload)
 
     def test_event_clear_grants_character_over_real_http_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

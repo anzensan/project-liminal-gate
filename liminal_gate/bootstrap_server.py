@@ -1342,11 +1342,20 @@ class BootstrapState:
                 expected = catalog.expected_clear_progress(current, (stage.chapter, stage.section))
                 if expected is None:
                     return "tutorial_state_conflict", None
-            if account.setdefault("tutorial_phase", "initial") != "free_roam" or account.get("active_generic_story") is not None:
+            identity = {"chapter": stage.chapter, "section": stage.section}
+            if (
+                account.setdefault("tutorial_phase", "initial") == "generic_story_active"
+                and account.get("active_generic_story") == identity
+            ):
+                payload = {"success": True, "refillStartTime": 0.0}
+                requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+                self._persist_locked()
+                return "success", payload
+            if account["tutorial_phase"] != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
             payload = {"success": True, "refillStartTime": 0.0}
             account["tutorial_phase"] = "generic_story_active"
-            account["active_generic_story"] = {"chapter": stage.chapter, "section": stage.section}
+            account["active_generic_story"] = identity
             requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
