@@ -112,6 +112,56 @@ class GenericStoryServerTest(unittest.TestCase):
         self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 140}, userdata["valuables"])
         self.assertEqual("free_roam", persisted["accounts"][self.account_id]["tutorial_phase"])
 
+    def test_clear_keeps_a_grant_the_client_had_not_read_back(self) -> None:
+        """A stale client roster at clear time must not delete a server grant.
+
+        This is the configuration the guided tester actually launches: a story
+        catalog with no settlement, clear-state, or outcome catalog, so nothing
+        else requires the submitted roster to cover the durable one.  A Pact
+        draw whose response never reached the client, an event character, or an
+        achievement reward is present on the server and absent from the next
+        clear's payload, and a wholesale replace would silently drop it.
+        """
+        granted = {"id": 9002, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0], "jobLevels": [7, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 2}
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["chrdata"] = [self.character, granted]
+            userdata["itemList"] = [0, 0, 5]
+            userdata["summonList"] = [0, 4]
+            self.server.state._persist_locked()
+
+        start = [("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "2"), ("lastUpdate", "1")]
+        status, _ = self.post(f"/gd/start_quest?otk={self.token}&requestID=start-grant", start)
+        self.assertEqual(200, status)
+
+        # The client reports only the character it knows about, its own battle
+        # drop in slot 1, and a base for slots 3/2 that predates the grants.
+        clear = [
+            ("progressCode", "16777347"), ("worldMapNo", "0"),
+            ("valuables", json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 240})),
+            ("chrdata", json.dumps([self.character])),
+            ("itemList", json.dumps([1, 0, 0])), ("summonList", json.dumps([0, 0])),
+            ("battle_result", json.dumps({"chapter": 2, "section": 2, "coins": 30, "exp": 0, "items": {}, "buddies": [], "monsters": [], "summons": [], "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0]})),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ]
+        status, cleared = self.post(f"/gd/clear_quest?otk={self.token}&requestID=clear-grant", clear)
+        self.assertEqual(200, status)
+        # The response carries the merged roster, so the client learns about the
+        # character it was missing instead of re-submitting without it forever.
+        self.assertEqual([9001, 9002], sorted(row["id"] for row in cleared["chrdata"]))
+
+        self.stop_server()
+        self.start_server()
+        persisted = json.loads(self.state_path.read_text(encoding="utf-8"))
+        userdata = persisted["accounts"][self.account_id]["userdata"]
+        self.assertEqual([9001, 9002], sorted(row["id"] for row in userdata["chrdata"]))
+        surviving = next(row for row in userdata["chrdata"] if row["id"] == 9002)
+        self.assertEqual([7, 0, 0], surviving["jobLevels"])
+        self.assertEqual(2, surviving["skillBoost"])
+        # The battle's own drop is kept alongside the grants the client missed.
+        self.assertEqual([1, 0, 5], userdata["itemList"])
+        self.assertEqual([0, 4], userdata["summonList"])
+
     def test_rejects_incomplete_or_malformed_client_clear_result(self) -> None:
         fields = [
             ("progressCode", "16777347"), ("worldMapNo", "0"),

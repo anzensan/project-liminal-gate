@@ -1495,9 +1495,9 @@ class BootstrapState:
                 "progressCode": expected_progress,
                 "coins": expected_coins,
                 "valuables": canonical_valuables,
-                "chrdata": copy.deepcopy(clear["chrdata"]),
-                "itemList": copy.deepcopy(clear["itemList"]),
-                "summonList": copy.deepcopy(clear["summonList"]),
+                "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
+                "itemList": _preserved_counts(userdata.get("itemList"), clear["itemList"]),
+                "summonList": _preserved_counts(userdata.get("summonList"), clear["summonList"]),
             })
             if buddy_info is not None:
                 userdata["buddyInfo"] = buddy_info
@@ -2949,6 +2949,55 @@ def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identit
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
     return _companion_info(rows)
+
+
+def _preserved_roster(current: object, submitted: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Settle a clear's roster without dropping a character the client omitted.
+
+    The submitted roster is the client's own view plus the battle's progression,
+    so it is authoritative for every character it names.  It is *not* evidence
+    that a character the server holds was lost: nothing removes a character at
+    clear time, so an id present only in the durable roster is a grant the
+    client had not read back yet — a Pact draw whose response never reached it,
+    an event character, an achievement or message reward — and replacing the
+    roster wholesale would delete it.
+
+    When a settlement, clear-state, or outcome catalog validates the clear this
+    is exactly an identity: each of them already requires the submitted ids to
+    be a superset of the durable ones.  It is the unvalidated configuration the
+    public tester actually runs that needs it.
+    """
+    rows = copy.deepcopy(submitted)
+    if not isinstance(current, list):
+        return rows
+    known = {row["id"] for row in rows if isinstance(row, dict) and type(row.get("id")) is int}
+    for row in current:
+        if isinstance(row, dict) and type(row.get("id")) is int and row["id"] not in known:
+            rows.append(copy.deepcopy(row))
+            known.add(row["id"])
+    return rows
+
+
+def _preserved_counts(current: object, submitted: list[int]) -> list[int]:
+    """Settle a clear's item/summon slots without dropping a server-side grant.
+
+    These are fixed-length count-per-slot arrays, not owned-id lists.  Every
+    decrease is applied through its own route (`use_statusup_item`, `exchange`,
+    `rebirth`), so the durable count is already current and a client only ever
+    reports its base plus this battle's drops.  A submitted count *below* the
+    durable one therefore means the client's base was stale, not that the items
+    were spent, and taking it would silently destroy the grant it had not read.
+
+    As above this is an identity under a validating catalog, whose
+    `_projected_list` requires the submission to equal the durable counts plus
+    the declared rewards.
+    """
+    if not isinstance(current, list) or len(current) != len(submitted):
+        return list(submitted)
+    return [
+        max(held, reported) if type(held) is int and type(reported) is int else reported
+        for held, reported in zip(current, submitted)
+    ]
 
 
 def _projected_list(current: object, submitted: object, rewards: dict[int, int], slots: int, maximum: int) -> bool:
