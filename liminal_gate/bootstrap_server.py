@@ -54,7 +54,7 @@ from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StorySta
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
 from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_event_catalog
-from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, hunting_settlement_within_bounds, load_hunting_catalog
+from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, load_summon_skill_catalog
 
 
@@ -1565,7 +1565,7 @@ class BootstrapState:
             # One active battle per account, shared with story and event stages.
             if phase != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
-            if int(userdata.get("progressCode", 0)) < stage.unlock_progress_code:
+            if not stage.unlocked_at(int(userdata.get("progressCode", 0))):
                 return "hunting_stage_locked", None
             items = userdata.get("itemList")
             if not isinstance(items, list) or len(items) != catalog.item_slots or any(type(value) is not int for value in items):
@@ -3470,6 +3470,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--event-catalog", type=Path, help="user-local event stages, flags, and character grants")
     parser.add_argument("--character-catalog", type=Path, help="matching user-derived character catalog for local event grants")
     parser.add_argument("--pacts", action="store_true", help="enable the bundled local Fellowship and Truth Pact policy")
+    parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
@@ -3481,7 +3482,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3506,7 +3507,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         companion_evolution_catalog=args.companion_evolution_catalog,
         companion_draw_catalog=args.companion_draw_catalog, pact_draw_catalog=args.pact_draw_catalog, pacts=getattr(args, "pacts", False),
         event_catalog=args.event_catalog, character_catalog=args.character_catalog,
-        hunting_catalog=args.hunting_catalog,
+        hunting_catalog=args.hunting_catalog, hunting=getattr(args, 'hunting', False),
         achievement_catalog=args.achievement_catalog,
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
@@ -3543,7 +3544,9 @@ def main() -> int:
         if (args.event_catalog is None) != (args.character_catalog is None):
             raise ProfileError("--event-catalog and --character-catalog must be supplied together")
         events = None if args.event_catalog is None else load_event_catalog(args.event_catalog, args.character_catalog)
-        hunts = None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog)
+        if args.hunting and args.hunting_catalog is not None:
+            raise ProfileError("--hunting cannot be combined with --hunting-catalog")
+        hunts = build_bundled_hunting_policy() if args.hunting else (None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog))
         achievements = None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog)
         messages = None if args.message_catalog is None else load_message_catalog(args.message_catalog)
         exchanges = None if args.exchange_catalog is None else load_exchange_catalog(args.exchange_catalog)

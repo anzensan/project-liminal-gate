@@ -119,10 +119,33 @@ because it appears in a menu.
 
 Hunting battles run entirely on the client. The server's whole job is to
 authorise an entry, charge its cost, and accept a settlement that stays inside
-bounds **you** declare, so the catalog carries stage identity, entry cost,
-unlock policy, and result ceilings — and no enemy, encounter, reward, or
-resource data. Nothing is bundled: with no catalog, Hunting is unavailable and
-every Hunting start returns `501`.
+declared bounds, so a stage carries identity, entry cost, unlock policy, and
+result ceilings — and no enemy, encounter, reward, or resource data.
+
+The quickest path is the bundled policy, which covers Pudding Time, Tin Parade,
+Attack of the Coin Creeps, and Puppet Show at all three zones:
+
+```sh
+python3 -m liminal_gate.bootstrap_server \
+  --profile profiles/legacy-client-bootstrap.json \
+  --state-file user-data/bootstrap-state.json \
+  --hunting
+```
+
+Stage identities, entry stamina, and the population-derived item ceilings there
+are recovered from the final client. Two things in it are explicitly local
+policy rather than claims about the original service: availability — each tier
+becomes permanent after story chapters 3, 9, and 18, because the retired
+rotations were never captured — and Puppet Show's aggregate of 60 items, whose
+real-time board has no cumulative spawn counter to recover a true cap from.
+
+**Metal Zone is deliberately absent.** Its results carry EXP and Companion
+drops, which this catalog cannot bound, and a settlement carrying Companions is
+refused rather than accepted generously.
+
+To declare your own stages instead, supply a catalog. `--hunting` and
+`--hunting-catalog` are mutually exclusive, and with neither, Hunting is
+unavailable and every Hunting start returns `501`.
 
 ```sh
 python3 -m liminal_gate.bootstrap_server \
@@ -146,9 +169,11 @@ python3 -m liminal_gate.bootstrap_server \
       "coins": 0,
       "entry_item_id": 0,
       "entry_item_count": 0,
-      "unlock_progress_code": 16777472,
+      "unlock_chapter": 4,
+      "unlock_section": 1,
       "max_coins": 0,
       "max_exp": 0,
+      "max_items_total": 5,
       "item_maxima": {"12": 5}
     }
   ]
@@ -156,14 +181,14 @@ python3 -m liminal_gate.bootstrap_server \
 ```
 
 `entry_item_id`/`entry_item_count` model a ticket-style entry: declare both or
-neither, and the item is consumed on a successful start. `unlock_progress_code`
-is the lowest `progressCode` allowed to enter, expressed as a local
-availability policy — the retired rotations were never captured, so do not
-present a schedule as historical behaviour.
+neither, and the item is consumed on a successful start. `unlock_chapter` and
+`unlock_section` are the earliest story point allowed to enter — a local
+availability policy, so do not present a schedule as historical behaviour.
 
 The ceilings are the load-bearing part. A settlement is refused with `409`
 unless every reported gain fits: coins within `max_coins`, EXP within
-`max_exp`, and each item within `item_maxima`. A refusal leaves the wallet,
+`max_exp`, each item within `item_maxima`, and their total within
+`max_items_total`. A refusal leaves the wallet,
 inventory, roster, and the active stage untouched, so the stage can be retried
 honestly. **A visible refusal is the intended outcome for anything unbounded** —
 a result carrying Companions or Battle Summons is refused outright, because

@@ -11,8 +11,8 @@ functional by adding ordinary HTTP responses.
 | --- | --- |
 | 0. Certify account and resource stability | Done. The account lifecycle and the whole Chapter 2--42 story are now certified by the public suite. |
 | 1. Hunting discovery capture | **Outstanding.** Needs the real client at a checkpoint where a selector is enabled. |
-| 2. Hunting vertical slice | Catalog, lifecycle, cost, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py`). The status/selector projection is **not**, and is correctly blocked on step 1. The pass condition is therefore not met. |
-| 3. Expand by family | Pudding/Tin and Coin Creeps are expressible by catalog alone. Metal and Puppet need EXP, Companion, and timed-result bounds first, and results carrying Companions or Summons are refused. |
+| 2. Hunting vertical slice | Catalog, lifecycle, cost, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py`), with a bundled policy behind `--hunting`. The status/selector projection is **not**, and is correctly blocked on step 1. The pass condition is therefore not met. |
+| 3. Expand by family | Pudding, Tin, Coin Creeps, and Puppet are declared by the bundled policy at all three zones. Metal remains absent: its EXP and Companion bounds are not expressible here, and results carrying Companions or Summons are refused. |
 | 4. Arena -> Special Quests | Outstanding, and gated on the same kind of capture. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 

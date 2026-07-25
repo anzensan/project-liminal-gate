@@ -30,20 +30,20 @@ class HuntingRuntimeTest(unittest.TestCase):
                 {
                     "family": "pudding", "chapter": 1001, "section": 1,
                     "stamina": 3, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
-                    "unlock_progress_code": 0, "max_coins": 0, "max_exp": 0,
-                    "item_maxima": {"2": 5, "3": 2},
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 0, "max_exp": 0,
+                    "max_items_total": 7, "item_maxima": {"2": 5, "3": 2},
                 },
                 {
                     "family": "coin_creeps", "chapter": 1003, "section": 1,
                     "stamina": 1, "coins": 0, "entry_item_id": 5, "entry_item_count": 1,
-                    "unlock_progress_code": 0, "max_coins": 1500, "max_exp": 0,
-                    "item_maxima": {},
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 1500, "max_exp": 0,
+                    "max_items_total": 0, "item_maxima": {},
                 },
                 {
                     "family": "tin", "chapter": LOCKED_STAGE[0], "section": LOCKED_STAGE[1],
                     "stamina": 1, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
-                    "unlock_progress_code": 0x01000000 | (30 << 6) | 1,
-                    "max_coins": 0, "max_exp": 0, "item_maxima": {"2": 1},
+                    "unlock_chapter": 30, "unlock_section": 1,
+                    "max_coins": 0, "max_exp": 0, "max_items_total": 1, "item_maxima": {"2": 1},
                 },
             ],
         }), encoding="utf-8")

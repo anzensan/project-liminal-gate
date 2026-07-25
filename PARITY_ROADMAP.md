@@ -12,6 +12,8 @@ publishing original data, captures, account state, or generated catalogs.
 - Built-in local Fellowship/Truth Pact draws with durable result replay.
 - Local APK routing/guarded patch/sign workflow.
 - Catalog-gated job, status-up, Rebirth, and Battle Summon skill progression slices.
+- Built-in local Hunting stages for Pudding Time, Tin Parade, Attack of the
+  Coin Creeps, and Puppet Show, with charged entry and bounded settlement.
 - Hash-validated serving of a user-owned mirrored resource tree.
 
 ## Required for broad single-player parity
@@ -22,6 +24,7 @@ publishing original data, captures, account state, or generated catalogs.
 | Tavern and Companions | Companion master rows, draw policy/cadence, equipment rules | Built-in local Fellowship/Truth Pacts cover normal pulls; Fate/ticket/campaign/event variants, historic odds, party selection, Companion systems, and equipment lifecycle remain incomplete. |
 | Battle Summons | Summon acquisition, ownership, party selection, and any remaining skill tiers | Skill unlock is catalog-gated; acquisition and authoritative lifecycle remain absent. |
 | Optional/event stages | Named stage manifests, rewards, schedules where applicable | No public event/archive catalog importer. |
+| Hunting | Nothing for the four bundled families; Metal needs EXP and Companion bounds | Pudding/Tin/Coin Creeps/Puppet are declared with recovered identities, entry stamina, and population-derived ceilings; availability and Puppet's aggregate are labeled local policy. Metal Zone (Chapters 1000/3000, including the Metal Ticket entry contract) remains absent because its EXP and Companion results are not boundable here. The client's Hunting selector is not populated: it needs `get_server_status.constants`, which this server omits entirely. |
 | Trading Post | User-local item/coin offer catalog | Nested browse and bounded item exchange are available; Companion offers and untrusted count credit remain absent. |
 | Messages/achievements | Local message and achievement policy/catalogs | Catalog-gated clear-chapter claims and local inbox render/read/delete lifecycle are available; campaign delivery and unsupported reward kinds remain absent. |
 | Differential certification | Excluded private-reference fixtures and user-local generated profiles | Required before any parity claim. |
