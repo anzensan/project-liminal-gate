@@ -54,3 +54,39 @@ def _draw(value: object) -> CompanionDraw:
     if not isinstance(value, dict) or set(value) != {"companion_id", "weight"} or type(value["companion_id"]) is not int or type(value["weight"]) is not int or value["companion_id"] <= 0 or value["weight"] <= 0:
         raise CompanionDrawCatalogError("each draw requires a positive companion_id and weight")
     return CompanionDraw(value["companion_id"], value["weight"])
+
+
+# The client's inventory shape, its Companion Ticket master item, the displayed
+# Energy fallback, and the Companion box ceiling.
+BUNDLED_ITEM_SLOTS = 181
+BUNDLED_TICKET_ITEM_ID = 112
+BUNDLED_ENERGY_COST = 3
+BUNDLED_MAX_OWNED = 1000
+# `SlotKind.Rare` (`kind == 2`) members of the final client's BuddyDatabase:
+# 114 of its 497 records, split 19 Z, 13 SS, 50 S, 30 A, 2 B.  Membership is
+# recovered; the uniform weight below is not a claim about retired odds.
+_RARE_SLOT_IDS = (
+    1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 16, 17, 18, 19, 22, 23, 24, 25, 28,
+    29, 30, 31, 32, 33, 34, 35, 42, 43, 44, 45, 46, 47, 48, 49, 59, 60, 61,
+    62, 63, 64, 65, 66, 67, 78, 79, 80, 81, 82, 84, 85, 86, 89, 100, 102,
+    104, 106, 112, 113, 114, 115, 116, 117, 122, 123, 124, 125, 126, 127,
+    150, 158, 159, 160, 161, 167, 198, 199, 200, 201, 202, 203, 204, 205,
+    206, 229, 230, 231, 232, 246, 247, 248, 249, 252, 253, 259, 303, 304,
+    305, 306, 307, 371, 372, 373, 374, 377, 378, 379, 380, 410, 411, 412,
+    413, 414, 415,
+)
+
+
+def build_bundled_companion_draw_policy() -> CompanionDrawCatalog:
+    """Return the guided-path local Companion draw policy.
+
+    Pool membership, the ticket item, the displayed three-Energy fallback, and
+    the Companion box ceiling are recovered from the final client.  Selection
+    is uniform across the pool as an explicit local policy, exactly as the
+    bundled Pact policy treats its own pools -- the historical per-rarity base
+    rates are deliberately not asserted here.
+    """
+    return CompanionDrawCatalog(
+        BUNDLED_ITEM_SLOTS, BUNDLED_TICKET_ITEM_ID, BUNDLED_ENERGY_COST, BUNDLED_MAX_OWNED,
+        tuple(CompanionDraw(companion_id, 1) for companion_id in _RARE_SLOT_IDS),
+    )

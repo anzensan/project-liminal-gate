@@ -43,6 +43,7 @@ class LocalServerOptions:
     jobs: bool = True
     rebirth: bool = True
     status_items: bool = True
+    companion_draw: bool = True
     event_catalog: Path | None = None
     dummy_dll_dir: Path | None = None
 
@@ -325,7 +326,7 @@ def prepare_local_tester(
 
 def server_arguments(
     resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
-    core_story: bool = True, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True,
+    core_story: bool = True, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True,
 ) -> list[str]:
     arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
@@ -349,6 +350,8 @@ def server_arguments(
         arguments.append("--rebirth")
     if status_items:
         arguments.append("--status-items")
+    if companion_draw:
+        arguments.append("--companion-draw")
     if event_catalog is not None:
         arguments.extend((
             "--event-catalog", str(event_catalog.resolve()),
@@ -406,7 +409,7 @@ def choose_local_server_options(
         "Do you already have an advanced local event catalog and DummyDll files", event_catalog is not None, ask,
     )
     if not enable_events:
-        return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story)
+        return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, core_story)
     if event_catalog is None:
         raw = ask("Path to your local event catalog JSON: ").strip()
         if not raw:
@@ -417,7 +420,7 @@ def choose_local_server_options(
         if not raw:
             raise TesterSetupError("a DummyDll directory is required when local events are enabled")
         dummy_dll_dir = Path(raw)
-    return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, event_catalog, dummy_dll_dir)
+    return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, core_story, event_catalog, dummy_dll_dir)
 
 
 def run_server(arguments: Sequence[str]) -> None:
@@ -484,7 +487,7 @@ def main() -> int:
         print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
-            options.core_story, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items,
+            options.core_story, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw,
         ))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error

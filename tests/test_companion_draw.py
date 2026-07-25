@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.companion_draw_catalog import load_companion_draw_catalog
+from liminal_gate.companion_draw_catalog import build_bundled_companion_draw_policy, load_companion_draw_catalog
 
 
 class CompanionDrawTest(unittest.TestCase):
@@ -60,3 +60,37 @@ class CompanionDrawTest(unittest.TestCase):
                 restarted.shutdown()
                 restarted_thread.join()
                 restarted.server_close()
+
+
+class BundledCompanionDrawRuntimeTest(unittest.TestCase):
+    def test_bundled_pool_draws_through_the_real_route(self) -> None:
+        """The bundled pool must settle a real draw, not merely load."""
+        with tempfile.TemporaryDirectory() as directory:
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            state = BootstrapState(Path(directory) / "state.json")
+            catalog = build_bundled_companion_draw_policy()
+            items = [0] * 181
+            items[112 - 1] = 2  # Companion Tickets, spent before any Energy
+            state.create_account("token", "account", {
+                "coins": 0, "energy": 0, "freeEnergy": 0, "itemList": items,
+                "chrdata": [], "buddyInfo": {"list": [], "record": []},
+            })
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, companion_draw_catalog=catalog)
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/do_buddy_slot?otk=token&requestID=bundled",
+                                   body="kind=1&count=1&campaignID=0&eventFlag=0&lastUpdate=1")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertTrue(payload["success"], payload)
+            # A ticket is consumed even though the account has no Energy at all.
+            self.assertEqual(1, payload["itemList"][112 - 1])
+            drawn = [row["bid"] for row in payload["buddyInfo"]["list"]]
+            self.assertEqual(1, len(drawn))
+            self.assertIn(drawn[0], {draw.companion_id for draw in catalog.draws})

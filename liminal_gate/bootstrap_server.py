@@ -40,7 +40,7 @@ from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogErr
 from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog, CompanionStrengthenCatalogError, load_companion_strengthen_catalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, load_companion_evolution_catalog
-from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionDrawCatalogError, load_companion_draw_catalog
+from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
 from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, load_achievement_catalog
 from liminal_gate.message_catalog import MessageCatalog, MessageCatalogError, load_message_catalog
@@ -3496,6 +3496,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
     parser.add_argument("--rebirth", action="store_true", help="enable the bundled local Rebirth recipe policy")
     parser.add_argument("--status-items", action="store_true", help="enable the bundled local status-up item policy")
+    parser.add_argument("--companion-draw", action="store_true", help="enable the bundled local Companion draw pool and costs")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
@@ -3507,7 +3508,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3536,6 +3537,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         jobs=getattr(args, 'jobs', False),
         rebirth=getattr(args, 'rebirth', False),
         status_items=getattr(args, 'status_items', False),
+        companion_draw=getattr(args, 'companion_draw', False),
         achievement_catalog=args.achievement_catalog,
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
@@ -3571,7 +3573,9 @@ def main() -> int:
         companions = None if args.companion_catalog is None else load_companion_catalog(args.companion_catalog)
         companion_strengthen = None if args.companion_strengthen_catalog is None else load_companion_strengthen_catalog(args.companion_strengthen_catalog)
         companion_evolution = None if args.companion_evolution_catalog is None else load_companion_evolution_catalog(args.companion_evolution_catalog)
-        companion_draw = None if args.companion_draw_catalog is None else load_companion_draw_catalog(args.companion_draw_catalog)
+        if args.companion_draw and args.companion_draw_catalog is not None:
+            raise ProfileError("--companion-draw cannot be combined with --companion-draw-catalog")
+        companion_draw = build_bundled_companion_draw_policy() if args.companion_draw else (None if args.companion_draw_catalog is None else load_companion_draw_catalog(args.companion_draw_catalog))
         if args.pacts and args.pact_draw_catalog is not None:
             raise ProfileError("--pacts cannot be combined with --pact-draw-catalog")
         pact_draw = build_bundled_pact_policy() if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))

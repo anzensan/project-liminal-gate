@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from liminal_gate.companion_draw_catalog import CompanionDrawCatalogError, load_companion_draw_catalog
+from liminal_gate.companion_draw_catalog import build_bundled_companion_draw_policy, CompanionDrawCatalogError, load_companion_draw_catalog
 
 
 class CompanionDrawCatalogTest(unittest.TestCase):
@@ -42,3 +42,28 @@ weight = 1
             path.write_text(json.dumps(document), encoding="utf-8")
             with self.assertRaises(CompanionDrawCatalogError):
                 load_companion_draw_catalog(path)
+
+
+class BundledCompanionDrawPolicyTest(unittest.TestCase):
+    """The bundled pool must match the recovered rare-slot membership."""
+
+    def setUp(self) -> None:
+        self.catalog = build_bundled_companion_draw_policy()
+
+    def test_declares_the_recovered_rare_slot_pool(self) -> None:
+        # 114 of BuddyDatabase's 497 records carry SlotKind.Rare.
+        self.assertEqual(114, len(self.catalog.draws))
+        ids = [draw.companion_id for draw in self.catalog.draws]
+        self.assertEqual(sorted(set(ids)), ids)
+        self.assertTrue(all(companion_id > 0 for companion_id in ids))
+
+    def test_carries_the_recovered_costs_and_ceiling(self) -> None:
+        self.assertEqual(181, self.catalog.item_slots)
+        self.assertEqual(112, self.catalog.ticket_item_id)
+        self.assertEqual(3, self.catalog.energy_cost)
+        self.assertEqual(1000, self.catalog.max_owned)
+
+    def test_selection_is_uniform_local_policy_not_historical_odds(self) -> None:
+        # The bundled Pact policy makes the same choice for the same reason:
+        # pool membership is recovered, per-rarity base rates are not asserted.
+        self.assertEqual({1}, {draw.weight for draw in self.catalog.draws})
