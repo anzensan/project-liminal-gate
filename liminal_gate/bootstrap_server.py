@@ -510,6 +510,27 @@ class BootstrapState:
                 "resolved_account_is_active": account_id == self.active_account_id,
             }
 
+    def replays_cleared_stage(self, token: str, identity: tuple[int, int] | None, catalog: StoryProgressionCatalog | None) -> bool:
+        """Whether the account has already cleared the stage it is asking for.
+
+        A profile's scripted transitions match on the request body alone, and
+        the tutorial's last scripted stage leaves the account in `free_roam` --
+        the state it returns to after *every* later stage.  Replaying that one
+        stage therefore re-fires the script forever.  The progression catalog
+        can tell the two apart: it answers a not-yet-cleared stage with an
+        advance and an already-cleared one with the account's current progress.
+        """
+        if catalog is None or identity is None or identity not in catalog.by_identity():
+            return False
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return False
+            current = account["userdata"].get("progressCode")
+            if type(current) is not int:
+                return False
+            return catalog.expected_clear_progress(current, identity) == current
+
     def allows_story_progression(self, token: str) -> bool:
         """Whether a token has crossed the opening tutorial boundary."""
         with self.lock:
@@ -2295,7 +2316,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             and _parse_story_progression_reveal(body) is not None
         ):
             result, payload = self.server.state.apply_story_progression_reveal(token, request_id, body, self.server.story_progression_catalog)
-        elif kind == "start" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and not any(item["body"].encode("utf-8") == body for item in transitions):
+        elif kind == "start" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and (
+            not any(item["body"].encode("utf-8") == body for item in transitions)
+            # A scripted stage the account has already cleared is a replay, and
+            # belongs to the catalog that owns every other stage.  Re-firing the
+            # script would move the account into a tutorial phase it can never
+            # leave, because the matching scripted clear no longer applies.
+            or self.server.state.replays_cleared_stage(token, _started_identity(body), self.server.story_progression_catalog)
+        ):
             catalog = self.server.event_catalog if self.server.event_catalog is not None and _parse_generic_story_start(body) is not None and tuple(_parse_generic_story_start(body)[key] for key in ("chapter", "section")) in self.server.event_catalog.by_identity() else self.server.story_catalog or self.server.story_progression_catalog
             result, payload = self.server.state.apply_generic_story_start(token, request_id, body, catalog) if catalog is not None else ("unsupported_start_quest", None)
         elif kind == "clear" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None):
@@ -2305,7 +2333,11 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # An event clear can share the exact generic wire grammar and even
             # a progress value with an earlier profile stage.  Its configured
             # chapter/section identity is the more specific contract.
-            if event is not None or not _profile_clear_matches(body, transitions):
+            replaying = self.server.state.replays_cleared_stage(token, identity, self.server.story_progression_catalog)
+            # As above: a scripted stage being replayed must settle through the
+            # catalog, or the script would re-apply its own wallet and party
+            # over whatever the player has since earned and chosen.
+            if event is not None or replaying or not _profile_clear_matches(body, transitions):
                 catalog = event or self.server.story_catalog or self.server.story_progression_catalog
                 result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog) if catalog is not None else ("unsupported_clear_quest", None)
             else:
@@ -2449,6 +2481,12 @@ def _json_fields_match(values: dict[str, str], expected_kinds: dict[str, str]) -
         if expected_kind == "array" and not isinstance(value, list):
             return False
     return True
+
+
+def _started_identity(body: bytes) -> tuple[int, int] | None:
+    """The chapter/section a start request names, if it is well formed."""
+    values = _parse_generic_story_start(body)
+    return None if values is None else (values["chapter"], values["section"])
 
 
 def _profile_clear_matches(body: bytes, transitions: tuple[dict[str, Any], ...]) -> bool:
