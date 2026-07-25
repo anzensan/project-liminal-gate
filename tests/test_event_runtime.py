@@ -108,6 +108,7 @@ class EventRuntimeTest(unittest.TestCase):
             self.assertEqual("success", state.apply_generic_story_start(token, "start", start, catalog)[0])
             clear = urlencode({"progressCode": 77, "worldMapNo": 0, "valuables": json.dumps({"energyAppStore":0,"energy":0,"energyAndApp":0,"freeEnergy":0,"energyGooglePlay":0,"coins":0}), "chrdata": json.dumps([character(3)]), "itemList":"[]", "summonList":"[]", "battle_result":json.dumps({"coins":0,"buddies":[],"items":{},"exp":0,"section":1,"monsters":[],"summons":[],"luckynum":0,"chapter":2000,"unableluckdrop":False,"boostup":[0]*6}), "itmp0":0,"itmp1":0,"lastUpdate":1}).encode()
             self.assertEqual("success", state.apply_generic_story_clear(token, "clear", clear, catalog)[0])
+            state.close()
             restarted = BootstrapState(path)
             replay = restarted.apply_generic_story_clear(token, "clear", clear, catalog)
             self.assertEqual("replay", replay[0]); self.assertEqual([3, 25], [row["id"] for row in restarted.accounts["account"]["userdata"]["chrdata"]])

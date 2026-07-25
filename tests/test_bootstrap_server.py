@@ -9,7 +9,7 @@ import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, ProfileError, load_profile
 from liminal_gate.story_progression_catalog import build_core_story_policy
 
 
@@ -116,8 +116,10 @@ class BootstrapServerTest(unittest.TestCase):
         banners.mkdir(parents=True)
         payload = b"\x89PNG\r\n\x1a\nlocal"
         (banners / "sl_truth_01_en.png").write_bytes(payload)
+        # Banner serving is stateless; give it its own save rather than a
+        # second server sharing the one the fixture already holds.
         server = BootstrapServer(
-            ("127.0.0.1", 0), self.server.profile, BootstrapState(self.state_path), public_data_root=self.root / "public_data"
+            ("127.0.0.1", 0), self.server.profile, BootstrapState(self.root / "banner-state.json"), public_data_root=self.root / "public_data"
         )
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
@@ -142,6 +144,10 @@ class BootstrapServerTest(unittest.TestCase):
         token = "restart-token"
         status, _ = self.request(f"/local/login?otk={token}&uuid=local-account")
         self.assertEqual(200, status)
+        # A real restart releases the save first; two servers may not share one.
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
         restarted = BootstrapServer(
             ("127.0.0.1", 0), self.server.profile, BootstrapState(self.state_path)
         )
@@ -160,6 +166,66 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual(200, response.status)
         self.assertEqual(0, body["coins"])
         self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0}, body["valuables"])
+
+    def test_a_second_server_may_not_share_one_save(self) -> None:
+        """Two servers on one save silently overwrite each other's progress.
+
+        Each holds the whole state in memory and republishes all of it on every
+        mutation, so they do not interleave — the second's stale copy simply
+        wins, with no error on either side.  Reachable today by changing
+        `--port` while `--data-dir` keeps its default.
+        """
+        self.request("/local/signup?uuid=local-account&otk=signup-token")
+        with self.assertRaises(ProfileError) as refused:
+            BootstrapState(self.state_path)
+        self.assertIn("already in use", str(refused.exception))
+        # The lock is an OS advisory lock, so a stopped server frees the save
+        # immediately and a genuine restart is never blocked by a stale file.
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+        replacement = BootstrapState(self.state_path)
+        self.assertEqual(["local-account"], sorted(replacement.accounts))
+        replacement.close()
+
+    def test_committed_states_are_retained_for_recovery(self) -> None:
+        """The save is atomic, but a save that is intact and wrong is not.
+
+        Without a retained history the durable account has exactly one copy, so
+        a bad merge, a hand edit, or a client reporting nonsense is terminal.
+        """
+        self.request("/local/signup?uuid=local-account&otk=signup-token")
+        for coins in (10, 20, 30):
+            with self.server.state.lock:
+                self.server.state.accounts["local-account"]["userdata"]["coins"] = coins
+                self.server.state._persist_locked()
+        self.assertEqual(30, json.loads(self.state_path.read_text())["accounts"]["local-account"]["userdata"]["coins"])
+        # Newest first: .bak.1 is the state immediately before the last write.
+        for index, coins in ((1, 20), (2, 10)):
+            backup = self.state_path.with_name(f"{self.state_path.name}.bak.{index}")
+            self.assertEqual(coins, json.loads(backup.read_text())["accounts"]["local-account"]["userdata"]["coins"])
+        # A retained state is a complete, loadable save, not a fragment.
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+        recovered_path = self.root / "recovered.json"
+        recovered_path.write_bytes(self.state_path.with_name(f"{self.state_path.name}.bak.1").read_bytes())
+        recovered = BootstrapState(recovered_path)
+        self.assertEqual(20, recovered.accounts["local-account"]["userdata"]["coins"])
+        recovered.close()
+
+    def test_a_save_that_will_not_load_names_its_retained_states(self) -> None:
+        self.request("/local/signup?uuid=local-account&otk=signup-token")
+        with self.server.state.lock:
+            self.server.state.accounts["local-account"]["userdata"]["coins"] = 42
+            self.server.state._persist_locked()
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+        self.state_path.write_text("{ this is not a save", encoding="utf-8")
+        with self.assertRaises(ProfileError) as refused:
+            BootstrapState(self.state_path)
+        self.assertIn("state.json.bak.1", str(refused.exception))
 
     def test_userdata_normalizes_persisted_character_job_levels_to_doubles(self) -> None:
         self.request("/local/signup?uuid=local-account&otk=signup-token")

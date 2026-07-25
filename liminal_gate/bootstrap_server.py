@@ -16,6 +16,7 @@ import json
 import math
 import os
 import random
+import shutil
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,6 +24,15 @@ import tempfile
 from threading import Lock
 import time
 from typing import Any
+
+try:  # POSIX advisory locking
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on Windows only
+    fcntl = None
+try:  # Windows advisory locking
+    import msvcrt
+except ImportError:  # pragma: no cover - exercised on Windows only
+    msvcrt = None
 from urllib.parse import parse_qsl, urlsplit
 
 from liminal_gate.resource_catalog import ResourceCatalog, ResourceCatalogError, load_resource_catalog
@@ -53,6 +63,9 @@ PROFILE_SCHEMA_VERSION = 1
 # any observed live burst while still keeping the state file a bounded size.
 RETAINED_REQUESTS_PER_ACCOUNT = 512
 RETAINED_TOKENS_PER_ACCOUNT = 512
+# Committed states kept beside the save, newest first, so a bad write, a manual
+# edit, or a damaged file is recoverable instead of terminal.
+ACCOUNT_STATE_BACKUP_COUNT = 5
 PACT_BANNER_FILES = {
     "/public_data/banners/sl_truth_01_en.png": "sl_truth_01_en.png",
     "/public_data/banners/slb_truth_01_en.png": "slb_truth_01_en.png",
@@ -264,6 +277,18 @@ def load_profile(path: Path) -> BootstrapProfile:
     )
 
 
+def _lock_exclusive(stream: Any) -> None:
+    """Take a non-blocking exclusive advisory lock the OS drops on exit.
+
+    Both mechanisms are released automatically when the process ends, so a
+    crashed server never leaves a lock a tester has to clear by hand.
+    """
+    if fcntl is not None:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    elif msvcrt is not None:  # pragma: no cover - exercised on Windows only
+        msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+
+
 class BootstrapState:
     """Atomic local account state for the extracted bootstrap sequence."""
 
@@ -272,7 +297,55 @@ class BootstrapState:
         self.lock = Lock()
         self.tokens: dict[str, str] = {}
         self.active_account_id: str | None = None
-        self.accounts = self._load()
+        self._lock_stream: Any = None
+        self._acquire_file_lock()
+        try:
+            self.accounts = self._load()
+        except ProfileError as error:
+            # A save that will not load is the one moment the retained history
+            # matters, so name it here rather than leaving a tester to discover
+            # the files themselves.
+            backups = self.available_backups()
+            self.close()
+            if not backups:
+                raise
+            raise ProfileError(
+                f"{error}. {len(backups)} retained state(s) sit beside it, newest first: "
+                f"{', '.join(item.name for item in backups)}. Stop the server, copy one "
+                "over the save, and start again."
+            ) from error
+        except BaseException:
+            self.close()
+            raise
+
+    def _acquire_file_lock(self) -> None:
+        """Refuse to share one save with another server.
+
+        Each server holds the whole state in memory and republishes all of it on
+        every mutation, so two of them on one file do not interleave — the
+        second simply overwrites the first's progress with its own stale copy,
+        silently and with no error on either side.  This is reachable today: the
+        README documents changing `--port`, while `--data-dir` (and so the state
+        file) keeps its default, so a forgotten server and a new one share a save.
+        """
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        stream = lock_path.open("a+b")
+        try:
+            _lock_exclusive(stream)
+        except OSError as error:
+            stream.close()
+            raise ProfileError(
+                f"local account state is already in use by another server: {self.path}. "
+                "Stop the other server, or start this one with its own --data-dir."
+            ) from error
+        self._lock_stream = stream
+
+    def close(self) -> None:
+        """Release the save so another server may take it."""
+        if self._lock_stream is not None:
+            self._lock_stream.close()
+            self._lock_stream = None
 
     def create_account(self, token: str, account_id: str, seed: dict[str, Any], message_catalog: MessageCatalog | None = None, exchange_catalog: ExchangeCatalog | None = None) -> None:
         with self.lock:
@@ -1599,6 +1672,14 @@ class BootstrapState:
             self._persist_locked()
             return "success", payload
 
+    def available_backups(self) -> list[Path]:
+        """Retained states beside this save, newest first."""
+        candidates = (
+            self.path.with_name(f"{self.path.name}.bak.{index}")
+            for index in range(1, ACCOUNT_STATE_BACKUP_COUNT + 1)
+        )
+        return [candidate for candidate in candidates if candidate.is_file()]
+
     def _load(self) -> dict[str, dict[str, Any]]:
         if not self.path.exists():
             return {}
@@ -1674,6 +1755,27 @@ class BootstrapState:
             else:
                 retained[account_id] = seen + 1
 
+    def _rotate_backups_locked(self) -> None:
+        """Keep the last committed states beside the save before replacing it.
+
+        The write itself is atomic, so this is not crash protection — it is
+        recovery from a save that is intact but wrong: a bad merge, a hand
+        edit, a client that reported nonsense.  Without it the durable account
+        has exactly one copy and any damage to it is terminal.
+        """
+        if not self.path.exists():
+            return
+        for index in range(ACCOUNT_STATE_BACKUP_COUNT, 1, -1):
+            older = self.path.with_name(f"{self.path.name}.bak.{index - 1}")
+            if older.exists():
+                os.replace(older, self.path.with_name(f"{self.path.name}.bak.{index}"))
+        temporary = self.path.with_name(f".{self.path.name}.bak.tmp")
+        try:
+            shutil.copyfile(self.path, temporary)
+            os.replace(temporary, self.path.with_name(f"{self.path.name}.bak.1"))
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def _persist_locked(self) -> None:
         self._bound_locked()
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -1684,6 +1786,7 @@ class BootstrapState:
             stream.flush()
             os.fsync(stream.fileno())
         try:
+            self._rotate_backups_locked()
             os.replace(temporary, self.path)
         finally:
             temporary.unlink(missing_ok=True)
@@ -1819,6 +1922,11 @@ class BootstrapServer(ThreadingHTTPServer):
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
         super().__init__(address, BootstrapHandler)
+
+    def server_close(self) -> None:
+        """Hand the save back so a replacement server can start immediately."""
+        super().server_close()
+        self.state.close()
 
 
 class BootstrapHandler(BaseHTTPRequestHandler):
