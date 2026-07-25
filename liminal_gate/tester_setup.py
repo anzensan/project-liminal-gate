@@ -379,14 +379,17 @@ def _ask_yes_no(prompt: str, default: bool, ask: Callable[[str], str] = input) -
 def _ask_play_mode(ask: Callable[[str], str]) -> tuple[bool, bool]:
     """Choose a player-facing setup mode instead of exposing server flags.
 
-    Hunting follows the story choice rather than adding a fifth mode: its
-    stages only become available through story progress, so enabling it
-    without the story would present a menu nothing can reach.
+    The built-in policies group by where a player meets them rather than
+    becoming their own prompts.  Hunting, job unlocks, Rebirth, and status
+    items follow the story choice, because their content is reached through
+    story progress.  Companion draws and sales follow the Tavern choice, since
+    they sit beside the Pacts and a Tavern test that cannot draw or sell a
+    Companion is not a Tavern test.
     """
     print("\nWhat would you like to test?")
-    print("  1. Recommended — play the story, Hunting zones, and normal Pacts")
-    print("  2. Story only — play normal chapters and Hunting, without Pacts")
-    print("  3. Pacts only — test the Tavern Pacts, without later story chapters")
+    print("  1. Recommended — play the story, Hunting zones, and the Tavern")
+    print("  2. Story only — play normal chapters and Hunting, without the Tavern")
+    print("  3. Tavern only — test Pacts and Companions, without later story chapters")
     print("  4. Minimal — login and the tutorial only (for troubleshooting)")
     while True:
         answer = ask("Choose 1-4 [1]: ").strip()
@@ -412,7 +415,7 @@ def choose_local_server_options(
         "Do you already have an advanced local event catalog and DummyDll files", event_catalog is not None, ask,
     )
     if not enable_events:
-        return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, core_story, core_story)
+        return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, pacts, pacts)
     if event_catalog is None:
         raw = ask("Path to your local event catalog JSON: ").strip()
         if not raw:
@@ -423,7 +426,7 @@ def choose_local_server_options(
         if not raw:
             raise TesterSetupError("a DummyDll directory is required when local events are enabled")
         dummy_dll_dir = Path(raw)
-    return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, core_story, core_story, event_catalog, dummy_dll_dir)
+    return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, pacts, pacts, event_catalog, dummy_dll_dir)
 
 
 def run_server(arguments: Sequence[str]) -> None:

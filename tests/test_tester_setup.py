@@ -25,14 +25,23 @@ class GuidedServerPolicyTest(unittest.TestCase):
         answers = iter((mode, "n"))
         return choose_local_server_options(None, None, ask=lambda _: next(answers))
 
-    def test_hunting_follows_the_story_choice(self) -> None:
-        # Its stages only unlock through story progress, so offering it without
-        # the story would present a menu nothing can reach.
-        pacts_only = self.choose("3")
-        self.assertEqual((False, True, False, False, False, False, False, False), (pacts_only.core_story, pacts_only.pacts, pacts_only.hunting, pacts_only.jobs, pacts_only.rebirth, pacts_only.status_items, pacts_only.companion_draw, pacts_only.companion_sale))
+    def test_policies_group_by_where_a_player_meets_them(self) -> None:
+        # Story-reached content follows the story choice; Tavern content
+        # follows the Tavern choice.  A Tavern test that cannot draw or sell a
+        # Companion is not a Tavern test.
+        tavern_only = self.choose("3")
+        self.assertEqual(
+            (False, True, False, False, False, False, True, True),
+            (tavern_only.core_story, tavern_only.pacts, tavern_only.hunting, tavern_only.jobs,
+             tavern_only.rebirth, tavern_only.status_items, tavern_only.companion_draw, tavern_only.companion_sale),
+        )
         self.assertNotIn("--hunting", self.arguments(core_story=False, pacts=True, hunting=False))
         story_only = self.choose("2")
-        self.assertEqual((True, False, True, True, True, True, True, True), (story_only.core_story, story_only.pacts, story_only.hunting, story_only.jobs, story_only.rebirth, story_only.status_items, story_only.companion_draw, story_only.companion_sale))
+        self.assertEqual(
+            (True, False, True, True, True, True, False, False),
+            (story_only.core_story, story_only.pacts, story_only.hunting, story_only.jobs,
+             story_only.rebirth, story_only.status_items, story_only.companion_draw, story_only.companion_sale),
+        )
 
     def test_minimal_mode_enables_none_of_them(self) -> None:
         options = self.choose("4")
