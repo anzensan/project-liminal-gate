@@ -311,19 +311,26 @@ class BootstrapState:
         """Bind a client-rotated OTK to the active local account.
 
         The surviving client replaces its OTK after the signup/login exchange,
-        while later mutations carry only the replacement token.  Signup and
-        login durably record that account as active, so a local state which has
-        retained older test accounts can still resume the current client.  Old
-        state files without that marker retain the conservative single-account
-        fallback rather than guessing an owner.
+        while later mutations carry only the replacement token.  A previously
+        bound OTK remains attached to its original account; only a genuinely
+        unknown replacement token can use the most recently identified local
+        account.  Old state files without that marker retain the conservative
+        single-account fallback rather than guessing an owner.
         """
         with self.lock:
+            # A token that has already been bound is the only durable account
+            # identity carried by ordinary requests.  Never overwrite that
+            # association merely because another account later became active:
+            # doing so makes an old account's retry or post-restart request
+            # operate on the wrong save.
+            if self.tokens.get(token) in self.accounts:
+                return True
             account_id = self.active_account_id
             # A tester's emulator can retain an older OTK while the server
             # state has accumulated abandoned accounts from earlier setup
-            # attempts.  This is a single-player local server: once signup or
-            # login identifies the active save, route every subsequent client
-            # token to that save rather than resurrecting an abandoned one.
+            # attempts.  This is a single-player local fallback: once signup
+            # or login identifies the active save, route a *new* client token
+            # to that save rather than resurrecting an abandoned one.
             if account_id in self.accounts:
                 if self.tokens.get(token) != account_id:
                     self.tokens[token] = account_id
@@ -1898,7 +1905,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             party_write = _parse_free_roam_party_userdata_write(body)
             party_layout_write = _parse_free_roam_party_layout_userdata_write(body) if party_write is None else None
             character_write = _parse_free_roam_character_userdata_write(body) if free_roam and party_write is None else None
-            companion_write = _parse_companion_userdata_write(body) if free_roam and party_write is None and character_write is None else None
+            # Companion flags are an independent persisted delta.  Unlike a
+            # roster/party layout it has no free-roam-only shape, and the
+            # client can submit it before that milestone.
+            companion_write = _parse_companion_userdata_write(body) if party_write is None and character_write is None else None
             if party_write is not None:
                 characters, party = party_write
                 result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, party)

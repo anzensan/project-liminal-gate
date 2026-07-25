@@ -49,10 +49,11 @@ The consequence is decisive:
 > A map from `otk` to account cannot separate them, even in principle.
 
 This is not a bug that can be tuned out of the existing token map. The server
-currently copes by tracking a single active account, which is coherent for
-single-player use but means the most recent signup or login owns subsequent
-traffic. Any real multi-account support has to add an identity signal that the
-protocol does not currently provide, and route on that instead.
+preserves every previously bound `otk`-to-account association, but uses a
+single active-account fallback for a genuinely unknown rotated token. That is
+coherent for one client at a time; it is not a safe routing policy for several
+concurrent clients. Any real multi-account support has to add an identity
+signal that the protocol does not currently provide, and route on that instead.
 
 ## 4. Candidate discriminators
 

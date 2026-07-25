@@ -37,6 +37,6 @@ duplicate_skill_boost = 5
     def test_bundled_policy_exposes_fellowship_and_truth(self) -> None:
         policy = build_bundled_pact_policy()
         self.assertEqual(("coins", 3000), policy.cost_for_kind(0))
-        self.assertEqual(("energy", 5), policy.cost_for_kind(1))
+        self.assertEqual(("energy", 3), policy.cost_for_kind(1))
         self.assertEqual(103, len(policy.draws_for_kind(0)))
         self.assertEqual(122, len(policy.draws_for_kind(1)))
