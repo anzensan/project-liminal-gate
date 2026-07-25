@@ -24,7 +24,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items", "companion_draw"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale"}
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,7 @@ class ServerConfig:
     rebirth: bool = False
     status_items: bool = False
     companion_draw: bool = False
+    companion_sale: bool = False
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
@@ -86,6 +87,7 @@ def load_server_config(path: Path) -> ServerConfig:
     rebirth = document.get("rebirth", False)
     status_items = document.get("status_items", False)
     companion_draw = document.get("companion_draw", False)
+    companion_sale = document.get("companion_sale", False)
     if not isinstance(host, str) or not host or "\x00" in host:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
@@ -104,7 +106,9 @@ def load_server_config(path: Path) -> ServerConfig:
         raise ServerConfigError("status_items must be a boolean")
     if type(companion_draw) is not bool:
         raise ServerConfigError("companion_draw must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, **paths)
+    if type(companion_sale) is not bool:
+        raise ServerConfigError("companion_sale must be a boolean")
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:

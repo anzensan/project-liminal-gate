@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.companion_master_data import COMPANION_MASTER_ROWS
+
 
 class CompanionCatalogError(ValueError):
     """A user-local Companion catalog is invalid."""
@@ -54,3 +56,21 @@ def _master(value: object) -> CompanionMaster:
     if value["companion_id"] <= 0 or value["base_coins"] < 0:
         raise CompanionCatalogError("Companion master values are outside range")
     return CompanionMaster(value["companion_id"], value["base_coins"])
+
+
+# The client's own Coin ceiling.
+BUNDLED_COIN_CAP = 99999999
+
+
+def build_bundled_companion_policy() -> CompanionCatalog:
+    """Return the guided-path local Companion master policy.
+
+    Base Coin values for all 497 Companion masters are recovered from the final
+    client; a sale pays that value times the owned instance's level.  Nothing
+    here concerns how a Companion is obtained.
+    """
+    masters = {
+        companion_id: CompanionMaster(companion_id, base_coins)
+        for companion_id, base_coins in COMPANION_MASTER_ROWS
+    }
+    return CompanionCatalog(BUNDLED_COIN_CAP, masters)

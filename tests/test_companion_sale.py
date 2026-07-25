@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.companion_catalog import load_companion_catalog
+from liminal_gate.companion_catalog import build_bundled_companion_policy, load_companion_catalog
 
 
 class CompanionSaleTest(unittest.TestCase):
@@ -73,3 +73,31 @@ class CompanionSaleTest(unittest.TestCase):
                 restarted.shutdown()
                 restarted_thread.join()
                 restarted.server_close()
+
+
+class BundledCompanionSaleRuntimeTest(unittest.TestCase):
+    def test_bundled_values_are_paid_through_the_real_route(self) -> None:
+        """The bundled masters must settle a real sale, not merely load."""
+        with tempfile.TemporaryDirectory() as directory:
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            state = BootstrapState(Path(directory) / "state.json")
+            # Master 3's base value is 400, so a level 7 instance pays 2800.
+            state.create_account("token", "account", {
+                "coins": 100, "chrdata": [],
+                "buddyInfo": {"list": [{"iid": 1, "bid": 3, "lv": 7, "exp": 0, "flag": 0, "chrID": 0}], "record": []},
+            })
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, companion_catalog=build_bundled_companion_policy())
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/sell_buddy?otk=token&requestID=bundled", body="inventoryID=1")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertTrue(payload["success"], payload)
+            self.assertEqual(2900, payload["coins"])
+            self.assertEqual([], payload["buddyInfo"]["list"])
