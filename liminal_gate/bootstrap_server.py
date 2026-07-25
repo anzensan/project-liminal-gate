@@ -3517,6 +3517,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--event-catalog", type=Path, help="user-local event stages, flags, and character grants")
     parser.add_argument("--character-catalog", type=Path, help="matching user-derived character catalog for local event grants")
     parser.add_argument("--pacts", action="store_true", help="enable the bundled local Fellowship and Truth Pact policy")
+    parser.add_argument("--hunting-catalog", type=Path, help="user-local Hunting stage catalog; cannot be combined with --hunting")
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
     parser.add_argument("--rebirth", action="store_true", help="enable the bundled local Rebirth recipe policy")
