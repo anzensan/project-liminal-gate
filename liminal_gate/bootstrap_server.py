@@ -48,6 +48,11 @@ from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCat
 
 
 PROFILE_SCHEMA_VERSION = 1
+# Recent-history windows for the durable save.  Both caches only ever answer an
+# immediate retry or the client's current token, so these are far larger than
+# any observed live burst while still keeping the state file a bounded size.
+RETAINED_REQUESTS_PER_ACCOUNT = 512
+RETAINED_TOKENS_PER_ACCOUNT = 512
 PACT_BANNER_FILES = {
     "/public_data/banners/sl_truth_01_en.png": "sl_truth_01_en.png",
     "/public_data/banners/slb_truth_01_en.png": "slb_truth_01_en.png",
@@ -317,6 +322,12 @@ class BootstrapState:
         account.  Old state files without that marker retain the conservative
         single-account fallback rather than guessing an owner.
         """
+        # Every persisted token is a JSON object key.  A missing `otk` query
+        # parameter would otherwise insert `None` here, which makes *every*
+        # later `_persist_locked` raise while sorting mixed key types and so
+        # silently stops the account saving for the rest of the process.
+        if not isinstance(token, str) or not token:
+            return False
         with self.lock:
             # A token that has already been bound is the only durable account
             # identity carried by ordinary requests.  Never overwrite that
@@ -1631,7 +1642,40 @@ class BootstrapState:
                 raise ProfileError("local bootstrap state contains invalid tutorial state")
         return accounts
 
+    def _bound_locked(self) -> None:
+        """Keep the durable save bounded by recent history, not session length.
+
+        The replay caches and the token map are both append-only in the wire
+        protocol: `requestID` is near-unique per request and `otk` is a
+        three-second time bucket, so a long session adds an entry to each every
+        few seconds and never removes one.  Every entry is re-encoded and
+        fsynced on *every* later save, so an account that is played enough
+        turns each save into a progressively slower whole-file rewrite.  Both
+        are only ever read for an immediate retry or the client's current
+        token, so retaining a generous recent window is equivalent in
+        behaviour and constant in cost.  Dicts preserve insertion order, so the
+        oldest entries are the ones dropped.
+        """
+        for account in self.accounts.values():
+            for name in ("tutorial_requests", "achievement_requests", "message_requests", "exchange_requests"):
+                cache = account.get(name)
+                if isinstance(cache, dict) and len(cache) > RETAINED_REQUESTS_PER_ACCOUNT:
+                    for key in list(cache)[:len(cache) - RETAINED_REQUESTS_PER_ACCOUNT]:
+                        del cache[key]
+        # Bound tokens *per account* rather than globally: a household's second
+        # save must keep its own recent identity even while another account is
+        # the busier one, or an evicted binding would fall back to the active
+        # account and replay against the wrong save.
+        retained: dict[str, int] = {}
+        for token, account_id in reversed(list(self.tokens.items())):
+            seen = retained.get(account_id, 0)
+            if seen >= RETAINED_TOKENS_PER_ACCOUNT:
+                del self.tokens[token]
+            else:
+                retained[account_id] = seen + 1
+
     def _persist_locked(self) -> None:
+        self._bound_locked()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         encoded = (json.dumps({"accounts": self.accounts, "active_account_id": self.active_account_id, "tokens": self.tokens}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
         with tempfile.NamedTemporaryFile(dir=self.path.parent, delete=False) as stream:
@@ -1643,6 +1687,20 @@ class BootstrapState:
             os.replace(temporary, self.path)
         finally:
             temporary.unlink(missing_ok=True)
+        # The file contents are fsynced above, but the rename that publishes
+        # them is only a directory update.  Without this the save can still be
+        # lost to a hard emulator kill or power cut, which reads to a player as
+        # progress that silently rolled back.
+        try:
+            directory = os.open(self.path.parent, os.O_RDONLY)
+        except OSError:
+            return
+        try:
+            os.fsync(directory)
+        except OSError:
+            pass
+        finally:
+            os.close(directory)
 
 
 def _safe_form_diagnostics(body: bytes) -> dict[str, Any]:
@@ -1953,7 +2011,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             elif companion_write is not None:
                 result, payload = self.server.state.update_companion_userdata(token, request_id, body, companion_write)
                 transitions, kind = (), "companion_userdata"
-            if profile.structural_writes:
+            # The scripted structural writes settle the tutorial phases, whose
+            # party/roster forms share a wire shape with the free-roam saves
+            # above.  After free roam the dedicated handlers own that shape and
+            # are the only ones that validate party membership and actually
+            # store `teamMembers`; letting a profile transition run as well
+            # would answer a *rejected* save with a scripted `success` and
+            # silently discard the player's party.
+            if profile.structural_writes and not free_roam:
                 try:
                     candidate_fields = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
                 except (UnicodeDecodeError, ValueError):

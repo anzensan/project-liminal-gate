@@ -926,6 +926,98 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual([3, 25, 9001], [row["id"] for row in userdata["chrdata"]])
 
+    def test_free_roam_party_layout_rejection_is_not_answered_by_a_scripted_success(self) -> None:
+        """A rejected party-only save must not fall through to the tutorial script.
+
+        The profile's last structural write has the same field names as the
+        free-roam party-layout save and runs `free_roam -> free_roam`, but it
+        only stores `lastupdate`.  If it can still settle a save that the
+        free-roam handler rejected, the client is told `success` while its
+        party is silently discarded and reverts on the next login.
+        """
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            account["userdata"]["chrdata"] = [
+                {"id": 3, "jobID": 0, "jobLevels": [1], "jobSlots": []},
+                {"id": 25, "jobID": 0, "jobLevels": [15], "jobSlots": []},
+            ]
+            account["userdata"]["teamMembers"] = [3, 25, 0, 0, 0, 0]
+            self.server.state._persist_locked()
+
+        def layout(members: list[int]) -> str:
+            return urlencode({
+                "teamMembers": json.dumps(members),
+                "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
+                "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
+            })
+
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=good-layout", layout([25, 3, 0, 0, 0, 0]))
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+        persisted = self.server.state.userdata_for(token)
+        assert persisted is not None
+        self.assertEqual([25, 3, 0, 0, 0, 0], persisted["teamMembers"])
+
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=bad-layout", layout([25, 3, 9999, 0, 0, 0]))
+        self.assertEqual((409, "tutorial_state_conflict"), (status, payload["error"]))
+        self.restart()
+        status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-bad-layout")
+        self.assertEqual(200, status)
+        self.assertEqual([25, 3, 0, 0, 0, 0], userdata["teamMembers"])
+
+    def test_userdata_read_without_a_token_cannot_break_later_saves(self) -> None:
+        """A missing `otk` must not insert a non-string key into the token map.
+
+        `_persist_locked` sorts the token keys, so a `None` key makes every
+        later save raise and the account silently stops persisting for the rest
+        of the process.
+        """
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        status, payload = self.request("/gd/userdata?requestID=no-token")
+        self.assertEqual((401, "unknown_local_account"), (status, payload["error"]))
+        self.assertEqual([token], [key for key in self.server.state.tokens])
+
+        status, payload = self.post(f"/gd/change_uname?otk={token}&requestID=rename", urlencode({"name": "Alcina"}))
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+        self.restart()
+        self.assertEqual("Alcina", self.server.state.accounts[account_id]["username"])
+
+    def test_replay_caches_and_token_map_stay_bounded_across_a_long_session(self) -> None:
+        """`requestID` and `otk` are append-only on the wire; the save is not.
+
+        Both grow by an entry every few seconds of play and are re-encoded on
+        every later save, so an unbounded window turns each save into a slower
+        whole-file rewrite for as long as the account is played.
+        """
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_requests"] = {f"old-{index}": {"body_sha256": "", "payload": {}} for index in range(4000)}
+            self.server.state.tokens.update({f"OTK{index:013X}": account_id for index in range(4000)})
+            self.server.state._persist_locked()
+
+        document = json.loads(self.state_path.read_text(encoding="utf-8"))
+        self.assertEqual(512, len(document["accounts"][account_id]["tutorial_requests"]))
+        self.assertEqual(512, len(document["tokens"]))
+        # The window is the *most recent* history, so the client's live token
+        # and an in-flight retry both still resolve.
+        self.assertIn("OTK0000000000F9F", document["tokens"])
+        self.assertIn("old-3999", document["accounts"][account_id]["tutorial_requests"])
+        self.assertNotIn("old-0", document["accounts"][account_id]["tutorial_requests"])
+        status, userdata = self.request(f"/gd/userdata?otk=OTK0000000000F9F&requestID=late-read")
+        self.assertEqual(200, status)
+        self.assertTrue(userdata["success"])
+
     def test_local_news_page_and_favicon_are_not_protocol_errors(self) -> None:
         connection = HTTPConnection(*self.server.server_address)
         connection.request("GET", "/en/news/app")
