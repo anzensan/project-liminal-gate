@@ -24,7 +24,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post"}
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,7 @@ class ServerConfig:
     companion_sale: bool = False
     companion_strengthen: bool = False
     companion_evolution: bool = False
+    trading_post: bool = False
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
@@ -92,6 +93,7 @@ def load_server_config(path: Path) -> ServerConfig:
     companion_sale = document.get("companion_sale", False)
     companion_strengthen = document.get("companion_strengthen", False)
     companion_evolution = document.get("companion_evolution", False)
+    trading_post = document.get("trading_post", False)
     if not isinstance(host, str) or not host or "\x00" in host:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
@@ -116,7 +118,9 @@ def load_server_config(path: Path) -> ServerConfig:
         raise ServerConfigError("companion_strengthen must be a boolean")
     if type(companion_evolution) is not bool:
         raise ServerConfigError("companion_evolution must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, **paths)
+    if type(trading_post) is not bool:
+        raise ServerConfigError("trading_post must be a boolean")
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:

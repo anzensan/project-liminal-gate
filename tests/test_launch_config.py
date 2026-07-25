@@ -53,7 +53,8 @@ class LaunchConfigTest(unittest.TestCase):
             with patch.object(sys, "argv", ["bootstrap_server", *command]):
                 config = load_launch_config(parse_args())
         for name in ("core_story", "pacts", "hunting", "jobs", "rebirth", "status_items",
-                     "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution"):
+                     "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution",
+                     "trading_post"):
             with self.subTest(name):
                 self.assertTrue(getattr(config, name), f"{name} was not enabled by the guided flags")
 
@@ -67,6 +68,7 @@ class LaunchConfigTest(unittest.TestCase):
             ("--companion-sale", "--companion-catalog"),
             ("--companion-strengthen", "--companion-strengthen-catalog"),
             ("--companion-evolution", "--companion-evolution-catalog"),
+            ("--trading-post", "--exchange-catalog"),
             ("--pacts", "--pact-draw-catalog"),
             ("--core-story", "--story-progression-catalog"),
         )

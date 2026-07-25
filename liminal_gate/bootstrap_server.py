@@ -44,7 +44,7 @@ from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionD
 from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, load_achievement_catalog
 from liminal_gate.message_catalog import MessageCatalog, MessageCatalogError, load_message_catalog
-from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, load_exchange_catalog
+from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, build_bundled_exchange_policy, load_exchange_catalog
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
@@ -809,7 +809,7 @@ class BootstrapState:
             if account is None: return "unknown_account", None
             if catalog is None: return "unsupported_exchange", None
             remaining = account.setdefault("exchange_remaining", _initial_exchange_remaining(catalog))
-            offers = [{"ID": offer.offer_id, "targetItemID": offer.target_item_id, "targetBuddyID": 0, "coins": offer.coins, "targetCount": offer.target_count, "count": remaining.get(str(offer.offer_id), offer.initial_count), "weeklyItemCount": offer.weekly_item_count, "items": [[item_id, count] for item_id, count in sorted(offer.ingredients.items())]} for offer in catalog.offers.values()]
+            offers = [{"ID": offer.offer_id, "targetItemID": offer.target_item_id, "targetBuddyID": offer.target_buddy_id, "coins": offer.coins, "targetCount": offer.target_count, "count": remaining.get(str(offer.offer_id), offer.initial_count), "weeklyItemCount": offer.weekly_item_count, "items": [[item_id, count] for item_id, count in sorted(offer.ingredients.items())]} for offer in catalog.offers.values()]
             return "success", {"totalCount": account.setdefault("exchange_total", 0), "itemList": [{"weeklyItem": catalog.weekly_item, "endDate": catalog.end_date, "items": offers}] if offers else []}
 
     def exchange(self, token: str, request_id: str, body: bytes, catalog: ExchangeCatalog | None) -> tuple[str, dict[str, Any] | None]:
@@ -824,13 +824,27 @@ class BootstrapState:
             items=data.get("itemList"); remaining=account.setdefault("exchange_remaining",_initial_exchange_remaining(catalog))
             if offer is None or not isinstance(items,list) or len(items)!=catalog.item_slots: return "invalid_local_exchange",None
             amount=request[1]; stock=remaining.get(str(offer.offer_id),offer.initial_count)
+            raw_info=data.get("buddyInfo",{"list":[],"record":[]}); owned=raw_info.get("list") if isinstance(raw_info,dict) else None
+            minted=offer.target_buddy_id and offer.target_count*amount
             if amount>stock: payload={"success":False,"errorCode":6}
             elif any(type(items[i-1]) is not int or items[i-1]<n*amount for i,n in offer.ingredients.items()): payload={"success":False,"errorCode":3}
-            elif items[offer.target_item_id-1]+offer.target_count*amount>catalog.max_stack: payload={"success":False,"errorCode":4}
+            elif offer.target_buddy_id and not isinstance(owned,list): return "invalid_local_exchange",None
+            # A Companion offer fills the box rather than an item slot, so each
+            # target checks only the ceiling that actually applies to it.
+            elif minted and len(owned)+minted>catalog.max_owned: payload={"success":False,"errorCode":4}
+            elif offer.target_item_id and items[offer.target_item_id-1]+offer.target_count*amount>catalog.max_stack: payload={"success":False,"errorCode":4}
             else:
                 updated=list(items)
                 for item_id,count in offer.ingredients.items(): updated[item_id-1]-=count*amount
-                updated[offer.target_item_id-1]+=offer.target_count*amount
+                if offer.target_item_id: updated[offer.target_item_id-1]+=offer.target_count*amount
+                if minted:
+                    known={row["iid"] for row in owned if isinstance(row,dict) and type(row.get("iid")) is int}
+                    next_id=data.get("nextCompanionInventoryId",max(known,default=0)+1)
+                    if type(next_id) is not int or next_id<=max(known,default=0): return "invalid_local_exchange",None
+                    rows=copy.deepcopy(owned)
+                    for _ in range(minted):
+                        rows.append({"bid":offer.target_buddy_id,"lv":1,"date":0.0,"iid":next_id,"exp":0,"flag":0,"chrID":0}); next_id+=1
+                    data["buddyInfo"]=_companion_info(rows); data["nextCompanionInventoryId"]=next_id
                 remaining[str(offer.offer_id)]=stock-amount; account["exchange_total"]+=amount; data["itemList"]=updated
                 payload={"success":True,"buddyInfo":copy.deepcopy(data.get("buddyInfo",{"list":[],"record":[]})),"itemList":updated,"coins":int(data.get("coins",0)),"totalCount":account["exchange_total"],"remainCount":remaining[str(offer.offer_id)]}
             payload = _canonical_payload(payload)
@@ -3526,6 +3540,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-sale", action="store_true", help="enable the bundled local Companion sale values")
     parser.add_argument("--companion-strengthen", action="store_true", help="enable the bundled local Companion strengthen progression")
     parser.add_argument("--companion-evolution", action="store_true", help="enable the bundled local Companion evolution recipes")
+    parser.add_argument("--trading-post", action="store_true", help="enable the bundled local Trading Post offers")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
@@ -3537,7 +3552,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3570,6 +3585,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         companion_sale=getattr(args, 'companion_sale', False),
         companion_strengthen=getattr(args, 'companion_strengthen', False),
         companion_evolution=getattr(args, 'companion_evolution', False),
+        trading_post=getattr(args, 'trading_post', False),
         achievement_catalog=args.achievement_catalog,
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
@@ -3625,7 +3641,9 @@ def main() -> int:
         hunts = build_bundled_hunting_policy() if args.hunting else (None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog))
         achievements = None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog)
         messages = None if args.message_catalog is None else load_message_catalog(args.message_catalog)
-        exchanges = None if args.exchange_catalog is None else load_exchange_catalog(args.exchange_catalog)
+        if args.trading_post and args.exchange_catalog is not None:
+            raise ProfileError("--trading-post cannot be combined with --exchange-catalog")
+        exchanges = build_bundled_exchange_policy() if args.trading_post else (None if args.exchange_catalog is None else load_exchange_catalog(args.exchange_catalog))
         server = BootstrapServer(
             (args.host, args.port),
             load_profile(args.profile),

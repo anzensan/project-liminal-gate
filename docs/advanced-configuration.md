@@ -106,11 +106,12 @@ local installation.
 | `--companion-sale` | base Coin values for all 497 Companion masters |
 | `--companion-strengthen` | progression values for all 497 masters, plus the same-Companion and ByeBye multipliers |
 | `--companion-evolution` | all 153 evolution recipes, including the two duplicate-consuming Metal Minions |
+| `--trading-post` | 99 permanent-rotation offers, 78 awarding a Companion |
 | `--hunting` | Pudding/Tin/Coin Creeps/Puppet stages, costs, and result ceilings |
 | `--core-story` | the ordered Chapter 2--42 identities |
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
 
-Three of them make an explicit **local policy** choice rather than a claim about
+Four of them make an explicit **local policy** choice rather than a claim about
 the retired service, and say so in their own code: Companion draw selects
 uniformly across its recovered pool instead of asserting the historical
 per-rarity base rates, exactly as `--pacts` does; Companion strengthen's
@@ -118,13 +119,19 @@ random EXP-bonus weights keep the three documented outcomes reachable without
 asserting odds the client never contained; and Hunting's availability
 thresholds and Puppet Show item aggregate are preservation policy.
 
-### Why there is no built-in Trading Post
+### The Trading Post is the one that is not from the client
 
-The Trading Post is a server-fed system: its offers, prices, stock, and end
-dates were sent by the retired service and are not embedded in the client, so
-there is nothing recovered to bundle. `--exchange-catalog` therefore stays
-operator-supplied, and its contents are your policy rather than a
-reconstruction of any historical rotation.
+Every other built-in policy is recovered from the APK. The Trading Post cannot
+be: it was server-fed, so its offers exist nowhere in the client. `--trading-post`
+carries the community wiki's permanent-rotation table instead, and every target
+and cost name in it resolved cleanly against the client's own master data, which
+is why the mapping is trustworthy even though the offers are not.
+
+Two limits follow. It is a **snapshot** of a rotation the wiki describes as
+restocking every Friday at 00:00 UTC, so stock is the rotation's own per-offer
+limit and there is no schedule. And a traded Companion's level is established by
+neither the client contract nor the wiki, so these mint at level 1, matching the
+Companion draw. Use `--exchange-catalog` instead to declare your own offers.
 
 ## Local event stages and character grants
 

@@ -18,7 +18,7 @@ class GuidedServerPolicyTest(unittest.TestCase):
     def test_recommended_mode_enables_every_bundled_policy(self) -> None:
         arguments = self.arguments()
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth", "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution"):
+                     "--companion-strengthen", "--companion-evolution", "--trading-post"):
             self.assertIn(flag, arguments)
 
     def choose(self):
@@ -31,14 +31,14 @@ class GuidedServerPolicyTest(unittest.TestCase):
         # job, not a setup question.
         options = self.choose()
         self.assertEqual(
-            (True,) * 10,
+            (True,) * 11,
             (options.core_story, options.pacts, options.hunting, options.jobs,
              options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
-             options.companion_strengthen, options.companion_evolution),
+             options.companion_strengthen, options.companion_evolution, options.trading_post),
         )
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth",
                      "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution"):
+                     "--companion-strengthen", "--companion-evolution", "--trading-post"):
             self.assertIn(flag, self.arguments())
 
 

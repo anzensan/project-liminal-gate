@@ -47,6 +47,7 @@ class LocalServerOptions:
     companion_sale: bool = True
     companion_strengthen: bool = True
     companion_evolution: bool = True
+    trading_post: bool = True
     event_catalog: Path | None = None
     dummy_dll_dir: Path | None = None
 
@@ -331,6 +332,7 @@ def server_arguments(
     resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
     core_story: bool = True, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True, companion_sale: bool = True,
     companion_strengthen: bool = True, companion_evolution: bool = True,
+    trading_post: bool = True,
 ) -> list[str]:
     arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
@@ -362,6 +364,8 @@ def server_arguments(
         arguments.append("--companion-strengthen")
     if companion_evolution:
         arguments.append("--companion-evolution")
+    if trading_post:
+        arguments.append("--trading-post")
     if event_catalog is not None:
         arguments.extend((
             "--event-catalog", str(event_catalog.resolve()),
@@ -481,7 +485,7 @@ def main() -> int:
         run_server(server_arguments(
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
             options.core_story, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
-            options.companion_strengthen, options.companion_evolution,
+            options.companion_strengthen, options.companion_evolution, options.trading_post,
         ))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error

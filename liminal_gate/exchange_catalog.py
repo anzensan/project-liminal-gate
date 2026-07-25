@@ -5,15 +5,21 @@ import json
 from pathlib import Path
 import tomllib
 
+from liminal_gate.trading_post_data import TRADING_POST_ROWS
+
 class ExchangeCatalogError(ValueError): pass
 
 @dataclass(frozen=True)
 class ExchangeOffer:
     offer_id: int; target_item_id: int; coins: int; target_count: int; initial_count: int; weekly_item_count: int; ingredients: dict[int, int]
+    # Exactly one target is set; the client reads whichever ID is nonzero.
+    target_buddy_id: int = 0
 
 @dataclass(frozen=True)
 class ExchangeCatalog:
     item_slots: int; max_stack: int; max_coins: int; weekly_item: int; end_date: str; offers: dict[int, ExchangeOffer]
+    # Companion box ceiling, needed only by offers that award a Companion.
+    max_owned: int = 1000
 
 def load_exchange_catalog(path: Path) -> ExchangeCatalog:
     try: d = tomllib.loads(path.read_text()) if path.suffix.lower()=='.toml' else json.loads(path.read_text())
@@ -27,8 +33,34 @@ def load_exchange_catalog(path: Path) -> ExchangeCatalog:
 
 def _offer(v: object, slots:int)->ExchangeOffer:
     keys={'offer_id','target_item_id','coins','target_count','initial_count','weekly_item_count','ingredients'}
-    if not isinstance(v,dict) or set(v)!=keys or any(type(v[k]) is not int for k in keys-{'ingredients'}): raise ExchangeCatalogError('offer has an invalid schema')
-    if not 1<=v['offer_id'] or not 1<=v['target_item_id']<=slots or v['coins']<0 or v['target_count']<1 or v['initial_count']<1 or v['weekly_item_count']<0 or not isinstance(v['ingredients'],dict): raise ExchangeCatalogError('offer values are outside range')
+    optional={'target_buddy_id'}
+    if not isinstance(v,dict) or not keys<=set(v) or set(v)-keys-optional or any(type(v[k]) is not int for k in keys-{'ingredients'}): raise ExchangeCatalogError('offer has an invalid schema')
+    buddy=v.get('target_buddy_id',0)
+    if type(buddy) is not int or buddy<0: raise ExchangeCatalogError('target_buddy_id must be a nonnegative integer')
+    # An offer awards an item or a Companion, never both and never neither.
+    if bool(v['target_item_id'])==bool(buddy): raise ExchangeCatalogError('each offer must award exactly one of target_item_id or target_buddy_id')
+    if not 1<=v['offer_id'] or v['target_item_id'] and not 1<=v['target_item_id']<=slots or v['coins']<0 or v['target_count']<1 or v['initial_count']<1 or v['weekly_item_count']<0 or not isinstance(v['ingredients'],dict): raise ExchangeCatalogError('offer values are outside range')
     ingredients={int(k):n for k,n in v['ingredients'].items() if isinstance(k,str) and k.isdecimal() and 1<=int(k)<=slots and type(n) is int and n>0}
     if len(ingredients)!=len(v['ingredients']): raise ExchangeCatalogError('ingredients require positive in-range decimal IDs')
-    return ExchangeOffer(v['offer_id'],v['target_item_id'],v['coins'],v['target_count'],v['initial_count'],v['weekly_item_count'],ingredients)
+    return ExchangeOffer(v['offer_id'],v['target_item_id'],v['coins'],v['target_count'],v['initial_count'],v['weekly_item_count'],ingredients,buddy)
+
+
+BUNDLED_ITEM_SLOTS = 181
+BUNDLED_MAX_STACK = 999
+BUNDLED_MAX_COINS = 99999999
+BUNDLED_MAX_OWNED = 1000
+
+
+def build_bundled_exchange_policy() -> ExchangeCatalog:
+    """Return the guided-path local Trading Post policy.
+
+    A snapshot of the permanent rotation, not a schedule: the original restocked
+    weekly and no calendar was recovered, so `weekly_item` and `end_date` are
+    left empty and stock is simply the rotation's own per-offer limit.
+    """
+    offers = {
+        offer_id: ExchangeOffer(offer_id, target_item, 0, target_count, stock, 0,
+                                {cost_item: cost_count}, target_buddy)
+        for offer_id, target_item, target_buddy, target_count, stock, cost_item, cost_count in TRADING_POST_ROWS
+    }
+    return ExchangeCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, BUNDLED_MAX_COINS, 0, "", offers, BUNDLED_MAX_OWNED)
