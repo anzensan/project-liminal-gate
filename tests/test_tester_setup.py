@@ -9,6 +9,38 @@ from unittest.mock import patch
 from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, find_build_tools, install_apk, prepare_local_tester, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
+class GuidedServerPolicyTest(unittest.TestCase):
+    """The guided path must actually be able to reach each bundled policy."""
+
+    def arguments(self, **options) -> list[str]:
+        return server_arguments(Path("resources"), Path("data"), 8696, **options)
+
+    def test_recommended_mode_enables_every_bundled_policy(self) -> None:
+        arguments = self.arguments()
+        for flag in ("--core-story", "--pacts", "--hunting"):
+            self.assertIn(flag, arguments)
+
+    def choose(self, mode: str):
+        """Answer the mode prompt, then decline the event-catalog question."""
+        answers = iter((mode, "n"))
+        return choose_local_server_options(None, None, ask=lambda _: next(answers))
+
+    def test_hunting_follows_the_story_choice(self) -> None:
+        # Its stages only unlock through story progress, so offering it without
+        # the story would present a menu nothing can reach.
+        pacts_only = self.choose("3")
+        self.assertEqual((False, True, False), (pacts_only.core_story, pacts_only.pacts, pacts_only.hunting))
+        self.assertNotIn("--hunting", self.arguments(core_story=False, pacts=True, hunting=False))
+        story_only = self.choose("2")
+        self.assertEqual((True, False, True), (story_only.core_story, story_only.pacts, story_only.hunting))
+
+    def test_minimal_mode_enables_none_of_them(self) -> None:
+        options = self.choose("4")
+        arguments = self.arguments(core_story=options.core_story, pacts=options.pacts, hunting=options.hunting)
+        for flag in ("--core-story", "--pacts", "--hunting"):
+            self.assertNotIn(flag, arguments)
+
+
 class TesterSetupTest(unittest.TestCase):
 
     def test_optional_dummy_dll_directory_derives_local_character_catalog(self) -> None:

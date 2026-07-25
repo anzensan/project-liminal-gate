@@ -39,6 +39,7 @@ class LocalServerOptions:
 
     core_story: bool = True
     pacts: bool = True
+    hunting: bool = True
     event_catalog: Path | None = None
     dummy_dll_dir: Path | None = None
 
@@ -321,7 +322,7 @@ def prepare_local_tester(
 
 def server_arguments(
     resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
-    core_story: bool = True, pacts: bool = True,
+    core_story: bool = True, pacts: bool = True, hunting: bool = True,
 ) -> list[str]:
     arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
@@ -337,6 +338,8 @@ def server_arguments(
         arguments.append("--core-story")
     if pacts:
         arguments.append("--pacts")
+    if hunting:
+        arguments.append("--hunting")
     if event_catalog is not None:
         arguments.extend((
             "--event-catalog", str(event_catalog.resolve()),
@@ -359,10 +362,15 @@ def _ask_yes_no(prompt: str, default: bool, ask: Callable[[str], str] = input) -
 
 
 def _ask_play_mode(ask: Callable[[str], str]) -> tuple[bool, bool]:
-    """Choose a player-facing setup mode instead of exposing server flags."""
+    """Choose a player-facing setup mode instead of exposing server flags.
+
+    Hunting follows the story choice rather than adding a fifth mode: its
+    stages only become available through story progress, so enabling it
+    without the story would present a menu nothing can reach.
+    """
     print("\nWhat would you like to test?")
-    print("  1. Recommended — play the story and use normal Pacts")
-    print("  2. Story only — play normal chapters, without Pacts")
+    print("  1. Recommended — play the story, Hunting zones, and normal Pacts")
+    print("  2. Story only — play normal chapters and Hunting, without Pacts")
     print("  3. Pacts only — test the Tavern Pacts, without later story chapters")
     print("  4. Minimal — login and the tutorial only (for troubleshooting)")
     while True:
@@ -389,7 +397,7 @@ def choose_local_server_options(
         "Do you already have an advanced local event catalog and DummyDll files", event_catalog is not None, ask,
     )
     if not enable_events:
-        return LocalServerOptions(core_story, pacts)
+        return LocalServerOptions(core_story, pacts, core_story)
     if event_catalog is None:
         raw = ask("Path to your local event catalog JSON: ").strip()
         if not raw:
@@ -400,7 +408,7 @@ def choose_local_server_options(
         if not raw:
             raise TesterSetupError("a DummyDll directory is required when local events are enabled")
         dummy_dll_dir = Path(raw)
-    return LocalServerOptions(core_story, pacts, event_catalog, dummy_dll_dir)
+    return LocalServerOptions(core_story, pacts, core_story, event_catalog, dummy_dll_dir)
 
 
 def run_server(arguments: Sequence[str]) -> None:
@@ -467,7 +475,7 @@ def main() -> int:
         print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
-            options.core_story, options.pacts,
+            options.core_story, options.pacts, options.hunting,
         ))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error
