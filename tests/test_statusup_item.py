@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.statusup_catalog import load_statusup_catalog
+from liminal_gate.statusup_catalog import build_bundled_statusup_policy, load_statusup_catalog
 
 
 class StatusupItemTest(unittest.TestCase):
@@ -103,3 +103,40 @@ class StatusupItemTest(unittest.TestCase):
                 self.assertEqual((200, False, 3), (status, unavailable["success"], unavailable["errorCode"]))
             finally:
                 restarted.shutdown(); restarted_thread.join(); restarted.server_close()
+
+
+class BundledStatusupPolicyRuntimeTest(unittest.TestCase):
+    def test_bundled_effects_are_applied_through_the_real_route(self) -> None:
+        """The bundled table must settle a real use, not merely load."""
+        with tempfile.TemporaryDirectory() as directory:
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            state = BootstrapState(Path(directory) / "state.json")
+            items = [0] * 181
+            items[175 - 1] = 4  # item 175 grants three levels per use
+            state.create_account("token", "account", {
+                "coins": 0, "itemList": items,
+                "chrdata": [{
+                    "id": 3, "jobID": 0, "jobSlots": [], "skillBoost": 0, "luck": 0,
+                    "jobLevels": [(1234 << 12) | 10, (5 << 12) | 4, 0.0],
+                }],
+            })
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, statusup_catalog=build_bundled_statusup_policy())
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/use_statusup_item?otk=token&requestID=bundled",
+                                   body="targetChrID=3&useItemID=175&useAmount=2")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertEqual({"0": 6, "1": 6}, payload["resultValues"]["addedLevels"])
+            row = next(item for item in payload["chrdata"] if item["id"] == 3)
+            # Both unlocked jobs gain 2 x 3 levels; the packed experience high
+            # bits survive, and the locked third job is untouched.
+            self.assertEqual([(1234, 16), (5, 10), (0, 0)],
+                             [(int(v) >> 12, int(v) & 0xFFF) for v in row["jobLevels"]])
+            self.assertEqual(2, payload["itemList"][175 - 1])

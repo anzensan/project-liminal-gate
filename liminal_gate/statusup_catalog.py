@@ -11,6 +11,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.statusup_character_data import STATUSUP_CHARACTER_ROWS
+
 
 class StatusupCatalogError(ValueError):
     """A user-local status-up catalog is invalid."""
@@ -98,3 +100,40 @@ def _characters(value: object) -> dict[int, StatusupCharacter]:
     if ids != sorted(ids) or len(ids) != len(set(ids)):
         raise StatusupCatalogError("characters must be ordered and unique by character_id")
     return {character.character_id: character for character in parsed}
+
+
+# The client's own inventory shape and caps: Skill Boost stops at 100.0 percent
+# in tenths, job levels at 90.
+BUNDLED_ITEM_SLOTS = 181
+BUNDLED_LEVEL_CAP = 90
+BUNDLED_SKILL_BOOST_CAP = 1000
+# The final client's `statusUpItems` rows: level, displayed Skill Boost,
+# displayed Luck, and the species a Machine-only item is gated on.  Displayed
+# points are stored in tenths, which the server applies.
+_BUNDLED_ITEMS: tuple[tuple[int, int, int, int, int | None], ...] = (
+    (161, 1, 0, 0, None),
+    (162, 0, 1, 0, None),
+    (163, 0, 0, 1, None),
+    (168, 0, 1, 0, 8),
+    (175, 3, 0, 0, None),
+    (176, 0, 3, 0, None),
+    (177, 0, 0, 3, None),
+)
+
+
+def build_bundled_statusup_policy() -> StatusupCatalog:
+    """Return the guided-path local status-up item policy.
+
+    Item effects, the species gate, the level and Skill Boost caps, and the
+    per-character Luck ceilings are recovered from the final client and are
+    Confirmed.  Nothing here concerns how an item is obtained.
+    """
+    items = {
+        item_id: StatusupItem(item_id, level, skill_boost, luck, species)
+        for item_id, level, skill_boost, luck, species in _BUNDLED_ITEMS
+    }
+    characters = {
+        character_id: StatusupCharacter(character_id, species, luck_cap)
+        for character_id, species, luck_cap in STATUSUP_CHARACTER_ROWS
+    }
+    return StatusupCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_LEVEL_CAP, BUNDLED_SKILL_BOOST_CAP, items, characters)

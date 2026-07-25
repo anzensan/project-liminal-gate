@@ -49,7 +49,7 @@ from liminal_gate.server_config import ServerConfig, ServerConfigError, load_ser
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
 from liminal_gate.settlement_catalog import SettlementCatalog, SettlementCatalogError, load_settlement_catalog
-from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError, load_statusup_catalog
+from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError, build_bundled_statusup_policy, load_statusup_catalog
 from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StoryStage, load_story_catalog
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
@@ -3495,6 +3495,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
     parser.add_argument("--rebirth", action="store_true", help="enable the bundled local Rebirth recipe policy")
+    parser.add_argument("--status-items", action="store_true", help="enable the bundled local status-up item policy")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
@@ -3506,7 +3507,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3534,6 +3535,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         hunting_catalog=args.hunting_catalog, hunting=getattr(args, 'hunting', False),
         jobs=getattr(args, 'jobs', False),
         rebirth=getattr(args, 'rebirth', False),
+        status_items=getattr(args, 'status_items', False),
         achievement_catalog=args.achievement_catalog,
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
@@ -3556,7 +3558,9 @@ def main() -> int:
         settlements = None if args.settlement_catalog is None else load_settlement_catalog(args.settlement_catalog)
         story_outcomes = None if args.story_outcome_catalog is None else load_story_outcome_catalog(args.story_outcome_catalog)
         clear_states = None if args.clear_state_catalog is None else load_clear_state_catalog(args.clear_state_catalog)
-        statusup = None if args.statusup_catalog is None else load_statusup_catalog(args.statusup_catalog)
+        if args.status_items and args.statusup_catalog is not None:
+            raise ProfileError("--status-items cannot be combined with --statusup-catalog")
+        statusup = build_bundled_statusup_policy() if args.status_items else (None if args.statusup_catalog is None else load_statusup_catalog(args.statusup_catalog))
         if args.jobs and args.job_catalog is not None:
             raise ProfileError("--jobs cannot be combined with --job-catalog")
         jobs = build_bundled_job_policy() if args.jobs else (None if args.job_catalog is None else load_job_catalog(args.job_catalog))

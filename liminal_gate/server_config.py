@@ -24,7 +24,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items"}
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,7 @@ class ServerConfig:
     hunting: bool = False
     jobs: bool = False
     rebirth: bool = False
+    status_items: bool = False
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
@@ -82,6 +83,7 @@ def load_server_config(path: Path) -> ServerConfig:
     hunting = document.get("hunting", False)
     jobs = document.get("jobs", False)
     rebirth = document.get("rebirth", False)
+    status_items = document.get("status_items", False)
     if not isinstance(host, str) or not host or "\x00" in host:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
@@ -96,7 +98,9 @@ def load_server_config(path: Path) -> ServerConfig:
         raise ServerConfigError("jobs must be a boolean")
     if type(rebirth) is not bool:
         raise ServerConfigError("rebirth must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, **paths)
+    if type(status_items) is not bool:
+        raise ServerConfigError("status_items must be a boolean")
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:
