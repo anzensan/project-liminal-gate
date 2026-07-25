@@ -88,3 +88,54 @@ class PactDrawTest(unittest.TestCase):
             assert persisted is not None
             self.assertEqual(17, persisted["freeEnergy"])
             self.assertEqual(17, persisted["valuables"]["freeEnergy"])
+
+    def test_http_truth_pact_accepts_an_affordable_remainder_batch(self) -> None:
+        """The ten-pull control can submit 1..10, not only its button labels."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.json"
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+
+            def start() -> tuple[BootstrapServer, threading.Thread]:
+                server = BootstrapServer(
+                    ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                    pact_draw_catalog=build_bundled_pact_policy(),
+                )
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                return server, thread
+
+            def draw(server: BootstrapServer, request_id: str) -> tuple[int, dict[str, object]]:
+                connection = HTTPConnection(*server.server_address)
+                connection.request(
+                    "POST", f"/gd/do_slot?otk=token&requestID={request_id}",
+                    body="kind=1&count=6&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                return response.status, payload
+
+            server, thread = start()
+            try:
+                server.state.create_account(
+                    "token", "account",
+                    {"coins": 0, "energy": 0, "freeEnergy": 20, "chrdata": []},
+                )
+                status, first = draw(server, "truth-six")
+                self.assertEqual((200, True, 2, 6), (
+                    status, first["success"], first["freeEnergy"], len(first["chrdata"]),
+                ))
+                self.assertEqual((status, first), draw(server, "truth-six"))
+            finally:
+                server.shutdown()
+                thread.join()
+                server.server_close()
+
+            restarted, restarted_thread = start()
+            try:
+                self.assertEqual((200, first), draw(restarted, "truth-six"))
+            finally:
+                restarted.shutdown()
+                restarted_thread.join()
+                restarted.server_close()

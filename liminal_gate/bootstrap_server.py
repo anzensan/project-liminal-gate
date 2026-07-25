@@ -2935,7 +2935,11 @@ def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int] | None:
     if values["kind"] not in {"0", "1"} or values["luckType"] != "false" or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or not values["lastUpdate"].isdecimal():
         return None
     kind, count = int(values["kind"]), int(values["count"])
-    if count not in ({1, 10} if kind == 0 else {1, 5, 10}):
+    # The client emits an affordable remainder when its ten-pull control has
+    # less than a full batch available (for example, count=6 with 20 Energy).
+    # Button labels are not the wire contract; retain the strict envelope but
+    # accept every client-visible batch from one through ten.
+    if not 1 <= count <= 10:
         return None
     return kind, count
 
