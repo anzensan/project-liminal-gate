@@ -703,6 +703,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         self.assertFalse(chapter2_1_clear["sentMessage"])
+        self.assertEqual(50, chapter2_1_clear["freeEnergy"])
+        self.assertEqual(210, chapter2_1_clear["coins"])
+        with self.server.state.lock:
+            self.assertEqual(50, self.server.state.accounts[account_id]["userdata"]["valuables"]["freeEnergy"])
         self.restart()
         status, chapter2_1_clear_replay = self.post(
             f"/gd/clear_quest?otk={login_token}&digest2=retry-value&requestID=chapter2-1-clear", chapter2_1_clear_body

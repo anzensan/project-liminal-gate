@@ -370,15 +370,7 @@ class BootstrapState:
             # local mutations update the flat wallet fields.  Rebuild the
             # nested projection on every read so a Pact/quest mutation cannot
             # reappear as an old wallet after a restart.
-            if type(userdata.get("coins")) is int:
-                currency_fields = (
-                    "energyAppStore", "energy", "energyAndApp", "freeEnergy",
-                    "energyGooglePlay", "coins",
-                )
-                values = {name: userdata.get(name, 0) for name in currency_fields}
-                if all(type(value) is int and value >= 0 for value in values.values()) and userdata.get("valuables") != values:
-                    userdata["valuables"] = values
-                    changed = True
+            changed = _synchronize_wallet_projection(userdata) or changed
             # The client reads ChrData.jobLevels with LitJson's double accessor.
             # Locally persisted values can otherwise be integers after a manual
             # test seed or a permissive local write, which makes the client fail
@@ -869,8 +861,16 @@ class BootstrapState:
                 userdata.update(copy.deepcopy(transition["userdata_update"]))
             if kind in {"clear", "structural"}:
                 userdata.update(copy.deepcopy(transition["userdata_update"]))
+                _synchronize_wallet_projection(userdata)
             if kind == "clear" and "chrdata" in payload:
                 userdata["chrdata"] = copy.deepcopy(payload["chrdata"])
+            if kind == "clear" and transition["next_phase"] == "free_roam":
+                # The client consumes these guarded fields from the clear
+                # callback before its next userdata read.  Returning the
+                # durable wallet avoids showing a zero starter balance until
+                # the app is restarted.
+                payload.setdefault("freeEnergy", int(userdata.get("freeEnergy", 0)))
+                payload.setdefault("coins", int(userdata.get("coins", 0)))
             account["tutorial_phase"] = transition["next_phase"]
             requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -1469,6 +1469,7 @@ class BootstrapState:
                 "lastupdate": 1.0,
                 "sentMessage": False,
                 "coins": expected_coins,
+                "freeEnergy": int(userdata.get("freeEnergy", 0)),
                 "chrdata": copy.deepcopy(userdata["chrdata"]),
                 "itemList": copy.deepcopy(userdata["itemList"]),
             }
@@ -2628,6 +2629,21 @@ def _ordered_refill_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def _canonical_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Stabilize nested signed callback order through sorted JSON persistence."""
     return json.loads(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+
+
+def _synchronize_wallet_projection(userdata: dict[str, Any]) -> bool:
+    """Keep the client-consumed nested wallet equal to durable flat values."""
+    if type(userdata.get("coins")) is not int:
+        return False
+    fields = (
+        "energyAppStore", "energy", "energyAndApp", "freeEnergy",
+        "energyGooglePlay", "coins",
+    )
+    values = {name: userdata.get(name, 0) for name in fields}
+    if not all(type(value) is int and value >= 0 for value in values.values()) or userdata.get("valuables") == values:
+        return False
+    userdata["valuables"] = values
+    return True
 
 
 def _achievement_flags(claimed: list[int]) -> list[int]:
