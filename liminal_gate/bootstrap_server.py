@@ -538,6 +538,20 @@ class BootstrapState:
             account = self.accounts.get(self.tokens.get(token))
             return account is not None and account.get("tutorial_phase") == "free_roam"
 
+    def allows_ordinary_userdata_write(self, token: str) -> bool:
+        """Whether an ordinary roster save can be the account's active exit.
+
+        Give Up uses the same minimal ``chrdata`` save as an ordinary character
+        screen. During an active local battle that save is the observed abandon
+        signal; Cancel itself has no server request. Tutorial structural writes
+        remain outside this set so their phase-bound conveyor keeps owning them.
+        """
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            return account is not None and account.get("tutorial_phase") in {
+                "free_roam", "generic_story_active", "hunting_active",
+            }
+
     def userdata_for(self, token: str) -> dict[str, Any] | None:
         with self.lock:
             account_id = self.tokens.get(token)
@@ -1470,7 +1484,10 @@ class BootstrapState:
             if account is None:
                 return "unknown_account", None
             phase = account.get("tutorial_phase")
-            abandoning_active_story = phase in {"generic_story_active", "hunting_active"} and party is not None
+            abandoning_active_story = (
+                phase in {"generic_story_active", "hunting_active"}
+                and (characters is not None or party is not None)
+            )
             if phase != "free_roam" and not abandoning_active_story:
                 return "tutorial_state_conflict", None
             requests = account.setdefault("tutorial_requests", {})
@@ -1520,9 +1537,9 @@ class BootstrapState:
             if party is not None:
                 userdata.update(copy.deepcopy(party))
             if abandoning_active_story:
-                # After the client declines its interrupted-battle resume
-                # prompt, it immediately sends its normal party-save form.
-                # Treat that exact durable write as an explicit local abandon,
+                # Give Up and a declined interrupted-battle resume both send
+                # normal userdata saves (the former may contain only chrdata).
+                # Treat either durable write as an explicit local abandon,
                 # rather than leaving the account trapped in the active stage.
                 account["tutorial_phase"] = "free_roam"
                 account["active_generic_story"] = None
@@ -2330,9 +2347,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         elif target.path == profile.routes.get("userdata"):
             transitions, kind = profile.tutorial_writes, "write"
             free_roam = self.server.state.allows_story_progression(token)
+            ordinary_userdata_write = self.server.state.allows_ordinary_userdata_write(token)
             party_write = _parse_free_roam_party_userdata_write(body)
             party_layout_write = _parse_free_roam_party_layout_userdata_write(body) if party_write is None else None
-            character_write = _parse_free_roam_character_userdata_write(body) if free_roam and party_write is None else None
+            character_write = _parse_free_roam_character_userdata_write(body) if ordinary_userdata_write and party_write is None else None
             # Companion flags are an independent persisted delta.  Unlike a
             # roster/party layout it has no free-roam-only shape, and the
             # client can submit it before that milestone.
@@ -2357,7 +2375,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # store `teamMembers`; letting a profile transition run as well
             # would answer a *rejected* save with a scripted `success` and
             # silently discard the player's party.
-            if profile.structural_writes and not free_roam:
+            if profile.structural_writes and not ordinary_userdata_write:
                 try:
                     candidate_fields = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
                 except (UnicodeDecodeError, ValueError):

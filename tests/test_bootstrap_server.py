@@ -1039,6 +1039,47 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual([3, 0, 0, 0, 0, 0], userdata["teamMembers"])
         self.assertEqual(2, userdata["teamNo"])
 
+    def test_give_up_character_save_abandons_active_story_without_changing_coins(self) -> None:
+        """The observed post-Give-Up chrdata write must release Chapter 2-2."""
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        characters = [{"id": 3, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": False}]
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            account["userdata"].update({
+                "progressCode": 16777346,
+                "coins": 487,
+                "valuables": {"coins": 487},
+                "chrdata": copy.deepcopy(characters),
+            })
+            self.server.state._persist_locked()
+        self.server.story_progression_catalog = build_core_story_policy()
+
+        start = urlencode([
+            ("stamina", "5"), ("coins", "0"), ("chapter", "2"),
+            ("section", "2"), ("lastUpdate", "1"),
+        ])
+        status, _ = self.post(f"/gd/start_quest?otk={token}&requestID=chapter-2-2", start)
+        self.assertEqual(200, status)
+        self.assertEqual("generic_story_active", self.server.state.accounts[account_id]["tutorial_phase"])
+
+        give_up = urlencode({"chrdata": json.dumps(characters), "lastUpdate": "1"})
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=give-up", give_up)
+        self.assertEqual((200, True), (status, payload["success"]))
+        self.assertEqual((status, payload), self.post(f"/gd/userdata?otk={token}&requestID=give-up", give_up))
+        account = self.server.state.accounts[account_id]
+        self.assertEqual(("free_roam", None, 487), (
+            account["tutorial_phase"], account["active_generic_story"], account["userdata"]["coins"],
+        ))
+
+        self.restart()
+        status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-give-up")
+        self.assertEqual(200, status)
+        self.assertEqual(487, userdata["coins"])
+
     def test_free_roam_party_delta_never_discards_roster_on_rejection(self) -> None:
         account_id = "0123456789ABCDEF0123456789ABCDEF"
         token = "0123456789ABCDEF"
