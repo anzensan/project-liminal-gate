@@ -10,8 +10,11 @@ This is recovered structure and observed cost, the same category as the pooled
 character IDs and Pact costs in :mod:`liminal_gate.pact_draw_catalog`.  It
 states nothing about drop rates, rotations, or availability schedules.
 
-Regenerate against your own copy with ``liminal-gate-import-character-catalog``
-type trees; see ``docs/advanced-configuration.md``.
+These values come from the same ``ChrDatabase`` object that
+``liminal-gate-import-character-catalog`` reads, but from its ``data`` rows
+rather than its ``infos`` rows, so that importer does not regenerate them: it
+projects character identity and job IDs only.  No public command reproduces
+this table today.
 """
 
 from __future__ import annotations
