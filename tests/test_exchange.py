@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import tempfile
 import threading
+import time
 import unittest
 from http.client import HTTPConnection
 from pathlib import Path
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.exchange_catalog import build_bundled_exchange_policy, load_exchange_catalog
+from liminal_gate.exchange_catalog import active_week_index, build_bundled_exchange_policy, load_exchange_catalog
 
 
 class ExchangeTest(unittest.TestCase):
@@ -36,11 +37,12 @@ class ExchangeTest(unittest.TestCase):
 
 
 class BundledTradingPostTest(unittest.TestCase):
-    """The bundled rotation must browse and settle both kinds of offer."""
+    """The bundled rotation must browse, settle, and turn over weekly."""
 
     def setUp(self) -> None:
         self.catalog = build_bundled_exchange_policy()
         self.profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        self.open_offers = self.catalog.offers_open_at(active_week_index(time.time(), self.catalog.week_count()))
 
     def trade(self, offer, amount: int = 1):
         with tempfile.TemporaryDirectory() as directory:
@@ -69,35 +71,57 @@ class BundledTradingPostTest(unittest.TestCase):
                 server.shutdown(); thread.join(); server.server_close()
             return payload, browse
 
-    def test_every_offer_awards_exactly_one_kind_of_reward(self) -> None:
-        self.assertEqual(99, len(self.catalog.offers))
+    def test_the_rotation_is_eight_weeks_of_single_reward_offers(self) -> None:
+        self.assertEqual(126, len(self.catalog.offers))
+        self.assertEqual(8, self.catalog.week_count())
         for offer_id, offer in self.catalog.offers.items():
             with self.subTest(offer_id=offer_id):
                 self.assertNotEqual(bool(offer.target_item_id), bool(offer.target_buddy_id))
                 self.assertTrue(offer.ingredients)
-        self.assertEqual(78, sum(1 for o in self.catalog.offers.values() if o.target_buddy_id))
-        self.assertEqual(21, sum(1 for o in self.catalog.offers.values() if o.target_item_id))
+        self.assertEqual(92, sum(1 for o in self.catalog.offers.values() if o.target_buddy_id))
+        self.assertEqual(34, sum(1 for o in self.catalog.offers.values() if o.target_item_id))
+
+    def test_each_week_opens_its_own_offers_and_the_cycle_repeats(self) -> None:
+        weeks = [frozenset(self.catalog.offers_open_at(index)) for index in range(8)]
+        self.assertEqual(8, len(set(weeks)), "each week must open a distinct set")
+        self.assertEqual(set(self.catalog.offers), set().union(*weeks))
+        # Week 8 is week 0 again: the rotation cycles rather than ending.
+        self.assertEqual(weeks[0], frozenset(self.catalog.offers_open_at(8)))
+        # It turns over weekly, on the same weekday each time.
+        friday = 86400  # 1970-01-02 00:00 UTC, the epoch's first Friday
+        self.assertEqual(0, active_week_index(friday, 8))
+        self.assertEqual(0, active_week_index(friday + 604799, 8))
+        self.assertEqual(1, active_week_index(friday + 604800, 8))
+        self.assertEqual(0, active_week_index(friday + 604800 * 8, 8))
 
     def test_a_companion_offer_mints_into_the_box(self) -> None:
-        offer = next(o for o in self.catalog.offers.values() if o.target_buddy_id)
+        offer = next(o for o in self.open_offers.values() if o.target_buddy_id)
         payload, browse = self.trade(offer)
         self.assertTrue(payload["success"], payload)
         owned = payload["buddyInfo"]["list"]
         self.assertEqual([(offer.target_buddy_id, 1)], [(row["bid"], row["lv"]) for row in owned])
         self.assertEqual(20000 - offer.ingredients[181], payload["itemList"][181 - 1])
-        # The browse render must carry the Companion target, not a zero.
         rendered = next(row for row in browse["itemList"][0]["items"] if row["ID"] == offer.offer_id)
         self.assertEqual((0, offer.target_buddy_id), (rendered["targetItemID"], rendered["targetBuddyID"]))
 
     def test_an_item_offer_still_settles_into_the_inventory(self) -> None:
-        offer = next(o for o in self.catalog.offers.values() if o.target_item_id)
+        offer = next(o for o in self.open_offers.values() if o.target_item_id)
         payload, _ = self.trade(offer)
         self.assertTrue(payload["success"], payload)
         self.assertEqual(offer.target_count, payload["itemList"][offer.target_item_id - 1])
         self.assertEqual([], payload["buddyInfo"]["list"])
 
+    def test_only_this_week_is_browsable_and_tradable(self) -> None:
+        closed = next(o for o in self.catalog.offers.values() if o.offer_id not in self.open_offers)
+        payload, browse = self.trade(closed)
+        # Trading it is refused the same way any unknown offer is: the client
+        # can only have asked for something that is not on the counter.
+        self.assertEqual("invalid_local_exchange", payload["error"])
+        listed = {row["ID"] for row in browse["itemList"][0]["items"]}
+        self.assertEqual(set(self.open_offers), listed)
+        self.assertNotIn(closed.offer_id, listed)
+
     def test_stock_is_the_rotation_limit_and_exhausts(self) -> None:
-        offer = next(o for o in self.catalog.offers.values() if o.target_buddy_id and o.initial_count == 1)
+        offer = next(o for o in self.open_offers.values() if o.initial_count == 1)
         payload, _ = self.trade(offer, amount=2)
-        # Asking for more than the rotation stocks is refused, not clamped.
         self.assertEqual((False, 6), (payload["success"], payload["errorCode"]))

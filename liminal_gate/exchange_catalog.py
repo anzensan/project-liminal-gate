@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tomllib
 
-from liminal_gate.trading_post_data import TRADING_POST_ROWS
+from liminal_gate.trading_post_data import TRADING_POST_WEEKS
 
 class ExchangeCatalogError(ValueError): pass
 
@@ -20,6 +20,18 @@ class ExchangeCatalog:
     item_slots: int; max_stack: int; max_coins: int; weekly_item: int; end_date: str; offers: dict[int, ExchangeOffer]
     # Companion box ceiling, needed only by offers that award a Companion.
     max_owned: int = 1000
+    # Offer IDs per week of the rotation. A single-entry tuple means the whole
+    # catalog is always open, which is how an operator catalog behaves.
+    weeks: tuple[tuple[int, ...], ...] = ()
+
+    def week_count(self) -> int:
+        return len(self.weeks) or 1
+
+    def offers_open_at(self, week_index: int) -> dict[int, ExchangeOffer]:
+        """The offers a player can see and trade during one week."""
+        if not self.weeks:
+            return self.offers
+        return {i: self.offers[i] for i in self.weeks[week_index % len(self.weeks)]}
 
 def load_exchange_catalog(path: Path) -> ExchangeCatalog:
     try: d = tomllib.loads(path.read_text()) if path.suffix.lower()=='.toml' else json.loads(path.read_text())
@@ -51,16 +63,32 @@ BUNDLED_MAX_COINS = 99999999
 BUNDLED_MAX_OWNED = 1000
 
 
-def build_bundled_exchange_policy() -> ExchangeCatalog:
-    """Return the guided-path local Trading Post policy.
+# The rotation turned over every Friday at 00:00 UTC. 1970-01-02 was the first
+# Friday of the epoch, so weeks align to it exactly.
+_ROTATION_EPOCH = 86400
+_WEEK_SECONDS = 604800
 
-    A snapshot of the permanent rotation, not a schedule: the original restocked
-    weekly and no calendar was recovered, so `weekly_item` and `end_date` are
-    left empty and stock is simply the rotation's own per-offer limit.
+
+def active_week_index(now: float, week_count: int) -> int:
+    """Which week of the rotation is open at a moment in time.
+
+    The turnover cadence is the wiki's: every Friday at 00:00 UTC. The *phase*
+    is not -- which real-world week was the rotation's first was never
+    recorded -- so this anchors to the epoch's own first Friday. That makes the
+    schedule deterministic and reproducible without claiming it reproduces any
+    particular historical week.
     """
-    offers = {
-        offer_id: ExchangeOffer(offer_id, target_item, 0, target_count, stock, 0,
-                                {cost_item: cost_count}, target_buddy)
-        for offer_id, target_item, target_buddy, target_count, stock, cost_item, cost_count in TRADING_POST_ROWS
-    }
-    return ExchangeCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, BUNDLED_MAX_COINS, 0, "", offers, BUNDLED_MAX_OWNED)
+    return int((now - _ROTATION_EPOCH) // _WEEK_SECONDS) % max(week_count, 1)
+
+
+def build_bundled_exchange_policy() -> ExchangeCatalog:
+    """Return the guided-path local Trading Post policy."""
+    offers: dict[int, ExchangeOffer] = {}
+    weeks: list[tuple[int, ...]] = []
+    for week in TRADING_POST_WEEKS:
+        for offer_id, target_item, target_buddy, target_count, stock, cost_item, cost_count in week:
+            offers[offer_id] = ExchangeOffer(offer_id, target_item, 0, target_count, stock, 0,
+                                             {cost_item: cost_count}, target_buddy)
+        weeks.append(tuple(row[0] for row in week))
+    return ExchangeCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, BUNDLED_MAX_COINS, 0, "",
+                           offers, BUNDLED_MAX_OWNED, tuple(weeks))

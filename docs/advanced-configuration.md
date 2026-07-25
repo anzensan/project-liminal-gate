@@ -106,7 +106,7 @@ local installation.
 | `--companion-sale` | base Coin values for all 497 Companion masters |
 | `--companion-strengthen` | progression values for all 497 masters, plus the same-Companion and ByeBye multipliers |
 | `--companion-evolution` | all 153 evolution recipes, including the two duplicate-consuming Metal Minions |
-| `--trading-post` | 99 permanent-rotation offers, 78 awarding a Companion |
+| `--trading-post` | an eight-week rotation of 126 offers, 92 awarding a Companion |
 | `--hunting` | Pudding/Tin/Coin Creeps/Puppet stages, costs, and result ceilings |
 | `--core-story` | the ordered Chapter 2--42 identities |
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
@@ -127,11 +127,20 @@ carries the community wiki's permanent-rotation table instead, and every target
 and cost name in it resolved cleanly against the client's own master data, which
 is why the mapping is trustworthy even though the offers are not.
 
-Two limits follow. It is a **snapshot** of a rotation the wiki describes as
-restocking every Friday at 00:00 UTC, so stock is the rotation's own per-offer
-limit and there is no schedule. And a traded Companion's level is established by
-neither the client contract nor the wiki, so these mint at level 1, matching the
-Companion draw. Use `--exchange-catalog` instead to declare your own offers.
+It rotates. The wiki's eight collapsible sections are the eight weeks of the
+cycle, and only one week's offers are browsable or tradable at a time. The
+turnover cadence is the original's — every Friday at 00:00 UTC — and stock
+restocks on each turn, per account.
+
+What the source does **not** establish is the rotation's phase: which
+real-world week was the cycle's first was never recorded. The schedule
+therefore anchors to the epoch's own first Friday, which makes it deterministic
+and identical on every install without claiming to reproduce any particular
+historical week. If you want a different starting week, use
+`--exchange-catalog` and declare your own offers.
+
+A traded Companion's level is fixed by neither the client contract nor the
+wiki, so these mint at level 1, matching the Companion draw.
 
 ## Local event stages and character grants
 

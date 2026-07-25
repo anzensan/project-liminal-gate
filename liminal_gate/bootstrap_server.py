@@ -44,7 +44,7 @@ from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionD
 from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, load_achievement_catalog
 from liminal_gate.message_catalog import MessageCatalog, MessageCatalogError, load_message_catalog
-from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, build_bundled_exchange_policy, load_exchange_catalog
+from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, active_week_index, build_bundled_exchange_policy, load_exchange_catalog
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
@@ -808,8 +808,9 @@ class BootstrapState:
             account = self.accounts.get(self.tokens.get(token))
             if account is None: return "unknown_account", None
             if catalog is None: return "unsupported_exchange", None
-            remaining = account.setdefault("exchange_remaining", _initial_exchange_remaining(catalog))
-            offers = [{"ID": offer.offer_id, "targetItemID": offer.target_item_id, "targetBuddyID": offer.target_buddy_id, "coins": offer.coins, "targetCount": offer.target_count, "count": remaining.get(str(offer.offer_id), offer.initial_count), "weeklyItemCount": offer.weekly_item_count, "items": [[item_id, count] for item_id, count in sorted(offer.ingredients.items())]} for offer in catalog.offers.values()]
+            open_offers = _restock_exchange_week(account, catalog)
+            remaining = account["exchange_remaining"]
+            offers = [{"ID": offer.offer_id, "targetItemID": offer.target_item_id, "targetBuddyID": offer.target_buddy_id, "coins": offer.coins, "targetCount": offer.target_count, "count": remaining.get(str(offer.offer_id), offer.initial_count), "weeklyItemCount": offer.weekly_item_count, "items": [[item_id, count] for item_id, count in sorted(offer.ingredients.items())]} for offer in open_offers.values()]
             return "success", {"totalCount": account.setdefault("exchange_total", 0), "itemList": [{"weeklyItem": catalog.weekly_item, "endDate": catalog.end_date, "items": offers}] if offers else []}
 
     def exchange(self, token: str, request_id: str, body: bytes, catalog: ExchangeCatalog | None) -> tuple[str, dict[str, Any] | None]:
@@ -820,8 +821,10 @@ class BootstrapState:
             if cache is not None: return ("replay", _canonical_payload(cache["payload"])) if cache.get("body_sha256")==digest else ("request_collision",None)
             request=_parse_exchange(body)
             if catalog is None or request is None: return "unsupported_exchange",None
-            offer=catalog.offers.get(request[0]); data=account["userdata"]
-            items=data.get("itemList"); remaining=account.setdefault("exchange_remaining",_initial_exchange_remaining(catalog))
+            open_offers=_restock_exchange_week(account, catalog)
+            # Only this week's offers are tradable, exactly as only they render.
+            offer=open_offers.get(request[0]); data=account["userdata"]
+            items=data.get("itemList"); remaining=account["exchange_remaining"]
             if offer is None or not isinstance(items,list) or len(items)!=catalog.item_slots: return "invalid_local_exchange",None
             amount=request[1]; stock=remaining.get(str(offer.offer_id),offer.initial_count)
             raw_info=data.get("buddyInfo",{"list":[],"record":[]}); owned=raw_info.get("list") if isinstance(raw_info,dict) else None
@@ -3192,6 +3195,23 @@ def _initial_messages(catalog: MessageCatalog | None) -> dict[str, dict[str, Any
         }
         for message in catalog.messages
     }
+
+
+def _restock_exchange_week(account: dict[str, Any], catalog: ExchangeCatalog) -> dict[int, Any]:
+    """Open the current week's offers, restocking when the rotation turns over.
+
+    The Trading Post restocked every Friday.  Stock is per account, so the turn
+    is detected by comparing the week the account last saw against the week that
+    is open now; a catalog without weeks never turns over and keeps its stock.
+    """
+    week = active_week_index(time.time(), catalog.week_count())
+    offers = catalog.offers_open_at(week)
+    if catalog.weeks and account.get("exchange_week") != week:
+        account["exchange_week"] = week
+        account["exchange_remaining"] = {str(offer.offer_id): offer.initial_count for offer in offers.values()}
+    else:
+        account.setdefault("exchange_remaining", _initial_exchange_remaining(catalog))
+    return offers
 
 
 def _initial_exchange_remaining(catalog: ExchangeCatalog | None) -> dict[str, int]:
