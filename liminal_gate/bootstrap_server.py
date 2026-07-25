@@ -1310,16 +1310,41 @@ class BootstrapState:
                     else ("request_collision", None)
                 )
             userdata = account["userdata"]
+            current_rows = userdata.get("chrdata", [])
+            if not isinstance(current_rows, list):
+                return "unsupported_userdata_write", None
+            candidate_rows = copy.deepcopy(current_rows)
+            candidate_indices: dict[int, int] = {}
+            for index, row in enumerate(candidate_rows):
+                character_id = row.get("id") if isinstance(row, dict) else None
+                if type(character_id) is not int or character_id <= 0 or character_id in candidate_indices:
+                    return "unsupported_userdata_write", None
+                candidate_indices[character_id] = index
             if characters is not None:
-                userdata["chrdata"] = copy.deepcopy(characters)
+                # The client can submit only the character it just inspected
+                # while retaining a party that names the rest of its roster.
+                # Treat that as a delta over the server-owned roster, rather
+                # than replacing the roster before validation.  This makes a
+                # rejected party save non-destructive and prevents a UI close
+                # from discarding earlier Pact results.
+                for character in characters:
+                    character_id = character["id"]
+                    index = candidate_indices.get(character_id)
+                    if index is None:
+                        return "unsupported_userdata_write", None
+                    merged = copy.deepcopy(candidate_rows[index])
+                    merged.update(copy.deepcopy(character))
+                    candidate_rows[index] = merged
             if party is not None:
-                roster = userdata.get("chrdata")
                 roster_ids = {
-                    row.get("id") for row in roster
+                    row.get("id") for row in candidate_rows
                     if isinstance(row, dict) and type(row.get("id")) is int and row["id"] > 0
-                } if isinstance(roster, list) else set()
+                }
                 if not {member for member in party["teamMembers"] if member}.issubset(roster_ids):
                     return "tutorial_state_conflict", None
+            if characters is not None:
+                userdata["chrdata"] = candidate_rows
+            if party is not None:
                 userdata.update(copy.deepcopy(party))
             if abandoning_active_story:
                 # After the client declines its interrupted-battle resume
@@ -1763,6 +1788,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.NOT_FOUND, {"error": "local_banner_not_found"})
             return
         resource = self.server.resource_catalog.resolve(target.path) if self.server.resource_catalog else None
+        # Some client resource URLs use the CDN root directly (for example,
+        # `/Profile/...`) instead of the patched `/resources/` prefix.  The
+        # resource manifest remains the authority: this is only an alias for
+        # an already hash-validated user-local entry, never filesystem lookup.
+        if resource is None and self.server.resource_catalog is not None and target.path.startswith("/"):
+            resource = self.server.resource_catalog.resolve("/resources" + target.path)
         if resource is not None:
             self._resource(HTTPStatus.OK, resource)
             return
@@ -2515,7 +2546,11 @@ def _parse_free_roam_party_userdata_write(
     ):
         return None
     ids = [character["id"] for character in characters]
-    if len(ids) != len(set(ids)) or not {member for member in team_members if member}.issubset(set(ids)):
+    # The client may send only the row it changed alongside a complete party
+    # layout.  Membership is checked against the durable roster atomically in
+    # ``update_character_userdata``; requiring it here would reject that valid
+    # delta before it can be merged.
+    if len(ids) != len(set(ids)):
         return None
     return characters, {
         "teamMembers": team_members,

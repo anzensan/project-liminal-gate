@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from http.client import HTTPConnection
 from pathlib import Path
@@ -842,12 +843,13 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         account_id = "0123456789ABCDEF0123456789ABCDEF"
         token = "0123456789ABCDEF"
         self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        characters = [{"id": 3, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": False}]
         with self.server.state.lock:
             account = self.server.state.accounts[account_id]
             account["tutorial_phase"] = "free_roam"
             account["initial_userdata_served"] = True
+            account["userdata"]["chrdata"] = copy.deepcopy(characters)
             self.server.state._persist_locked()
-        characters = [{"id": 3, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": False}]
         character_body = urlencode({"chrdata": json.dumps(characters), "lastUpdate": "1"})
         status, payload = self.post(f"/gd/userdata?otk={token}&requestID=character-close", character_body)
         self.assertEqual(200, status)
@@ -876,6 +878,53 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(characters, userdata["chrdata"])
         self.assertEqual([3, 0, 0, 0, 0, 0], userdata["teamMembers"])
         self.assertEqual(2, userdata["teamNo"])
+
+    def test_free_roam_party_delta_never_discards_roster_on_rejection(self) -> None:
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        roster = [
+            {"id": 3, "jobID": 0, "jobLevels": [1], "jobSlots": []},
+            {"id": 25, "jobID": 0, "jobLevels": [15], "jobSlots": []},
+            {"id": 9001, "jobID": 0, "jobLevels": [10], "jobSlots": [], "skillBoost": 0},
+        ]
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            account["userdata"]["chrdata"] = roster
+            self.server.state._persist_locked()
+
+        delta = [{"id": 9001, "isNew": False}]
+        party_body = urlencode({
+            "chrdata": json.dumps(delta), "teamMembers": json.dumps([3, 25, 9001, 0, 0, 0]),
+            "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
+            "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
+        })
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=party-delta", party_body)
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+        persisted = self.server.state.userdata_for(token)
+        assert persisted is not None
+        self.assertEqual([3, 25, 9001], [row["id"] for row in persisted["chrdata"]])
+        self.assertEqual(10, persisted["chrdata"][2]["jobLevels"][0])
+        self.assertFalse(persisted["chrdata"][2]["isNew"])
+
+        rejected_body = urlencode({
+            "chrdata": json.dumps(delta), "teamMembers": json.dumps([3, 25, 9999, 0, 0, 0]),
+            "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
+            "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
+        })
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=bad-party", rejected_body)
+        self.assertEqual((409, "tutorial_state_conflict"), (status, payload["error"]))
+        persisted = self.server.state.userdata_for(token)
+        assert persisted is not None
+        self.assertEqual([3, 25, 9001], [row["id"] for row in persisted["chrdata"]])
+
+        self.restart()
+        status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-party-delta")
+        self.assertEqual(200, status)
+        self.assertEqual([3, 25, 9001], [row["id"] for row in userdata["chrdata"]])
 
     def test_local_news_page_and_favicon_are_not_protocol_errors(self) -> None:
         connection = HTTPConnection(*self.server.server_address)

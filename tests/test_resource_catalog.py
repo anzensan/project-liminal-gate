@@ -18,14 +18,20 @@ class ResourceCatalogTest(unittest.TestCase):
         self.root = Path(self.temporary_directory.name)
         self.resource_root = self.root / "resources"
         (self.resource_root / "packs").mkdir(parents=True)
+        (self.resource_root / "Profile").mkdir()
         self.payload = b"user-owned-local-resource"
         (self.resource_root / "packs" / "entry.bin").write_bytes(self.payload)
+        self.profile_payload = b"user-owned-profile-resource"
+        (self.resource_root / "Profile" / "profile_1.bin").write_bytes(self.profile_payload)
         digest = hashlib.sha256(self.payload).hexdigest()
+        profile_digest = hashlib.sha256(self.profile_payload).hexdigest()
         self.manifest = self.root / "resources.json"
-        self.manifest.write_text(json.dumps({"schema_version": 1, "resources": [{
-            "path": "/resources/packs/entry.bin", "file": "packs/entry.bin", "sha256": digest,
-            "content_type": "application/x-local-resource",
-        }]}), encoding="utf-8")
+        self.manifest.write_text(json.dumps({"schema_version": 1, "resources": [
+            {"path": "/resources/packs/entry.bin", "file": "packs/entry.bin", "sha256": digest,
+             "content_type": "application/x-local-resource"},
+            {"path": "/resources/Profile/profile_1.bin", "file": "Profile/profile_1.bin", "sha256": profile_digest,
+             "content_type": "application/octet-stream"},
+        ]}), encoding="utf-8")
         profile = self.root / "profile.json"
         profile.write_text(json.dumps({"schema_version": 1, "routes": {
             "time": "/local/time", "status": "/local/status", "signup": "/local/signup",
@@ -61,6 +67,15 @@ class ResourceCatalogTest(unittest.TestCase):
         status, body, _ = self.request("HEAD", "/resources/packs/entry.bin")
         self.assertEqual(200, status)
         self.assertEqual(b"", body)
+
+    def test_serves_direct_cdn_resource_alias_only_when_manifested(self) -> None:
+        status, body, headers = self.request("GET", "/Profile/profile_1.bin")
+        self.assertEqual(200, status)
+        self.assertEqual(self.profile_payload, body)
+        self.assertEqual("application/octet-stream", headers["Content-Type"])
+        status, body, _ = self.request("GET", "/Profile/not-in-manifest.bin")
+        self.assertEqual(501, status)
+        self.assertEqual({"error": "route_not_implemented"}, json.loads(body))
 
     def test_rejects_unknown_and_traversal_paths(self) -> None:
         for path in ("/resources/packs/missing.bin", "/resources/%2e%2e/state.json"):
