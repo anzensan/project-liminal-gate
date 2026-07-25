@@ -151,6 +151,26 @@ IDs. A stage needs its observed chapter, section, entry stamina/Coins, clear
 Coins, visibility flag, and character grant IDs; do not add a stage merely
 because it appears in a menu.
 
+### The visibility flag is not free-form
+
+The client builds the flag name itself and looks the row up by that exact
+string, so a stage's `flag` must be one of only two values:
+
+| Flag | Effect |
+| --- | --- |
+| `sp_ch_<chapter>` | gates every stage in that chapter |
+| `sp_ch_<chapter>-<section>` | gates that one stage |
+
+A stage for chapter 2000, section 1 must therefore use `sp_ch_2000` or
+`sp_ch_2000-1`. Anything else is inert — the client never asks about it, so the
+stage simply never appears and nothing is logged. The catalog loader now
+rejects a mismatched flag with both permitted names in the error, rather than
+letting it fail silently at runtime.
+
+`liminal_gate/event_flag_data.py` also lists the other flag families recovered
+from the client and from community sources. That list is a reference only, and
+is known to be incomplete, so nothing is validated against it.
+
 ## Local Hunting stages
 
 Hunting battles run entirely on the client. The server's whole job is to

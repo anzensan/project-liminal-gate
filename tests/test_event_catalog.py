@@ -4,4 +4,43 @@ from liminal_gate.event_catalog import load_event_catalog,EventCatalogError
 class EventCatalogTest(unittest.TestCase):
  def test_local_event_grant_matches_catalog(self):
   with tempfile.TemporaryDirectory() as d:
-   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[{'character_id':3}]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'test','flag':'sp_test','chapter':2000,'section':1,'stamina':1,'coins':0,'clear_coins':0,'character_ids':[3]}]})); self.assertEqual((3,),load_event_catalog(e,c).stages[0].character_ids)
+   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[{'character_id':3}]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'test','flag':'sp_ch_2000-1','chapter':2000,'section':1,'stamina':1,'coins':0,'clear_coins':0,'character_ids':[3]}]})); self.assertEqual((3,),load_event_catalog(e,c).stages[0].character_ids)
+
+
+class EventFlagRuleTest(unittest.TestCase):
+    """A stage's flag must be one the client will actually ask about."""
+
+    def catalog(self, flag: str, chapter: int = 2000, section: int = 1):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            characters = root / "characters.json"
+            characters.write_text(json.dumps({"characters": [{"character_id": 3}]}), encoding="utf-8")
+            events = root / "events.json"
+            events.write_text(json.dumps({
+                "schema_version": 1, "provenance": "user-supplied",
+                "character_catalog_sha256": hashlib.sha256(characters.read_bytes()).hexdigest(),
+                "stages": [{"event_id": "test", "flag": flag, "chapter": chapter, "section": section,
+                            "stamina": 1, "coins": 0, "clear_coins": 0, "character_ids": [3]}],
+            }), encoding="utf-8")
+            return load_event_catalog(events, characters)
+
+    def test_accepts_the_chapter_and_stage_keys_the_client_builds(self) -> None:
+        # `CheckQuestFlag` concatenates "sp_ch_" with the chapter or with
+        # chapter-section; the chapter key is the fallback for every stage.
+        for flag in ("sp_ch_2000", "sp_ch_2000-1"):
+            with self.subTest(flag=flag):
+                self.assertEqual(flag, self.catalog(flag).stages[0].flag)
+
+    def test_rejects_a_flag_that_cannot_gate_its_own_stage(self) -> None:
+        for flag in ("sp_test", "sp_ch_2001-1", "sp_ch_2000-2", "SP_CH_2000", "sp_ch_2000-01"):
+            with self.subTest(flag=flag):
+                with self.assertRaises(EventCatalogError) as refused:
+                    self.catalog(flag)
+                self.assertIn("cannot gate stage", str(refused.exception))
+
+    def test_the_error_names_both_keys_the_client_would_read(self) -> None:
+        with self.assertRaises(EventCatalogError) as refused:
+            self.catalog("sp_wrong", chapter=7010, section=2)
+        message = str(refused.exception)
+        self.assertIn("sp_ch_7010", message)
+        self.assertIn("sp_ch_7010-2", message)

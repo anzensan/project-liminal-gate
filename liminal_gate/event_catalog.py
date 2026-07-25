@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import hashlib, json
 from pathlib import Path
 
+from liminal_gate.event_flag_data import event_flags_for
+
 class EventCatalogError(ValueError): pass
 
 @dataclass(frozen=True)
@@ -31,6 +33,12 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         required={"event_id","flag","chapter","section","stamina","coins","clear_coins","character_ids"}
         if not isinstance(raw,dict) or set(raw)!=required: raise EventCatalogError("each event stage has an invalid schema")
         if not isinstance(raw["event_id"],str) or not isinstance(raw["flag"],str) or any(type(raw[x]) is not int or raw[x] < 0 for x in ("chapter","section","stamina","coins","clear_coins")): raise EventCatalogError("event stage has invalid values")
+        # The client builds this key itself, as `String.Concat("sp_ch_", id)`
+        # over the chapter or `chapter-section`, and looks the row up by that
+        # exact name.  Any other flag is inert: the stage would simply never
+        # appear, with nothing logged to say why.
+        permitted = event_flags_for(raw["chapter"], raw["section"])
+        if raw["flag"] not in permitted: raise EventCatalogError(f"event stage flag {raw['flag']!r} cannot gate stage {raw['chapter']}-{raw['section']}; the client only reads {permitted[0]!r} or {permitted[1]!r}")
         grants=raw["character_ids"]
         if not isinstance(grants,list) or any(type(x) is not int or x not in ids for x in grants) or grants != sorted(set(grants)): raise EventCatalogError("event grants must be ordered local character IDs")
         stages.append(EventStage(raw["event_id"],raw["flag"],raw["chapter"],raw["section"],raw["stamina"],raw["coins"],raw["clear_coins"],tuple(grants)))
