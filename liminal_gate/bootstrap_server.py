@@ -54,6 +54,7 @@ from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StorySta
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
 from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_event_catalog
+from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, load_summon_skill_catalog
 
 
@@ -1469,7 +1470,7 @@ class BootstrapState:
             if account is None:
                 return "unknown_account", None
             phase = account.get("tutorial_phase")
-            abandoning_active_story = phase == "generic_story_active" and party is not None
+            abandoning_active_story = phase in {"generic_story_active", "hunting_active"} and party is not None
             if phase != "free_roam" and not abandoning_active_story:
                 return "tutorial_state_conflict", None
             requests = account.setdefault("tutorial_requests", {})
@@ -1525,8 +1526,129 @@ class BootstrapState:
                 # rather than leaving the account trapped in the active stage.
                 account["tutorial_phase"] = "free_roam"
                 account["active_generic_story"] = None
+                account["active_hunt"] = None
             userdata["lastupdate"] = 1.0
             payload = _canonical_payload({"success": True, "lastupdate": 1.0})
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            self._persist_locked()
+            return "success", payload
+
+    def apply_hunting_start(
+        self, token: str, request_id: str, body: bytes, catalog: HuntingCatalog,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Authorise and charge one cataloged local Hunting entry."""
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return "unknown_account", None
+            requests = account.setdefault("tutorial_requests", {})
+            digest = hashlib.sha256(body).hexdigest()
+            cached = requests.get(_replay_key(request_id, body))
+            if cached is not None:
+                if cached.get("body_sha256") != digest:
+                    return "request_collision", None
+                return "replay", _canonical_payload(cached["payload"])
+            values = _parse_generic_story_start(body)
+            stage = None if values is None else catalog.by_identity().get((values["chapter"], values["section"]))
+            if values is None or stage is None or values["stamina"] != stage.stamina or values["coins"] != stage.coins:
+                return "unsupported_hunting_start", None
+            userdata = account["userdata"]
+            phase = account.setdefault("tutorial_phase", "initial")
+            active = account.get("active_hunt")
+            identity = {"chapter": stage.chapter, "section": stage.section}
+            if phase == "hunting_active" and active == identity:
+                # A retry under a *new* request id must not charge again.
+                payload = _canonical_payload({"success": True, "refillStartTime": 0.0})
+                requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+                self._persist_locked()
+                return "success", payload
+            # One active battle per account, shared with story and event stages.
+            if phase != "free_roam" or account.get("active_generic_story") is not None:
+                return "tutorial_state_conflict", None
+            if int(userdata.get("progressCode", 0)) < stage.unlock_progress_code:
+                return "hunting_stage_locked", None
+            items = userdata.get("itemList")
+            if not isinstance(items, list) or len(items) != catalog.item_slots or any(type(value) is not int for value in items):
+                return "unsupported_hunting_start", None
+            energy, free_energy, coins = (int(userdata.get(name, 0)) for name in ("energy", "freeEnergy", "coins"))
+            if energy + free_energy < stage.stamina or coins < stage.coins:
+                return "success", _canonical_payload({"success": False, "errorCode": 1})
+            held = items[stage.entry_item_id - 1] if stage.entry_item_id else 0
+            if stage.entry_item_id and held < stage.entry_item_count:
+                return "success", _canonical_payload({"success": False, "errorCode": 2})
+            free_spend = min(free_energy, stage.stamina)
+            userdata["freeEnergy"] = free_energy - free_spend
+            userdata["energy"] = energy - (stage.stamina - free_spend)
+            userdata["coins"] = coins - stage.coins
+            if stage.entry_item_id:
+                items[stage.entry_item_id - 1] = held - stage.entry_item_count
+            _synchronize_wallet_projection(userdata)
+            account["tutorial_phase"] = "hunting_active"
+            account["active_hunt"] = identity
+            payload = _canonical_payload({"success": True, "refillStartTime": 0.0})
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            self._persist_locked()
+            return "success", payload
+
+    def apply_hunting_clear(
+        self, token: str, request_id: str, body: bytes, catalog: HuntingCatalog,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Settle one cataloged Hunting result, only within its declared bounds."""
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return "unknown_account", None
+            requests = account.setdefault("tutorial_requests", {})
+            digest = hashlib.sha256(body).hexdigest()
+            cached = requests.get(_replay_key(request_id, body))
+            if cached is not None:
+                if cached.get("body_sha256") != digest:
+                    return "request_collision", None
+                return "replay", _canonical_payload(cached["payload"])
+            clear = _parse_generic_story_clear(body)
+            if clear is None:
+                return "unsupported_hunting_clear", None
+            result = clear["battle_result"]
+            identity = (result["chapter"], result["section"])
+            stage = catalog.by_identity().get(identity)
+            userdata = account["userdata"]
+            if (
+                stage is None
+                or account.setdefault("tutorial_phase", "initial") != "hunting_active"
+                or account.get("active_hunt") != {"chapter": identity[0], "section": identity[1]}
+            ):
+                return "tutorial_state_conflict", None
+            # A Hunting battle settles rewards; it never moves story progress.
+            expected_coins = int(userdata.get("coins", 0)) + result["coins"]
+            if (
+                clear["progressCode"] != int(userdata.get("progressCode", 0))
+                or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
+                or clear["valuables"].get("coins") != expected_coins
+                or clear["summonList"] != userdata.get("summonList", [])
+            ):
+                return "tutorial_state_conflict", None
+            if not hunting_settlement_within_bounds(stage, result):
+                return "invalid_local_hunting_result", None
+            gains = {int(item_id): count for item_id, count in result["items"].items()}
+            if not _projected_list(userdata.get("itemList"), clear["itemList"], gains, catalog.item_slots, catalog.max_stack):
+                return "invalid_local_hunting_result", None
+            wallet_fields = ("energyAppStore", "energy", "energyAndApp", "freeEnergy", "energyGooglePlay", "coins")
+            userdata.update({
+                "lastupdate": 1.0,
+                "coins": expected_coins,
+                "valuables": {name: expected_coins if name == "coins" else int(userdata.get(name, 0)) for name in wallet_fields},
+                "itemList": copy.deepcopy(clear["itemList"]),
+                # The roster is merged, never replaced: a stale client must not
+                # delete a grant it had not read back.  See `_preserved_roster`.
+                "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
+            })
+            account["tutorial_phase"] = "free_roam"
+            account["active_hunt"] = None
+            payload = _canonical_payload({
+                "success": True, "lastupdate": 1.0, "sentMessage": False,
+                "coins": expected_coins, "freeEnergy": int(userdata.get("freeEnergy", 0)),
+                "chrdata": copy.deepcopy(userdata["chrdata"]), "itemList": copy.deepcopy(userdata["itemList"]),
+            })
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -1803,6 +1925,7 @@ class BootstrapState:
             account.setdefault("tutorial_requests", {})
             account.setdefault("initial_userdata_served", False)
             account.setdefault("active_generic_story", None)
+            account.setdefault("active_hunt", None)
             account.setdefault("claimed_achievements", [])
             account.setdefault("achievement_requests", {})
             account.setdefault("messages", {})
@@ -1812,6 +1935,7 @@ class BootstrapState:
                 or not isinstance(account["tutorial_requests"], dict)
                 or type(account["initial_userdata_served"]) is not bool
                 or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
+                or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
                 or not isinstance(account["claimed_achievements"], list)
                 or any(type(value) is not int or value < 1 for value in account["claimed_achievements"])
                 or account["claimed_achievements"] != sorted(set(account["claimed_achievements"]))
@@ -1995,6 +2119,7 @@ class BootstrapServer(ThreadingHTTPServer):
         clear_state_catalog: ClearStateCatalog | None = None,
         story_progression_catalog: StoryProgressionCatalog | None = None,
         event_catalog: EventCatalog | None = None,
+        hunting_catalog: HuntingCatalog | None = None,
         public_data_root: Path | None = None,
     ) -> None:
         self.profile = profile
@@ -2020,6 +2145,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.message_catalog = message_catalog
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
+        self.hunting_catalog = hunting_catalog
         super().__init__(address, BootstrapHandler)
 
     def server_close(self) -> None:
@@ -2307,7 +2433,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             transitions, kind = profile.story_clears, "clear"
         result: str
         payload: dict[str, Any] | None
-        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact", "event_start"}:
+        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact", "event_start", "hunting_start", "hunting_clear"}:
             pass
         elif (
             kind == "write"
@@ -2316,6 +2442,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             and _parse_story_progression_reveal(body) is not None
         ):
             result, payload = self.server.state.apply_story_progression_reveal(token, request_id, body, self.server.story_progression_catalog)
+        elif kind == "start" and self.server.hunting_catalog is not None and _started_identity(body) in self.server.hunting_catalog.by_identity():
+            result, payload = self.server.state.apply_hunting_start(token, request_id, body, self.server.hunting_catalog)
+            transitions, kind = (), "hunting_start"
         elif kind == "start" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and (
             not any(item["body"].encode("utf-8") == body for item in transitions)
             # A scripted stage the account has already cleared is a replay, and
@@ -2326,6 +2455,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         ):
             catalog = self.server.event_catalog if self.server.event_catalog is not None and _parse_generic_story_start(body) is not None and tuple(_parse_generic_story_start(body)[key] for key in ("chapter", "section")) in self.server.event_catalog.by_identity() else self.server.story_catalog or self.server.story_progression_catalog
             result, payload = self.server.state.apply_generic_story_start(token, request_id, body, catalog) if catalog is not None else ("unsupported_start_quest", None)
+        elif kind == "clear" and self.server.hunting_catalog is not None and _cleared_identity(body) in self.server.hunting_catalog.by_identity():
+            result, payload = self.server.state.apply_hunting_clear(token, request_id, body, self.server.hunting_catalog)
+            transitions, kind = (), "hunting_clear"
         elif kind == "clear" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None):
             clear = _parse_generic_story_clear(body)
             identity = None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
@@ -2373,6 +2505,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "unsupported_userdata_write": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_story_progression_reveal": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_start_quest": HTTPStatus.NOT_IMPLEMENTED,
+            "unsupported_hunting_start": HTTPStatus.NOT_IMPLEMENTED,
+            "unsupported_hunting_clear": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_clear_quest": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_continue": HTTPStatus.NOT_IMPLEMENTED,
             "continue_unavailable": HTTPStatus.CONFLICT,
@@ -2397,6 +2531,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "unsupported_companion_draw": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_companion_userdata": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_ordinary_pact": HTTPStatus.NOT_IMPLEMENTED,
+            "hunting_stage_locked": HTTPStatus.CONFLICT,
+            "invalid_local_hunting_result": HTTPStatus.CONFLICT,
             "invalid_local_settlement": HTTPStatus.CONFLICT,
             "invalid_local_clear_state": HTTPStatus.CONFLICT,
             "invalid_local_outcome": HTTPStatus.CONFLICT,
@@ -2481,6 +2617,12 @@ def _json_fields_match(values: dict[str, str], expected_kinds: dict[str, str]) -
         if expected_kind == "array" and not isinstance(value, list):
             return False
     return True
+
+
+def _cleared_identity(body: bytes) -> tuple[int, int] | None:
+    """The chapter/section a clear request settles, if it is well formed."""
+    clear = _parse_generic_story_clear(body)
+    return None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
 
 
 def _started_identity(body: bytes) -> tuple[int, int] | None:
@@ -3339,7 +3481,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3364,6 +3506,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         companion_evolution_catalog=args.companion_evolution_catalog,
         companion_draw_catalog=args.companion_draw_catalog, pact_draw_catalog=args.pact_draw_catalog, pacts=getattr(args, "pacts", False),
         event_catalog=args.event_catalog, character_catalog=args.character_catalog,
+        hunting_catalog=args.hunting_catalog,
         achievement_catalog=args.achievement_catalog,
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
@@ -3400,6 +3543,7 @@ def main() -> int:
         if (args.event_catalog is None) != (args.character_catalog is None):
             raise ProfileError("--event-catalog and --character-catalog must be supplied together")
         events = None if args.event_catalog is None else load_event_catalog(args.event_catalog, args.character_catalog)
+        hunts = None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog)
         achievements = None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog)
         messages = None if args.message_catalog is None else load_message_catalog(args.message_catalog)
         exchanges = None if args.exchange_catalog is None else load_exchange_catalog(args.exchange_catalog)
@@ -3427,9 +3571,10 @@ def main() -> int:
             clear_state_catalog=clear_states,
             story_progression_catalog=progression,
             event_catalog=events,
+            hunting_catalog=hunts,
             public_data_root=args.public_data_root,
         )
-    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
+    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error
     print(f"bootstrap compatibility server listening on http://{args.host}:{args.port}")
     server.serve_forever()

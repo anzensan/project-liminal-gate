@@ -18,7 +18,7 @@ _PATH_FIELDS = (
     "job_catalog", "rebirth_catalog", "summon_skill_catalog", "companion_catalog",
     "companion_strengthen_catalog", "companion_evolution_catalog", "companion_draw_catalog",
     "pact_draw_catalog",
-    "event_catalog", "character_catalog",
+    "event_catalog", "character_catalog", "hunting_catalog",
     "achievement_catalog",
     "message_catalog",
     "exchange_catalog",
@@ -55,6 +55,7 @@ class ServerConfig:
     pact_draw_catalog: Path | None = None
     event_catalog: Path | None = None
     character_catalog: Path | None = None
+    hunting_catalog: Path | None = None
     achievement_catalog: Path | None = None
     message_catalog: Path | None = None
     exchange_catalog: Path | None = None

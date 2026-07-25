@@ -115,6 +115,76 @@ IDs. A stage needs its observed chapter, section, entry stamina/Coins, clear
 Coins, visibility flag, and character grant IDs; do not add a stage merely
 because it appears in a menu.
 
+## Local Hunting stages
+
+Hunting battles run entirely on the client. The server's whole job is to
+authorise an entry, charge its cost, and accept a settlement that stays inside
+bounds **you** declare, so the catalog carries stage identity, entry cost,
+unlock policy, and result ceilings — and no enemy, encounter, reward, or
+resource data. Nothing is bundled: with no catalog, Hunting is unavailable and
+every Hunting start returns `501`.
+
+```sh
+python3 -m liminal_gate.bootstrap_server \
+  --profile profiles/legacy-client-bootstrap.json \
+  --state-file user-data/bootstrap-state.json \
+  --hunting-catalog /path/to/local-hunting.json
+```
+
+```json
+{
+  "schema_version": 1,
+  "provenance": "user-supplied",
+  "item_slots": 400,
+  "max_stack": 99,
+  "stages": [
+    {
+      "family": "pudding",
+      "chapter": 1001,
+      "section": 1,
+      "stamina": 3,
+      "coins": 0,
+      "entry_item_id": 0,
+      "entry_item_count": 0,
+      "unlock_progress_code": 16777472,
+      "max_coins": 0,
+      "max_exp": 0,
+      "item_maxima": {"12": 5}
+    }
+  ]
+}
+```
+
+`entry_item_id`/`entry_item_count` model a ticket-style entry: declare both or
+neither, and the item is consumed on a successful start. `unlock_progress_code`
+is the lowest `progressCode` allowed to enter, expressed as a local
+availability policy — the retired rotations were never captured, so do not
+present a schedule as historical behaviour.
+
+The ceilings are the load-bearing part. A settlement is refused with `409`
+unless every reported gain fits: coins within `max_coins`, EXP within
+`max_exp`, and each item within `item_maxima`. A refusal leaves the wallet,
+inventory, roster, and the active stage untouched, so the stage can be retried
+honestly. **A visible refusal is the intended outcome for anything unbounded** —
+a result carrying Companions or Battle Summons is refused outright, because
+those need their own recovered bounds, and a generous success is worse than an
+error.
+
+One battle at a time: a Hunting entry is refused while a story or event stage
+is active, and vice versa. Progress never moves — a Hunting clear settles
+rewards only.
+
+### Not yet available
+
+The client's Hunting **selector** is not populated. It reads
+`get_server_status.constants`, which this server does not send at all, and
+`docs/server-protocol.md` records that a partial `constants` object crashes the
+client because its setter directly indexes the first 31 keys. Until that
+projection is captured and proved against the real client, these stages are
+reachable by a client that already knows the identity, not by browsing the
+menu. Metal and Puppet families additionally need their EXP, Companion, and
+timed-result bounds recovered before they can be declared.
+
 ## Local server configuration file
 
 For a longer-lived setup, keep launcher paths in a TOML file outside the
