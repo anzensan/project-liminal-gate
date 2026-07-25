@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.rebirth_recipe_data import REBIRTH_RECIPE_ROWS
+
 
 class RebirthCatalogError(ValueError):
     """A user-local Rebirth catalog is invalid."""
@@ -18,7 +20,8 @@ class RebirthRecipe:
     destination_character_id: int
     coins: int
     items: dict[int, int]
-    materials: tuple[tuple[int, int], tuple[int, int]]
+    # Zero, one, or two Companion requirements; a few recipes need none.
+    materials: tuple[tuple[int, int], ...]
 
 
 @dataclass(frozen=True)
@@ -61,14 +64,14 @@ def _recipe(value: object) -> RebirthRecipe:
         raise RebirthCatalogError("recipe numeric fields are outside range")
     items = _counts(value["items"], "items")
     materials_raw = value["materials"]
-    if not isinstance(materials_raw, list) or len(materials_raw) != 2:
-        raise RebirthCatalogError("materials must contain exactly two requirements")
+    if not isinstance(materials_raw, list) or len(materials_raw) > 2:
+        raise RebirthCatalogError("materials must contain at most two requirements")
     materials: list[tuple[int, int]] = []
     for material in materials_raw:
         if not isinstance(material, dict) or set(material) != {"character_id", "level"} or type(material["character_id"]) is not int or type(material["level"]) is not int or material["character_id"] <= 0 or material["level"] <= 0:
             raise RebirthCatalogError("each material requires positive character_id and level")
         materials.append((material["character_id"], material["level"]))
-    return RebirthRecipe(value["recipe_id"], value["source_character_id"], value["destination_character_id"], value["coins"], items, (materials[0], materials[1]))
+    return RebirthRecipe(value["recipe_id"], value["source_character_id"], value["destination_character_id"], value["coins"], items, tuple(materials))
 
 
 def _counts(value: object, label: str) -> dict[int, int]:
@@ -80,3 +83,24 @@ def _counts(value: object, label: str) -> dict[int, int]:
             raise RebirthCatalogError(f"{label} require positive decimal IDs and nonnegative counts")
         parsed[int(raw_id)] = count
     return parsed
+
+
+# The client's own inventory shape, and the final master's Joker Lambda, which
+# may stand in for one missing Companion requirement exactly once.
+BUNDLED_ITEM_SLOTS = 181
+BUNDLED_JOKER_CHARACTER_ID = 1018
+
+
+def build_bundled_rebirth_policy() -> RebirthCatalog:
+    """Return the guided-path local Rebirth policy.
+
+    Recipe identities, source and destination characters, Coin costs, decoded
+    item costs, and Companion requirements are recovered from the final
+    client's ChrDatabase and are Confirmed.  Nothing here implies availability:
+    every recipe's own version gate is at or below the final client's version.
+    """
+    recipes = {
+        recipe_id: RebirthRecipe(recipe_id, source, destination, coins, dict(items), materials)
+        for recipe_id, source, destination, coins, items, materials in REBIRTH_RECIPE_ROWS
+    }
+    return RebirthCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_JOKER_CHARACTER_ID, recipes)

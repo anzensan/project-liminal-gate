@@ -17,7 +17,7 @@ class GuidedServerPolicyTest(unittest.TestCase):
 
     def test_recommended_mode_enables_every_bundled_policy(self) -> None:
         arguments = self.arguments()
-        for flag in ("--core-story", "--pacts", "--hunting", "--jobs"):
+        for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth"):
             self.assertIn(flag, arguments)
 
     def choose(self, mode: str):
@@ -29,15 +29,15 @@ class GuidedServerPolicyTest(unittest.TestCase):
         # Its stages only unlock through story progress, so offering it without
         # the story would present a menu nothing can reach.
         pacts_only = self.choose("3")
-        self.assertEqual((False, True, False, False), (pacts_only.core_story, pacts_only.pacts, pacts_only.hunting, pacts_only.jobs))
+        self.assertEqual((False, True, False, False, False), (pacts_only.core_story, pacts_only.pacts, pacts_only.hunting, pacts_only.jobs, pacts_only.rebirth))
         self.assertNotIn("--hunting", self.arguments(core_story=False, pacts=True, hunting=False))
         story_only = self.choose("2")
-        self.assertEqual((True, False, True, True), (story_only.core_story, story_only.pacts, story_only.hunting, story_only.jobs))
+        self.assertEqual((True, False, True, True, True), (story_only.core_story, story_only.pacts, story_only.hunting, story_only.jobs, story_only.rebirth))
 
     def test_minimal_mode_enables_none_of_them(self) -> None:
         options = self.choose("4")
-        arguments = self.arguments(core_story=options.core_story, pacts=options.pacts, hunting=options.hunting, jobs=options.jobs)
-        for flag in ("--core-story", "--pacts", "--hunting", "--jobs"):
+        arguments = self.arguments(core_story=options.core_story, pacts=options.pacts, hunting=options.hunting, jobs=options.jobs, rebirth=options.rebirth)
+        for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth"):
             self.assertNotIn(flag, arguments)
 
 
