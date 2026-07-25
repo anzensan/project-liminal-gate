@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.companion_progression_data import COMPANION_PROGRESSION_ROWS
+
 
 class CompanionStrengthenCatalogError(ValueError):
     """A user-local Companion-strengthen catalog is invalid."""
@@ -77,3 +79,34 @@ def _master(value: object) -> CompanionProgressionMaster:
     if value["companion_id"] <= 0 or value["base_exp"] < 0 or not 1 <= value["max_level"] <= 99 or value["exp_max"] < 0 or value["exp_coeff"] <= 0 or value["same_bonus_bias"] <= 0:
         raise CompanionStrengthenCatalogError("Companion progression values are outside range")
     return CompanionProgressionMaster(value["companion_id"], value["base_exp"], value["max_level"], value["exp_max"], float(value["exp_coeff"]), value["same_bonus_bias"])
+
+
+# `SameBuddyExpBonus`: the client's embedded default is 1, but the ordinary
+# same-Companion rule introduced in 4.0.0 and kept through 5.5.0 was 2x.
+BUNDLED_SAME_COMPANION_MULTIPLIER = 2
+# `BuddyData.BYEBYE_ID`, whose presence among the materials moves an outer
+# multiplier from 1.0 to 1.5.
+BUNDLED_BYEBYE_COMPANION_ID = 245
+BUNDLED_BYEBYE_MULTIPLIER_PERCENT = 150
+# No production odds for the random EXP bonus survive, and the client's own
+# calculation does not contain them.  These weights are a named local policy
+# that keeps all three documented outcomes reachable while leaving no bonus the
+# common result -- not a claim about the retired service.
+BUNDLED_BONUS_WEIGHTS: tuple[tuple[int, int], ...] = ((0, 85), (25, 8), (50, 5), (100, 2))
+
+
+def build_bundled_companion_strengthen_policy() -> CompanionStrengthenCatalog:
+    """Return the guided-path local Companion strengthen policy.
+
+    Per-master progression values, the same-Companion bias, and the ByeBye
+    multiplier are recovered from the final client.  The EXP-bonus weights are
+    explicit local policy, as their odds were never recovered.
+    """
+    masters = {
+        companion_id: CompanionProgressionMaster(companion_id, base_exp, max_level, exp_max, exp_coeff, same_bonus_bias)
+        for companion_id, base_exp, max_level, exp_max, exp_coeff, same_bonus_bias in COMPANION_PROGRESSION_ROWS
+    }
+    return CompanionStrengthenCatalog(
+        masters, BUNDLED_SAME_COMPANION_MULTIPLIER, BUNDLED_BYEBYE_COMPANION_ID,
+        BUNDLED_BYEBYE_MULTIPLIER_PERCENT, BUNDLED_BONUS_WEIGHTS,
+    )

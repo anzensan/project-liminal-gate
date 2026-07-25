@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.companion_evolution_data import COMPANION_EVOLUTION_ROWS
+
 
 class CompanionEvolutionCatalogError(ValueError):
     """A user-local Companion-evolution catalog is invalid."""
@@ -64,3 +66,21 @@ def _recipe(value: object) -> CompanionEvolution:
             raise CompanionEvolutionCatalogError("items require positive decimal IDs and nonnegative counts")
         items[int(raw_id)] = count
     return CompanionEvolution(value["source_companion_id"], value["destination_companion_id"], value["max_level"], value["coins"], items, value["duplicate_source_count"])
+
+
+BUNDLED_ITEM_SLOTS = 181
+
+
+def build_bundled_companion_evolution_policy() -> CompanionEvolutionCatalog:
+    """Return the guided-path local Companion evolution policy.
+
+    All 153 evolving masters are recovered from the final client, including the
+    two Metal Minion rows whose cost is duplicate copies of themselves rather
+    than items.  Every recipe's version gate is at or below the final client's,
+    so none of them implies an availability claim.
+    """
+    recipes = {
+        source: CompanionEvolution(source, destination, max_level, coins, dict(items), duplicates)
+        for source, destination, max_level, coins, items, duplicates in COMPANION_EVOLUTION_ROWS
+    }
+    return CompanionEvolutionCatalog(BUNDLED_ITEM_SLOTS, recipes)

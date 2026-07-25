@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.companion_evolution_catalog import load_companion_evolution_catalog
+from liminal_gate.companion_evolution_catalog import build_bundled_companion_evolution_policy, load_companion_evolution_catalog
 
 
 class CompanionEvolutionTest(unittest.TestCase):
@@ -59,3 +59,37 @@ class CompanionEvolutionTest(unittest.TestCase):
                 restarted.shutdown()
                 restarted_thread.join()
                 restarted.server_close()
+
+
+class BundledCompanionEvolutionRuntimeTest(unittest.TestCase):
+    def test_bundled_recipe_is_settled_through_the_real_route(self) -> None:
+        """The bundled recipes must settle a real evolution, not merely load."""
+        with tempfile.TemporaryDirectory() as directory:
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            state = BootstrapState(Path(directory) / "state.json")
+            # Master 1 evolves into 2 at level 30 for 10000 Coins plus items
+            # 17x15, 20x5, and 24x5.
+            items = [0] * 181
+            for item_id, count in ((17, 20), (20, 10), (24, 10)):
+                items[item_id - 1] = count
+            state.create_account("token", "account", {
+                "coins": 15000, "itemList": items, "chrdata": [],
+                "buddyInfo": {"list": [{"iid": 1, "bid": 1, "lv": 30, "exp": 0, "flag": 0, "chrID": 0}], "record": []},
+            })
+            server = BootstrapServer(("127.0.0.1", 0), profile, state,
+                                     companion_evolution_catalog=build_bundled_companion_evolution_policy())
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/buddy_evolve?otk=token&requestID=bundled", body="baseID=1&lastUpdate=1")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertTrue(payload["success"], payload)
+            self.assertEqual(5000, payload["coins"])
+            self.assertEqual([2], [row["bid"] for row in payload["buddyInfo"]["list"]])
+            self.assertEqual([5, 5, 5], [payload["itemList"][item_id - 1] for item_id in (17, 20, 24)])

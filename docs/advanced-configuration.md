@@ -104,15 +104,27 @@ local installation.
 | `--status-items` | the 7 status-up items and per-character Luck ceilings |
 | `--companion-draw` | the 114-Companion rare-slot pool, ticket item, and Energy fallback |
 | `--companion-sale` | base Coin values for all 497 Companion masters |
+| `--companion-strengthen` | progression values for all 497 masters, plus the same-Companion and ByeBye multipliers |
+| `--companion-evolution` | all 153 evolution recipes, including the two duplicate-consuming Metal Minions |
 | `--hunting` | Pudding/Tin/Coin Creeps/Puppet stages, costs, and result ceilings |
 | `--core-story` | the ordered Chapter 2--42 identities |
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
 
-Two of them make an explicit **local policy** choice rather than a claim about
+Three of them make an explicit **local policy** choice rather than a claim about
 the retired service, and say so in their own code: Companion draw selects
 uniformly across its recovered pool instead of asserting the historical
-per-rarity base rates, exactly as `--pacts` does; and Hunting's availability
+per-rarity base rates, exactly as `--pacts` does; Companion strengthen's
+random EXP-bonus weights keep the three documented outcomes reachable without
+asserting odds the client never contained; and Hunting's availability
 thresholds and Puppet Show item aggregate are preservation policy.
+
+### Why there is no built-in Trading Post
+
+The Trading Post is a server-fed system: its offers, prices, stock, and end
+dates were sent by the retired service and are not embedded in the client, so
+there is nothing recovered to bundle. `--exchange-catalog` therefore stays
+operator-supplied, and its contents are your policy rather than a
+reconstruction of any historical rotation.
 
 ## Local event stages and character grants
 

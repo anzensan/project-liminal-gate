@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.companion_strengthen_catalog import load_companion_strengthen_catalog
+from liminal_gate.companion_strengthen_catalog import build_bundled_companion_strengthen_policy, load_companion_strengthen_catalog
 
 
 class CompanionStrengthenTest(unittest.TestCase):
@@ -64,3 +64,36 @@ class CompanionStrengthenTest(unittest.TestCase):
                 restarted.shutdown()
                 restarted_thread.join()
                 restarted.server_close()
+
+
+class BundledCompanionStrengthenRuntimeTest(unittest.TestCase):
+    def test_bundled_progression_is_applied_through_the_real_route(self) -> None:
+        """The bundled masters must settle a real strengthen, not merely load."""
+        with tempfile.TemporaryDirectory() as directory:
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            state = BootstrapState(Path(directory) / "state.json")
+            catalog = build_bundled_companion_strengthen_policy()
+            # Master 1's base EXP is 671 with a same-Companion bias of 1, so a
+            # level 5 material of the same master is worth 5 * 671 * 2.
+            state.create_account("token", "account", {
+                "coins": 100000, "chrdata": [],
+                "buddyInfo": {"list": [
+                    {"iid": 1, "bid": 1, "lv": 1, "exp": 0, "flag": 0, "chrID": 0},
+                    {"iid": 2, "bid": 1, "lv": 5, "exp": 0, "flag": 0, "chrID": 0},
+                ], "record": []},
+            })
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, companion_strengthen_catalog=catalog)
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/buddy_strengthen?otk=token&requestID=bundled",
+                                   body="baseID=1&matList=[2]&lastUpdate=1")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertEqual(6710, payload["totalEXP"])
+            self.assertIn(payload["expBonus"], {percent for percent, _ in catalog.bonus_weights})
