@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.job_unlock_data import JOB_UNLOCK_ROWS
+
 
 class JobCatalogError(ValueError):
     """A user-local job catalog is invalid."""
@@ -68,3 +70,23 @@ def _unlock(value: object) -> JobUnlock:
             raise JobCatalogError("materials require positive decimal IDs and nonnegative counts")
         parsed[int(raw_id)] = count
     return JobUnlock(value["character_id"], value["job_index"], value["coins"], parsed)
+
+
+# The client's own inventory shape; every bundled material falls inside it.
+BUNDLED_ITEM_SLOTS = 181
+
+
+def build_bundled_job_policy() -> JobCatalog:
+    """Return the guided-path local job-unlock policy.
+
+    Character identities, ordered job indexes, Coin costs, and decoded material
+    costs are recovered from the final client's ChrDatabase and are Confirmed.
+    Nothing here is a claim about availability or drop behaviour: a job simply
+    costs what its master row says, and a character with a single job has no
+    row at all.
+    """
+    unlocks = {
+        (character_id, job_index): JobUnlock(character_id, job_index, coins, dict(materials))
+        for character_id, job_index, coins, materials in JOB_UNLOCK_ROWS
+    }
+    return JobCatalog(BUNDLED_ITEM_SLOTS, unlocks)

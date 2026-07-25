@@ -8,7 +8,7 @@ import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.job_catalog import load_job_catalog
+from liminal_gate.job_catalog import build_bundled_job_policy, load_job_catalog
 
 
 class AddJobTest(unittest.TestCase):
@@ -45,3 +45,36 @@ class AddJobTest(unittest.TestCase):
                 self.assertEqual((200, first), post(restarted, "one", "targetID=3&lastUpdate=1"))
             finally:
                 restarted.shutdown(); restarted_thread.join(); restarted.server_close()
+
+
+class BundledJobPolicyRuntimeTest(unittest.TestCase):
+    def test_bundled_costs_are_charged_through_the_real_route(self) -> None:
+        """The bundled table must settle a real unlock, not merely load."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            state = BootstrapState(root / "state.json")
+            # Character 3's third job costs 16000 Coins plus items 2x15,
+            # 11x15, and 23x3 in the recovered ChrDatabase rows.
+            items = [0] * 181
+            for item_id, count in ((2, 20), (11, 20), (23, 5)):
+                items[item_id - 1] = count
+            state.create_account("token", "account", {
+                "coins": 20000, "itemList": items,
+                "chrdata": [{"id": 3, "jobID": 0, "jobLevels": [1.0, 1.0, 0.0], "jobSlots": []}],
+            })
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, job_catalog=build_bundled_job_policy())
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/add_job?otk=token&requestID=bundled", body="targetID=3&lastUpdate=1")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertEqual(4000, payload["coins"])
+            self.assertEqual([1.0, 1.0, 1.0], payload["chrdata"]["jobLevels"])
+            self.assertEqual([5, 5, 2], [payload["itemList"][item_id - 1] for item_id in (2, 11, 23)])

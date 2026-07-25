@@ -24,7 +24,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs"}
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,7 @@ class ServerConfig:
     core_story: bool = False
     pacts: bool = False
     hunting: bool = False
+    jobs: bool = False
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
@@ -78,6 +79,7 @@ def load_server_config(path: Path) -> ServerConfig:
     core_story = document.get("core_story", False)
     pacts = document.get("pacts", False)
     hunting = document.get("hunting", False)
+    jobs = document.get("jobs", False)
     if not isinstance(host, str) or not host or "\x00" in host:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
@@ -88,7 +90,9 @@ def load_server_config(path: Path) -> ServerConfig:
         raise ServerConfigError("pacts must be a boolean")
     if type(hunting) is not bool:
         raise ServerConfigError("hunting must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, **paths)
+    if type(jobs) is not bool:
+        raise ServerConfigError("jobs must be a boolean")
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:
