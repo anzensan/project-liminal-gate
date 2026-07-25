@@ -20,34 +20,23 @@ class GuidedServerPolicyTest(unittest.TestCase):
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth", "--status-items", "--companion-draw", "--companion-sale"):
             self.assertIn(flag, arguments)
 
-    def choose(self, mode: str):
-        """Answer the mode prompt, then decline the event-catalog question."""
-        answers = iter((mode, "n"))
-        return choose_local_server_options(None, None, ask=lambda _: next(answers))
+    def choose(self):
+        """Answer the only remaining prompt: decline the event catalog."""
+        return choose_local_server_options(None, None, ask=lambda _: "n")
 
-    def test_policies_group_by_where_a_player_meets_them(self) -> None:
-        # Story-reached content follows the story choice; Tavern content
-        # follows the Tavern choice.  A Tavern test that cannot draw or sell a
-        # Companion is not a Tavern test.
-        tavern_only = self.choose("3")
+    def test_setup_enables_every_built_in_policy(self) -> None:
+        # The mode prompt was removed: it only ever subtracted content from a
+        # preservation build, and isolating a feature is a bootstrap_server
+        # job, not a setup question.
+        options = self.choose()
         self.assertEqual(
-            (False, True, False, False, False, False, True, True),
-            (tavern_only.core_story, tavern_only.pacts, tavern_only.hunting, tavern_only.jobs,
-             tavern_only.rebirth, tavern_only.status_items, tavern_only.companion_draw, tavern_only.companion_sale),
+            (True,) * 8,
+            (options.core_story, options.pacts, options.hunting, options.jobs,
+             options.rebirth, options.status_items, options.companion_draw, options.companion_sale),
         )
-        self.assertNotIn("--hunting", self.arguments(core_story=False, pacts=True, hunting=False))
-        story_only = self.choose("2")
-        self.assertEqual(
-            (True, False, True, True, True, True, False, False),
-            (story_only.core_story, story_only.pacts, story_only.hunting, story_only.jobs,
-             story_only.rebirth, story_only.status_items, story_only.companion_draw, story_only.companion_sale),
-        )
-
-    def test_minimal_mode_enables_none_of_them(self) -> None:
-        options = self.choose("4")
-        arguments = self.arguments(core_story=options.core_story, pacts=options.pacts, hunting=options.hunting, jobs=options.jobs, rebirth=options.rebirth, status_items=options.status_items, companion_draw=options.companion_draw, companion_sale=options.companion_sale)
-        for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth", "--status-items", "--companion-draw", "--companion-sale"):
-            self.assertNotIn(flag, arguments)
+        for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth",
+                     "--status-items", "--companion-draw", "--companion-sale"):
+            self.assertIn(flag, self.arguments())
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -191,15 +180,13 @@ class TesterSetupTest(unittest.TestCase):
             with self.assertRaisesRegex(TesterSetupError, "--dummy-dll-dir"):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
 
-    def test_interactive_options_can_choose_minimal_setup(self) -> None:
-        answers = iter(("4", "n"))
-        options = choose_local_server_options(None, None, lambda _: next(answers))
-        self.assertFalse(options.core_story)
-        self.assertFalse(options.pacts)
+    def test_interactive_setup_asks_only_about_the_event_catalog(self) -> None:
+        options = choose_local_server_options(None, None, lambda _: "n")
         self.assertIsNone(options.event_catalog)
+        self.assertIsNone(options.dummy_dll_dir)
 
     def test_interactive_options_require_local_event_inputs(self) -> None:
-        answers = iter(("", "y", "local/events.json", "local/DummyDll"))
+        answers = iter(("y", "local/events.json", "local/DummyDll"))
         options = choose_local_server_options(None, None, lambda _: next(answers))
         self.assertEqual(Path("local/events.json"), options.event_catalog)
         self.assertEqual(Path("local/DummyDll"), options.dummy_dll_dir)

@@ -376,46 +376,26 @@ def _ask_yes_no(prompt: str, default: bool, ask: Callable[[str], str] = input) -
         print("Please answer y or n.")
 
 
-def _ask_play_mode(ask: Callable[[str], str]) -> tuple[bool, bool]:
-    """Choose a player-facing setup mode instead of exposing server flags.
-
-    The built-in policies group by where a player meets them rather than
-    becoming their own prompts.  Hunting, job unlocks, Rebirth, and status
-    items follow the story choice, because their content is reached through
-    story progress.  Companion draws and sales follow the Tavern choice, since
-    they sit beside the Pacts and a Tavern test that cannot draw or sell a
-    Companion is not a Tavern test.
-    """
-    print("\nWhat would you like to test?")
-    print("  1. Recommended — play the story, Hunting zones, and the Tavern")
-    print("  2. Story only — play normal chapters and Hunting, without the Tavern")
-    print("  3. Tavern only — test Pacts and Companions, without later story chapters")
-    print("  4. Minimal — login and the tutorial only (for troubleshooting)")
-    while True:
-        answer = ask("Choose 1-4 [1]: ").strip()
-        if not answer or answer == "1":
-            return True, True
-        if answer == "2":
-            return True, False
-        if answer == "3":
-            return False, True
-        if answer == "4":
-            return False, False
-        print("Please enter 1, 2, 3, or 4.")
-
-
 def choose_local_server_options(
     event_catalog: Path | None, dummy_dll_dir: Path | None, ask: Callable[[str], str] = input,
 ) -> LocalServerOptions:
-    """Prompt only for supported local policies; preserve explicit CLI paths."""
+    """Prompt only for what an operator must actually supply.
+
+    Every built-in policy is on.  They were briefly selectable, but the modes
+    only ever subtracted content from a preservation build: nobody testing this
+    wants the story without the Tavern, and the one genuine case -- isolating a
+    feature while troubleshooting -- is better served by running
+    ``liminal_gate.bootstrap_server`` directly with the flags you want, which
+    ``docs/advanced-configuration.md`` documents.
+    """
     print("\nLocal setup")
-    core_story, pacts = _ask_play_mode(ask)
+    print("Story, Hunting zones, Pacts, and Companions are all enabled.")
     print("Custom drop-rate controls are not available yet.")
     enable_events = _ask_yes_no(
         "Do you already have an advanced local event catalog and DummyDll files", event_catalog is not None, ask,
     )
     if not enable_events:
-        return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, pacts, pacts)
+        return LocalServerOptions()
     if event_catalog is None:
         raw = ask("Path to your local event catalog JSON: ").strip()
         if not raw:
@@ -426,7 +406,7 @@ def choose_local_server_options(
         if not raw:
             raise TesterSetupError("a DummyDll directory is required when local events are enabled")
         dummy_dll_dir = Path(raw)
-    return LocalServerOptions(core_story, pacts, core_story, core_story, core_story, core_story, pacts, pacts, event_catalog, dummy_dll_dir)
+    return LocalServerOptions(event_catalog=event_catalog, dummy_dll_dir=dummy_dll_dir)
 
 
 def run_server(arguments: Sequence[str]) -> None:

@@ -328,10 +328,11 @@ python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 ```
 
 Replace the port and serial with yours. At the start, choose what you want to
-test. The default is **Recommended — play the story, Hunting zones, and the
-Tavern**, which enables every built-in policy. The other modes group them by
-where you meet them: Hunting, job unlocks, Rebirth, and status items follow
-the story choice, while Companion draws and sales follow the Tavern choice.
+test. Story chapters, Hunting zones, Pacts, Companion draws and sales, job
+unlocks, Rebirth, and status items are all enabled — setup no longer asks you
+to choose between them. To isolate one feature while troubleshooting, run
+`liminal_gate.bootstrap_server` directly with only the flags you want; see
+[docs/advanced-configuration.md](docs/advanced-configuration.md).
 An advanced event question appears only for people who already have the
 required local event catalog and DummyDll files. Press Enter to accept the
 recommended choice. The command validates the inputs,
