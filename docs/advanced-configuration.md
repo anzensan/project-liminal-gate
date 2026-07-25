@@ -90,6 +90,30 @@ The guided setup enables `--pacts`, a built-in local Fellowship/Truth policy.
 Use `--pact-draw-catalog` instead when you need a custom Fellowship-only pool;
 it cannot be combined with `--pacts`.
 
+### Built-in policies
+
+These carry values recovered from the final client, so the guided setup enables
+them without any local catalog. Each is mutually exclusive with the matching
+`--*-catalog` option, which still takes precedence for a stricter or custom
+local installation.
+
+| Option | What it carries |
+| --- | --- |
+| `--jobs` | 284 job-unlock rows across 142 characters: Coin and material costs |
+| `--rebirth` | all 65 Rebirth recipes, with Joker Lambda as character 1018 |
+| `--status-items` | the 7 status-up items and per-character Luck ceilings |
+| `--companion-draw` | the 114-Companion rare-slot pool, ticket item, and Energy fallback |
+| `--companion-sale` | base Coin values for all 497 Companion masters |
+| `--hunting` | Pudding/Tin/Coin Creeps/Puppet stages, costs, and result ceilings |
+| `--core-story` | the ordered Chapter 2--42 identities |
+| `--pacts` | the local Fellowship/Truth Pact pools and costs |
+
+Two of them make an explicit **local policy** choice rather than a claim about
+the retired service, and say so in their own code: Companion draw selects
+uniformly across its recovered pool instead of asserting the historical
+per-rarity base rates, exactly as `--pacts` does; and Hunting's availability
+thresholds and Puppet Show item aggregate are preservation policy.
+
 ## Local event stages and character grants
 
 Event support is deliberately opt-in and operator-local. An event catalog must
