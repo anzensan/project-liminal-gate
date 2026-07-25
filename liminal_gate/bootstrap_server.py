@@ -970,14 +970,22 @@ class BootstrapState:
                     if missing and not use_joker: payload = {"success": False, "errorCode": 7 if joker is not None and catalog.joker_character_id not in used else 4}
                     elif missing and (joker is None or catalog.joker_character_id in used): payload = {"success": False, "errorCode": 4}
                     else:
+                        overlapped = any(isinstance(row, dict) and row.get("id") == recipe.destination_character_id for row in rows)
                         new_rows = [copy.deepcopy(row) for row in rows if row is not source and row.get("id") != recipe.destination_character_id]
                         destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
                         new_rows.append(destination); new_rows.sort(key=lambda row: int(row["id"]))
                         new_items = copy.deepcopy(items)
                         for item_id, count in recipe.items.items(): new_items[item_id - 1] -= count
                         used.update(material_id for material_id, _ in recipe.materials); used.update({catalog.joker_character_id} if missing and use_joker else set())
+                        # The source leaves the roster, so any party slot naming
+                        # it would point at a character the account no longer
+                        # owns -- and every later party save would be refused
+                        # for exactly that reason.  The rebirthed unit takes its
+                        # own slot, unless the destination was already owned, in
+                        # which case the slot empties rather than duplicating.
+                        _retarget_party(data, recipe.source_character_id, 0 if overlapped else recipe.destination_character_id)
                         data["chrdata"], data["itemList"], data["coins"], account["rebirth_used_material_ids"] = new_rows, new_items, data["coins"] - recipe.coins, sorted(used)
-                        payload = {"success": True, "buddyInfo": {"list": [], "record": []}, "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": False}
+                        payload = {"success": True, "buddyInfo": {"list": [], "record": []}, "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": overlapped}
             payload = _canonical_payload(payload); requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}; self._persist_locked(); return "success", payload
 
     def apply_tutorial_transition(
@@ -3343,6 +3351,23 @@ def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identit
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
     return _companion_info(rows)
+
+
+def _retarget_party(userdata: dict[str, Any], removed_id: int, replacement_id: int) -> None:
+    """Point every party slot naming a departing character somewhere valid.
+
+    A character can leave the roster while still being in the party -- Rebirth
+    transforms one into another.  Leaving the old id behind makes the account's
+    own party fail the membership check on the next save, so the slot follows
+    the transformation or empties.
+    """
+    for name in ("teamMembers", "teamMembers_VS"):
+        members = userdata.get(name)
+        if not isinstance(members, list):
+            continue
+        for index, member in enumerate(members):
+            if member == removed_id:
+                members[index] = replacement_id
 
 
 def _preserved_roster(current: object, submitted: list[dict[str, Any]]) -> list[dict[str, Any]]:
