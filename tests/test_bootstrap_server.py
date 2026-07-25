@@ -214,6 +214,41 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual(20, recovered.accounts["local-account"]["userdata"]["coins"])
         recovered.close()
 
+    def test_an_unknown_token_routes_to_its_own_client_not_the_active_account(self) -> None:
+        """Two players at once send byte-identical tokens.
+
+        `otk` is a three-second time bucket, so a household's second client
+        cannot be told apart from the first by token, and resolving unknown
+        tokens to "whichever account logged in most recently" lets the second
+        player's login silently capture the first player's mutations. The
+        requesting client's own address is the discriminator that works.
+        """
+        state = self.server.state
+        state.create_account("first-token", "local-account", {"coins": 1}, client_host="192.168.1.10")
+        state.accounts["second-account"] = copy.deepcopy(state.accounts["local-account"])
+        state.bind_login_token("second-token", "second-account", "192.168.1.11")
+        self.assertEqual("second-account", state.active_account_id)
+
+        # The first player's client keeps playing on a freshly rotated token.
+        self.assertTrue(state.bind_rotated_token("rotated-for-first", "192.168.1.10"))
+        self.assertEqual("local-account", state.tokens["rotated-for-first"])
+        self.assertTrue(state.bind_rotated_token("rotated-for-second", "192.168.1.11"))
+        self.assertEqual("second-account", state.tokens["rotated-for-second"])
+
+        # A client that has never identified itself still uses the active
+        # account, which is what keeps the single-player path unchanged.
+        self.assertTrue(state.bind_rotated_token("rotated-for-stranger", "192.168.1.99"))
+        self.assertEqual("second-account", state.tokens["rotated-for-stranger"])
+
+        # The routing survives a restart, or the next session re-hijacks.
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+        reloaded = BootstrapState(self.state_path)
+        self.assertTrue(reloaded.bind_rotated_token("later-token", "192.168.1.10"))
+        self.assertEqual("local-account", reloaded.tokens["later-token"])
+        reloaded.close()
+
     def test_a_save_that_will_not_load_names_its_retained_states(self) -> None:
         self.request("/local/signup?uuid=local-account&otk=signup-token")
         with self.server.state.lock:
@@ -831,7 +866,9 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         )
         self.assertEqual(409, status)
         self.assertEqual("tutorial_state_conflict", payload["error"])
-        self.server.state.create_account("second-token", "second-local-account", self.server.profile.userdata_seed)
+        # Sign the second account up over HTTP, the only way it becomes the
+        # active account in the real protocol, so it claims this client too.
+        self.request("/gd/signup?uuid=second-local-account&otk=second-token&requestID=second-signup")
         self.assertTrue(self.server.state.bind_rotated_token(rotated_token))
         # A later login may change the local fallback account, but it must not
         # steal an OTK already durably associated with the first account.
@@ -897,7 +934,9 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         self.assertTrue(payload["success"])
-        self.server.state.create_account("second-token", "second-local-account", self.server.profile.userdata_seed)
+        # Sign the second account up over HTTP, the only way it becomes the
+        # active account in the real protocol, so it claims this client too.
+        self.request("/gd/signup?uuid=second-local-account&otk=second-token&requestID=second-signup")
         status, payload = self.request(
             "/gd/userdata?otk=unbound-token&digest2=client-value&requestID=ambiguous-userdata"
         )

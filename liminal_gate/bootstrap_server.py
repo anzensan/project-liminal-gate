@@ -296,6 +296,10 @@ class BootstrapState:
         self.path = path
         self.lock = Lock()
         self.tokens: dict[str, str] = {}
+        # The only durable per-client discriminator available: `otk` is a pure
+        # three-second time bucket, so two clients playing at once send
+        # byte-identical tokens and cannot be told apart by token alone.
+        self.client_hosts: dict[str, str] = {}
         self.active_account_id: str | None = None
         self._lock_stream: Any = None
         self._acquire_file_lock()
@@ -347,7 +351,23 @@ class BootstrapState:
             self._lock_stream.close()
             self._lock_stream = None
 
-    def create_account(self, token: str, account_id: str, seed: dict[str, Any], message_catalog: MessageCatalog | None = None, exchange_catalog: ExchangeCatalog | None = None) -> None:
+    def _claim_host_locked(self, client_host: str | None, account_id: str) -> bool:
+        """Record which client an identified account belongs to.
+
+        Only signup and login carry `uuid`, so these are the two moments the
+        server ever learns an account's owner for certain.  A later setup
+        attempt from the same client simply reclaims the host, which keeps the
+        existing behaviour of routing to the newest save rather than an
+        abandoned one.
+        """
+        if not isinstance(client_host, str) or not client_host:
+            return False
+        if self.client_hosts.get(client_host) == account_id:
+            return False
+        self.client_hosts[client_host] = account_id
+        return True
+
+    def create_account(self, token: str, account_id: str, seed: dict[str, Any], message_catalog: MessageCatalog | None = None, exchange_catalog: ExchangeCatalog | None = None, client_host: str | None = None) -> None:
         with self.lock:
             if account_id not in self.accounts:
                 self.accounts[account_id] = {
@@ -367,17 +387,19 @@ class BootstrapState:
                     "exchange_requests": {},
                 }
             changed = self.tokens.get(token) != account_id or self.active_account_id != account_id
+            changed = self._claim_host_locked(client_host, account_id) or changed
             if self.tokens.get(token) != account_id:
                 self.tokens[token] = account_id
             self.active_account_id = account_id
             if changed:
                 self._persist_locked()
 
-    def bind_login_token(self, token: str, account_id: str) -> bool:
+    def bind_login_token(self, token: str, account_id: str, client_host: str | None = None) -> bool:
         with self.lock:
             if account_id not in self.accounts:
                 return False
             changed = self.tokens.get(token) != account_id or self.active_account_id != account_id
+            changed = self._claim_host_locked(client_host, account_id) or changed
             if self.tokens.get(token) != account_id:
                 self.tokens[token] = account_id
             self.active_account_id = account_id
@@ -385,15 +407,21 @@ class BootstrapState:
                 self._persist_locked()
             return True
 
-    def bind_rotated_token(self, token: str) -> bool:
-        """Bind a client-rotated OTK to the active local account.
+    def bind_rotated_token(self, token: str, client_host: str | None = None) -> bool:
+        """Bind a client-rotated OTK to the account that client owns.
 
-        The surviving client replaces its OTK after the signup/login exchange,
-        while later mutations carry only the replacement token.  A previously
-        bound OTK remains attached to its original account; only a genuinely
-        unknown replacement token can use the most recently identified local
-        account.  Old state files without that marker retain the conservative
-        single-account fallback rather than guessing an owner.
+        The client replaces its OTK every three seconds, and only signup and
+        login carry `uuid`, so almost every mutation arrives on a token the
+        server has never seen.  Resolving those by "whichever account logged in
+        most recently" is correct for one player and wrong for a household: two
+        clients playing at once send byte-identical tokens, and the second to
+        log in silently captures the first's mutations.
+
+        The requesting client's own address is the discriminator that works
+        without a protocol change, so an unknown token resolves to the account
+        that client last identified itself as.  The active-account fallback
+        stays for clients that have not identified yet, and for saves written
+        before hosts were recorded.
         """
         # Every persisted token is a JSON object key.  A missing `otk` query
         # parameter would otherwise insert `None` here, which makes *every*
@@ -409,7 +437,11 @@ class BootstrapState:
             # operate on the wrong save.
             if self.tokens.get(token) in self.accounts:
                 return True
-            account_id = self.active_account_id
+            # This client's own last identified account outranks whichever
+            # account happens to be active, which is what keeps a second
+            # player's save from capturing the first player's mutations.
+            owned = self.client_hosts.get(client_host) if isinstance(client_host, str) else None
+            account_id = owned if owned in self.accounts else self.active_account_id
             # A tester's emulator can retain an older OTK while the server
             # state has accumulated abandoned accounts from earlier setup
             # attempts.  This is a single-player local fallback: once signup
@@ -1699,6 +1731,15 @@ class BootstrapState:
         if active_account_id is not None and (not isinstance(active_account_id, str) or active_account_id not in accounts):
             raise ProfileError("local bootstrap state contains an invalid active account")
         self.active_account_id = active_account_id
+        # Absent in saves written before per-client routing; an empty map simply
+        # falls back to the active account, which is the earlier behaviour.
+        client_hosts = document.get("client_hosts", {})
+        if not isinstance(client_hosts, dict) or not all(
+            isinstance(host, str) and isinstance(account_id, str) and account_id in accounts
+            for host, account_id in client_hosts.items()
+        ):
+            raise ProfileError("local bootstrap state contains invalid client host bindings")
+        self.client_hosts = client_hosts
         for account in accounts.values():
             account.setdefault("tutorial_phase", "initial")
             account.setdefault("tutorial_requests", {})
@@ -1779,7 +1820,7 @@ class BootstrapState:
     def _persist_locked(self) -> None:
         self._bound_locked()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        encoded = (json.dumps({"accounts": self.accounts, "active_account_id": self.active_account_id, "tokens": self.tokens}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        encoded = (json.dumps({"accounts": self.accounts, "active_account_id": self.active_account_id, "tokens": self.tokens, "client_hosts": self.client_hosts}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
         with tempfile.NamedTemporaryFile(dir=self.path.parent, delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(encoded)
@@ -1932,6 +1973,12 @@ class BootstrapServer(ThreadingHTTPServer):
 class BootstrapHandler(BaseHTTPRequestHandler):
     server: BootstrapServer
 
+    def _client_host(self) -> str | None:
+        """The requesting client's address, used only to route unknown tokens."""
+        address = getattr(self, "client_address", None)
+        host = address[0] if isinstance(address, tuple) and address else None
+        return host if isinstance(host, str) and host else None
+
     def do_GET(self) -> None:
         target = urlsplit(self.path)
         if target.path == "/en/news/app":
@@ -1979,7 +2026,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             if not isinstance(response_account_id, str) or not response_account_id:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "invalid_local_profile"})
                 return
-            self.server.state.create_account(token, response_account_id, profile.userdata_seed, self.server.message_catalog, self.server.exchange_catalog)
+            self.server.state.create_account(token, response_account_id, profile.userdata_seed, self.server.message_catalog, self.server.exchange_catalog, self._client_host())
             self._signed(HTTPStatus.OK, token, signup)
             return
         token = query.get("otk")
@@ -1997,7 +2044,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return
         if target.path == profile.routes.get("login"):
             account_id = query.get(profile.account_binding["login_query_field"])
-            if not token or not isinstance(account_id, str) or not self.server.state.bind_login_token(token, account_id):
+            if not token or not isinstance(account_id, str) or not self.server.state.bind_login_token(token, account_id, self._client_host()):
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_local_account"})
                 return
             payload = _render(profile.responses["login"], token, account_id)
@@ -2012,7 +2059,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # successful login, before its first read-only userdata request.
             # Bind before reading so an older emulator token cannot select an
             # abandoned local account after the active save has been resumed.
-            if self.server.state.bind_rotated_token(token):
+            if self.server.state.bind_rotated_token(token, self._client_host()):
                 userdata = self.server.state.userdata_for(token)
             else:
                 userdata = None
@@ -2086,7 +2133,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         if not token or not request_id:
             self._json(HTTPStatus.BAD_REQUEST, {"error": "missing_local_mutation_identity"})
             return
-        if not self.server.state.bind_rotated_token(token):
+        if not self.server.state.bind_rotated_token(token, self._client_host()):
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_account"})
             return
         self._event_details.update(self.server.state.safe_account_context(token))
@@ -3075,15 +3122,46 @@ def _preserved_roster(current: object, submitted: list[dict[str, Any]]) -> list[
     be a superset of the durable ones.  It is the unvalidated configuration the
     public tester actually runs that needs it.
     """
-    rows = copy.deepcopy(submitted)
-    if not isinstance(current, list):
-        return rows
+    held: dict[int, dict[str, Any]] = {}
+    if isinstance(current, list):
+        held = {
+            row["id"]: row for row in current
+            if isinstance(row, dict) and type(row.get("id")) is int
+        }
+    rows = [
+        copy.deepcopy(row) if not isinstance(row, dict) or held.get(row.get("id")) is None
+        else _preserved_progress(held[row["id"]], row)
+        for row in submitted
+    ]
     known = {row["id"] for row in rows if isinstance(row, dict) and type(row.get("id")) is int}
-    for row in current:
-        if isinstance(row, dict) and type(row.get("id")) is int and row["id"] not in known:
+    for character_id, row in held.items():
+        if character_id not in known:
             rows.append(copy.deepcopy(row))
-            known.add(row["id"])
     return rows
+
+
+def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[str, Any]:
+    """Keep the progression a stale client would otherwise roll back.
+
+    Preserving a whole character is not enough on its own: a client that is
+    stale about a character it *does* know still reports that character's older
+    level and skill boost, and taking its row wholesale undoes the Pact
+    duplicate or event gain the server had already committed.  Job experience
+    and skill boost only ever accumulate — every spend has its own route — so
+    the larger of the two values is the true one.  Everything else (active job,
+    equipped slots, flags) is a player choice that legitimately moves in either
+    direction, and stays client-authoritative.
+    """
+    merged = copy.deepcopy(reported)
+    levels, reported_levels = held.get("jobLevels"), merged.get("jobLevels")
+    if isinstance(levels, list) and isinstance(reported_levels, list) and len(levels) == len(reported_levels):
+        merged["jobLevels"] = [
+            max(kept, told) if type(kept) in {int, float} and type(told) in {int, float} else told
+            for kept, told in zip(levels, reported_levels)
+        ]
+    if type(held.get("skillBoost")) is int and type(merged.get("skillBoost")) is int:
+        merged["skillBoost"] = max(held["skillBoost"], merged["skillBoost"])
+    return merged
 
 
 def _preserved_counts(current: object, submitted: list[int]) -> list[int]:

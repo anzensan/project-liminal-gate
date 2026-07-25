@@ -162,6 +162,41 @@ class GenericStoryServerTest(unittest.TestCase):
         self.assertEqual([1, 0, 5], userdata["itemList"])
         self.assertEqual([0, 4], userdata["summonList"])
 
+    def test_clear_does_not_roll_back_progression_the_client_is_stale_about(self) -> None:
+        """Preserving a whole character is not enough on its own.
+
+        A client can know about a character and still be stale about it: the
+        Pact duplicate that raised its level and skill boost arrived while the
+        client was showing an older row.  Job experience and skill boost only
+        accumulate, so the client's lower values are stale, not a spend.
+        """
+        boosted = dict(self.character, jobLevels=[(500 << 12) | 10, 0, 0], skillBoost=3)
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["userdata"]["chrdata"] = [boosted]
+            self.server.state._persist_locked()
+
+        start = [("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "2"), ("lastUpdate", "1")]
+        self.assertEqual(200, self.post(f"/gd/start_quest?otk={self.token}&requestID=start-stale", start)[0])
+        clear = [
+            ("progressCode", "16777347"), ("worldMapNo", "0"),
+            ("valuables", json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 240})),
+            # The client reports the character at its pre-Pact level and boost.
+            ("chrdata", json.dumps([self.character])),
+            ("itemList", "[]"), ("summonList", "[]"),
+            ("battle_result", json.dumps({"chapter": 2, "section": 2, "coins": 30, "exp": 0, "items": {}, "buddies": [], "monsters": [], "summons": [], "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0]})),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ]
+        status, _ = self.post(f"/gd/clear_quest?otk={self.token}&requestID=clear-stale", clear)
+        self.assertEqual(200, status)
+
+        self.stop_server()
+        self.start_server()
+        row = json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]["userdata"]["chrdata"][0]
+        self.assertEqual([(500 << 12) | 10, 0, 0], row["jobLevels"])
+        self.assertEqual(3, row["skillBoost"])
+        # A player choice still moves in whichever direction the client reports.
+        self.assertEqual(self.character["jobID"], row["jobID"])
+
     def test_rejects_incomplete_or_malformed_client_clear_result(self) -> None:
         fields = [
             ("progressCode", "16777347"), ("worldMapNo", "0"),

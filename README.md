@@ -709,11 +709,70 @@ with `--host 0.0.0.0`; the address printed by setup still matches the output of
 step B; and any firewall on this machine allows inbound connections on your
 chosen port.
 
+## Look after your save
+
+Your progress lives in one file, `bootstrap-state.json`, inside the `--data-dir`
+you chose at setup. Everything below needs the server **stopped** — it holds the
+save while it runs, and these commands refuse to touch a save in use.
+
+**Only one server may use a save at a time.** Two servers pointed at the same
+`--data-dir` do not share it: each keeps the whole save in memory and rewrites
+all of it, so the second silently overwrites the first player's progress. The
+server now refuses to start rather than let that happen. If you run a second
+server — a different port, a second player — give it its own `--data-dir`.
+
+See what you have, including the states kept automatically before recent saves:
+
+```bash
+python3 -m liminal_gate.account_state inspect user-data/bootstrap-state.json
+```
+
+Keep a copy before doing anything risky, and go back to one if you need to:
+
+```bash
+python3 -m liminal_gate.account_state snapshot user-data/bootstrap-state.json
+python3 -m liminal_gate.account_state restore \
+  user-data/bootstrap-state.json \
+  user-data/bootstrap-state.json.bak.1 --yes
+```
+
+Restoring keeps your current save alongside as a timestamped
+`.pre-restore.*.json`, so a restore is itself undoable.
+
+### If you reinstall the app and your progress is gone
+
+Your account is keyed to an ID the app generates on first run. Clearing the
+app's data or reinstalling gives it a new one, so it signs up as a new player
+while your real save sits untouched in the same file. Nothing is lost — the
+save just needs pointing at the new ID.
+
+Run `inspect`, find your real account (the one with your character count and
+coins) and the new empty one, then:
+
+```bash
+python3 -m liminal_gate.account_state adopt user-data/bootstrap-state.json \
+  --from <your-old-account-id> --to <the-new-account-id> --yes
+```
+
+Start the server and launch the app; your progress is back. `adopt` refuses to
+overwrite an account that has been played unless you add `--force`, and it
+preserves the file first either way.
+
+### Two players on one server
+
+Each device is routed by its own network address, so two phones or tablets on
+your network can hold separate saves against one server. Two emulators on this
+same machine cannot — they share one address and the server cannot tell them
+apart. Give those a `--data-dir` and a port each instead.
+
 ## Troubleshooting
 
 | What you see | What to do |
 | --- | --- |
 | `No module named liminal_gate` | Run the command from the repository root: the folder containing `README.md` and `liminal_gate/`. |
+| `local account state is already in use by another server` | Another server already has that save open. Stop it, or start this one with its own `--data-dir`. See [Look after your save](#look-after-your-save). |
+| `account state is in use; stop the local server before changing it` | `restore` and `adopt` will not change a save a running server owns. Stop the server and run the command again. |
+| Progress is gone after reinstalling or clearing the app's data | The app generated a new account ID; your save is still there. See [If you reinstall the app and your progress is gone](#if-you-reinstall-the-app-and-your-progress-is-gone). |
 | Black screen after launching the app, no crash, server log shows `200` responses | The emulator's graphics backend cannot complete Unity's framebuffer. Restart the emulator from a terminal with `-gpu swangle`. Confirm with `adb logcat -d \| grep -c 0x506`: thousands of those errors mean graphics, not the server. See [Start the emulator with `-gpu swangle`](#start-the-emulator-with--gpu-swangle-especially-on-macos). |
 | `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [step 3](#3-one-command-setup-install-and-server-start). |
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the optional dependency as above if you want the images. |
