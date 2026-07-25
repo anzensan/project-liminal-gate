@@ -56,8 +56,10 @@ class AchievementClaimTest(unittest.TestCase):
                 self.assertEqual({"achivementFlags", "freeEnergy", "coins", "itemList", "digest"}, set(success))
                 self.assertEqual(([2], 3, 5, [0, 5, 0]), (success["achivementFlags"], success["freeEnergy"], success["coins"], success["itemList"]))
                 self.assertEqual((status, success), post(server, "token", "one", "id=1&lastUpdate=1"))
-                status, collision = post(server, "token", "one", "id=1&lastUpdate=0")
-                self.assertEqual((409, "request_collision"), (status, collision["error"]))
+                # Reusing a spent requestID with a different body is no longer
+                # read as a tampered retry; this body is simply invalid.
+                status, reused = post(server, "token", "one", "id=1&lastUpdate=0")
+                self.assertEqual((501, "unsupported_achievement"), (status, reused["error"]))
                 status, duplicate = post(server, "token", "two", "id=1&lastUpdate=1")
                 self.assertEqual((409, "invalid_local_achievement"), (status, duplicate["error"]))
                 server.state.create_account("locked", "locked-account", {"progressCode": 5 << 6, "itemList": [0, 0, 0]})

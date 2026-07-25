@@ -43,10 +43,11 @@ class UnlockMetalZoneTest(unittest.TestCase):
                 self.assertGreaterEqual(success["metalZoneUnlockTime"], before + 3600)
                 self.assertEqual((3, 0), (success["energy"], success["freeEnergy"]))
                 self.assertEqual((status, success), post(server, "one", b""))
-                status, collision = post(server, "one", b"unexpected")
-                self.assertEqual((409, "request_collision"), (status, collision["error"]))
-                status, malformed = post(server, "malformed", b"unexpected")
-                self.assertEqual((501, "unsupported_unlock_metal_zone"), (status, malformed["error"]))
+                # A body reusing a spent requestID gets exactly the answer it
+                # would under a fresh one: the requestID no longer decides it.
+                status, reused = post(server, "one", b"unexpected")
+                self.assertEqual((501, "unsupported_unlock_metal_zone"), (status, reused["error"]))
+                self.assertEqual((status, reused), post(server, "malformed", b"unexpected"))
             finally:
                 server.shutdown(); thread.join(); server.server_close()
 

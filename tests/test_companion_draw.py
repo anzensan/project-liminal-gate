@@ -44,7 +44,10 @@ class CompanionDrawTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual((True, [0], 0, 0, [{"bid": 99, "lv": 1}], 1), (first["success"], first["itemList"], first["energy"], first["freeEnergy"], first["result"], first["buddyInfo"]["list"][0]["iid"]))
                 self.assertEqual((status, first), post(server, "one", body))
-                self.assertEqual((409, "request_collision"), (post(server, "one", "kind=21&count=1&campaignID=0&eventFlag=0&lastUpdate=1")[0], post(server, "one", "kind=21&count=1&campaignID=0&eventFlag=0&lastUpdate=1")[1]["error"]))
+                # Reusing a spent requestID with a different body is answered on
+                # its own merits: the paid draw has no Energy to spend.
+                status, reused = post(server, "one", "kind=21&count=1&campaignID=0&eventFlag=0&lastUpdate=1")
+                self.assertEqual((200, False, 1), (status, reused["success"], reused["errorCode"]))
             finally:
                 server.shutdown()
                 thread.join()

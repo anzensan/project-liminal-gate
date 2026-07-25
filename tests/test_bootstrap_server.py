@@ -433,10 +433,12 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(grace_payload["chrdata"], grace_replay["chrdata"])
         status, collision = self.post(
             f"/gd/do_slot?otk={login_token}&digest2=client-value&requestID=grace-request",
-            "kind=11&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+            "kind=99&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
         )
-        self.assertEqual(409, status)
-        self.assertEqual("request_collision", collision["error"])
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
+        self.assertEqual(501, status)
+        self.assertEqual("unsupported_summon", collision["error"])
         self.restart()
         amisandra_body = "kind=11&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1"
         status, amisandra_payload = self.post(
@@ -459,8 +461,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, write_collision = self.post(
             f"/gd/userdata?otk={login_token}&digest2=client-value&requestID=tutorial-write", "progressCode=0"
         )
-        self.assertEqual(409, status)
-        self.assertEqual("request_collision", write_collision["error"])
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
+        self.assertEqual(501, status)
+        self.assertEqual("unsupported_userdata_write", write_collision["error"])
         map_body = urlencode([tuple(field) for field in self.server.profile.tutorial_writes[1]["fields"]])
         status, reordered_map = self.post(
             f"/gd/userdata?otk={login_token}&requestID=reordered-map",
@@ -496,8 +500,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, start_collision = self.post(
             f"/gd/start_quest?otk={login_token}&requestID=chapter1-start", "stamina=0"
         )
-        self.assertEqual(409, status)
-        self.assertEqual("request_collision", start_collision["error"])
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
+        self.assertEqual(501, status)
+        self.assertEqual("unsupported_start_quest", start_collision["error"])
         self.restart()
         status, start_replay = self.post(
             f"/gd/start_quest?otk={login_token}&digest2=retry-value&requestID=chapter1-start", start_body
@@ -526,8 +532,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, clear_collision = self.post(
             f"/gd/clear_quest?otk={login_token}&requestID=chapter1-clear", "progressCode=0"
         )
-        self.assertEqual(409, status)
-        self.assertEqual("request_collision", clear_collision["error"])
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
+        self.assertEqual(501, status)
+        self.assertEqual("unsupported_clear_quest", clear_collision["error"])
         self.restart()
         status, clear_replay = self.post(
             f"/gd/clear_quest?otk={login_token}&digest2=retry-value&requestID=chapter1-clear", clear_body
@@ -558,8 +566,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, knight_collision = self.post(
             f"/gd/do_slot?otk={login_token}&requestID=knight-grant", grace_body
         )
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
         self.assertEqual(409, status)
-        self.assertEqual("request_collision", knight_collision["error"])
+        self.assertEqual("tutorial_state_conflict", knight_collision["error"])
         self.restart()
         status, knight_replay = self.post(
             f"/gd/do_slot?otk={login_token}&digest2=retry-value&requestID=knight-grant", knight_body
@@ -587,8 +597,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         status, knight_write_collision = self.post(
             f"/gd/userdata?otk={login_token}&requestID=knight-write", "chrdata=%5B%5D&lastUpdate=1"
         )
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
         self.assertEqual(409, status)
-        self.assertEqual("request_collision", knight_write_collision["error"])
+        self.assertEqual("tutorial_state_conflict", knight_write_collision["error"])
         status, repeated_knight_write = self.post(
             f"/gd/userdata?otk={login_token}&requestID=knight-write-new", knight_write_body
         )
@@ -943,6 +955,49 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertTrue(payload["success"])
         self.assertEqual("second-local-account", self.server.state.tokens["unbound-token"])
+
+    def test_a_shared_request_id_keeps_each_body_separately_replayable(self) -> None:
+        """`requestID` alone cannot identify a mutation.
+
+        The client derives it from a ~7-significant-digit float, so two
+        unrelated requests can land on the same one.  Keyed by `requestID`
+        alone the second was refused as a tampered retry -- and because a retry
+        replays the same id *and* body byte for byte, it then collided forever
+        and that one action could never complete.
+
+        Scoping the cache by body settles all three cases at once: a retry
+        replays, a genuine second request applies, and neither displaces the
+        other's entry.
+        """
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        shared = f"/gd/change_uname?otk={token}&requestID=collided"
+
+        status, named = self.post(shared, urlencode({"name": "Alcina"}))
+        self.assertEqual((200, "Alcina"), (status, named["name"]))
+        # A retry replays rather than spending the rename a second time.
+        self.assertEqual((status, named), self.post(shared, urlencode({"name": "Alcina"})))
+
+        # A different body under that same requestID is a different request. It
+        # is answered on its own merits -- here refused by the rename cooldown,
+        # which is exactly what proves it reached the handler at all.
+        status, other = self.post(shared, urlencode({"name": "Brigid"}))
+        self.assertEqual((200, 1), (status, other["errorCode"]))
+        self.assertEqual("Alcina", self.server.state.accounts[account_id]["username"])
+
+        # Settling the second body must not have displaced the first's entry.
+        self.assertEqual((200, named), self.post(shared, urlencode({"name": "Alcina"})))
+        self.restart()
+        status, after_restart = self.post(shared, urlencode({"name": "Alcina"}))
+        # Compared field-wise: `change_uname` does not canonicalise its payload,
+        # so a reloaded save replays the same values in JSON key order.
+        self.assertEqual(200, status)
+        self.assertEqual(
+            {key: named[key] for key in ("success", "name", "changeUsernameDate")},
+            {key: after_restart[key] for key in ("success", "name", "changeUsernameDate")},
+        )
+        self.assertEqual("Alcina", self.server.state.accounts[account_id]["username"])
 
     def test_free_roam_character_and_party_writes_persist_and_replay(self) -> None:
         account_id = "0123456789ABCDEF0123456789ABCDEF"

@@ -43,7 +43,10 @@ class CompanionEvolutionTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual((True, 0, [0], 1, 11, 1, 0), (first["success"], first["coins"], first["itemList"], first["buddyInfo"]["list"][0]["iid"], first["buddyInfo"]["list"][0]["bid"], first["buddyInfo"]["list"][0]["lv"], first["buddyInfo"]["list"][0]["exp"]))
                 self.assertEqual((status, first), post(server, "one", "baseID=1&lastUpdate=1"))
-                self.assertEqual((409, "request_collision"), (post(server, "one", "baseID=1")[0], post(server, "one", "baseID=1")[1]["error"]))
+                # Reusing a spent requestID with a different body is answered on
+                # its own merits: this companion has no evolution available.
+                status, reused = post(server, "one", "baseID=1")
+                self.assertEqual((200, False, 3), (status, reused["success"], reused["errorCode"]))
             finally:
                 server.shutdown()
                 thread.join()

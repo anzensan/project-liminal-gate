@@ -31,9 +31,11 @@ class ChangeUnameTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual("Alice", first["name"])
                 self.assertEqual((status, first), post("one", "name=Alice"))
-                status, collision = post("one", "name=Bob")
-                self.assertEqual((409, "request_collision"), (status, collision["error"]))
-                status, blocked = post("two", "name=Bob")
-                self.assertEqual((200, 1), (status, blocked["errorCode"]))
+                # A different body reusing a spent requestID gets exactly the
+                # answer it would under a fresh one -- here a second rename,
+                # refused by the cooldown -- rather than a collision.
+                status, reused = post("one", "name=Bob")
+                self.assertEqual((200, 1), (status, reused["errorCode"]))
+                self.assertEqual((status, reused), post("two", "name=Bob"))
             finally:
                 server.shutdown(); thread.join(); server.server_close()

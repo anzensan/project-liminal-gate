@@ -30,10 +30,13 @@ class AddJobTest(unittest.TestCase):
                 status, first = post(server, "one", "targetID=3&lastUpdate=1")
                 self.assertEqual(200, status); self.assertEqual((True, [1.0, 1.0, 0.0], [1, 2], 3), (first["success"], first["chrdata"]["jobLevels"], first["itemList"], first["coins"]))
                 self.assertEqual((status, first), post(server, "one", "targetID=3&lastUpdate=1"))
-                self.assertEqual((409, "request_collision"), (post(server, "one", "targetID=3")[0], post(server, "one", "targetID=3")[1]["error"]))
-                status, second = post(server, "two", "targetID=3")
+                # A different body reusing a spent requestID is its own request,
+                # not a tampered retry: it unlocks the next job, and its own
+                # retry still replays rather than unlocking a third.
+                status, second = post(server, "one", "targetID=3")
                 self.assertEqual((200, [1.0, 1.0, 1.0], [1, 1], 0), (status, second["chrdata"]["jobLevels"], second["itemList"], second["coins"]))
-                status, none = post(server, "three", "targetID=3")
+                self.assertEqual((status, second), post(server, "one", "targetID=3"))
+                status, none = post(server, "two", "targetID=3")
                 self.assertEqual((200, True, 4), (status, none["success"], none["cmdError"]))
             finally:
                 server.shutdown(); thread.join(); server.server_close()

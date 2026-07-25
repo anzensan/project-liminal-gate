@@ -277,6 +277,41 @@ def load_profile(path: Path) -> BootstrapProfile:
     )
 
 
+def _replay_key(request_id: str, body: bytes, operation: str = "") -> str:
+    """Identify one mutation by its request id *and* its body.
+
+    A retry replays `requestID` and body byte for byte, so it lands on the same
+    key and replays.  Two unrelated requests that happen to share a `requestID`
+    land on different keys and each proceed, which is what they are.
+
+    Message reads and deletes share one cache and can be issued with the same
+    body, so they name their operation to stay distinct from each other.
+    """
+    prefix = f"{operation}." if operation else ""
+    return f"{prefix}{request_id}.{hashlib.sha256(body).hexdigest()}"
+
+
+def _migrate_replay_keys(account: dict[str, Any]) -> None:
+    """Re-key a save written before the replay cache was scoped by body.
+
+    Each old entry already records the body it settled, so this is an exact
+    move rather than a guess.  Without it a retry that spans the upgrade would
+    miss its entry and be applied a second time.
+    """
+    for name in ("tutorial_requests", "achievement_requests", "message_requests", "exchange_requests"):
+        cache = account.get(name)
+        if not isinstance(cache, dict):
+            continue
+        for key, entry in list(cache.items()):
+            digest = entry.get("body_sha256") if isinstance(entry, dict) else None
+            if not isinstance(digest, str) or key.endswith(f".{digest}"):
+                continue
+            operation = entry.get("operation")
+            prefix = f"{operation}." if isinstance(operation, str) and operation else ""
+            del cache[key]
+            cache[f"{prefix}{key}.{digest}"] = entry
+
+
 def _lock_exclusive(stream: Any) -> None:
     """Take a non-blocking exclusive advisory lock the OS drops on exit.
 
@@ -521,7 +556,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return ("replay", copy.deepcopy(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None)
             name = _parse_change_uname(body)
@@ -530,13 +565,13 @@ class BootstrapState:
             now = time.time()
             if account.get("username_changed_at", 0.0) and now - float(account["username_changed_at"]) < 30 * 86400:
                 payload = {"errorCode": 1}
-                requests[request_id] = {"body_sha256": digest, "payload": payload}
+                requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": payload}
                 self._persist_locked()
                 return "success", payload
             account["username"] = name
             account["username_changed_at"] = now
             payload = {"success": True, "name": name, "changeUsernameDate": float(621355968000000000 + int(now * 10_000_000))}
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -547,7 +582,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (
                     ("replay", _ordered_refill_payload(cached["payload"]))
@@ -581,7 +616,7 @@ class BootstrapState:
                         "freeEnergy": data["freeEnergy"],
                         "bonusStamina": int(data.get("bonusStamina", 0)),
                     }
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -598,7 +633,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return ("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None)
             if body != b"":
@@ -626,7 +661,7 @@ class BootstrapState:
                     "freeEnergy": free,
                 }
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -637,7 +672,7 @@ class BootstrapState:
                 return "unknown_account", None
             digest = hashlib.sha256(body).hexdigest()
             requests = account.setdefault("achievement_requests", {})
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return ("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None)
             achievement_id = _parse_achievement_claim(body)
@@ -662,7 +697,7 @@ class BootstrapState:
             claimed.sort()
             data["achivementFlags"] = _achievement_flags(claimed)
             payload = _canonical_payload({"achivementFlags": data["achivementFlags"], "freeEnergy": data["freeEnergy"], "coins": data["coins"], "itemList": updated_items})
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -678,7 +713,7 @@ class BootstrapState:
                 return "unknown_account", None
             digest = hashlib.sha256(body).hexdigest()
             requests = account.setdefault("message_requests", {})
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body, "read"))
             if cached is not None:
                 return ("replay", _canonical_payload(cached["payload"])) if cached.get("operation") == "read" and cached.get("body_sha256") == digest else ("request_collision", None)
             message_ids = _parse_message_ids(body)
@@ -705,7 +740,7 @@ class BootstrapState:
                 message["read"] = True
             data["coins"], data["freeEnergy"], data["itemList"] = coins, energy, updated_items
             payload = _canonical_payload({"result": True, "readlist": message_ids, "itemList": updated_items, "coins": coins, "energy": int(data.get("energy", 0)), "freeEnergy": energy, **_message_reload_projection(data, account)})
-            requests[request_id] = {"operation": "read", "body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body, "read")] = {"operation": "read", "body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -716,7 +751,7 @@ class BootstrapState:
                 return "unknown_account", None
             digest = hashlib.sha256(body).hexdigest()
             requests = account.setdefault("message_requests", {})
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body, "delete"))
             if cached is not None:
                 return ("replay", _canonical_payload(cached["payload"])) if cached.get("operation") == "delete" and cached.get("body_sha256") == digest else ("request_collision", None)
             message_ids = _parse_message_ids(body)
@@ -728,7 +763,7 @@ class BootstrapState:
             for message_id in message_ids:
                 del messages[message_id]
             payload = {"deletelist": message_ids}
-            requests[request_id] = {"operation": "delete", "body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body, "delete")] = {"operation": "delete", "body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -745,7 +780,7 @@ class BootstrapState:
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
             if account is None: return "unknown_account", None
-            digest=hashlib.sha256(body).hexdigest(); cache=account.setdefault("exchange_requests", {}).get(request_id)
+            digest=hashlib.sha256(body).hexdigest(); cache=account.setdefault("exchange_requests", {}).get(_replay_key(request_id, body))
             if cache is not None: return ("replay", _canonical_payload(cache["payload"])) if cache.get("body_sha256")==digest else ("request_collision",None)
             request=_parse_exchange(body)
             if catalog is None or request is None: return "unsupported_exchange",None
@@ -763,7 +798,7 @@ class BootstrapState:
                 remaining[str(offer.offer_id)]=stock-amount; account["exchange_total"]+=amount; data["itemList"]=updated
                 payload={"success":True,"buddyInfo":copy.deepcopy(data.get("buddyInfo",{"list":[],"record":[]})),"itemList":updated,"coins":int(data.get("coins",0)),"totalCount":account["exchange_total"],"remainCount":remaining[str(offer.offer_id)]}
             payload = _canonical_payload(payload)
-            account["exchange_requests"][request_id]={"body_sha256":digest,"payload":copy.deepcopy(payload)}; self._persist_locked(); return "success",payload
+            account["exchange_requests"][_replay_key(request_id, body)]={"body_sha256":digest,"payload":copy.deepcopy(payload)}; self._persist_locked(); return "success",payload
 
     def use_statusup_item(
         self, token: str, request_id: str, body: bytes, catalog: StatusupCatalog | None,
@@ -775,7 +810,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (
                     ("replay", _canonical_payload(cached["payload"]))
@@ -818,7 +853,7 @@ class BootstrapState:
                             "resultValues": deltas,
                         }
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -829,7 +864,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             target_id = _parse_add_job(body)
@@ -861,7 +896,7 @@ class BootstrapState:
                     userdata["coins"] -= rule.coins
                     payload = {"success": True, "chrdata": candidate, "itemList": new_items, "coins": userdata["coins"], "energy": int(userdata.get("energy", 0)), "freeEnergy": int(userdata.get("freeEnergy", 0))}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -871,7 +906,7 @@ class BootstrapState:
             if account is None:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
-            digest = hashlib.sha256(body).hexdigest(); cached = requests.get(request_id)
+            digest = hashlib.sha256(body).hexdigest(); cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             request = _parse_rebirth(body)
@@ -907,7 +942,7 @@ class BootstrapState:
                         used.update(material_id for material_id, _ in recipe.materials); used.update({catalog.joker_character_id} if missing and use_joker else set())
                         data["chrdata"], data["itemList"], data["coins"], account["rebirth_used_material_ids"] = new_rows, new_items, data["coins"] - recipe.coins, sorted(used)
                         payload = {"success": True, "buddyInfo": {"list": [], "record": []}, "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": False}
-            payload = _canonical_payload(payload); requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}; self._persist_locked(); return "success", payload
+            payload = _canonical_payload(payload); requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}; self._persist_locked(); return "success", payload
 
     def apply_tutorial_transition(
         self,
@@ -926,7 +961,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             body_hash = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 if cached.get("body_sha256") != body_hash:
                     return "request_collision", None
@@ -995,7 +1030,7 @@ class BootstrapState:
                 payload.setdefault("freeEnergy", int(userdata.get("freeEnergy", 0)))
                 payload.setdefault("coins", int(userdata.get("coins", 0)))
             account["tutorial_phase"] = transition["next_phase"]
-            requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1006,7 +1041,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             target_id = _parse_summon_skill_unlock(body)
@@ -1037,7 +1072,7 @@ class BootstrapState:
                     userdata["coins"] -= rule.coins
                     payload = {"success": True, "itemList": new_items, "summonList": new_summons, "coins": userdata["coins"]}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1048,7 +1083,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             inventory_ids = _parse_sell_companions(body, multiple=multiple)
@@ -1087,7 +1122,7 @@ class BootstrapState:
                 userdata["coins"] = coins
                 payload = {"success": True, "buddyInfo": copy.deepcopy(userdata["buddyInfo"]), "chrdata": new_rows, "coins": coins}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1098,7 +1133,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             request = _parse_companion_strengthen(body)
@@ -1162,7 +1197,7 @@ class BootstrapState:
                     userdata["coins"] = coins
                     payload = {"success": True, "buddyInfo": copy.deepcopy(userdata["buddyInfo"]), "chrdata": rows, "coins": coins, "totalEXP": total_exp, "additionalEXP": additional_exp, "expBonus": exp_bonus}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1173,7 +1208,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             base_id = _parse_companion_evolve(body)
@@ -1222,7 +1257,7 @@ class BootstrapState:
                     userdata["coins"] -= recipe.coins
                     payload = {"success": True, "buddyInfo": copy.deepcopy(userdata["buddyInfo"]), "chrdata": copy.deepcopy(userdata.get("chrdata", [])), "coins": userdata["coins"], "itemList": new_items}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1233,7 +1268,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             request = _parse_companion_draw(body)
@@ -1289,7 +1324,7 @@ class BootstrapState:
                     userdata["nextCompanionInventoryId"] = next_id
                     payload = {"success": True, "coins": userdata["coins"], "energy": energy, "freeEnergy": free_energy, "itemList": new_items, "buddyInfo": copy.deepcopy(userdata["buddyInfo"]), "result": results}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1306,7 +1341,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             parsed = _parse_ordinary_pact_draw(body)
@@ -1369,7 +1404,7 @@ class BootstrapState:
                     userdata["chrdata"] = candidates
                     payload = {"success": True, "coins": userdata["coins"], "energy": userdata["energy"], "freeEnergy": userdata["freeEnergy"], "chrdata": results}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1380,7 +1415,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
             userdata = account["userdata"]
@@ -1399,7 +1434,7 @@ class BootstrapState:
             userdata["buddyInfo"] = _companion_info(candidates)
             payload = {"success": True, "lastupdate": 1.0}
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1418,7 +1453,7 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             requests = account.setdefault("tutorial_requests", {})
             digest = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (
                     ("replay", _canonical_payload(cached["payload"]))
@@ -1471,7 +1506,7 @@ class BootstrapState:
                 account["active_generic_story"] = None
             userdata["lastupdate"] = 1.0
             payload = _canonical_payload({"success": True, "lastupdate": 1.0})
-            requests[request_id] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1487,7 +1522,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             body_hash = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 if cached.get("body_sha256") != body_hash:
                     return "request_collision", None
@@ -1513,7 +1548,7 @@ class BootstrapState:
                 and account.get("active_generic_story") == identity
             ):
                 payload = {"success": True, "refillStartTime": 0.0}
-                requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+                requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
             if account["tutorial_phase"] != "free_roam" or account.get("active_generic_story") is not None:
@@ -1521,7 +1556,7 @@ class BootstrapState:
             payload = {"success": True, "refillStartTime": 0.0}
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity
-            requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1545,7 +1580,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             body_hash = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 if cached.get("body_sha256") != body_hash:
                     return "request_collision", None
@@ -1626,7 +1661,7 @@ class BootstrapState:
             account["tutorial_phase"] = "free_roam"
             account["active_generic_story"] = None
             payload = _canonical_payload(payload)
-            requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1641,7 +1676,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             body_hash = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 if cached.get("body_sha256") != body_hash:
                     return "request_collision", None
@@ -1663,7 +1698,7 @@ class BootstrapState:
             userdata["progressCode"] = expected
             userdata["lastupdate"] = float(reveal["lastUpdate"])
             payload = _canonical_payload({"success": True, "lastupdate": float(reveal["lastUpdate"])})
-            requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1678,7 +1713,7 @@ class BootstrapState:
                 return "unknown_account", None
             requests = account.setdefault("tutorial_requests", {})
             body_hash = hashlib.sha256(body).hexdigest()
-            cached = requests.get(request_id)
+            cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 if cached.get("body_sha256") != body_hash:
                     return "request_collision", None
@@ -1700,7 +1735,7 @@ class BootstrapState:
                 "energy": int(userdata.get("energy", 0)),
                 "freeEnergy": int(userdata.get("freeEnergy", 0)),
             }
-            requests[request_id] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+            requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
 
@@ -1731,6 +1766,8 @@ class BootstrapState:
         if active_account_id is not None and (not isinstance(active_account_id, str) or active_account_id not in accounts):
             raise ProfileError("local bootstrap state contains an invalid active account")
         self.active_account_id = active_account_id
+        for account in accounts.values():
+            _migrate_replay_keys(account)
         # Absent in saves written before per-client routing; an empty map simply
         # falls back to the active account, which is the earlier behaviour.
         client_hosts = document.get("client_hosts", {})

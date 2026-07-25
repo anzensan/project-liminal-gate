@@ -52,8 +52,12 @@ class MessageLifecycleTest(unittest.TestCase):
                 self.assertEqual((True, ["local-1"], 5, 3, [0, 5, 0]), (read["result"], read["readlist"], read["coins"], read["freeEnergy"], read["itemList"]))
                 self.assertTrue({"chrdata", "buddyInfo", "summonList", "achivementFlags", "energyAppStore", "energyGooglePlay", "energyAndApp"} <= set(read))
                 self.assertEqual((status, read), post(server, "read_messages", "read-one", read_body))
-                status, collision = post(server, "read_messages", "read-one", urlencode({"idlist": json.dumps(["local-1"])}))
-                self.assertEqual((409, "request_collision"), (status, collision["error"]))
+                # Reusing a spent requestID with a different body is no longer
+                # read as a tampered retry: this is a fresh read of a message
+                # already read, which must grant nothing further.
+                status, reread = post(server, "read_messages", "read-one", urlencode({"idlist": json.dumps(["local-1"])}))
+                self.assertEqual((200, True, ["local-1"]), (status, reread["result"], reread["readlist"]))
+                self.assertEqual((read["coins"], read["itemList"]), (reread["coins"], reread["itemList"]))
                 status, deleted = post(server, "delete_messages", "delete-one", read_body)
                 self.assertEqual((200, ["local-1"]), (status, deleted["deletelist"]))
             finally:

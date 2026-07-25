@@ -51,7 +51,12 @@ class CompanionSaleTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual((True, 7, [2, 3], 0), (first["success"], first["coins"], [row["iid"] for row in first["buddyInfo"]["list"]], first["chrdata"][0]["buddy"]))
                 self.assertEqual((status, first), post(server, "/gd/sell_buddy", "one", "inventoryID=1"))
-                self.assertEqual((409, "request_collision"), (post(server, "/gd/sell_buddy", "one", "inventoryID=2")[0], post(server, "/gd/sell_buddy", "one", "inventoryID=2")[1]["error"]))
+                # Reusing a spent requestID with a different body is answered on
+                # its own merits now.  This names a companion the account does
+                # not own, so it is refused for that reason and leaves the
+                # inventory intact for the locked and batch cases below.
+                status, reused = post(server, "/gd/sell_buddy", "one", "inventoryID=99")
+                self.assertEqual((200, False, 2), (status, reused["success"], reused["errorCode"]))
                 status, locked = post(server, "/gd/sell_buddy", "two", "inventoryID=3")
                 self.assertEqual((200, False, 2), (status, locked["success"], locked["errorCode"]))
                 status, batch = post(server, "/gd/sell_buddies", "three", "sellList=[2]")

@@ -21,7 +21,9 @@ class ExchangeTest(unittest.TestCase):
     status,got=req(s,'GET','/gd/get_current_exchange?otk=token'); self.assertEqual((200,[[1,2]]),(status,got['itemList'][0]['items'][0]['items']))
     status,done=req(s,'POST','/gd/exchange?otk=token&requestID=x', 'exchangeItemID=1&amount=1&lastUpdate=1'); self.assertEqual((200,[1,1,0]),(status,done['itemList']))
     self.assertEqual((status,done),req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=1&lastUpdate=1'))
-    status,collision=req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=2'); self.assertEqual((409,'request_collision'),(status,collision['error']))
+    # Reusing a spent requestID with a different body is answered on its own
+    # merits now: this asks for more than the exchange allows.
+    status,reused=req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=2'); self.assertEqual((200,False,6),(status,reused['success'],reused['errorCode']))
    finally: s.shutdown();t.join();s.server_close()
    s,t=start()
    try: self.assertEqual((200,done),req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=1&lastUpdate=1'))

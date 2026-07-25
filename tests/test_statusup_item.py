@@ -65,8 +65,14 @@ class StatusupItemTest(unittest.TestCase):
                 self.assertEqual([90, 0], [int(value) & 0xFFF for value in changed["jobLevels"]])
                 self.assertEqual({"0": 1}, level["resultValues"]["addedLevels"])
                 self.assertEqual((200, level), post(server, "level", "targetChrID=3&useItemID=1&useAmount=2"))
-                status, collision = post(server, "level", "targetChrID=3&useItemID=3&useAmount=1")
-                self.assertEqual((409, "request_collision"), (status, collision["error"]))
+                # Reusing a spent requestID with a different body is no longer
+                # read as a tampered retry: this is a genuine second use, of a
+                # luck item, so it applies -- and its own retry still replays
+                # rather than spending a second one.
+                status, luck = post(server, "level", "targetChrID=3&useItemID=3&useAmount=1")
+                self.assertEqual((200, 1), (status, luck["resultValues"]["addedLuck"]))
+                self.assertEqual(30, next(item for item in luck["chrdata"] if item["id"] == 3)["luck"])
+                self.assertEqual((status, luck), post(server, "level", "targetChrID=3&useItemID=3&useAmount=1"))
                 status, wrong_species = post(server, "species", "targetChrID=3&useItemID=2&useAmount=1")
                 self.assertEqual((200, False, 3), (status, wrong_species["success"], wrong_species["errorCode"]))
                 status, unknown = post(server, "unknown", "targetChrID=999&useItemID=1&useAmount=1")

@@ -106,9 +106,12 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertTrue(revealed["success"])
         self.assertEqual(200, self.post(reveal_path, reveal)[0])
-        status, collision = self.post(reveal_path, [("progressCode", "0"), ("worldMapNo", "0"), ("lastUpdate", "1")])
+        # Reusing a spent requestID with a different body is no longer read as
+        # a tampered retry; this reveal is checked against the durable progress
+        # like any other and rejected for naming the wrong chapter.
+        status, reused = self.post(reveal_path, [("progressCode", "0"), ("worldMapNo", "0"), ("lastUpdate", "1")])
         self.assertEqual(409, status)
-        self.assertEqual("request_collision", collision["error"])
+        self.assertEqual("tutorial_state_conflict", reused["error"])
         status, started = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=start-3-1",
             [("stamina", "5"), ("coins", "0"), ("chapter", "3"), ("section", "1"), ("lastUpdate", "1")],

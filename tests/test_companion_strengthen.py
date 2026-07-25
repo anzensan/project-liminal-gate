@@ -44,7 +44,10 @@ class CompanionStrengthenTest(unittest.TestCase):
                 self.assertEqual((True, 50, 100, 0, 0, [1], 0), (first["success"], first["coins"], first["totalEXP"], first["additionalEXP"], first["expBonus"], [row["iid"] for row in first["buddyInfo"]["list"]], first["chrdata"][0]["buddy"]))
                 self.assertEqual(2, first["buddyInfo"]["list"][0]["lv"])
                 self.assertEqual((status, first), post(server, "one", "baseID=1&matList=[2]"))
-                self.assertEqual((409, "request_collision"), (post(server, "one", "baseID=1&matList=[1]")[0], post(server, "one", "baseID=1&matList=[1]")[1]["error"]))
+                # Reusing a spent requestID with a different body is no longer
+                # read as a tampered retry; feeding a companion to itself is
+                # rejected on its own merits.
+                self.assertEqual((501, "unsupported_companion_strengthen"), (post(server, "one", "baseID=1&matList=[1]")[0], post(server, "one", "baseID=1&matList=[1]")[1]["error"]))
                 server.state.create_account("other", "other-account", {"coins": 100, "buddyInfo": {"list": [{"iid": 4, "bid": 10, "lv": 1, "exp": 0, "flag": 0}, {"iid": 5, "bid": 11, "lv": 1, "exp": 0, "flag": 2}], "record": []}})
                 status, favorite = post(server, "favorite", "baseID=4&matList=[5]", "other")
                 self.assertEqual((200, False, 6), (status, favorite["success"], favorite["errorCode"]))

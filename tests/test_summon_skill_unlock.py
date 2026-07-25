@@ -52,7 +52,10 @@ class SummonSkillUnlockTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual((True, 0x102, [0, 0], 0), (first["success"], first["summonList"][0], first["itemList"], first["coins"]))
                 self.assertEqual((status, first), post(server, "one", "targetID=1"))
-                self.assertEqual((409, "request_collision"), (post(server, "one", "targetID=2")[0], post(server, "one", "targetID=2")[1]["error"]))
+                # Reusing a spent requestID with a different body is answered on
+                # its own merits: this summon has no unlock available.
+                status, reused = post(server, "one", "targetID=2")
+                self.assertEqual((200, False, 3), (status, reused["success"], reused["errorCode"]))
                 status, unavailable = post(server, "two", "targetID=1")
                 self.assertEqual((200, False, 3), (status, unavailable["success"], unavailable["errorCode"]))
             finally:

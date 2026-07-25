@@ -49,8 +49,10 @@ class RefillStaminaTest(unittest.TestCase):
                     success["freeEnergy"], success["bonusStamina"],
                 ))
                 self.assertEqual((status, success), post(server, "one", "cost=1"))
-                status, collision = post(server, "one", "cost=2")
-                self.assertEqual((409, "request_collision"), (status, collision["error"]))
+                # Reusing a spent requestID with a different body is no longer
+                # read as a tampered retry; this cost is simply unsupported.
+                status, reused = post(server, "one", "cost=2")
+                self.assertEqual((501, "unsupported_refill_stamina"), (status, reused["error"]))
                 status, full = post(server, "two", "cost=1")
                 self.assertEqual((200, False, 1), (status, full["success"], full["errorCode"]))
             finally:

@@ -74,8 +74,10 @@ class GenericStoryServerTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(started["refillStartTime"], replay["refillStartTime"])
         status, collision = self.post(path, [("stamina", "0")])
-        self.assertEqual(409, status)
-        self.assertEqual("request_collision", collision["error"])
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
+        self.assertEqual(501, status)
+        self.assertEqual("unsupported_start_quest", collision["error"])
         continue_path = f"/gd/continue?otk={self.token}&requestID=continue-2-2"
         status, continued = self.post(continue_path, [("cost", "1")])
         self.assertEqual(200, status)
@@ -86,8 +88,10 @@ class GenericStoryServerTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(continued["energy"], continue_replay["energy"])
         status, continue_collision = self.post(continue_path, [("cost", "0")])
-        self.assertEqual(409, status)
-        self.assertEqual("request_collision", continue_collision["error"])
+        # Reusing a spent requestID with a different body is no longer read
+        # as a tampered retry; it is answered on its own merits.
+        self.assertEqual(501, status)
+        self.assertEqual("unsupported_continue", continue_collision["error"])
         self.stop_server()
         self.start_server()
         clear = [
