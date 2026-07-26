@@ -226,6 +226,10 @@ while the black screen is showing:
 adb logcat -d | grep -c 0x506
 ```
 
+```powershell
+(adb logcat -d | Select-String "0x506").Count
+```
+
 Thousands of `0x506` errors from `emuglGLESv2_enc` mean the graphics backend,
 not the server. Zero means look elsewhere. This is worth checking early,
 because the server log keeps showing successful `200` responses throughout, so
@@ -317,6 +321,22 @@ it goes quiet:
 adb logcat -c
 # launch the game, enter the game past the title screen, wait for the silence
 adb logcat -d | grep -Ei "OpenSLES|AudioTrack|AudioFlinger|underrun|obtainBuffer" > audio-log.txt
+```
+
+PowerShell has no `grep`; use `Select-String` instead:
+
+```powershell
+adb logcat -c
+# launch the game, enter the game past the title screen, wait for the silence
+adb logcat -d | Select-String "OpenSLES|AudioTrack|AudioFlinger|underrun|obtainBuffer" |
+  ForEach-Object { $_.Line } | Out-File -Encoding utf8 audio-log.txt
+```
+
+If either filter gives you trouble, capture everything instead and attach that.
+It is larger but always works, and nothing is lost by filtering later:
+
+```sh
+adb logcat -d > full-log.txt
 ```
 
 Include `audio-log.txt`, your emulator system image, and the core count from
@@ -459,9 +479,10 @@ and unusual scripted stages may still stop with a Network Error until they are
 given a specific compatibility rule.
 
 It also enables local ordinary Pacts: **Pact of Fellowship** (`kind=0`) spends
-3,000 Coins per pull, while **Pact of Truth** (`kind=1`) spends 3 Energy per
-pull and accepts the normal 1, 5, or 10-pull form. New local accounts receive
-50 free Energy so a tester can use Truth immediately. The included pools are
+3,000 Coins per pull, while **Pact of Truth** (`kind=1`) spends 5 Energy per
+pull. The client may submit any affordable batch from 1 through 10 even though
+its controls normally label 1, 5, and 10. New local accounts receive 50 free
+Energy, exactly one full Truth ten-pull. The included pools are
 bounded local policy; selection is uniform and duplicate gains are local
 defaults, not a claim about the retired service's per-character odds. Fate,
 ticket, campaign, and event-specific Pact variants remain unsupported.
@@ -701,6 +722,11 @@ adb -s emulator-5556 shell pm list packages | grep -Ei 'terra|mist'
 adb -s emulator-5556 shell pm clear YOUR_TERRA_BATTLE_PACKAGE
 ```
 
+```powershell
+adb -s emulator-5556 shell pm list packages | Select-String "terra|mist"
+adb -s emulator-5556 shell pm clear YOUR_TERRA_BATTLE_PACKAGE
+```
+
 Replace `emulator-5556` with your own serial — a physical device serial works
 the same way — and `YOUR_TERRA_BATTLE_PACKAGE` with the value shown by the
 first command. This clears only that app's local data on that one target; it
@@ -908,7 +934,8 @@ not warn you about either, and the damage shows up later, somewhere else.
 
 If a value you changed was one the server had already answered a request with,
 add `--clear-replay-cache` so a repeat of that request cannot return the old
-answer.
+answer. This clears tutorial, achievement, message, and Trading Post mutation
+responses together; it does not alter the edited account state itself.
 
 Character, item, and Companion names appear beside their IDs when
 `user-data/names.json` is present. Setup writes it if you pass
@@ -968,6 +995,7 @@ apart. Give those a `--data-dir` and a port each instead.
 | `adb is unavailable`, or `adb` is not found | Setup falls back to the SDK's own `platform-tools\adb`, so this means the SDK root was not found either. Set `ANDROID_SDK_ROOT`, or pass `--adb` with the full path to `adb`. Copying `adb.exe` into the project folder is not needed. |
 | The keystore is never created, and setup reports it could not be created | The password was probably shorter than six characters, which `keytool` refuses. Setup now asks again rather than failing, states the minimum in the prompt, and repeats whatever `keytool` reported. If you are running the manual step instead, see [4b](#4b-create-a-local-test-signing-key). |
 | A `\` at the end of a line is rejected in PowerShell | The multi-line commands use a Unix shell convention. Use a backtick (`` ` ``) instead, or put the whole command on one line. Step [4b](#4b-create-a-local-test-signing-key) gives PowerShell versions of both signing-key commands. |
+| `grep` is not recognized in PowerShell | `grep` is a Unix tool. Use `Select-String` with the same pattern: `adb logcat -d \| Select-String "OpenSLES\|AudioTrack"`. Every `grep` command in this README has a PowerShell version beside it. When a filter is the problem rather than the point, capture the whole log with `adb logcat -d > full-log.txt` and attach that instead. |
 | Input validation rejects the resource root | Use `local-input/resources/data_u2017/android`, not `local-input/resources`. |
 | Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |

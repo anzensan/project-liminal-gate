@@ -31,6 +31,14 @@ class AccountStateError(ValueError):
     """A local account save could not be read or safely changed."""
 
 
+REPLAY_CACHE_FIELDS = (
+    "tutorial_requests",
+    "achievement_requests",
+    "message_requests",
+    "exchange_requests",
+)
+
+
 def read_document(path: Path) -> tuple[bytes, dict[str, Any]]:
     """Read one save and check only the structure these commands rely on."""
     data = path.read_bytes()
@@ -263,7 +271,8 @@ def apply_edited(state: Path, source: Path, confirmed: bool, force: bool, clear_
         if clear_replay_cache:
             for account in edited["accounts"].values():
                 if isinstance(account, dict):
-                    account["tutorial_requests"] = {}
+                    for field in REPLAY_CACHE_FIELDS:
+                        account[field] = {}
         preserved = preserve(state, "pre-apply")
         encoded = (
             source_data if not clear_replay_cache
@@ -310,7 +319,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     apply_parser.add_argument("--force", action="store_true", help="apply despite validation errors or a missing account")
     apply_parser.add_argument(
         "--clear-replay-cache", action="store_true",
-        help="drop cached response payloads so a replayed request cannot return pre-edit values",
+        help="drop all cached mutation responses so a replayed request cannot return pre-edit values",
     )
     return parser.parse_args(argv)
 

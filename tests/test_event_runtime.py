@@ -110,5 +110,8 @@ class EventRuntimeTest(unittest.TestCase):
             self.assertEqual("success", state.apply_generic_story_clear(token, "clear", clear, catalog)[0])
             state.close()
             restarted = BootstrapState(path)
-            replay = restarted.apply_generic_story_clear(token, "clear", clear, catalog)
-            self.assertEqual("replay", replay[0]); self.assertEqual([3, 25], [row["id"] for row in restarted.accounts["account"]["userdata"]["chrdata"]])
+            try:
+                replay = restarted.apply_generic_story_clear(token, "clear", clear, catalog)
+                self.assertEqual("replay", replay[0]); self.assertEqual([3, 25], [row["id"] for row in restarted.accounts["account"]["userdata"]["chrdata"]])
+            finally:
+                restarted.close()

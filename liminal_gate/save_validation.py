@@ -80,8 +80,13 @@ def validate_document(document: object) -> list[Finding]:
     for account_id, account in sorted(document["accounts"].items()):
         findings.extend(_validate_account(str(account_id), account))
     tokens = document.get("tokens")
-    if isinstance(tokens, dict):
+    if not isinstance(tokens, dict):
+        findings.append(Finding("", "tokens", "the save has no token-binding object"))
+    else:
         for token, owner in sorted(tokens.items()):
+            if not isinstance(token, str) or not isinstance(owner, str):
+                findings.append(Finding("", "tokens", "every token binding must map one string to an account id"))
+                continue
             if owner not in document["accounts"]:
                 findings.append(Finding("", f"tokens.{token}", f"token points at unknown account {owner!r}"))
     active = document.get("active_account_id")
@@ -146,21 +151,36 @@ def _validate_roster(account_id: str, userdata: dict[str, Any]) -> list[Finding]
 
 def _validate_party(account_id: str, userdata: dict[str, Any], roster: set[int]) -> list[Finding]:
     findings: list[Finding] = []
-    for name in ("teamMembers", "teamMembers_VS"):
+    for name in ("teamMembers", "teamMembers_VS", "teamBuddies_VS"):
         members = userdata.get(name)
         if members is None:
             continue
         if not isinstance(members, list):
             findings.append(Finding(account_id, name, "a party must be a list"))
             continue
+        invalid = [
+            index for index, member in enumerate(members)
+            if type(member) is not int or member < 0
+        ]
+        if invalid:
+            findings.append(Finding(
+                account_id, name,
+                "every party slot must be a non-negative integer "
+                f"(invalid indexes: {', '.join(str(index) for index in invalid)})",
+            ))
+            continue
         # Zero is an empty slot; anything else must be a character the account
         # owns, or the client's next party save is refused.
-        missing = sorted({member for member in members if isinstance(member, int) and member and member not in roster})
-        if missing:
+        missing = sorted({member for member in members if member and member not in roster})
+        if name in {"teamMembers", "teamMembers_VS"} and missing:
             findings.append(Finding(
                 account_id, name,
                 f"party names {', '.join(str(value) for value in missing)}, which the roster does not contain",
             ))
+    for name in ("teamNo", "teamNo_VS", "summonId"):
+        value = userdata.get(name)
+        if value is not None and (type(value) is not int or value < 0):
+            findings.append(Finding(account_id, name, "must be a non-negative integer"))
     return findings
 
 

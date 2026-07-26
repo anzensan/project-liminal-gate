@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 
-from liminal_gate.release_preflight import inspect_release_tree
+from liminal_gate.release_preflight import inspect_release_tree, prohibited_reason
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,27 @@ def audit_release_repository(root: Path) -> list[ReleaseAuditFinding]:
         return findings
     if _git(root, "rev-parse", "--verify", "HEAD") is None:
         findings.append(ReleaseAuditFinding("history", "repository has no initial public-only commit"))
+        return findings
+    status = _git(root, "status", "--porcelain", "--untracked-files=all")
+    if status:
+        findings.append(ReleaseAuditFinding("worktree", "repository has uncommitted or untracked files"))
+    objects = _git(root, "rev-list", "--objects", "--all")
+    if objects is None:
+        findings.append(ReleaseAuditFinding("history", "could not inspect repository object paths"))
+        return findings
+    unsafe_history: set[tuple[str, str]] = set()
+    for line in objects.splitlines():
+        _, separator, raw_path = line.partition(" ")
+        if not separator or not raw_path:
+            continue
+        path = Path(raw_path)
+        reason = prohibited_reason(path)
+        if reason is not None:
+            unsafe_history.add((raw_path, reason))
+    findings.extend(
+        ReleaseAuditFinding(path, f"{reason} appears in Git history")
+        for path, reason in sorted(unsafe_history)
+    )
     return findings
 
 

@@ -29,5 +29,36 @@ class ReleaseAuditTest(unittest.TestCase):
         self._git("remote", "add", "origin", "https://example.invalid/public.git")
         self.assertEqual([], audit_release_repository(self.root))
 
+    def test_rejects_dirty_worktree_and_prohibited_historical_paths(self) -> None:
+        self._git("init", "-b", "main")
+        self._git("config", "user.name", "Release Test")
+        self._git("config", "user.email", "release-test@example.invalid")
+        (self.root / "build").mkdir()
+        prohibited = self.root / "build" / "client.apk"
+        prohibited.write_bytes(b"private")
+        self._git("add", "-f", "build/client.apk")
+        self._git("commit", "-m", "unsafe history")
+        prohibited.unlink()
+        (self.root / "README.md").write_text("public source\n", encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "remove unsafe file")
+        (self.root / "dirty.txt").write_text("not committed\n", encoding="utf-8")
+
+        values = {
+            (finding.subject, finding.reason)
+            for finding in audit_release_repository(self.root)
+        }
+
+        self.assertIn(
+            ("worktree", "repository has uncommitted or untracked files"), values
+        )
+        self.assertIn(
+            (
+                "build/client.apk",
+                "prohibited file type: .apk appears in Git history",
+            ),
+            values,
+        )
+
     def _git(self, *arguments: str) -> None:
         subprocess.run(("git", "-C", str(self.root), *arguments), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

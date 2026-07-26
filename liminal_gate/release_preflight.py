@@ -12,7 +12,7 @@ PROHIBITED_SUFFIXES = frozenset({
     ".apk", ".apkm", ".apks", ".bin", ".bundle", ".ipa", ".mp3", ".ogg",
     ".png", ".unity3d", ".wav", ".webp", ".zip", ".7z",
 })
-IGNORED_DIRECTORIES = frozenset({".git", "__pycache__", "build", "dist"})
+IGNORED_DIRECTORIES = frozenset({".git", "__pycache__"})
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,18 @@ def inspect_release_tree(root: Path) -> list[PreflightFinding]:
         if path.is_file() and path.suffix.lower() in PROHIBITED_SUFFIXES:
             findings.append(PreflightFinding(relative, f"prohibited file type: {path.suffix.lower()}"))
     return findings
+
+
+def prohibited_reason(path: Path) -> str | None:
+    """Return why a repository-relative path is unsafe for public history."""
+    forbidden_directory = next(
+        (part for part in path.parts if part in PROHIBITED_DIRECTORIES), None
+    )
+    if forbidden_directory is not None:
+        return f"prohibited directory: {forbidden_directory}"
+    if path.suffix.lower() in PROHIBITED_SUFFIXES:
+        return f"prohibited file type: {path.suffix.lower()}"
+    return None
 
 
 def parse_args() -> argparse.Namespace:

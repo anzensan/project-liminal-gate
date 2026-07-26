@@ -83,6 +83,17 @@ class SaveValidationTest(unittest.TestCase):
         self.assertIn("teamMembers", errors(save(teamMembers=[3, 64, 0, 0, 0, 0])))
         self.assertEqual([], errors(save(teamMembers=[3, 0, 0, 0, 0, 0])))
 
+    def test_party_slots_and_selectors_require_nonnegative_integers(self) -> None:
+        for field, value in (
+            ("teamMembers", ["bad", 1]),
+            ("teamMembers_VS", [None, 1]),
+            ("teamBuddies_VS", [1.5]),
+            ("teamNo", "1"),
+            ("teamNo_VS", -1),
+            ("summonId", {}),
+        ):
+            self.assertIn(field, errors(save(**{field: value})))
+
     def test_duplicate_and_invalid_roster_ids_are_errors(self) -> None:
         self.assertIn("chrdata[1]", errors(save(chrdata=[character(3), character(3)])))
         self.assertIn("chrdata[0]", errors(save(chrdata=[{"id": 0, "jobLevels": [1.0]}])))
@@ -121,6 +132,13 @@ class SaveValidationTest(unittest.TestCase):
         document = save()
         document["tokens"]["stray"] = "MISSING"
         self.assertIn("tokens.stray", errors(document))
+
+    def test_token_bindings_must_be_a_string_mapping(self) -> None:
+        document = save()
+        document["tokens"] = []
+        self.assertIn("tokens", errors(document))
+        document["tokens"] = {1: "ACCOUNT"}
+        self.assertIn("tokens", errors(document))
 
 
 

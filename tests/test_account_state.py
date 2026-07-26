@@ -5,7 +5,16 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from liminal_gate.account_state import AccountStateError, adopt, candidates, restore, snapshot, summarize
+from liminal_gate.account_state import (
+    REPLAY_CACHE_FIELDS,
+    AccountStateError,
+    adopt,
+    apply_edited,
+    candidates,
+    restore,
+    snapshot,
+    summarize,
+)
 from liminal_gate.bootstrap_server import BootstrapState
 
 
@@ -123,6 +132,31 @@ class AccountStateToolTest(unittest.TestCase):
         copied = BootstrapState(Path(result["path"]))
         self.assertEqual(50000, copied.accounts[OLD_DEVICE]["userdata"]["coins"])
         copied.close()
+
+    def test_apply_can_clear_every_durable_mutation_replay_cache(self) -> None:
+        with self.state.lock:
+            account = self.state.accounts[OLD_DEVICE]
+            for field in REPLAY_CACHE_FIELDS:
+                account[field] = {
+                    "old": {"body_sha256": "x", "payload": {"coins": 1}}
+                }
+            self.state._persist_locked()
+        self.state.close()
+        edited = self.state_path.with_name("edited.json")
+        edited.write_bytes(self.state_path.read_bytes())
+
+        result = apply_edited(
+            self.state_path,
+            edited,
+            confirmed=True,
+            force=True,
+            clear_replay_cache=True,
+        )
+
+        self.assertTrue(result["clearedReplayCache"])
+        document = json.loads(self.state_path.read_text(encoding="utf-8"))
+        for field in REPLAY_CACHE_FIELDS:
+            self.assertEqual({}, document["accounts"][OLD_DEVICE][field])
 
 
 if __name__ == "__main__":

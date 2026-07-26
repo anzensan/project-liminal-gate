@@ -110,3 +110,13 @@ class PublicServerTest(unittest.TestCase):
             ],
             [(finding.path, finding.reason) for finding in findings],
         )
+
+    def test_release_preflight_does_not_hide_prohibited_build_outputs(self) -> None:
+        root = Path(self.temporary_directory.name) / "release-build"
+        (root / "build").mkdir(parents=True)
+        (root / "build" / "client.apk").write_bytes(b"not releasable")
+        findings = inspect_release_tree(root)
+        self.assertEqual(
+            [(Path("build/client.apk"), "prohibited file type: .apk")],
+            [(finding.path, finding.reason) for finding in findings],
+        )

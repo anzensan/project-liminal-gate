@@ -330,7 +330,14 @@ function load(text, name) {
   accountId = parsed.active_account_id && ids.includes(parsed.active_account_id) ? parsed.active_account_id : ids[0];
   $("loaded").textContent = `${name} — ${ids.length} account${ids.length === 1 ? "" : "s"}`;
   $("loaded").className = "sev-ok";
-  $("account").innerHTML = ids.map((id) => `<option value="${id}">${id}</option>`).join("");
+  const accountSelect = $("account");
+  accountSelect.textContent = "";
+  for (const id of ids) {
+    const option = window.document.createElement("option");
+    option.value = id;
+    option.textContent = id;
+    accountSelect.appendChild(option);
+  }
   $("account").value = accountId;
   $("editor").classList.remove("hidden");
   render();
@@ -354,7 +361,7 @@ function render() {
     const [level, progression] = decodeLevel((row.jobLevels || [0])[0]);
     const tr = window.document.createElement("tr");
     tr.innerHTML =
-      `<td>${escapeHtml(nameFor("characters", row.id))}</td><td>${row.jobID ?? 0}</td>` +
+      `<td>${escapeHtml(nameFor("characters", row.id))}</td><td>${escapeHtml(String(row.jobID ?? 0))}</td>` +
       `<td><input type="number" min="0" max="${LEVEL_CAP}" value="${level}" data-index="${index}" data-part="level"></td>` +
       `<td><input type="number" min="0" value="${progression}" data-index="${index}" data-part="progression"></td>` +
       `<td><input type="number" min="0" value="${row.skillBoost ?? 0}" data-index="${index}" data-part="skillBoost"></td>` +
@@ -524,7 +531,7 @@ function check() {
     target.innerHTML = `<div class="finding sev-ok">Nothing wrong found. Python checks it again on apply.</div>`;
   } else {
     target.innerHTML = findings
-      .map(([severity, field, message]) => `<div class="finding sev-${severity}"><b>${field}</b> — ${message}</div>`)
+      .map(([severity, field, message]) => `<div class="finding sev-${severity}"><b>${escapeHtml(field)}</b> — ${escapeHtml(message)}</div>`)
       .join("");
   }
   $("export").disabled = findings.some(([severity]) => severity === "error");

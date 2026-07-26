@@ -9,7 +9,13 @@ import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, ProfileError, load_profile
+from liminal_gate.bootstrap_server import (
+    MAX_REQUEST_BODY_BYTES,
+    BootstrapServer,
+    BootstrapState,
+    ProfileError,
+    load_profile,
+)
 from liminal_gate.story_progression_catalog import build_core_story_policy
 
 
@@ -214,7 +220,7 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual(20, recovered.accounts["local-account"]["userdata"]["coins"])
         recovered.close()
 
-    def test_an_unknown_token_routes_to_its_own_client_not_the_active_account(self) -> None:
+    def test_an_unknown_token_routes_only_to_an_identified_client(self) -> None:
         """Two players at once send byte-identical tokens.
 
         `otk` is a three-second time bucket, so a household's second client
@@ -235,10 +241,11 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertTrue(state.bind_rotated_token("rotated-for-second", "192.168.1.11"))
         self.assertEqual("second-account", state.tokens["rotated-for-second"])
 
-        # A client that has never identified itself still uses the active
-        # account, which is what keeps the single-player path unchanged.
-        self.assertTrue(state.bind_rotated_token("rotated-for-stranger", "192.168.1.99"))
-        self.assertEqual("second-account", state.tokens["rotated-for-stranger"])
+        # A client that has never identified itself may not inherit whichever
+        # account is active. The guided server listens on the LAN for physical
+        # devices, so this is an account-integrity boundary.
+        self.assertFalse(state.bind_rotated_token("rotated-for-stranger", "192.168.1.99"))
+        self.assertNotIn("rotated-for-stranger", state.tokens)
 
         # The routing survives a restart, or the next session re-hijacks.
         self.server.shutdown()
@@ -248,6 +255,15 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertTrue(reloaded.bind_rotated_token("later-token", "192.168.1.10"))
         self.assertEqual("local-account", reloaded.tokens["later-token"])
         reloaded.close()
+
+    def test_legacy_state_without_host_bindings_is_claimed_once(self) -> None:
+        state = self.server.state
+        state.create_account("old-token", "local-account", {"coins": 1})
+        state.client_hosts = {}
+        self.assertTrue(state.bind_rotated_token("rotated", "192.168.1.10"))
+        self.assertEqual("local-account", state.tokens["rotated"])
+        self.assertEqual("local-account", state.client_hosts["192.168.1.10"])
+        self.assertFalse(state.bind_rotated_token("stranger", "192.168.1.99"))
 
     def test_a_save_that_will_not_load_names_its_retained_states(self) -> None:
         self.request("/local/signup?uuid=local-account&otk=signup-token")
@@ -292,12 +308,30 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual("unsupported_userdata_write", event["error"])
         self.assertEqual(["progressCode", "worldMapNo", "lastUpdate", "username"], event["request_fields"])
         self.assertEqual({"progressCode": "7", "worldMapNo": "0", "lastUpdate": "1"}, event["request_values"])
-        self.assertEqual("local-account", event["resolved_account_id"])
         self.assertEqual("initial", event["resolved_account_phase"])
-        self.assertEqual("local-account", event["active_account_id"])
         self.assertEqual("initial", event["active_account_phase"])
         self.assertTrue(event["resolved_account_is_active"])
+        self.assertNotIn("local-account", self.event_log_path.read_text(encoding="utf-8"))
         self.assertNotIn("private", self.event_log_path.read_text(encoding="utf-8"))
+
+    def test_rejects_negative_and_oversized_request_bodies_before_reading(self) -> None:
+        for length, expected_status, expected_error in (
+            (-1, 400, "invalid_content_length"),
+            (MAX_REQUEST_BODY_BYTES + 1, 413, "request_body_too_large"),
+        ):
+            connection = HTTPConnection(*self.server.server_address)
+            connection.putrequest(
+                "POST", "/local/userdata?otk=token&requestID=bounded-body"
+            )
+            connection.putheader("Content-Length", str(length))
+            connection.endheaders()
+            response = connection.getresponse()
+            payload = json.loads(response.read())
+            connection.close()
+            self.assertEqual(
+                (expected_status, expected_error),
+                (response.status, payload["error"]),
+            )
 
     def test_event_log_records_only_clear_settlement_aggregates(self) -> None:
         self.request("/local/signup?uuid=local-account&otk=signup-token")

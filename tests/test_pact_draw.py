@@ -85,11 +85,14 @@ class PactDrawTest(unittest.TestCase):
             finally:
                 server.shutdown(); thread.join(); server.server_close()
             restarted = BootstrapState(state_path)
-            persisted = restarted.userdata_for("token")
-            self.assertIsNotNone(persisted)
-            assert persisted is not None
-            self.assertEqual(45, persisted["freeEnergy"])
-            self.assertEqual(45, persisted["valuables"]["freeEnergy"])
+            try:
+                persisted = restarted.userdata_for("token")
+                self.assertIsNotNone(persisted)
+                assert persisted is not None
+                self.assertEqual(45, persisted["freeEnergy"])
+                self.assertEqual(45, persisted["valuables"]["freeEnergy"])
+            finally:
+                restarted.close()
 
     def test_http_truth_pact_accepts_an_affordable_remainder_batch(self) -> None:
         """The ten-pull control can submit 1..10, not only its button labels."""

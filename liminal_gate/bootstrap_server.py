@@ -65,6 +65,10 @@ PROFILE_SCHEMA_VERSION = 1
 # any observed live burst while still keeping the state file a bounded size.
 RETAINED_REQUESTS_PER_ACCOUNT = 512
 RETAINED_TOKENS_PER_ACCOUNT = 512
+# The largest observed mutation is a complete local userdata projection. Keep
+# generous headroom for a full roster while refusing an unbounded read from a
+# LAN peer: the guided server must listen beyond loopback for a physical device.
+MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024
 # Committed states kept beside the save, newest first, so a bad write, a manual
 # edit, or a damaged file is recoverable instead of terminal.
 ACCOUNT_STATE_BACKUP_COUNT = 5
@@ -467,27 +471,35 @@ class BootstrapState:
         if not isinstance(token, str) or not token:
             return False
         with self.lock:
-            # A token that has already been bound is the only durable account
-            # identity carried by ordinary requests.  Never overwrite that
-            # association merely because another account later became active:
-            # doing so makes an old account's retry or post-restart request
-            # operate on the wrong save.
-            if self.tokens.get(token) in self.accounts:
-                return True
-            # This client's own last identified account outranks whichever
-            # account happens to be active, which is what keeps a second
-            # player's save from capturing the first player's mutations.
             owned = self.client_hosts.get(client_host) if isinstance(client_host, str) else None
-            account_id = owned if owned in self.accounts else self.active_account_id
-            # A tester's emulator can retain an older OTK while the server
-            # state has accumulated abandoned accounts from earlier setup
-            # attempts.  This is a single-player local fallback: once signup
-            # or login identifies the active save, route a *new* client token
-            # to that save rather than resurrecting an abandoned one.
+            if owned in self.accounts:
+                # OTK values collide across clients because they are coarse
+                # time buckets. The host that most recently identified itself
+                # by signup/login therefore outranks a pre-existing token
+                # binding, including one created by another household client.
+                if self.tokens.get(token) != owned:
+                    self.tokens[token] = owned
+                    self._persist_locked()
+                return True
+            if self.client_hosts:
+                # Once at least one client has identified itself, an unrelated
+                # LAN host must not inherit the active save merely by sending an
+                # arbitrary fresh token. It can establish ownership through the
+                # normal signup/login route, both of which carry a UUID.
+                return False
+            # Compatibility migration for a legacy single-account save written
+            # before host ownership was persisted. The first successful
+            # rotated request claims its host; subsequent unknown hosts are
+            # refused by the branch above.
+            account_id = self.tokens.get(token)
+            if account_id not in self.accounts:
+                account_id = self.active_account_id
             if account_id in self.accounts:
+                if isinstance(client_host, str) and client_host:
+                    self.client_hosts[client_host] = account_id
                 if self.tokens.get(token) != account_id:
                     self.tokens[token] = account_id
-                    self._persist_locked()
+                self._persist_locked()
                 return True
             if account_id is None and len(self.accounts) == 1:
                 account_id = next(iter(self.accounts))
@@ -495,19 +507,19 @@ class BootstrapState:
             if account_id not in self.accounts:
                 return False
             self.tokens[token] = account_id
+            if isinstance(client_host, str) and client_host:
+                self.client_hosts[client_host] = account_id
             self._persist_locked()
             return True
 
     def safe_account_context(self, token: str) -> dict[str, Any]:
-        """Return non-secret account-routing diagnostics for a local request."""
+        """Return routing diagnostics without persisting account identifiers."""
         with self.lock:
             account_id = self.tokens.get(token)
             account = self.accounts.get(account_id)
             active = self.accounts.get(self.active_account_id)
             return {
-                "resolved_account_id": account_id,
                 "resolved_account_phase": None if account is None else account.get("tutorial_phase"),
-                "active_account_id": self.active_account_id,
                 "active_account_phase": None if active is None else active.get("tutorial_phase"),
                 "resolved_account_is_active": account_id == self.active_account_id,
             }
@@ -2213,7 +2225,11 @@ class BootstrapServer(ThreadingHTTPServer):
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
         self.hunting_catalog = hunting_catalog
-        super().__init__(address, BootstrapHandler)
+        try:
+            super().__init__(address, BootstrapHandler)
+        except BaseException:
+            state.close()
+            raise
 
     def server_close(self) -> None:
         """Hand the save back so a replacement server can start immediately."""
@@ -2383,7 +2399,16 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid_content_length"})
             return
+        if length < 0:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid_content_length"})
+            return
+        if length > MAX_REQUEST_BODY_BYTES:
+            self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "request_body_too_large"})
+            return
         body = self.rfile.read(length)
+        if len(body) != length:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "incomplete_request_body"})
+            return
         self._event_details = _safe_form_diagnostics(body)
         query = dict(parse_qsl(target.query, keep_blank_values=True))
         token = query.get("otk")
@@ -3814,7 +3839,10 @@ def main() -> int:
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error
     print(f"bootstrap compatibility server listening on http://{args.host}:{args.port}")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
     return 0
 
 
