@@ -77,7 +77,13 @@ def build_character_catalog(tree: dict[str, Any], apk_sha256: str) -> dict[str, 
 #: The master-data objects this importer can read, by serialized path id. They
 #: share one `data.unity3d` load, because building the type trees is the slow
 #: part and doing it once per object would trebled it.
-MASTER_PATH_IDS = {"ChrDatabase": CHR_DATABASE_PATH_ID, "ItemSet": 12695, "BuddyDatabase": 13474}
+MASTER_PATH_IDS = {
+    "ChrDatabase": CHR_DATABASE_PATH_ID, "ItemSet": 12695, "BuddyDatabase": 13474,
+    # `BattleData` duplicates :mod:`liminal_gate.battledata_importer`'s own load.
+    # It is listed here so a caller that needs stage rows *and* another master
+    # object pays for the type-tree build once instead of twice.
+    "BattleData": 12684, "EnemyData": 12693,
+}
 
 
 def load_master_trees(apk: Path, dummy_dll_dir: Path, names: tuple[str, ...]) -> dict[str, dict[str, Any]]:

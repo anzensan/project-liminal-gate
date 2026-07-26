@@ -47,6 +47,10 @@ project also includes:
 - `liminal-gate-import-input` — writes local APK/resource structural metadata.
 - `liminal-gate-import-bootstrap-profile` — derives a local bootstrap profile
   from a user-owned JSONL capture after removing session material.
+- `liminal-gate-import-native-encounters` — reads the ARM64 chapter battle
+  programs out of a reviewed APK, using the user's Il2CppDumper `dump.cs` and a
+  local `objdump`; feeds `liminal-gate-generate-story-outcomes`. See
+  [Advanced local configuration](advanced-configuration.md#composing-a-story-outcome-catalog-from-your-own-recovered-drops).
 
 Run any tool with `--help` for its exact arguments.
 

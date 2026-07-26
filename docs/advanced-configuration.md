@@ -141,6 +141,98 @@ Use these together when you want stricter generic story settlement:
 Those catalogs are deliberately operator supplied. They let a self-hosted
 instance be strict without bundling a game-data table in this repository.
 
+### Composing a story-outcome catalog from your own recovered drops
+
+`--story-outcome-catalog` is the option that decides whether a story clear can
+mint a Companion. Without one the server writes no `buddyInfo` at all, so a
+self-hosted instance can play the entire story and never see a Companion drop
+even though the client rolled one. Authoring the catalog by hand means writing a
+per-stage Companion ceiling for every ordinary stage, which is why it can be
+composed instead.
+
+**Read the limits below before using it.** This is opt-in strictness, not a
+strictly better setting.
+
+#### 1. Extract the native encounter map
+
+This is the one import in the project that a Unity type-tree reader cannot
+serve. The chapter battle scripts are compiled into the native library rather
+than stored as serialized data, so recovering which enemies a stage spawns needs
+a disassembler. Alongside your APK you need two things:
+
+- the `dump.cs` file from the **same** Il2CppDumper run that produced your
+  `DummyDll` directory -- it is that directory's sibling in the Il2CppDumper
+  output, and it supplies the method names, managed virtual slot numbers, and
+  the `Enemies` enum that the disassembly alone does not carry;
+- an `objdump` that can disassemble AArch64 (system binutils or LLVM both work).
+
+```sh
+python3 -m liminal_gate.native_encounter_importer \
+  --apk local-input/terra-battle-5.5.7-170.apk \
+  --dump-cs /path/to/il2cpp-output/dump.cs \
+  --output user-data/derived/native-encounters.json
+```
+
+It reports how many stages resolved every spawn and how many rest on an inferred
+variant. **ARM64 only.** The APK also ships `armeabi-v7a`, whose class header and
+vtable stride differ; the two ABIs are compiled from one program, so reading the
+32-bit library would add a second instruction decoder for no additional
+information. Every offset in this project's documentation refers to arm64.
+
+#### 2. Compose the catalog
+
+```sh
+python3 -m liminal_gate.story_outcome_generator \
+  --apk local-input/terra-battle-5.5.7-170.apk \
+  --dummy-dll-dir /path/to/il2cpp-output/DummyDll \
+  --native-encounters user-data/derived/native-encounters.json \
+  --character-catalog user-data/character-catalog.json \
+  --output user-data/derived/story-outcomes.json
+```
+
+Two sources are unioned, and the larger ceiling wins:
+
+- each stage's own `BattleData.Section.dropBuddies` allowlist, which packs a
+  Companion and its per-clear cap into one integer;
+- the native encounter map joined to `EnemyData`, where a stage's ceiling for a
+  Companion is how many enemies able to drop it that stage spawns.
+
+Neither subsumes the other. The allowlist covers stages the native map cannot
+resolve; the native map covers Companions the allowlist omits.
+
+#### What it cannot know
+
+`StoryOutcomeRule` also carries `item_maxima` and `character_maxima`. No
+per-stage item or character drop table has been recovered -- `EnemyData` carries
+a Job drop rather than an item, and carries no character drop at all -- so both
+are emitted **empty**, and an empty ceiling forbids the outcome rather than
+permitting it.
+
+Stated plainly: a generated catalog makes Companion drops work and refuses any
+clear whose battle result reports an item or a character. If your client reports
+those, pass an operator-authored catalog as `--baseline`. Its capacities, its
+`item_maxima`/`character_maxima`, and its Companion drop levels are carried
+through unchanged, and only the Companion ceilings are widened.
+
+Three further boundaries, all reported by the commands themselves:
+
+- **Chapters 38--42 cannot be joined at all.** The client shipped those
+  chapters' battle scripts without their `EnemyData` rows -- 52 symbols with no
+  record anywhere in the APK. Those stages keep only their own `dropBuddies`
+  allowlist. This is permanent and is not a fault in the import.
+- **Chapters 1--7 are not in the native map.** Their encounters live in the
+  scenario scripts rather than in compiled chapter classes, so they also keep
+  only their `dropBuddies` allowlist.
+- **Variant initializers are inferred, not confirmed.** A spawn may name a base
+  enemy with a behavioural modifier applied; it resolves to the base enemy's
+  record and is marked `exact: false` in the encounter import, and the summary
+  counts the stages whose ceiling depends on one. Pass `--exact-only` to drop
+  those contributions.
+
+A dropped Companion is minted at level 1, following the one recovered drop
+manifest that states a level -- Metal Zone's two Companions. A `--baseline`
+entry overrides it per Companion.
+
 ## Optional local services
 
 The bootstrap server exposes these features only when the corresponding local
