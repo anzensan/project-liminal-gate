@@ -65,6 +65,11 @@ LOOPBACK_HOSTS = frozenset({"localhost", "::1", "0.0.0.0"})
 PACKAGE_NAME = "com.mistwalkercorp.guardians"
 ZIPALIGN_NAMES = ("zipalign", "zipalign.exe")
 APKSIGNER_NAMES = ("apksigner", "apksigner.bat", "apksigner.exe")
+KEYTOOL_NAMES = ("keytool", "keytool.exe")
+ADB_NAMES = ("adb", "adb.exe")
+# keytool refuses a shorter store or key password, and it only says so after the
+# prompt has been answered, so setup states and checks the rule itself.
+MINIMUM_KEY_PASSWORD_LENGTH = 6
 REQUIRED_RESOURCE_CATEGORIES = ("BG", "BGM", "Banner", "BuddyImages", "BuddyThumbs", "Illust", "Pieces", "SE", "Scenario")
 
 
@@ -251,6 +256,73 @@ def find_build_tools(explicit: Path | None) -> tuple[Path, Path]:
     raise TesterSetupError(f"could not find zipalign and apksigner under {location}; install Android SDK Build Tools or pass --build-tools")
 
 
+def _bundled_java_bin_directories() -> tuple[Path, ...]:
+    """Directories inside an Android Studio installation that hold its own JDK.
+
+    `keytool` ships with a JDK, not with the Android SDK, so putting the SDK on
+    `PATH` never provides it. A machine whose only Java is the runtime bundled
+    with Android Studio is the common case on Windows, and it is found here
+    rather than asking the tester to install a second JDK.
+    """
+    local_app_data, program_files = os.environ.get("LOCALAPPDATA"), os.environ.get("ProgramFiles")
+    installations = (
+        Path(local_app_data) / "Programs/Android Studio" if local_app_data else None,
+        Path(program_files) / "Android/Android Studio" if program_files else None,
+        Path("/Applications/Android Studio.app/Contents"),
+        Path.home() / "Applications/Android Studio.app/Contents",
+        Path("/opt/android-studio"),
+        Path.home() / "android-studio",
+    )
+    # Android Studio has used both layouts, and macOS nests a second Home level.
+    return tuple(
+        installation / relative
+        for installation in installations if installation is not None
+        for relative in ("jbr/bin", "jbr/Contents/Home/bin", "jre/bin", "jre/Contents/Home/bin")
+    )
+
+
+def find_keytool() -> Path:
+    """Locate keytool on PATH, under JAVA_HOME, or in Android Studio's runtime."""
+    on_path = shutil.which("keytool")
+    if on_path is not None:
+        return Path(on_path)
+    java_home = os.environ.get("JAVA_HOME")
+    directories = ((Path(java_home) / "bin",) if java_home else ()) + _bundled_java_bin_directories()
+    for directory in directories:
+        keytool = _find_tool(directory, KEYTOOL_NAMES)
+        if keytool is not None:
+            print(f"Using the keytool bundled with your JDK: {keytool}")
+            return keytool
+    raise TesterSetupError(
+        "keytool is unavailable. It comes with a JDK rather than with the Android SDK, so adding the "
+        "SDK to PATH does not provide it. Install a JDK, or point JAVA_HOME at the runtime bundled "
+        "with Android Studio, then reopen the terminal and run setup again."
+    )
+
+
+def resolve_adb(requested: str) -> str:
+    """Return a runnable adb, falling back to the SDK's own platform-tools.
+
+    A tester whose shell does not have the SDK on `PATH` still has adb, because
+    Android Studio always installs it in the same place. Only the default name
+    falls back: an explicitly requested path that does not exist is an error
+    rather than a silent substitution.
+    """
+    if shutil.which(requested) is not None:
+        return requested
+    if requested != "adb":
+        raise TesterSetupError(f"adb is unavailable at the requested path: {requested}")
+    for sdk_root in _sdk_roots():
+        adb = _find_tool(sdk_root / "platform-tools", ADB_NAMES)
+        if adb is not None:
+            print(f"Using the adb from your Android SDK: {adb}")
+            return str(adb)
+    raise TesterSetupError(
+        "adb is unavailable: it is not on PATH and no Android SDK platform-tools directory was found. "
+        "Install Android SDK Platform-Tools in Android Studio, or pass --adb with the full path to adb."
+    )
+
+
 def write_password_file(path: Path, password: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
@@ -258,26 +330,51 @@ def write_password_file(path: Path, password: str) -> None:
         stream.write(password)
 
 
+def prompt_key_password(confirm: bool, ask: Callable[[str], str] = getpass.getpass) -> str:
+    """Prompt until the tester supplies a password keytool will actually accept.
+
+    The length rule is stated in the prompt and rechecked here, and a rejected
+    answer is asked again rather than ending the run, because this prompt sits
+    ahead of every expensive step and a typo should not cost the whole setup.
+    """
+    while True:
+        try:
+            password = ask(f"Choose a local test-key password (at least {MINIMUM_KEY_PASSWORD_LENGTH} characters): ")
+            if len(password) < MINIMUM_KEY_PASSWORD_LENGTH:
+                print(f"That password is {len(password)} characters. keytool requires at least {MINIMUM_KEY_PASSWORD_LENGTH}.")
+                continue
+            if not confirm or password == ask("Repeat local test-key password: "):
+                return password
+            print("Those two passwords did not match.")
+        except EOFError as error:
+            raise TesterSetupError(
+                "setup needs an interactive terminal to choose a local test-key password; "
+                "run it directly in a terminal, or create the keystore first as described in the README"
+            ) from error
+
+
 def ensure_keystore(keystore: Path, password_file: Path) -> None:
     if keystore.is_file() and password_file.is_file():
         return
-    if shutil.which("keytool") is None:
-        raise TesterSetupError("keytool is unavailable; install a JDK and reopen the terminal")
-    password = getpass.getpass("Choose a local test-key password: ")
-    if not password:
-        raise TesterSetupError("a nonempty local test-key password is required")
-    if not keystore.exists() and password != getpass.getpass("Repeat local test-key password: "):
-        raise TesterSetupError("test-key passwords did not match")
+    keytool = find_keytool()
+    keystore.parent.mkdir(parents=True, exist_ok=True)
+    password = prompt_key_password(confirm=not keystore.exists())
     if not keystore.exists():
         try:
             subprocess.run((
-                "keytool", "-genkeypair", "-v", "-keystore", str(keystore), "-alias", KEY_ALIAS,
+                str(keytool), "-genkeypair", "-v", "-keystore", str(keystore), "-alias", KEY_ALIAS,
                 "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
                 "-dname", "CN=Local Tester, OU=Testing, O=Project Liminal Gate, L=Local, ST=Local, C=US",
                 "-storepass", password, "-keypass", password,
-            ), check=True)
-        except (OSError, subprocess.CalledProcessError) as error:
-            raise TesterSetupError("could not create the local test keystore") from error
+            ), check=True, text=True, capture_output=True)
+        except subprocess.CalledProcessError as error:
+            # keytool's own message is the useful part; without it the failure
+            # reads as unexplained.
+            reported = (error.stderr or error.stdout or "").strip()
+            raise TesterSetupError(f"could not create the local test keystore: {reported or f'keytool exited {error.returncode}'}") from error
+        except OSError as error:
+            raise TesterSetupError(f"could not run keytool at {keytool}: {error}") from error
+        print(f"Created the local test signing key: {keystore}")
     write_password_file(password_file, password)
 
 
@@ -295,7 +392,15 @@ def prepare_local_tester(
     # seconds instead of after the whole resource tree has been inventoried.
     server_origin = build_server_origin(device_host, port)
     apk, resource_root = apk.resolve(), resolve_resource_root(resource_root)
+    if not apk.is_file():
+        raise TesterSetupError(f"no APK to redirect at {apk}; pass --apk with the path to your own copy")
     data_directory.mkdir(parents=True, exist_ok=True)
+    # Asked and located here for the same reason as the address above: a missing
+    # SDK tool, a missing JDK, or a mistyped password should cost seconds rather
+    # than surface after the whole resource tree has been inventoried.
+    keystore, password_file = data_directory / "liminal-gate-test.keystore", data_directory / "keystore-password.txt"
+    ensure_keystore(keystore, password_file)
+    zipalign, apksigner = find_build_tools(build_tools)
     try:
         imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True)
         write_import_manifest(data_directory / "input-manifest", imported)
@@ -316,9 +421,6 @@ def prepare_local_tester(
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         unsigned = data_directory / "liminal-gate-unsigned.apk"
         apply_patch_plan(apk, unsigned, load_patch_plan(plan_path))
-        keystore, password_file = data_directory / "liminal-gate-test.keystore", data_directory / "keystore-password.txt"
-        ensure_keystore(keystore, password_file)
-        zipalign, apksigner = find_build_tools(build_tools)
         signed = data_directory / "liminal-gate-test.apk"
         sign_apk(unsigned, signed, zipalign, apksigner, keystore, KEY_ALIAS, password_file, password_file)
     except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, CharacterCatalogImportError, ValueError) as error:
@@ -470,9 +572,10 @@ def main() -> int:
         # Chosen before the APK is built so an ambiguous target, or an address
         # the target cannot reach, is reported in seconds rather than after the
         # resource inventory and signing have already run.
-        device = None
+        device, adb = None, args.adb
         if not args.prepare_only:
-            device = select_device(args.adb, args.device)
+            adb = resolve_adb(args.adb)
+            device = select_device(adb, args.device)
             check_device_host_suits_device(device, args.device_host)
         signed = prepare_local_tester(
             args.apk, args.resource_root, args.data_dir, args.port, args.build_tools,
@@ -480,7 +583,7 @@ def main() -> int:
         )
         if device is None:
             return 0
-        install_apk(args.adb, device, signed, replace_existing=args.replace_existing)
+        install_apk(adb, device, signed, replace_existing=args.replace_existing)
         print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,

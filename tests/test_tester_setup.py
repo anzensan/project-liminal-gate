@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, find_build_tools, install_apk, prepare_local_tester, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
+from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, MINIMUM_KEY_PASSWORD_LENGTH, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, ensure_keystore, find_build_tools, find_keytool, install_apk, prepare_local_tester, prompt_key_password, resolve_adb, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
 class GuidedServerPolicyTest(unittest.TestCase):
@@ -199,3 +199,105 @@ class TesterSetupTest(unittest.TestCase):
         with patch("liminal_gate.tester_setup.subprocess.run") as run:
             run_server(arguments)
         run.assert_called_once_with(arguments, check=True)
+
+
+class LocalSigningToolTest(unittest.TestCase):
+    """keytool and adb must be found where Android Studio actually puts them.
+
+    A tester whose only Java is the runtime bundled with Android Studio has
+    keytool on no `PATH` entry the SDK instructions add, and copying the
+    executables into the project directory should never be the fix.
+    """
+
+    def test_reprompts_a_password_keytool_would_reject_for_length(self) -> None:
+        short = "x" * (MINIMUM_KEY_PASSWORD_LENGTH - 1)
+        long = "x" * MINIMUM_KEY_PASSWORD_LENGTH
+        answers = iter((short, long, long))
+        self.assertEqual(long, prompt_key_password(confirm=True, ask=lambda _: next(answers)))
+
+    def test_states_the_length_requirement_in_the_prompt_itself(self) -> None:
+        prompts: list[str] = []
+        prompt_key_password(confirm=False, ask=lambda prompt: prompts.append(prompt) or "longenough")
+        self.assertIn(str(MINIMUM_KEY_PASSWORD_LENGTH), prompts[0])
+
+    def test_reprompts_when_the_confirmation_does_not_match(self) -> None:
+        answers = iter(("chosen1", "mistyped", "chosen1", "chosen1"))
+        self.assertEqual("chosen1", prompt_key_password(confirm=True, ask=lambda _: next(answers)))
+
+    def test_a_non_interactive_prompt_explains_itself_instead_of_looping(self) -> None:
+        def refuse(_: str) -> str:
+            raise EOFError
+
+        with self.assertRaisesRegex(TesterSetupError, "interactive terminal"):
+            prompt_key_password(confirm=True, ask=refuse)
+
+    def test_finds_the_java_home_keytool_when_it_is_not_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            java_home = Path(temporary) / "jdk"
+            (java_home / "bin").mkdir(parents=True)
+            (java_home / "bin/keytool.exe").write_text("local", encoding="utf-8")
+            with patch("liminal_gate.tester_setup.shutil.which", return_value=None), \
+                 patch.dict("liminal_gate.tester_setup.os.environ", {"JAVA_HOME": str(java_home)}, clear=True):
+                self.assertEqual(java_home / "bin/keytool.exe", find_keytool())
+
+    def test_finds_the_keytool_bundled_with_windows_android_studio(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            local_app_data = Path(temporary)
+            bundled = local_app_data / "Programs/Android Studio/jbr/bin"
+            bundled.mkdir(parents=True)
+            (bundled / "keytool.exe").write_text("local", encoding="utf-8")
+            with patch("liminal_gate.tester_setup.shutil.which", return_value=None), \
+                 patch.dict("liminal_gate.tester_setup.os.environ", {"LOCALAPPDATA": str(local_app_data)}, clear=True):
+                self.assertEqual(bundled / "keytool.exe", find_keytool())
+
+    def test_a_missing_keytool_names_the_jdk_rather_than_the_sdk(self) -> None:
+        # The bundled locations are emptied rather than merely unset: this
+        # machine may genuinely have an Android Studio runtime installed.
+        with patch("liminal_gate.tester_setup.shutil.which", return_value=None), \
+             patch("liminal_gate.tester_setup._bundled_java_bin_directories", return_value=()), \
+             patch.dict("liminal_gate.tester_setup.os.environ", {}, clear=True):
+            with self.assertRaisesRegex(TesterSetupError, "JDK"):
+                find_keytool()
+
+    def test_falls_back_to_the_sdk_platform_tools_adb(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            sdk_root = Path(temporary) / "Sdk"
+            (sdk_root / "platform-tools").mkdir(parents=True)
+            (sdk_root / "platform-tools/adb.exe").write_text("local", encoding="utf-8")
+            with patch("liminal_gate.tester_setup.shutil.which", return_value=None), \
+                 patch.dict("liminal_gate.tester_setup.os.environ", {"ANDROID_SDK_ROOT": str(sdk_root)}, clear=True):
+                self.assertEqual(str(sdk_root / "platform-tools/adb.exe"), resolve_adb("adb"))
+
+    def test_an_explicit_adb_path_is_never_silently_substituted(self) -> None:
+        with patch("liminal_gate.tester_setup.shutil.which", return_value=None):
+            with self.assertRaisesRegex(TesterSetupError, "requested path"):
+                resolve_adb("/nowhere/adb")
+
+    def test_a_keystore_failure_reports_what_keytool_said(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            failure = subprocess.CalledProcessError(1, ("keytool",), stderr="keytool error: password too short")
+            with patch("liminal_gate.tester_setup.find_keytool", return_value=Path("keytool")), \
+                 patch("liminal_gate.tester_setup.prompt_key_password", return_value="longenough"), \
+                 patch("liminal_gate.tester_setup.subprocess.run", side_effect=failure):
+                with self.assertRaisesRegex(TesterSetupError, "password too short"):
+                    ensure_keystore(data / "test.keystore", data / "password.txt")
+
+    def test_the_password_is_chosen_before_the_resource_tree_is_inventoried(self) -> None:
+        """A mistyped password must not cost a completed resource inventory."""
+        order: list[str] = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); apk = root / "game.apk"; resources = root / "resources"
+            apk.write_bytes(b"apk")
+            for category in REQUIRED_RESOURCE_CATEGORIES:
+                (resources / category).mkdir(parents=True, exist_ok=True)
+            with patch("liminal_gate.tester_setup.ensure_keystore", side_effect=lambda *_: order.append("keystore")), \
+                 patch("liminal_gate.tester_setup.find_build_tools", side_effect=lambda *_: order.append("build-tools") or (root / "zipalign", root / "apksigner")), \
+                 patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: order.append("inventory") or {}), \
+                 patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), \
+                 patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), \
+                 patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), \
+                 patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), \
+                 patch("liminal_gate.tester_setup.sign_apk"):
+                prepare_local_tester(apk, resources, root / "user-data", 8696, None)
+        self.assertEqual(["keystore", "build-tools", "inventory"], order)
