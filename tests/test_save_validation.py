@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import unittest
 
+from liminal_gate.master_strings import (
+    MasterStringError, build_character_names, build_name_file, decrypt_encrypted_string, load_inverse_table,
+)
 from liminal_gate.save_validation import (
     ITEM_SLOTS, LEVEL_CAP, decode_job_level, encode_job_level, validate_document,
 )
@@ -118,6 +121,59 @@ class SaveValidationTest(unittest.TestCase):
         document["tokens"]["stray"] = "MISSING"
         self.assertIn("tokens.stray", errors(document))
 
+
+
+class MasterStringTest(unittest.TestCase):
+    """Names are decoded from the tester's own metadata, never embedded."""
+
+    def setUp(self) -> None:
+        # A stand-in substitution: the real one is verified by digest and read
+        # from the user's APK, so tests use an invertible table of their own.
+        self.table = bytes((index * 7 + 3) % 256 for index in range(256))
+        while len(set(self.table)) != 256:  # pragma: no cover - fixed by construction
+            raise AssertionError("the test table must be a bijection")
+        self.forward = {value: index for index, value in enumerate(self.table)}
+
+    def encrypt(self, text: str) -> dict:
+        return {"data": [self.forward[byte] for byte in reversed(text.encode())]}
+
+    def test_decrypts_a_round_tripped_string(self) -> None:
+        self.assertEqual("Grace", decrypt_encrypted_string(self.encrypt("Grace"), self.table))
+
+    def test_rejects_a_table_that_is_not_the_reviewed_one(self) -> None:
+        with self.assertRaisesRegex(MasterStringError, "substitution table"):
+            load_inverse_table(b"\x00" * 0x700000)
+
+    def test_rejects_a_malformed_encrypted_string(self) -> None:
+        for value in ({}, {"data": "text"}, {"data": [300]}):
+            with self.assertRaises(MasterStringError):
+                decrypt_encrypted_string(value, self.table)
+
+    def test_builds_names_from_the_infos_table_only(self) -> None:
+        tree = {
+            "infos": [
+                {"ID": 3, "NameString": {"en": self.encrypt("Grace")}},
+                {"ID": 25, "NameString": {"en": self.encrypt("A'misandra")}},
+                {"ID": 9, "NameString": {"ja": self.encrypt("x")}},   # no English, skipped
+                {"NameString": {"en": self.encrypt("no id")}},        # unkeyed, skipped
+            ],
+            # Repeats each character once per job, so it cannot key by ID.
+            "data": [{"ID": 3, "NameString": {"en": self.encrypt("wrong")}}],
+        }
+        self.assertEqual({"3": "Grace", "25": "A'misandra"}, build_character_names(tree, self.table))
+
+    def test_refuses_a_tree_with_no_decodable_names(self) -> None:
+        with self.assertRaisesRegex(MasterStringError, "nonempty infos"):
+            build_character_names({"infos": []}, self.table)
+        with self.assertRaisesRegex(MasterStringError, "no character names"):
+            build_character_names({"infos": [{"ID": 1}]}, self.table)
+
+    def test_the_name_file_records_where_it_came_from(self) -> None:
+        document = build_name_file({"3": "Grace"}, "abc123")
+        self.assertEqual("decoded-from-user-apk", document["provenance"])
+        self.assertEqual("abc123", document["source_sha256"])
+        self.assertEqual({"3": "Grace"}, document["characters"])
+        self.assertEqual({}, document["items"])
 
 if __name__ == "__main__":
     unittest.main()

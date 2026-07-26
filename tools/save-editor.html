@@ -130,15 +130,11 @@
       <span id="namesLoaded" class="muted">No name file — characters and items show as bare IDs.</span>
     </div>
     <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
-      <b>Nothing generates this file yet.</b> The client stores its name strings
-      ciphered, and this project has never decrypted them — the master-data
-      inventory keeps only a per-locale SHA-256 of each one, so no name table
-      exists to ship or derive. The hook is here for when one does.
-      Until then, a hand-written
-      <code>user-data/names.json</code> works:
-      <code>{"characters": {"3": "…"}, "items": {"50": "…"}}</code>. That
-      directory is already ignored by Git, so game text you transcribe yourself
-      stays out of the repository.
+      Setup writes <code>user-data/names.json</code> when you pass
+      <code>--dummy-dll-dir</code>, decoding the names from your own copy of the
+      game. None ships here: it is game text, and that directory is ignored by
+      Git so it stays out of the repository. Character names are decoded today;
+      item names still read as bare slot numbers.
     </p>
   </section>
 

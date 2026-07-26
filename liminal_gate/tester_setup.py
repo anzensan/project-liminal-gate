@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import zipfile
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
@@ -22,7 +23,8 @@ from liminal_gate.apk_patcher import PatchPlanError, apply_patch_plan, load_patc
 from liminal_gate.apk_signer import ApkSigningError, sign_apk
 from liminal_gate.input_importer import ImportError, build_import_manifest, write_import_manifest
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError
-from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan, normalize_server_origin
+from liminal_gate.legacy_client_apk_plan import METADATA_MEMBER, generate_legacy_client_plan, normalize_server_origin
+from liminal_gate.master_strings import MasterStringError, build_character_names, build_name_file, load_inverse_table
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
@@ -378,6 +380,27 @@ def ensure_keystore(keystore: Path, password_file: Path) -> None:
     write_password_file(password_file, password)
 
 
+def write_local_names(path: Path, apk: Path, master_tree: dict[str, object]) -> bool:
+    """Decode character names from the tester's own APK for the save editor.
+
+    Names are read from the metadata the tester already owns and written only
+    into the ignored data directory, so no game text enters the repository.
+    A failure here is reported and skipped rather than raised: names are a
+    convenience for one optional tool, and nothing else depends on them.
+    """
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            table = load_inverse_table(archive.read(METADATA_MEMBER))
+        names = build_character_names(master_tree, table)
+        document = build_name_file(names, sha256_file(apk))
+        path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except (OSError, KeyError, zipfile.BadZipFile, MasterStringError) as error:
+        print(f"Name decoding skipped, so the save editor will show bare IDs: {error}")
+        return False
+    print(f"Decoded {len(names)} character names for the save editor: {path}")
+    return True
+
+
 def prepare_local_tester(
     apk: Path, resource_root: Path, data_directory: Path, port: int, build_tools: Path | None,
     dummy_dll_dir: Path | None = None, event_catalog: Path | None = None,
@@ -405,10 +428,10 @@ def prepare_local_tester(
         imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True)
         write_import_manifest(data_directory / "input-manifest", imported)
         if dummy_dll_dir is not None:
-            character_catalog = build_character_catalog(
-                load_character_master_tree(apk, dummy_dll_dir), sha256_file(apk),
-            )
+            master_tree = load_character_master_tree(apk, dummy_dll_dir)
+            character_catalog = build_character_catalog(master_tree, sha256_file(apk))
             write_character_catalog(data_directory / "character-catalog.json", character_catalog)
+            write_local_names(data_directory / "names.json", apk, master_tree)
         manifest = build_resource_manifest(resource_root)
         resource_manifest = data_directory / "resources.json"
         write_resource_manifest(resource_manifest, manifest)
