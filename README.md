@@ -872,6 +872,50 @@ python3 -m liminal_gate.account_state restore \
 Restoring keeps your current save alongside as a timestamped
 `.pre-restore.*.json`, so a restore is itself undoable.
 
+### Editing a save
+
+`tools/save-editor.html` is a single file with no network access and no
+dependencies: open it in a browser, load your save, change what you want, and
+export. **Stop the server first** — it keeps the whole save in memory and
+rewrites all of it when it persists, so an edit made while it runs is lost. A
+browser cannot see the lock the server uses, so that check is yours.
+
+Apply the exported file with the command the editor shows:
+
+```bash
+python3 -m liminal_gate.account_state apply user-data/bootstrap-state.json \
+  edited-save.json --yes
+```
+
+That is the part that decides whether the edit is safe. It re-checks the file in
+Python, refuses one that breaks something the client or server relies on,
+refuses one that has lost an account, keeps a timestamped backup, and will not
+write while a server holds the save. To see what it would say without changing
+anything:
+
+```bash
+python3 -m liminal_gate.account_state validate edited-save.json
+```
+
+Edit through the tool rather than by hand in a text editor. A save is not plain
+data, and the two ways it usually breaks are invisible in the JSON: a character's
+`jobLevels` is a *packed* number whose low bits are the level and whose upper
+bits are its progression, so writing a plain `90` sets the level and destroys
+everything else in the field; and several numbers must stay decimals, because
+the client reads them with an accessor that fails on a whole number and takes
+the whole response down with it. The editor handles both. A text editor will
+not warn you about either, and the damage shows up later, somewhere else.
+
+If a value you changed was one the server had already answered a request with,
+add `--clear-replay-cache` so a repeat of that request cannot return the old
+answer.
+
+Character, item, and Companion names appear beside their IDs when
+`user-data/names.json` is present. Setup writes it if you pass
+`--dummy-dll-dir`, decoding the names from your own copy of the game; see
+[docs/advanced-configuration.md](docs/advanced-configuration.md). Without it
+everything still works, just with bare ID numbers.
+
 ### If you reinstall the app and your progress is gone
 
 Your account is keyed to an ID the app generates on first run. Clearing the
@@ -940,8 +984,11 @@ not attach APKs, resources, captures, account saves, tokens, digests, or keys.
 
 ## More documentation
 
-- [Advanced local configuration](docs/advanced-configuration.md) — optional
-  progression, outcome, inventory, Pact, Companion, and other local catalogs.
+- [Advanced local configuration](docs/advanced-configuration.md) — generating
+  the `DummyDll` directory, plus optional progression, outcome, inventory, Pact,
+  Companion, and other local catalogs.
+- [Save editor](tools/save-editor.html) — a single local page for editing a
+  save; see [Editing a save](#editing-a-save).
 - [Developer reference](docs/developer-reference.md) — server modes, custom
   profiles, resource serving, APK tools, and release checks.
 - [Compatibility scope](COMPATIBILITY_SCOPE.md) — supported operations and
