@@ -92,15 +92,55 @@ def build_character_names(tree: object, inverse_table: bytes, language: str = DE
     return names
 
 
-def build_name_file(characters: dict[str, str], apk_sha256: str, language: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
+def build_item_names(tree: object, inverse_table: bytes, language: str = DEFAULT_LANGUAGE) -> dict[str, str]:
+    """Map item ID to name from an ItemSet tree.
+
+    `itemSet` records carry no ID of their own: an item's ID is its position,
+    which is also how the client's own 181-slot `itemList` is indexed. Ordinal
+    50 decoding to "Metal Ticket" agrees with the Item 50 the Metal Zone entry
+    contract charges, which is what pins the mapping.
+    """
+    records = tree.get("itemSet") if isinstance(tree, dict) else None
+    if not isinstance(records, list) or not records:
+        raise MasterStringError("ItemSet must contain a nonempty itemSet array")
+    return _named_by(enumerate(records, 1), inverse_table, language, "item")
+
+
+def build_companion_names(tree: object, inverse_table: bytes, language: str = DEFAULT_LANGUAGE) -> dict[str, str]:
+    """Map Companion ID to name from a BuddyDatabase tree, which is ID-keyed."""
+    records = tree.get("data") if isinstance(tree, dict) else None
+    if not isinstance(records, list) or not records:
+        raise MasterStringError("BuddyDatabase must contain a nonempty data array")
+    keyed = ((record.get("ID"), record) for record in records if isinstance(record, dict))
+    return _named_by(((key, record) for key, record in keyed if type(key) is int), inverse_table, language, "companion")
+
+
+def _named_by(pairs, inverse_table: bytes, language: str, label: str) -> dict[str, str]:
+    names: dict[str, str] = {}
+    for key, record in pairs:
+        localized = record.get("NameString") if isinstance(record, dict) else None
+        if not isinstance(localized, dict) or language not in localized:
+            continue
+        name = decrypt_encrypted_string(localized[language], inverse_table)
+        if name:
+            names[str(key)] = name
+    if not names:
+        raise MasterStringError(f"no {label} names decoded for language {language!r}")
+    return names
+
+
+def build_name_file(
+    characters: dict[str, str], apk_sha256: str, language: str = DEFAULT_LANGUAGE,
+    items: dict[str, str] | None = None, companions: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Wrap decoded names in the shape the local save editor reads."""
+    order = lambda names: dict(sorted(names.items(), key=lambda pair: int(pair[0])))
     return {
         "schema_version": 1,
         "provenance": "decoded-from-user-apk",
         "language": language,
         "source_sha256": apk_sha256,
-        "characters": dict(sorted(characters.items(), key=lambda pair: int(pair[0]))),
-        # Item and Companion names come from the ItemSet and BuddyDatabase
-        # objects, which this importer does not read yet.
-        "items": {},
+        "characters": order(characters),
+        "items": order(items or {}),
+        "companions": order(companions or {}),
     }

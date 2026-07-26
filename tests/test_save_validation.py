@@ -3,7 +3,8 @@ from __future__ import annotations
 import unittest
 
 from liminal_gate.master_strings import (
-    MasterStringError, build_character_names, build_name_file, decrypt_encrypted_string, load_inverse_table,
+    MasterStringError, build_character_names, build_companion_names, build_item_names, build_name_file,
+    decrypt_encrypted_string, load_inverse_table,
 )
 from liminal_gate.save_validation import (
     ITEM_SLOTS, LEVEL_CAP, decode_job_level, encode_job_level, validate_document,
@@ -174,6 +175,37 @@ class MasterStringTest(unittest.TestCase):
         self.assertEqual("abc123", document["source_sha256"])
         self.assertEqual({"3": "Grace"}, document["characters"])
         self.assertEqual({}, document["items"])
+    def test_item_names_are_keyed_by_position_not_by_a_field(self) -> None:
+        """An ItemSet record carries no ID; its position is the item ID."""
+        records = [{"NameString": {"en": self.encrypt(f"item {index}")}} for index in range(1, 51)]
+        records[49] = {"NameString": {"en": self.encrypt("Metal Ticket")}}
+        names = build_item_names({"itemSet": records}, self.table)
+        # Ordinal 50 is the Metal Ticket, which is the Item 50 the Metal Zone
+        # entry contract charges -- that agreement is what pins the mapping.
+        self.assertEqual("Metal Ticket", names["50"])
+        self.assertEqual("item 1", names["1"])
+        self.assertNotIn("0", names)
+
+    def test_companion_names_are_keyed_by_their_own_id(self) -> None:
+        tree = {"data": [
+            {"ID": 128, "NameString": {"en": self.encrypt("Minion")}},
+            {"ID": 129, "NameString": {"en": self.encrypt("Bigger Minion")}},
+            {"NameString": {"en": self.encrypt("unkeyed")}},
+        ]}
+        self.assertEqual({"128": "Minion", "129": "Bigger Minion"}, build_companion_names(tree, self.table))
+
+    def test_the_name_file_carries_all_three_kinds(self) -> None:
+        document = build_name_file(
+            {"3": "Grace"}, "abc123", items={"50": "Metal Ticket"}, companions={"128": "Minion"},
+        )
+        self.assertEqual({"50": "Metal Ticket"}, document["items"])
+        self.assertEqual({"128": "Minion"}, document["companions"])
+
+    def test_an_empty_master_table_is_refused_rather_than_written_blank(self) -> None:
+        for builder, tree in ((build_item_names, {"itemSet": []}), (build_companion_names, {"data": []})):
+            with self.assertRaises(MasterStringError):
+                builder(tree, self.table)
+
 
 if __name__ == "__main__":
     unittest.main()

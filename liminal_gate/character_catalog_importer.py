@@ -74,8 +74,27 @@ def build_character_catalog(tree: dict[str, Any], apk_sha256: str) -> dict[str, 
     }
 
 
+#: The master-data objects this importer can read, by serialized path id. They
+#: share one `data.unity3d` load, because building the type trees is the slow
+#: part and doing it once per object would trebled it.
+MASTER_PATH_IDS = {"ChrDatabase": CHR_DATABASE_PATH_ID, "ItemSet": 12695, "BuddyDatabase": 13474}
+
+
+def load_master_trees(apk: Path, dummy_dll_dir: Path, names: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+    """Load several reviewed master-data objects in one pass."""
+    unknown = [name for name in names if name not in MASTER_PATH_IDS]
+    if unknown:
+        raise CharacterCatalogImportError(f"unknown master-data object(s): {', '.join(unknown)}")
+    return _load_trees(apk, dummy_dll_dir, {name: MASTER_PATH_IDS[name] for name in names})
+
+
 def load_character_master_tree(apk: Path, dummy_dll_dir: Path) -> dict[str, Any]:
     """Load the reviewed APK's ChrDatabase using locally generated type trees."""
+    return load_master_trees(apk, dummy_dll_dir, ("ChrDatabase",))["ChrDatabase"]
+
+
+def _load_trees(apk: Path, dummy_dll_dir: Path, path_ids: dict[str, int]) -> dict[str, Any]:
+    """Read the named serialized objects out of one loaded data.unity3d."""
     try:
         import UnityPy
         from UnityPy.helpers.TypeTreeGenerator import TypeTreeGenerator
@@ -105,20 +124,23 @@ def load_character_master_tree(apk: Path, dummy_dll_dir: Path) -> dict[str, Any]
             for dll in dlls:
                 generator.load_dll(dll.read_bytes())
             environment.typetree_generator = generator
-            matches = [
-                obj for obj in environment.objects
-                if obj.assets_file.name == SERIALIZED_FILE and obj.path_id == CHR_DATABASE_PATH_ID
-            ]
-            if len(matches) != 1:
-                raise CharacterCatalogImportError(f"expected one ChrDatabase object, found {len(matches)}")
-            tree = matches[0].parse_as_dict(check_read=True)
+            trees: dict[str, Any] = {}
+            for label, path_id in path_ids.items():
+                matches = [
+                    obj for obj in environment.objects
+                    if obj.assets_file.name == SERIALIZED_FILE and obj.path_id == path_id
+                ]
+                if len(matches) != 1:
+                    raise CharacterCatalogImportError(f"expected one {label} object, found {len(matches)}")
+                trees[label] = matches[0].parse_as_dict(check_read=True)
     except CharacterCatalogImportError:
         raise
     except Exception as error:
-        raise CharacterCatalogImportError("could not parse ChrDatabase with local type trees") from error
-    if not isinstance(tree, dict):
-        raise CharacterCatalogImportError("ChrDatabase did not decode to an object")
-    return tree
+        raise CharacterCatalogImportError("could not parse master data with local type trees") from error
+    for label, tree in trees.items():
+        if not isinstance(tree, dict):
+            raise CharacterCatalogImportError(f"{label} did not decode to an object")
+    return trees
 
 
 def write_character_catalog(path: Path, document: dict[str, object]) -> None:
