@@ -188,6 +188,25 @@ local installation.
 | `--hunting` | Pudding/Tin/Coin Creeps/Puppet stages, costs, and result ceilings |
 | `--core-story` | the ordered Chapter 2--42 identities |
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
+| `--drop-eligibility` | the login `chrBuddyData` allowlist: 346 character and 497 Companion master IDs |
+
+### Why drop eligibility is off by default
+
+Without `chrBuddyData` on login the client sets `canDrop = false` on every
+character and Companion and **silently discards every drop it rolls**, so
+clears report empty `monsters`/`buddies` no matter what the stage tables say.
+`--drop-eligibility` sends the allowlist so rolled drops survive.
+
+It is opt-in because it adds a field to an existing login response. The flag
+does not decide *what* drops: per-stage eligibility still governs that through
+the enemy record's `DropBuddyID`/`DropBuddyRatio` and the stage's own
+`dropBuddies` allowlist and per-battle cap. Marking every recovered master
+eligible is a preservation choice, not a recovered per-account entitlement.
+
+`rebirthList` is deliberately omitted from the object. It gates Rebirth
+availability rather than drops, and the `availableVersion` values it carries are
+not in this repository's bundled Rebirth data, so emitting them would assert a
+gate that has not been recovered.
 
 Four of them make an explicit **local policy** choice rather than a claim about
 the retired service, and say so in their own code: Companion draw selects

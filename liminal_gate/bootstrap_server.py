@@ -53,6 +53,7 @@ from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError,
 from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StoryStage, load_story_catalog
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
+from liminal_gate.drop_eligibility import login_chr_buddy_data
 from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_event_catalog
 from liminal_gate.event_log import EventRecorder, safe_form_diagnostics
 from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
@@ -2140,6 +2141,7 @@ class BootstrapServer(ThreadingHTTPServer):
         clear_state_catalog: ClearStateCatalog | None = None,
         story_progression_catalog: StoryProgressionCatalog | None = None,
         event_catalog: EventCatalog | None = None,
+        drop_eligibility: bool = False,
         hunting_catalog: HuntingCatalog | None = None,
         public_data_root: Path | None = None,
     ) -> None:
@@ -2151,6 +2153,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.story_catalog = story_catalog
         self.story_progression_catalog = story_progression_catalog
         self.event_catalog = event_catalog
+        self.drop_eligibility = drop_eligibility
         self.settlement_catalog = settlement_catalog
         self.story_outcome_catalog = story_outcome_catalog
         self.statusup_catalog = statusup_catalog
@@ -2268,6 +2271,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             payload["messageList"] = self.server.state.login_messages(account_id)
             if self.server.event_catalog is not None:
                 payload["eventFlags"] = self.server.event_catalog.flags()
+            if self.server.drop_eligibility:
+                # Without this the client marks every character and Companion
+                # `canDrop = false` and silently discards each drop it rolls.
+                payload["chrBuddyData"] = login_chr_buddy_data()
             self._signed(HTTPStatus.OK, token, payload)
             return
         if target.path == profile.routes.get("userdata"):
@@ -3662,6 +3669,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--status-items", action="store_true", help="enable the bundled local status-up item policy")
     parser.add_argument("--companion-draw", action="store_true", help="enable the bundled local Companion draw pool and costs")
     parser.add_argument("--companion-sale", action="store_true", help="enable the bundled local Companion sale values")
+    parser.add_argument("--drop-eligibility", action="store_true", help="send the bundled login drop-eligibility allowlist so the client keeps the drops it rolls")
     parser.add_argument("--companion-strengthen", action="store_true", help="enable the bundled local Companion strengthen progression")
     parser.add_argument("--companion-evolution", action="store_true", help="enable the bundled local Companion evolution recipes")
     parser.add_argument("--trading-post", action="store_true", help="enable the bundled local Trading Post offers")
@@ -3676,7 +3684,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog", "drop_eligibility",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3701,6 +3709,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         companion_evolution_catalog=args.companion_evolution_catalog,
         companion_draw_catalog=args.companion_draw_catalog, pact_draw_catalog=args.pact_draw_catalog, pacts=getattr(args, "pacts", False),
         event_catalog=args.event_catalog, character_catalog=args.character_catalog,
+        drop_eligibility=getattr(args, 'drop_eligibility', False),
         hunting_catalog=args.hunting_catalog, hunting=getattr(args, 'hunting', False),
         jobs=getattr(args, 'jobs', False),
         rebirth=getattr(args, 'rebirth', False),
@@ -3792,6 +3801,7 @@ def main() -> int:
             clear_state_catalog=clear_states,
             story_progression_catalog=progression,
             event_catalog=events,
+            drop_eligibility=getattr(args, 'drop_eligibility', False),
             hunting_catalog=hunts,
             public_data_root=args.public_data_root,
         )

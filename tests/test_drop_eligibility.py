@@ -1,0 +1,96 @@
+"""Login must be able to send the drop-eligibility allowlist.
+
+Without `chrBuddyData` the client sets `canDrop = false` on every character and
+Companion and discards each drop it rolls, so a server that omits the field
+reports empty `monsters`/`buddies` on every clear no matter how the roll went.
+
+The field is opt-in: a login without `--drop-eligibility` is byte-for-byte what
+it was before, so enabling the allowlist cannot change an existing install by
+accident.
+"""
+from __future__ import annotations
+
+import json
+from http.client import HTTPConnection
+from pathlib import Path
+import tempfile
+import threading
+import unittest
+
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.drop_eligibility import (
+    character_master_ids,
+    companion_master_ids,
+    login_chr_buddy_data,
+)
+
+PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json"
+
+
+def _login(drop_eligibility: bool) -> dict:
+    with tempfile.TemporaryDirectory() as directory:
+        profile = load_profile(PROFILE)
+        server = BootstrapServer(
+            ("127.0.0.1", 0), profile, BootstrapState(Path(directory) / "state.json"),
+            drop_eligibility=drop_eligibility,
+        )
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            host, port = server.server_address[0], server.server_address[1]
+            account, token = "local-account", "local-token"
+            uuid_field = profile.account_binding["login_query_field"]
+
+            def request(path: str) -> dict:
+                connection = HTTPConnection(host, port)
+                try:
+                    connection.request("GET", path, headers={"X-Request-Id": path})
+                    return json.loads(connection.getresponse().read())
+                finally:
+                    connection.close()
+
+            request(f"{profile.routes['signup']}?{uuid_field}={account}&otk={token}")
+            return request(f"{profile.routes['login']}?{uuid_field}={account}&otk={token}")
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+
+
+class DropEligibilityTest(unittest.TestCase):
+    def test_allowlist_covers_every_bundled_master(self) -> None:
+        data = login_chr_buddy_data()
+        self.assertEqual({"chrList", "buddyList"}, set(data))
+        self.assertEqual(character_master_ids(), data["chrList"])
+        self.assertEqual(companion_master_ids(), data["buddyList"])
+        # Ascending, unique, and positive: the client indexes these directly.
+        for key in ("chrList", "buddyList"):
+            with self.subTest(key):
+                self.assertEqual(sorted(set(data[key])), data[key])
+                self.assertTrue(all(isinstance(v, int) and v > 0 for v in data[key]))
+        self.assertEqual(497, len(data["buddyList"]))
+
+    def test_rebirth_list_is_not_invented(self) -> None:
+        # availableVersion is not carried in the bundled Rebirth data, so the
+        # key is omitted rather than filled with guessed version numbers.
+        self.assertNotIn("rebirthList", login_chr_buddy_data())
+
+    def test_login_omits_the_field_by_default(self) -> None:
+        self.assertNotIn("chrBuddyData", _login(drop_eligibility=False))
+
+    def test_login_sends_the_field_when_enabled(self) -> None:
+        body = _login(drop_eligibility=True)
+        self.assertIn("chrBuddyData", body)
+        self.assertEqual(login_chr_buddy_data(), body["chrBuddyData"])
+
+    def test_enabling_it_changes_nothing_else_on_login(self) -> None:
+        off, on = _login(drop_eligibility=False), _login(drop_eligibility=True)
+        # `digest` is over the payload, so it is expected to differ.
+        for body in (off, on):
+            body.pop("digest", None)
+        on.pop("chrBuddyData")
+        self.assertEqual(off, on)
+
+
+if __name__ == "__main__":
+    unittest.main()
