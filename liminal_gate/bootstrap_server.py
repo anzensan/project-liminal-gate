@@ -58,7 +58,7 @@ from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_eve
 from liminal_gate.event_log import EventRecorder, safe_form_diagnostics
 from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
-from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, load_summon_skill_catalog
+from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 
 
 PROFILE_SCHEMA_VERSION = 1
@@ -3671,6 +3671,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-sale", action="store_true", help="enable the bundled local Companion sale values")
     parser.add_argument("--drop-eligibility", action="store_true", help="send the bundled login drop-eligibility allowlist so the client keeps the drops it rolls")
     parser.add_argument("--achievements", action="store_true", help="enable the bundled local clear-chapter achievement policy")
+    parser.add_argument("--summon-skills", action="store_true", help="enable the bundled local Battle Summon skill-unlock costs")
     parser.add_argument("--companion-strengthen", action="store_true", help="enable the bundled local Companion strengthen progression")
     parser.add_argument("--companion-evolution", action="store_true", help="enable the bundled local Companion evolution recipes")
     parser.add_argument("--trading-post", action="store_true", help="enable the bundled local Trading Post offers")
@@ -3685,7 +3686,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog", "drop_eligibility", "achievements",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog", "drop_eligibility", "achievements", "summon_skills",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3721,6 +3722,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         companion_evolution=getattr(args, 'companion_evolution', False),
         trading_post=getattr(args, 'trading_post', False),
         achievement_catalog=args.achievement_catalog, achievements=getattr(args, 'achievements', False),
+        summon_skills=getattr(args, 'summon_skills', False),
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
     )
@@ -3751,7 +3753,9 @@ def main() -> int:
         if args.rebirth and args.rebirth_catalog is not None:
             raise ProfileError("--rebirth cannot be combined with --rebirth-catalog")
         rebirths = build_bundled_rebirth_policy() if args.rebirth else (None if args.rebirth_catalog is None else load_rebirth_catalog(args.rebirth_catalog))
-        summon_skills = None if args.summon_skill_catalog is None else load_summon_skill_catalog(args.summon_skill_catalog)
+        if args.summon_skills and args.summon_skill_catalog is not None:
+            raise ProfileError("--summon-skills cannot be combined with --summon-skill-catalog")
+        summon_skills = build_bundled_summon_skill_policy() if args.summon_skills else (None if args.summon_skill_catalog is None else load_summon_skill_catalog(args.summon_skill_catalog))
         if args.companion_sale and args.companion_catalog is not None:
             raise ProfileError("--companion-sale cannot be combined with --companion-catalog")
         companions = build_bundled_companion_policy() if args.companion_sale else (None if args.companion_catalog is None else load_companion_catalog(args.companion_catalog))

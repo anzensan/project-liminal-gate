@@ -154,7 +154,7 @@ catalog is passed at launch:
 | `--statusup-catalog` | status-item use rules |
 | `--job-catalog` | ordered job-unlock costs |
 | `--rebirth-catalog` | Rebirth recipes and material rules |
-| `--summon-skill-catalog` | Battle Summon skill costs |
+| `--summon-skill-catalog` | Battle Summon skill costs (see `--summon-skills` for the bundled policy) |
 | `--companion-catalog` | Companion sale/master values |
 | `--companion-strengthen-catalog` | Companion EXP and bonus policy |
 | `--companion-evolution-catalog` | Companion evolution recipes |
@@ -190,6 +190,7 @@ local installation.
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
 | `--drop-eligibility` | the login `chrBuddyData` allowlist: 346 character and 497 Companion master IDs |
 | `--achievements` | the 8 settleable clear-chapter achievements, each paying 1 Energy and 1x item 50 |
+| `--summon-skills` | all 44 Battle Summon skill tiers across the 16 Summons, with their material costs |
 
 ### Why drop eligibility is off by default
 

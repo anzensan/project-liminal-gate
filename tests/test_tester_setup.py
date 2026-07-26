@@ -18,7 +18,7 @@ class GuidedServerPolicyTest(unittest.TestCase):
     def test_recommended_mode_enables_every_bundled_policy(self) -> None:
         arguments = self.arguments()
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth", "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements"):
+                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements", "--summon-skills"):
             self.assertIn(flag, arguments)
 
     def choose(self):
@@ -38,7 +38,7 @@ class GuidedServerPolicyTest(unittest.TestCase):
         )
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth",
                      "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements"):
+                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements", "--summon-skills"):
             self.assertIn(flag, self.arguments())
 
 

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.summon_skill_data import SUMMON_SKILL_ROWS
+
 
 class SummonSkillCatalogError(ValueError):
     """A user-local Battle Summon skill catalog is invalid."""
@@ -78,3 +80,26 @@ def _level(value: object) -> SummonSkillLevel:
             raise SummonSkillCatalogError("materials require positive decimal IDs and nonnegative counts")
         parsed[int(raw_id)] = count
     return SummonSkillLevel(value["summon_id"], value["skill_level"], value["coins"], parsed)
+
+
+# The client's own 181 item slots, matching the other bundled policies.
+BUNDLED_ITEM_SLOTS = 181
+
+
+def build_bundled_summon_skill_policy() -> SummonSkillCatalog:
+    """Return the guided-path local Battle Summon skill policy.
+
+    Costs are the recovered `SummonData` -> `ChrJobParams` join; see
+    :mod:`liminal_gate.summon_skill_data`. Nothing here concerns how a Summon is
+    acquired, which remains unrecovered.
+    """
+    levels = {
+        (summon_id, skill_level): SummonSkillLevel(
+            summon_id, skill_level, coins, {item: count for item, count in materials}
+        )
+        for summon_id, skill_level, coins, materials in SUMMON_SKILL_ROWS
+    }
+    level_counts: dict[int, int] = {}
+    for summon_id, skill_level in levels:
+        level_counts[summon_id] = max(level_counts.get(summon_id, 0), skill_level + 1)
+    return SummonSkillCatalog(BUNDLED_ITEM_SLOTS, levels, level_counts)
