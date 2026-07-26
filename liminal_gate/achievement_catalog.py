@@ -7,6 +7,13 @@ import json
 from pathlib import Path
 import tomllib
 
+from liminal_gate.achievement_data import (
+    ACHIEVEMENT_FREE_ENERGY,
+    ACHIEVEMENT_ITEM_COUNT,
+    ACHIEVEMENT_ITEM_ID,
+    ACHIEVEMENT_ROWS,
+)
+
 
 class AchievementCatalogError(ValueError):
     """A user-local achievement catalog is invalid."""
@@ -69,3 +76,37 @@ def _achievement(value: object, item_slots: int) -> Achievement:
             raise AchievementCatalogError("achievement items require in-range decimal IDs and positive counts")
         parsed[int(raw_id)] = count
     return Achievement(value["achievement_id"], value["required_chapter"], value["free_energy"], value["coins"], parsed)
+
+
+# Matching the other bundled policies' limits: the client's own 181 item slots,
+# 999 stack ceiling, and Coin cap.
+BUNDLED_ITEM_SLOTS = 181
+BUNDLED_MAX_STACK = 999
+BUNDLED_MAX_COINS = 99999999
+
+
+def build_bundled_achievement_policy() -> AchievementCatalog:
+    """Return the guided-path local clear-chapter achievement policy.
+
+    The eight settleable rows and their uniform one-Energy, one-item-50 present
+    list are recovered from the final client's master data; see
+    :mod:`liminal_gate.achievement_data` for why the other 91 records are not
+    included.
+    """
+    achievements = {
+        achievement_id: Achievement(
+            achievement_id,
+            required_chapter,
+            ACHIEVEMENT_FREE_ENERGY,
+            0,
+            {ACHIEVEMENT_ITEM_ID: ACHIEVEMENT_ITEM_COUNT},
+        )
+        for achievement_id, required_chapter in ACHIEVEMENT_ROWS
+    }
+    return AchievementCatalog(
+        BUNDLED_ITEM_SLOTS,
+        ACHIEVEMENT_FREE_ENERGY,
+        BUNDLED_MAX_COINS,
+        BUNDLED_MAX_STACK,
+        achievements,
+    )

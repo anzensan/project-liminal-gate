@@ -42,7 +42,7 @@ from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalo
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, build_bundled_companion_evolution_policy, load_companion_evolution_catalog
 from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
 from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
-from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, load_achievement_catalog
+from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
 from liminal_gate.message_catalog import MessageCatalog, MessageCatalogError, load_message_catalog
 from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, active_week_index, build_bundled_exchange_policy, load_exchange_catalog
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
@@ -3670,6 +3670,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-draw", action="store_true", help="enable the bundled local Companion draw pool and costs")
     parser.add_argument("--companion-sale", action="store_true", help="enable the bundled local Companion sale values")
     parser.add_argument("--drop-eligibility", action="store_true", help="send the bundled login drop-eligibility allowlist so the client keeps the drops it rolls")
+    parser.add_argument("--achievements", action="store_true", help="enable the bundled local clear-chapter achievement policy")
     parser.add_argument("--companion-strengthen", action="store_true", help="enable the bundled local Companion strengthen progression")
     parser.add_argument("--companion-evolution", action="store_true", help="enable the bundled local Companion evolution recipes")
     parser.add_argument("--trading-post", action="store_true", help="enable the bundled local Trading Post offers")
@@ -3684,7 +3685,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog", "drop_eligibility",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog", "drop_eligibility", "achievements",
     )
     if args.config is not None:
         if any(getattr(args, field, None) is not None for field in fields):
@@ -3719,7 +3720,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         companion_strengthen=getattr(args, 'companion_strengthen', False),
         companion_evolution=getattr(args, 'companion_evolution', False),
         trading_post=getattr(args, 'trading_post', False),
-        achievement_catalog=args.achievement_catalog,
+        achievement_catalog=args.achievement_catalog, achievements=getattr(args, 'achievements', False),
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
     )
@@ -3772,7 +3773,9 @@ def main() -> int:
         if args.hunting and args.hunting_catalog is not None:
             raise ProfileError("--hunting cannot be combined with --hunting-catalog")
         hunts = build_bundled_hunting_policy() if args.hunting else (None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog))
-        achievements = None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog)
+        if args.achievements and args.achievement_catalog is not None:
+            raise ProfileError("--achievements cannot be combined with --achievement-catalog")
+        achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))
         messages = None if args.message_catalog is None else load_message_catalog(args.message_catalog)
         if args.trading_post and args.exchange_catalog is not None:
             raise ProfileError("--trading-post cannot be combined with --exchange-catalog")

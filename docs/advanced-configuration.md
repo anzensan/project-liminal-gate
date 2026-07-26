@@ -148,7 +148,7 @@ catalog is passed at launch:
 
 | Launcher option | Local feature |
 | --- | --- |
-| `--achievement-catalog` | achievement claim thresholds and rewards |
+| `--achievement-catalog` | achievement claim thresholds and rewards (see `--achievements` for the bundled policy) |
 | `--message-catalog` | local inbox messages and bounded rewards |
 | `--exchange-catalog` | Trading Post offers and exchanges |
 | `--statusup-catalog` | status-item use rules |
@@ -189,6 +189,7 @@ local installation.
 | `--core-story` | the ordered Chapter 2--42 identities |
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
 | `--drop-eligibility` | the login `chrBuddyData` allowlist: 346 character and 497 Companion master IDs |
+| `--achievements` | the 8 settleable clear-chapter achievements, each paying 1 Energy and 1x item 50 |
 
 ### Why drop eligibility is off by default
 
