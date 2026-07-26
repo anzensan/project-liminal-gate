@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from liminal_gate.bootstrap_server import ACCOUNT_STATE_BACKUP_COUNT, _lock_exclusive
+from liminal_gate.save_validation import validate_document
 
 
 class AccountStateError(ValueError):
@@ -217,6 +218,71 @@ def adopt(state: Path, source_id: str, target_id: str, confirmed: bool, force: b
     }
 
 
+def validate(path: Path) -> dict[str, Any]:
+    """Report every invariant an edited save breaks, without changing it."""
+    _, document = read_document(path)
+    findings = validate_document(document)
+    errors = [finding for finding in findings if finding.severity == "error"]
+    return {
+        "status": "invalid" if errors else "valid",
+        "path": str(path.resolve()),
+        "errors": len(errors),
+        "warnings": len(findings) - len(errors),
+        "findings": [finding.as_dict() for finding in findings],
+    }
+
+
+def apply_edited(state: Path, source: Path, confirmed: bool, force: bool, clear_replay_cache: bool) -> dict[str, Any]:
+    """Replace a save with an edited copy, but only one that still holds up.
+
+    The edited file is validated before anything is touched, because the whole
+    point of editing through a tool is that a broken save never reaches the
+    client, where the symptom appears far from the cause.
+    """
+    if not confirmed:
+        raise AccountStateError("apply requires --yes")
+    source_data, edited = read_document(source)
+    findings = validate_document(edited)
+    errors = [finding.as_dict() for finding in findings if finding.severity == "error"]
+    if errors and not force:
+        raise AccountStateError(
+            f"the edited save breaks {len(errors)} invariant(s) and was not applied; "
+            f"run `validate {source}` to see them, or pass --force to apply it anyway"
+        )
+    lock = acquire_lock(state)
+    try:
+        _, current = read_document(state)
+        # An edited file that has lost an account is far more likely to be the
+        # wrong file than an intended deletion.
+        lost = sorted(set(current["accounts"]) - set(edited["accounts"]))
+        if lost and not force:
+            raise AccountStateError(
+                f"the edited save is missing account(s) {', '.join(lost)} that the current save has; "
+                f"pass --force if that is intended"
+            )
+        if clear_replay_cache:
+            for account in edited["accounts"].values():
+                if isinstance(account, dict):
+                    account["tutorial_requests"] = {}
+        preserved = preserve(state, "pre-apply")
+        encoded = (
+            source_data if not clear_replay_cache
+            else (json.dumps(edited, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        )
+        write_document(state, encoded)
+    finally:
+        lock.close()
+    return {
+        "status": "applied",
+        "source": str(source.resolve()),
+        "appliedWithErrors": len(errors) if errors else 0,
+        "clearedReplayCache": clear_replay_cache,
+        "preservedPrimary": None if preserved is None else str(preserved.resolve()),
+        "warnings": [finding.as_dict() for finding in findings if finding.severity == "warning"],
+        **summarize(state),
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="liminal_gate.account_state", description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -235,6 +301,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     adopt_parser.add_argument("--to", dest="target_id", required=True)
     adopt_parser.add_argument("--yes", action="store_true")
     adopt_parser.add_argument("--force", action="store_true", help="discard progress already on --to")
+    validate_parser = subparsers.add_parser("validate", help="check an edited save without changing anything")
+    validate_parser.add_argument("state", type=Path)
+    apply_parser = subparsers.add_parser("apply", help="replace the save with a validated edited copy")
+    apply_parser.add_argument("state", type=Path)
+    apply_parser.add_argument("source", type=Path, help="the edited save, as exported by the editor")
+    apply_parser.add_argument("--yes", action="store_true")
+    apply_parser.add_argument("--force", action="store_true", help="apply despite validation errors or a missing account")
+    apply_parser.add_argument(
+        "--clear-replay-cache", action="store_true",
+        help="drop cached response payloads so a replayed request cannot return pre-edit values",
+    )
     return parser.parse_args(argv)
 
 
@@ -247,13 +324,17 @@ def main(argv: list[str] | None = None) -> int:
             result = snapshot(args.state, args.output)
         elif args.command == "restore":
             result = restore(args.state, args.source, args.yes)
+        elif args.command == "validate":
+            result = validate(args.state)
+        elif args.command == "apply":
+            result = apply_edited(args.state, args.source, args.yes, args.force, args.clear_replay_cache)
         else:
             result = adopt(args.state, args.source_id, args.target_id, args.yes, args.force)
     except (OSError, AccountStateError) as error:
         print(json.dumps({"status": "ERROR", "error": str(error)}, sort_keys=True))
         return 1
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 0
+    return 1 if isinstance(result, dict) and result.get("status") == "invalid" else 0
 
 
 if __name__ == "__main__":

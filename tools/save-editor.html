@@ -1,0 +1,510 @@
+<!--
+  Project Liminal Gate — local save editor.
+
+  One file, no network, no dependencies: everything happens in the page. Open
+  it, load user-data/bootstrap-state.json, edit, export, then apply the export
+  with `python3 -m liminal_gate.account_state apply`, which validates it and
+  keeps a backup.
+
+  Two rules are structural rather than stylistic:
+
+  - The server must be stopped. It holds the whole save in memory and rewrites
+    all of it when it persists, so an edit made while it runs is lost or, worse,
+    half-applied. A browser cannot take the lock file the server uses, so this
+    page cannot detect the problem for you.
+  - `jobLevels` is packed, not a level. The low twelve bits are the job level
+    and the rest is its progression, so the editor shows them as two fields and
+    repacks them on export. Never write a plain level into that field.
+
+  The client reads several numbers with LitJson's double accessor, and
+  JSON.stringify turns 10.0 into 10, which makes the client fail parsing an
+  otherwise successful response. Export re-emits those fields with an explicit
+  decimal; the Python validator is the backstop if one is ever missed.
+-->
+<title>Liminal Gate — Save Editor</title>
+<style>
+  :root {
+    --ink: #e8e4d9;
+    --ink-dim: #9a9384;
+    --bg: #14161a;
+    --panel: #1b1e24;
+    --edge: #2b2f38;
+    --amber: #d9a441;
+    --amber-dim: #8a6a2c;
+    --danger: #c65f4e;
+    --ok: #6f9a5f;
+    --mono: "SF Mono", "JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 1.5rem 4rem;
+    background:
+      radial-gradient(circle at 12% -10%, #23272f 0%, transparent 55%),
+      linear-gradient(180deg, #14161a 0%, #101217 100%);
+    background-attachment: fixed;
+    color: var(--ink); font-family: var(--mono); font-size: 14px; line-height: 1.55;
+  }
+  header { max-width: 60rem; margin: 0 auto; padding: 2.5rem 0 1.25rem; }
+  h1 {
+    margin: 0; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em;
+    color: var(--amber);
+  }
+  h1 small { display: block; margin-top: .35rem; font-size: .8rem; font-weight: 400; color: var(--ink-dim); letter-spacing: 0; }
+  main { max-width: 60rem; margin: 0 auto; }
+  section {
+    margin: 1.25rem 0; padding: 1.1rem 1.25rem;
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+  }
+  section > h2 {
+    margin: 0 0 .9rem; font-size: .72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .14em; color: var(--ink-dim);
+  }
+  .warn {
+    border-left: 3px solid var(--amber); background: #201d16;
+    padding: .85rem 1.1rem; margin-bottom: 1.25rem; border-radius: 3px;
+  }
+  .warn b { color: var(--amber); }
+  button {
+    font-family: inherit; font-size: .82rem; padding: .5rem .95rem; cursor: pointer;
+    background: #23272f; color: var(--ink); border: 1px solid var(--edge); border-radius: 3px;
+    transition: border-color .15s, color .15s;
+  }
+  button:hover:not(:disabled) { border-color: var(--amber-dim); color: var(--amber); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--amber); color: #14161a; border-color: var(--amber); font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #e8bc5c; }
+  input, select {
+    font-family: inherit; font-size: .82rem; padding: .35rem .5rem; width: 100%;
+    background: #14161a; color: var(--ink); border: 1px solid var(--edge); border-radius: 3px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--amber-dim); }
+  label { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-dim); margin-bottom: .3rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .9rem; }
+  .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--edge); white-space: nowrap; }
+  th { font-size: .66rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-dim); font-weight: 600; }
+  td input { width: 7rem; }
+  .muted { color: var(--ink-dim); }
+  .finding { padding: .4rem 0; border-bottom: 1px solid var(--edge); font-size: .8rem; }
+  .finding:last-child { border-bottom: 0; }
+  .sev-error { color: var(--danger); }
+  .sev-warning { color: var(--amber); }
+  .sev-ok { color: var(--ok); }
+  .hidden { display: none; }
+  code { background: #14161a; padding: .1rem .35rem; border-radius: 2px; color: var(--amber); }
+  @media (prefers-color-scheme: light) {
+    :root { --ink: #23262c; --ink-dim: #6b6f78; --bg: #f4f1ea; --panel: #fffdf8; --edge: #ddd7c9; --amber: #8a5d16; --amber-dim: #b8912f; }
+    body { background: linear-gradient(180deg, #f7f4ed 0%, #efeade 100%); }
+    input, select, code { background: #f4f1ea; }
+    button { background: #efeade; }
+    button.primary { color: #fffdf8; }
+    .warn { background: #f8f0dc; }
+  }
+</style>
+
+<header>
+  <h1>Save Editor
+    <small>Project Liminal Gate — everything happens in this page; nothing is sent anywhere.</small>
+  </h1>
+</header>
+
+<main>
+  <div class="warn">
+    <b>Stop the local server first.</b> It keeps the whole save in memory and rewrites
+    all of it when it persists, so an edit made while it is running will be lost.
+    This page cannot detect a running server, so the check is yours.
+  </div>
+
+  <section>
+    <h2>1 · Load</h2>
+    <div class="row">
+      <button id="pick">Choose bootstrap-state.json…</button>
+      <input type="file" id="file" accept=".json,application/json" class="hidden">
+      <span id="loaded" class="muted">No save loaded.</span>
+    </div>
+    <div class="row" style="margin-top:.9rem">
+      <button id="pickNames">Load names (optional)…</button>
+      <input type="file" id="namesFile" accept=".json,application/json" class="hidden">
+      <span id="namesLoaded" class="muted">No name file — characters and items show as bare IDs.</span>
+    </div>
+    <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
+      <b>Nothing generates this file yet.</b> The client stores its name strings
+      ciphered, and this project has never decrypted them — the master-data
+      inventory keeps only a per-locale SHA-256 of each one, so no name table
+      exists to ship or derive. The hook is here for when one does.
+      Until then, a hand-written
+      <code>user-data/names.json</code> works:
+      <code>{"characters": {"3": "…"}, "items": {"50": "…"}}</code>. That
+      directory is already ignored by Git, so game text you transcribe yourself
+      stays out of the repository.
+    </p>
+  </section>
+
+  <div id="editor" class="hidden">
+    <section>
+      <h2>2 · Account</h2>
+      <div class="grid">
+        <div>
+          <label for="account">Account</label>
+          <select id="account"></select>
+        </div>
+        <div><label for="username">Name</label><input id="username"></div>
+        <div><label for="chapter">Chapter</label><input id="chapter" type="number" min="1"></div>
+        <div><label for="sectionNo">Section</label><input id="sectionNo" type="number" min="1"></div>
+      </div>
+      <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
+        Chapter and section are decoded from <code>progressCode</code>; its other bits are preserved untouched.
+      </p>
+    </section>
+
+    <section>
+      <h2>3 · Wallet</h2>
+      <div class="grid">
+        <div><label for="coins">Coins</label><input id="coins" type="number" min="0" max="99999999"></div>
+        <div><label for="energy">Energy</label><input id="energy" type="number" min="0" max="9999"></div>
+        <div><label for="freeEnergy">Free Energy</label><input id="freeEnergy" type="number" min="0" max="9999"></div>
+      </div>
+      <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
+        The nested <code>valuables</code> projection is kept in step automatically.
+      </p>
+    </section>
+
+    <section>
+      <h2>4 · Characters</h2>
+      <div class="scroll">
+        <table id="roster">
+          <thead><tr><th>ID</th><th>Job</th><th>Level</th><th>Progression</th><th>Skill boost</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
+        Level and progression are the two halves of one packed value and are repacked on export.
+        A character removed here is also removed from every party slot naming it.
+      </p>
+    </section>
+
+    <section>
+      <h2>5 · Items</h2>
+      <div class="row">
+        <div style="flex:1;min-width:9rem"><label for="itemId">Item slot (1–181)</label><input id="itemId" type="number" min="1" max="181" value="1"></div>
+        <div style="flex:1;min-width:9rem"><label for="itemCount">Count (0–999)</label><input id="itemCount" type="number" min="0" max="999" value="0"></div>
+        <button id="setItem" style="margin-top:1.1rem">Set</button>
+      </div>
+      <div id="itemSummary" class="muted" style="margin-top:.8rem;font-size:.75rem"></div>
+    </section>
+
+    <section>
+      <h2>6 · Check and export</h2>
+      <div id="findings"></div>
+      <div class="row" style="margin-top:1rem">
+        <button id="export" class="primary">Export edited save…</button>
+        <span class="muted" style="font-size:.75rem">Then apply it with the command below.</span>
+      </div>
+      <p class="muted" style="margin:1rem 0 0;font-size:.75rem">
+        <code>python3 -m liminal_gate.account_state apply user-data/bootstrap-state.json edited-save.json --yes</code><br>
+        That validates it again in Python, keeps a timestamped backup, and refuses to write while a server holds the save.
+      </p>
+    </section>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+// Fields the client reads with LitJson's double accessor. JSON.stringify would
+// render 10.0 as 10 and make the client fail parsing a good response, so these
+// are re-emitted with an explicit decimal on export.
+const FLOAT_KEYS = new Set(["jobLevels", "jobSlots", "date", "lastupdate", "refillStartTime", "metalZoneUnlockTime"]);
+const JOB_LEVEL_BITS = 12;
+const JOB_LEVEL_MASK = 0xFFF;
+const LEVEL_CAP = 90;
+const ITEM_SLOTS = 181;
+const MAX_STACK = 999;
+const WALLET = ["coins", "energy", "freeEnergy", "energyAppStore", "energyGooglePlay", "energyAndApp"];
+
+let document_ = null;      // the whole parsed save
+let accountId = null;
+let handle = null;         // File System Access handle, when the browser has it
+// Optional, user-supplied, never shipped: names are game text, so this tool
+// carries none and simply labels IDs when a name file is provided.
+let names = { characters: {}, items: {} };
+
+const nameFor = (kind, id) => {
+  const found = names[kind] && names[kind][String(id)];
+  return found ? `${found} (${id})` : String(id);
+};
+
+// A name file is user-supplied text and reaches innerHTML, so it is escaped
+// rather than trusted.
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[character]));
+
+const $ = (id) => window.document.getElementById(id);
+const account = () => document_.accounts[accountId];
+const userdata = () => account().userdata;
+
+// Arithmetic rather than bitwise throughout: a real packed value can exceed
+// 2^32 (9812086854 appears in an ordinary save), and JavaScript's bitwise
+// operators coerce to 32 bits, which would silently rewrite the character.
+const JOB_LEVEL_SCALE = Math.pow(2, JOB_LEVEL_BITS);
+const decodeLevel = (packed) => {
+  const value = Math.trunc(packed);
+  return [value % JOB_LEVEL_SCALE, Math.floor(value / JOB_LEVEL_SCALE)];
+};
+const encodeLevel = (level, progression) => progression * JOB_LEVEL_SCALE + level;
+
+const decodeProgress = (code) => [(code & 0xFFFF) >> 6, code & 0x3F];
+const encodeProgress = (code, chapter, section) =>
+  (code & ~0xFFFF) | ((chapter & 0x3FF) << 6) | (section & 0x3F);
+
+/* ---------- loading ---------- */
+
+$("pick").addEventListener("click", async () => {
+  if (window.showOpenFilePicker) {
+    try {
+      [handle] = await window.showOpenFilePicker({
+        types: [{ description: "Save", accept: { "application/json": [".json"] } }],
+      });
+      load(await (await handle.getFile()).text(), handle.name);
+      return;
+    } catch (error) {
+      if (error.name === "AbortError") return;
+    }
+  }
+  $("file").click();
+});
+
+$("file").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (file) load(await file.text(), file.name);
+});
+
+$("pickNames").addEventListener("click", () => $("namesFile").click());
+
+$("namesFile").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    names = {
+      characters: (parsed && parsed.characters) || {},
+      items: (parsed && parsed.items) || {},
+    };
+    const counts = [Object.keys(names.characters).length, Object.keys(names.items).length];
+    $("namesLoaded").textContent = `${file.name} — ${counts[0]} character names, ${counts[1]} item names`;
+    $("namesLoaded").className = "sev-ok";
+  } catch (error) {
+    $("namesLoaded").textContent = `Could not read that name file: ${error.message}`;
+    $("namesLoaded").className = "sev-error";
+    return;
+  }
+  if (document_) render();
+});
+
+function load(text, name) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    $("loaded").textContent = `Not valid JSON: ${error.message}`;
+    $("loaded").className = "sev-error";
+    return;
+  }
+  if (!parsed || typeof parsed.accounts !== "object") {
+    $("loaded").textContent = "That file has no accounts object — is it a save?";
+    $("loaded").className = "sev-error";
+    return;
+  }
+  document_ = parsed;
+  const ids = Object.keys(parsed.accounts);
+  accountId = parsed.active_account_id && ids.includes(parsed.active_account_id) ? parsed.active_account_id : ids[0];
+  $("loaded").textContent = `${name} — ${ids.length} account${ids.length === 1 ? "" : "s"}`;
+  $("loaded").className = "sev-ok";
+  $("account").innerHTML = ids.map((id) => `<option value="${id}">${id}</option>`).join("");
+  $("account").value = accountId;
+  $("editor").classList.remove("hidden");
+  render();
+}
+
+$("account").addEventListener("change", (event) => { accountId = event.target.value; render(); });
+
+/* ---------- rendering ---------- */
+
+function render() {
+  const data = userdata();
+  $("username").value = account().username || "";
+  const [chapter, section] = decodeProgress(data.progressCode || 0);
+  $("chapter").value = chapter;
+  $("sectionNo").value = section;
+  for (const field of ["coins", "energy", "freeEnergy"]) $(field).value = data[field] ?? 0;
+
+  const body = $("roster").querySelector("tbody");
+  body.innerHTML = "";
+  (data.chrdata || []).forEach((row, index) => {
+    const [level, progression] = decodeLevel((row.jobLevels || [0])[0]);
+    const tr = window.document.createElement("tr");
+    tr.innerHTML =
+      `<td>${escapeHtml(nameFor("characters", row.id))}</td><td>${row.jobID ?? 0}</td>` +
+      `<td><input type="number" min="0" max="${LEVEL_CAP}" value="${level}" data-index="${index}" data-part="level"></td>` +
+      `<td><input type="number" min="0" value="${progression}" data-index="${index}" data-part="progression"></td>` +
+      `<td><input type="number" min="0" value="${row.skillBoost ?? 0}" data-index="${index}" data-part="skillBoost"></td>` +
+      `<td><button data-remove="${index}">Remove</button></td>`;
+    body.appendChild(tr);
+  });
+  const held = (data.itemList || [])
+    .map((count, index) => [index + 1, count])
+    .filter(([, count]) => count > 0);
+  $("itemSummary").innerHTML = held.length
+    ? `${held.length} of ${ITEM_SLOTS} slots hold something: ` +
+      held.map(([slot, count]) => `${escapeHtml(nameFor("items", slot))} &times;${count}`).join(", ")
+    : `Nothing held in any of the ${ITEM_SLOTS} slots.`;
+  check();
+}
+
+$("roster").addEventListener("input", (event) => {
+  const input = event.target;
+  if (!input.dataset.part) return;
+  const row = userdata().chrdata[Number(input.dataset.index)];
+  const value = Math.max(0, Number(input.value) || 0);
+  if (input.dataset.part === "skillBoost") {
+    row.skillBoost = Math.trunc(value);
+  } else {
+    const [level, progression] = decodeLevel(row.jobLevels[0]);
+    row.jobLevels[0] = input.dataset.part === "level"
+      ? encodeLevel(Math.min(LEVEL_CAP, Math.trunc(value)), progression)
+      : encodeLevel(level, Math.trunc(value));
+  }
+  check();
+});
+
+$("roster").addEventListener("click", (event) => {
+  const index = event.target.dataset.remove;
+  if (index === undefined) return;
+  const data = userdata();
+  const [removed] = data.chrdata.splice(Number(index), 1);
+  // A party slot naming a character the account no longer owns makes every
+  // later party save fail, so the slot is emptied with the character.
+  for (const name of ["teamMembers", "teamMembers_VS"]) {
+    if (Array.isArray(data[name])) {
+      data[name] = data[name].map((member) => (member === removed.id ? 0 : member));
+    }
+  }
+  render();
+});
+
+for (const field of ["coins", "energy", "freeEnergy"]) {
+  $(field).addEventListener("input", (event) => {
+    const data = userdata();
+    data[field] = Math.max(0, Math.trunc(Number(event.target.value) || 0));
+    if (data.valuables && typeof data.valuables === "object") {
+      for (const name of WALLET) if (name in data.valuables && name in data) data.valuables[name] = data[name];
+    }
+    check();
+  });
+}
+
+$("username").addEventListener("input", (event) => { account().username = event.target.value; });
+
+for (const field of ["chapter", "sectionNo"]) {
+  $(field).addEventListener("input", () => {
+    const data = userdata();
+    data.progressCode = encodeProgress(
+      data.progressCode || 0,
+      Math.max(1, Number($("chapter").value) || 1),
+      Math.max(1, Number($("sectionNo").value) || 1),
+    );
+    check();
+  });
+}
+
+$("setItem").addEventListener("click", () => {
+  const data = userdata();
+  if (!Array.isArray(data.itemList)) return;
+  const slot = Math.min(ITEM_SLOTS, Math.max(1, Math.trunc(Number($("itemId").value) || 1)));
+  data.itemList[slot - 1] = Math.min(MAX_STACK, Math.max(0, Math.trunc(Number($("itemCount").value) || 0)));
+  render();
+});
+
+/* ---------- checks, mirroring liminal_gate/save_validation.py ---------- */
+
+function check() {
+  const data = userdata();
+  const findings = [];
+  const roster = new Set((data.chrdata || []).map((row) => row.id));
+  if (roster.size !== (data.chrdata || []).length) findings.push(["error", "chrdata", "a character id appears more than once"]);
+  for (const name of ["teamMembers", "teamMembers_VS"]) {
+    const missing = [...new Set((data[name] || []).filter((member) => member && !roster.has(member)))];
+    if (missing.length) findings.push(["error", name, `party names ${missing.join(", ")}, which the roster does not contain`]);
+  }
+  if (Array.isArray(data.itemList) && data.itemList.length !== ITEM_SLOTS) {
+    findings.push(["error", "itemList", `${data.itemList.length} slots; the client's shape is exactly ${ITEM_SLOTS}`]);
+  }
+  (data.chrdata || []).forEach((row, index) => {
+    const [level] = decodeLevel((row.jobLevels || [0])[0]);
+    if (level > LEVEL_CAP) findings.push(["error", `chrdata[${index}]`, `decodes to level ${level}, above the cap of ${LEVEL_CAP}`]);
+  });
+  if (Object.keys(account().tutorial_requests || {}).length) {
+    findings.push(["warning", "tutorial_requests", "cached responses remain; apply with --clear-replay-cache if an edited value is one they already returned"]);
+  }
+  const target = $("findings");
+  if (!findings.length) {
+    target.innerHTML = `<div class="finding sev-ok">Nothing wrong found. Python checks it again on apply.</div>`;
+  } else {
+    target.innerHTML = findings
+      .map(([severity, field, message]) => `<div class="finding sev-${severity}"><b>${field}</b> — ${message}</div>`)
+      .join("");
+  }
+  $("export").disabled = findings.some(([severity]) => severity === "error");
+}
+
+/* ---------- export ---------- */
+
+// Marks every value under a float-typed key so the decimal survives
+// serialisation, then unwraps the markers in the finished text.
+const MARK = "__liminal_gate_float__:";
+
+function markFloats(value, key) {
+  if (Array.isArray(value)) return value.map((item) => markFloats(item, key));
+  if (value && typeof value === "object") {
+    const copy = {};
+    for (const [name, item] of Object.entries(value)) copy[name] = markFloats(item, name);
+    return copy;
+  }
+  if (typeof value === "number" && FLOAT_KEYS.has(key) && Number.isInteger(value)) return `${MARK}${value}`;
+  return value;
+}
+
+function serialise(save) {
+  const text = JSON.stringify(markFloats(save, ""), null, 2);
+  return text.replace(new RegExp(`"${MARK}(-?\\d+)"`, "g"), "$1.0") + "\n";
+}
+
+$("export").addEventListener("click", async () => {
+  const text = serialise(document_);
+  if (window.showSaveFilePicker) {
+    try {
+      const target = await window.showSaveFilePicker({
+        suggestedName: "edited-save.json",
+        types: [{ description: "Save", accept: { "application/json": [".json"] } }],
+      });
+      const writable = await target.createWritable();
+      await writable.write(text);
+      await writable.close();
+      $("loaded").textContent = `Exported to ${target.name} — now run the apply command below.`;
+      $("loaded").className = "sev-ok";
+      return;
+    } catch (error) {
+      if (error.name === "AbortError") return;
+    }
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const link = window.document.createElement("a");
+  link.href = url;
+  link.download = "edited-save.json";
+  link.click();
+  URL.revokeObjectURL(url);
+});
+</script>
