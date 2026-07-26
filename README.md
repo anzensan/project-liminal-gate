@@ -20,14 +20,35 @@ The guided setup now enables ordinary story progression beyond the tutorial,
 through Chapter 42, and local ordinary Pacts:
 
 - **Pact of Fellowship** uses Coins.
-- **Pact of Truth** uses Energy; new local accounts receive 50 free Energy.
+- **Pact of Truth** uses Energy, 5 for a single pull and 50 for ten; new local
+  accounts receive 50 free Energy, which is exactly one ten-pull.
 
 This remains a tester build. The original-client path is verified only through
 Chapter 2-1, so later story stages may need individual compatibility fixes.
 Fate, ticket, campaign, and event Pact variants are intentionally unsupported.
+
+**Huntland opens on story progress, so it is locked at first.** The Hunting and
+Metal Zone cards stay unavailable until your account has finished the chapter
+each zone waits for, which is well past the verified stopping point:
+
+| Area | Available after clearing |
+| --- | --- |
+| Hunting tier 1 — Pudding Time, Tin Parade, Coin Creeps, Puppet Show | Chapter 3 |
+| Hunting tier 2 | Chapter 9 |
+| Hunting tier 3 | Chapter 18 |
+| Metal Zone 1, Dragon Road, Machine Road | Chapter 3 |
+| Metal Zones 2 to 7 | Chapters 8, 12, 17, 21, 26, 30 |
+
+Those thresholds are a local preservation policy, not a recovered schedule: the
+original zones rotated, and no rotation was ever captured, so each one simply
+becomes permanent once you pass its chapter. Nothing you can set on the server
+opens a zone earlier — play the story to it. Empty Hunting and Metal screens on
+a new account are expected, not a fault.
 You can test on an Android emulator or on a physical phone or tablet; see
 [Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet)
-for the device path.
+for the device path. Graphics and sound are both unreliable under emulation and
+neither problem comes from the server; a physical device is the better choice if
+you care about either. See [Sound on the emulator](#sound-on-the-emulator).
 
 If you encounter a Network Error, please [open a GitHub issue](https://github.com/anzensan/project-liminal-gate/issues)
 with the action you took, OS and emulator or device version, and the relevant
@@ -91,17 +112,31 @@ Studio:
 ```powershell
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
-$env:Path = "$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:ANDROID_HOME\cmdline-tools\latest\bin;$env:Path"
+$env:JAVA_HOME = "$env:LOCALAPPDATA\Programs\Android Studio\jbr"
+$env:Path = "$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:ANDROID_HOME\cmdline-tools\latest\bin;$env:JAVA_HOME\bin;$env:Path"
 Get-Command adb, java, keytool
 py -3 --version
 adb version
 ```
 
+The `JAVA_HOME` line matters and is easy to leave out. `keytool` comes with a
+**JDK**, not with the Android SDK, so none of the SDK directories contain it;
+without that line `Get-Command keytool` fails even on a machine that has
+everything installed. Android Studio ships its own runtime, and the path above
+is where it normally lives. If Android Studio is installed for all users
+instead, use `"$env:ProgramFiles\Android\Android Studio\jbr"`.
+
 If `python3 --version` works on your Windows installation, you can use the
 commands below exactly as written. Otherwise replace each `python3 -m` with
-`py -3 -m`. If `adb`, `java`, or `keytool` is not found, install the missing
-SDK/JDK component in Android Studio, reopen PowerShell, and repeat these
-checks.
+`py -3 -m`. If `adb` or `keytool` is still not found after the lines above,
+install the missing SDK/JDK component in Android Studio, reopen PowerShell, and
+repeat these checks.
+
+You do not have to copy `adb.exe`, `keytool.exe`, or any other tool into the
+project folder. The guided setup looks for both of them itself — `adb` in the
+SDK's `platform-tools`, and `keytool` under `JAVA_HOME` and in Android Studio's
+bundled runtime — and prints the path it settled on. If it reports one as
+unavailable, that is worth an issue report rather than a copied executable.
 
 The guided setup automatically checks `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and
 Android Studio's usual Windows location, `%LOCALAPPDATA%\\Android\\Sdk`. If it
@@ -219,6 +254,73 @@ adb shell getprop ro.product.model
 
 Replace `emulator-5556` with your serial. `ANDROID_SERIAL` applies only to the
 current terminal, so it will not affect your other projects.
+
+#### Sound on the emulator
+
+Emulator audio is unreliable for this build, in two separate ways. Neither is a
+server problem: the local resource set delivers every sound and music file the
+client asks for, and the same build plays audio continuously on physical
+hardware. If sound matters to you, test on a real phone or tablet.
+
+**First, many emulators start with audio output switched off.** Android Studio
+does not always write `hw.audioOutput` into a new device's configuration, so
+whether you get any sound at all depends on when and how the device was created.
+Check the file directly:
+
+```text
+~/.android/avd/YOUR_AVD.avd/config.ini                      macOS and Linux
+%USERPROFILE%\.android\avd\YOUR_AVD.avd\config.ini          Windows
+```
+
+You can also reach it from **Device Manager → the device's ⋮ menu → Show on
+Disk**. Both of these lines must be present and set to `yes`; add them if they
+are missing:
+
+```ini
+hw.audioInput=yes
+hw.audioOutput=yes
+```
+
+Save the file, then **cold boot** the emulator: **Device Manager → the device's
+⋮ menu → Cold Boot Now**, or from a terminal:
+
+```sh
+"$HOME/Library/Android/sdk/emulator/emulator" -avd YOUR_AVD_NAME -gpu swangle -no-snapshot-load
+```
+
+On Windows and Linux use the `emulator` binary in your own SDK directory, as in
+the graphics step above.
+
+Cold booting is the part that is easy to miss. An ordinary restart uses quick
+boot, which restores a saved snapshot of the device and can bring the old,
+silent audio device back with it, so the edit looks as though it did nothing.
+
+**Second, sound may still stop for good once you leave the title screen.** The
+original client mixes all music and effects into a single audio output stream,
+so when that stream stalls everything goes quiet at once rather than one sound
+at a time. On a physical device that stream stays open for a whole session
+without interruption; on an emulator it can stall and never recover, leaving
+the title screen audible and the game silent.
+
+The likely cause is the emulator running out of processing time, not anything
+missing. `-gpu swangle` renders the screen in software on the CPU, and a default
+emulator is given only four cores to do that on, so the audio mixer can be
+starved once real gameplay starts drawing. If you want to try to keep sound
+working, raise the core count in the same `config.ini` — for example
+`hw.cpu.ncore=8`, staying a couple below the core count of the machine itself —
+then cold boot again.
+
+If you report a sound problem, capture what the audio system says at the moment
+it goes quiet:
+
+```sh
+adb logcat -c
+# launch the game, enter the game past the title screen, wait for the silence
+adb logcat -d | grep -Ei "OpenSLES|AudioTrack|AudioFlinger|underrun|obtainBuffer" > audio-log.txt
+```
+
+Include `audio-log.txt`, your emulator system image, and the core count from
+`config.ini`.
 
 ### 2. Arrange your local files
 
@@ -423,8 +525,10 @@ the server.
 
 ### 4b. Create a local test signing key
 
-You only need to do this once. Run this from the repository root and choose a
-password when prompted:
+You only need to do this once. **The password must be at least six characters**
+— `keytool` rejects anything shorter, and it only says so after you have
+answered the prompt. Run this from the repository root and choose a password
+when asked:
 
 ```sh
 keytool -genkeypair -v \
@@ -433,6 +537,19 @@ keytool -genkeypair -v \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000 \
+  -dname "CN=Local Tester, OU=Testing, O=Project Liminal Gate, L=Local, ST=Local, C=US"
+```
+
+In PowerShell, use backticks for the line breaks, because the backslashes above
+are a Unix shell convention that PowerShell does not accept:
+
+```powershell
+keytool -genkeypair -v `
+  -keystore user-data/liminal-gate-test.keystore `
+  -alias liminal-gate-test `
+  -keyalg RSA `
+  -keysize 2048 `
+  -validity 10000 `
   -dname "CN=Local Tester, OU=Testing, O=Project Liminal Gate, L=Local, ST=Local, C=US"
 ```
 
@@ -448,6 +565,18 @@ read -rs TEST_KEY_PASSWORD
 printf '%s' "$TEST_KEY_PASSWORD" > user-data/keystore-password.txt
 unset TEST_KEY_PASSWORD
 chmod 600 user-data/keystore-password.txt
+```
+
+The PowerShell equivalent, which also writes the file without a trailing
+newline and without leaving the password in your history:
+
+```powershell
+$TestKeyPassword = Read-Host -AsSecureString -Prompt "Local test-key password"
+[System.IO.File]::WriteAllText(
+  "$PWD\user-data\keystore-password.txt",
+  [System.Net.NetworkCredential]::new("", $TestKeyPassword).Password
+)
+Remove-Variable TestKeyPassword
 ```
 
 Enter the same password you chose for `keytool`. The README uses this one file
@@ -791,12 +920,17 @@ apart. Give those a `--data-dir` and a port each instead.
 | `--device-host must not contain a port` | Pass only the address in `--device-host` and set the port separately with `--port`. |
 | A device that worked yesterday now shows Network Error | This machine's network address probably changed. Recheck it, then rerun setup and reinstall. See [Keep that address from changing](#c-keep-that-address-from-changing). |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | A build made from a different checkout, with a different local test key, is already installed. Rerun with `--replace-existing`, or uninstall it yourself with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either way that app's local data is cleared, so it downloads resources again and starts a new local account. |
-| `keytool: command not found` | Install a JDK, then reopen the terminal and rerun the signing-key step. |
+| `keytool: command not found`, or `keytool is unavailable` | `keytool` comes with a JDK, not with the Android SDK, so adding the SDK to `PATH` does not provide it. Set `JAVA_HOME` to Android Studio's bundled runtime — on Windows `%LOCALAPPDATA%\Programs\Android Studio\jbr` — then reopen the terminal. Setup also searches that location itself, so do not copy `keytool.exe` into the project folder. See [Install and check the tools first](#install-and-check-the-tools-first). |
+| `adb is unavailable`, or `adb` is not found | Setup falls back to the SDK's own `platform-tools\adb`, so this means the SDK root was not found either. Set `ANDROID_SDK_ROOT`, or pass `--adb` with the full path to `adb`. Copying `adb.exe` into the project folder is not needed. |
+| The keystore is never created, and setup reports it could not be created | The password was probably shorter than six characters, which `keytool` refuses. Setup now asks again rather than failing, states the minimum in the prompt, and repeats whatever `keytool` reported. If you are running the manual step instead, see [4b](#4b-create-a-local-test-signing-key). |
+| A `\` at the end of a line is rejected in PowerShell | The multi-line commands use a Unix shell convention. Use a backtick (`` ` ``) instead, or put the whole command on one line. Step [4b](#4b-create-a-local-test-signing-key) gives PowerShell versions of both signing-key commands. |
 | Input validation rejects the resource root | Use `local-input/resources/data_u2017/android`, not `local-input/resources`. |
 | Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
 | Resource-manifest error on server start | Confirm the resource root, then rerun `python3 -m liminal_gate.resource_catalog_builder`. |
-| Sound is distorted, cuts out, or does not return | Check `user-data/events.jsonl` for `404` requests beneath `/resources/SE/`. A missing sound bundle in the local resource set can cause this; include those paths in the issue report. |
+| No sound at all on an emulator | The emulator was probably created with audio output switched off. Add `hw.audioInput=yes` and `hw.audioOutput=yes` to the device's `config.ini`, then **cold boot** it — an ordinary restart can restore the silent device from a snapshot. See [Sound on the emulator](#sound-on-the-emulator). |
+| Sound plays on an emulator title screen, then stops for good in the game | An emulator limitation, not the server. All music and effects share one audio output stream, and the emulator can stall it permanently once software rendering starts competing for the CPU. Raise `hw.cpu.ncore` and cold boot, or test on a physical device. See [Sound on the emulator](#sound-on-the-emulator). |
+| Sound is distorted, cuts out, or does not return on a physical device | Check `user-data/events.jsonl` for `404` requests beneath `/resources/SE/` or `/resources/BGM/`. A missing sound bundle in your local resource set can cause this; include those paths in the issue report. On an emulator, see the two rows above first. |
 | A request fails after Chapter 2-1 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
 
 For a local client-to-server failure, open the GitHub **Network error** issue
