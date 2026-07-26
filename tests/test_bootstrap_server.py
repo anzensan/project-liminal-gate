@@ -4,6 +4,7 @@ import copy
 import json
 from http.client import HTTPConnection
 from pathlib import Path
+import socket
 import tempfile
 import threading
 import unittest
@@ -332,6 +333,20 @@ class BootstrapServerTest(unittest.TestCase):
                 (expected_status, expected_error),
                 (response.status, payload["error"]),
             )
+
+    def test_rejects_an_incomplete_request_body(self) -> None:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.putrequest(
+            "POST", "/local/userdata?otk=token&requestID=incomplete-body"
+        )
+        connection.putheader("Content-Length", "10")
+        connection.endheaders(b"x=1")
+        assert connection.sock is not None
+        connection.sock.shutdown(socket.SHUT_WR)
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        self.assertEqual((400, "incomplete_request_body"), (response.status, payload["error"]))
 
     def test_event_log_records_only_clear_settlement_aggregates(self) -> None:
         self.request("/local/signup?uuid=local-account&otk=signup-token")
@@ -972,7 +987,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
             "tokens": {},
         }), encoding="utf-8")
         state = BootstrapState(self.state_path)
-        self.assertFalse(state.bind_rotated_token("unbound-token"))
+        try:
+            self.assertFalse(state.bind_rotated_token("unbound-token"))
+        finally:
+            state.close()
 
     def test_user_data_binds_rotated_token_to_active_account_durably(self) -> None:
         signup_token = "0123456789ABCDEF"

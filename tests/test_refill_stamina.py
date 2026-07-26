@@ -64,7 +64,12 @@ class RefillStaminaTest(unittest.TestCase):
             try:
                 self.assertEqual((200, success), post(restarted, "one", "cost=1"))
                 self.assertEqual((200, full), post(restarted, "two", "cost=1"))
-                restarted.state.create_account("poor", "poor-account", {"refillStartTime": 1.0})
+                restarted.state.create_account(
+                    "poor",
+                    "poor-account",
+                    {"refillStartTime": 1.0},
+                    client_host="127.0.0.1",
+                )
                 connection = HTTPConnection(*restarted.server_address)
                 connection.request("POST", "/gd/refill_stamina?otk=poor&requestID=poor-one", body="cost=1")
                 response = connection.getresponse()

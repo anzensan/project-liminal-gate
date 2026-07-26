@@ -49,6 +49,9 @@ class CompanionStrengthenTest(unittest.TestCase):
                 # rejected on its own merits.
                 self.assertEqual((501, "unsupported_companion_strengthen"), (post(server, "one", "baseID=1&matList=[1]")[0], post(server, "one", "baseID=1&matList=[1]")[1]["error"]))
                 server.state.create_account("other", "other-account", {"coins": 100, "buddyInfo": {"list": [{"iid": 4, "bid": 10, "lv": 1, "exp": 0, "flag": 0}, {"iid": 5, "bid": 11, "lv": 1, "exp": 0, "flag": 2}], "record": []}})
+                # Production signup/login identifies which LAN client owns this
+                # account before a rotated token can mutate it.
+                server.state.bind_login_token("other", "other-account", "127.0.0.1")
                 status, favorite = post(server, "favorite", "baseID=4&matList=[5]", "other")
                 self.assertEqual((200, False, 6), (status, favorite["success"], favorite["errorCode"]))
                 self.assertEqual([4, 5], [row["iid"] for row in server.state.userdata_for("other")["buddyInfo"]["list"]])
@@ -59,6 +62,10 @@ class CompanionStrengthenTest(unittest.TestCase):
 
             restarted, restarted_thread = start()
             try:
+                # The same emulator last logged into other-account above.
+                # Logging back in restores ownership before this account's
+                # durable replay is requested.
+                restarted.state.bind_login_token("token", "account", "127.0.0.1")
                 self.assertEqual((200, first), post(restarted, "one", "baseID=1&matList=[2]"))
             finally:
                 restarted.shutdown()

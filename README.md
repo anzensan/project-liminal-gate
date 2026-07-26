@@ -54,6 +54,16 @@ If you encounter a Network Error, please [open a GitHub issue](https://github.co
 with the action you took, OS and emulator or device version, and the relevant
 lines from `user-data/events.jsonl`.
 
+### Local-network safety
+
+The guided server listens on all host interfaces because an emulator or
+physical Android device must reach it. It is not an Internet-facing service:
+keep the selected port behind your firewall and never forward it from a router.
+Signup or login identifies a device before rotated tokens may mutate its save;
+an unknown LAN host is refused rather than inheriting the active account.
+Resource files explicitly listed in the local manifest remain readable to
+devices that can reach the port, so use a trusted local network.
+
 ## What you need
 
 - Python 3.11 or newer, with `python3` available in a Terminal.
@@ -1019,6 +1029,12 @@ not attach APKs, resources, captures, account saves, tokens, digests, or keys.
   save; see [Editing a save](#editing-a-save).
 - [Developer reference](docs/developer-reference.md) — server modes, custom
   profiles, resource serving, APK tools, and release checks.
+- [Server protocol](docs/server-protocol.md) and
+  [current checkpoint](docs/current-checkpoint.md) — transport, persistence,
+  evidence labels, and the verified client boundary.
+- [Reconstruction architecture](docs/reconstruction-architecture.md) and
+  [distribution architecture](DISTRIBUTION_ARCHITECTURE.md) — runtime modules
+  and the source-only public/private separation.
 - [Compatibility scope](COMPATIBILITY_SCOPE.md) — supported operations and
   confidence labels.
 - [Parity roadmap](PARITY_ROADMAP.md) — known gaps and future work.

@@ -1,0 +1,51 @@
+# Server Protocol
+
+This is the public, implementation-level protocol boundary. Capability status
+is machine-readable in `../protocol/endpoint_matrix.yaml`.
+
+## Transport
+
+- The compatibility server uses local HTTP for the surviving Android client.
+- It listens broadly only so a physical device or emulator can connect; it is
+  intended for a trusted LAN and must not be Internet-exposed.
+- POST bodies require a nonnegative `Content-Length`, are capped at 4 MiB, and
+  must contain exactly the declared number of bytes.
+- Unknown routes fail explicitly instead of returning generic success.
+
+## Account routing and signing
+
+Signup/login carry the client UUID and establish a durable source-host owner.
+Most later routes carry `otk` and optional `requestID`, but no UUID. The OTK is
+a three-second client time bucket, not an account-unique session identifier, so
+the identified host owns later rotated tokens. An unknown host is refused once
+ownership exists. See `multi-account-design.md` for limitations.
+
+Response signing remains token-derived according to the included compatibility
+profile. Event diagnostics never record tokens, authentication digests, query
+strings, account IDs, rosters, or request bodies.
+
+## Mutation contract
+
+Supported mutations validate the exact ordered form and relevant catalog
+boundary before changing state. State and the response used for retry are
+committed together. Replay identity includes operation, request ID, and body,
+so the same ID with a different body is not mistaken for the earlier request.
+Caches are bounded and survive restart.
+
+## Server constants
+
+`get_server_status` returns the complete required constants object. A partial
+object is not served because client setters directly index required economy,
+version, and country fields. Hunting selector lists are added per account from
+the enabled Hunting catalog and current progress. Detailed static evidence and
+local-policy labels live in `../liminal_gate/server_constants.py` and
+`findings.md`.
+
+## Evidence labels
+
+- **Confirmed:** surviving-client acceptance, exact static client read, or an
+  executable regression proving the stated implementation contract.
+- **Strongly inferred:** multiple consistent sources without live acceptance.
+- **Tentative:** an open hypothesis that must not drive a success response.
+- **Local policy:** deliberate preservation behavior, not a historical-service
+  claim.

@@ -1,0 +1,54 @@
+schema_version: 1
+updated: "2026-07-26"
+canonical_client_boundary: "Chapter 2-1 clear"
+statuses:
+  confirmed: "wire shape and surviving-client acceptance are confirmed"
+  static_confirmed: "client-static contract is confirmed; live acceptance is incomplete"
+  local_policy: "implemented preservation behavior, not a historical-service claim"
+  unsupported: "fails explicitly rather than returning generic success"
+capabilities:
+  - family: bootstrap
+    routes: [get_current_time, get_server_status, signup, login, userdata, userdata_after_close]
+    status: confirmed
+    transport_tests: true
+    restart_tests: true
+  - family: tutorial_story
+    routes: [do_slot, userdata, start_quest, clear_quest]
+    status: confirmed
+    transport_tests: true
+    restart_tests: true
+  - family: ordinary_story_chapter_2_to_42
+    routes: [start_quest, clear_quest, userdata]
+    status: local_policy
+    transport_tests: true
+    restart_tests: true
+  - family: hunting_and_metal
+    routes: [start_quest, clear_quest, unlock_metal_zone]
+    status: local_policy
+    transport_tests: true
+    restart_tests: true
+  - family: pacts_and_companions
+    routes: [do_slot, do_buddy_slot, sell_buddy, sell_buddies, buddy_strengthen, buddy_evolve, userdata]
+    status: local_policy
+    transport_tests: true
+    restart_tests: true
+  - family: progression_mutations
+    routes: [continue, refill_stamina, use_statusup_item, add_job, rebirth, summon_skill_unlock]
+    status: local_policy
+    transport_tests: true
+    restart_tests: true
+  - family: messages_achievements_trading
+    routes: [achived, read_messages, delete_messages, get_current_exchange, exchange]
+    status: local_policy
+    transport_tests: true
+    restart_tests: true
+  - family: local_events
+    routes: [start_quest, clear_quest]
+    status: local_policy
+    transport_tests: true
+    restart_tests: true
+  - family: multiplayer_social_commerce
+    routes: [multiplayer, matchmaking, friends, purchases, advertisements]
+    status: unsupported
+    transport_tests: false
+    restart_tests: false

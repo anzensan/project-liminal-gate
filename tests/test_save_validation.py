@@ -137,7 +137,7 @@ class SaveValidationTest(unittest.TestCase):
         document = save()
         document["tokens"] = []
         self.assertIn("tokens", errors(document))
-        document["tokens"] = {1: "ACCOUNT"}
+        document["tokens"] = {"token": "ACCOUNT", 1: "ACCOUNT"}
         self.assertIn("tokens", errors(document))
 
 

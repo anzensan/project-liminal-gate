@@ -1,7 +1,7 @@
 # Multi-account server: design
 
-Status: **Design only. Not implemented.** One protocol question must be settled
-by experiment before any of this is built.
+Status: **Implemented for trusted-LAN household use with source-IP binding.**
+Cookie-based routing remains unverified and is not used.
 
 ## 1. Goal
 
@@ -28,7 +28,7 @@ progress, and per-account request-replay caches.
 Concurrency is also already in place: the server is a `ThreadingHTTPServer`, so
 simultaneous clients are served rather than queued.
 
-## 3. What does not work, and why
+## 3. Routing constraint and implemented policy
 
 Account **routing** is the problem, and the cause is in the client protocol
 rather than in this server's design.
@@ -48,98 +48,39 @@ The consequence is decisive:
 > Two clients playing at the same moment send **byte-identical `otk` values**.
 > A map from `otk` to account cannot separate them, even in principle.
 
-This is not a bug that can be tuned out of the existing token map. The server
-preserves every previously bound `otk`-to-account association, but uses a
-single active-account fallback for a genuinely unknown rotated token. That is
-coherent for one client at a time; it is not a safe routing policy for several
-concurrent clients. Any real multi-account support has to add an identity
-signal that the protocol does not currently provide, and route on that instead.
+The server therefore associates the request source IP with an account at
+signup/login, the two routes that carry `uuid`. A later rotated OTK is bound to
+that host's identified account. Once any host ownership exists, an unidentified
+LAN host is refused instead of inheriting the active account. Legacy saves
+without host bindings allow one first host to claim the existing account and
+then enforce the same rule.
 
-## 4. Candidate discriminators
+This is a trusted-LAN compatibility policy, not cryptographic authentication.
+Changing address requires login again; clients hidden behind the same source
+address cannot be distinguished.
 
-### Option A — server-issued session cookie
+## 4. Alternatives retained as boundaries
 
-`AppServerUtil.SaveCookie` reads `Set-Cookie` from a response into the client's
-`hsHeader` dictionary, and `MyWWW` copies that stored `Cookie` string onto every
-subsequently created request without host, path, or expiry checks. Issuing a
-per-account cookie at login would give exact per-client identity with no client
-patch, and is closest to what the retired service most likely did.
+### Server-issued session cookie
 
 - **Confidence: strongly inferred, never live-verified.**
-  `reports/session_auth_lifecycle.md` records that the clean-room server has
-  never sent `Set-Cookie`, that cookie-stateless operation was sufficient for
-  every captured phase, and that the exact `SaveCookie` byte handling was left
-  open mid-disassembly.
-- `hsHeader` is in-memory only. It does not survive an app restart, so login
-  must always be able to re-establish the session. It is also not cleared on
-  logout.
-- The parsing is quirky in ways a naive `Set-Cookie` would trip over: the value
-  is split on exact `"; "`, only lowercase `path=` segments are removed, and
-  each retained segment is re-prefixed with `"; "`. The issued cookie should be
-  kept to a single simple `name=value` pair with no attributes.
+  It is deliberately not fabricated into the public implementation without a
+  surviving-client transport capture.
 
-### Option B — source IP binding
-
-Bind the account to `client_address[0]` at login and route later requests by
-source address.
-
-- Works today with no dependency on unverified client behavior.
-- On a home LAN each device has a distinct address, which is exactly the target
-  topology.
-- Breaks if a DHCP lease moves mid-session; recoverable by re-login.
-- Would be wrong behind a shared NAT address, which does not occur here.
-
-### Option C — one server instance per player
+### One server instance per player
 
 Each player gets their own `--data-dir` and `--port`, and therefore their own
 APK built against that port.
 
 - **Available now with no code change at all.** Both flags already exist.
 - Costs one process and one APK build per player.
-- Should be documented as the interim answer regardless of which routing design
-  wins, because it needs nothing from this document.
+- This remains the fallback for clients that share a source address.
 
-## 5. Recommended sequence
+## 5. Certification
 
-**Step 1 — settle Option A with one experiment.** Add `Set-Cookie` to the local
-login response and observe whether subsequent `/gd/*` requests carry a `Cookie`
-header. A single emulator run answers it. Either result is worth recording: a
-positive closes an open item in `session_auth_lifecycle.md` and selects the
-faithful design; a negative rules it out permanently and selects Option B.
-
-**Step 2 — introduce an explicit session layer.** Replace the `otk`-keyed token
-map and the single active-account marker with a session map keyed by the chosen
-discriminator, established at signup and login where `uuid` is actually
-present. Keep `otk` for response signing only; that use is correct, because a
-shared per-window value is exactly what signing needs.
-
-**Step 3 — define the unroutable-request policy explicitly.** A request that
-arrives with no resolvable session — cold app start before login, dropped
-cookie, changed address — must return a clean unauthorized response that sends
-the client back to login. It must never guess an owner. This case is the one
-the current single-account fallbacks exist to smooth over, and multi-account
-operation makes guessing actively harmful: a wrong guess writes one player's
-progress into another player's save.
-
-**Step 4 — audit isolation.** Per-account request-replay caches are already
-stored under each account, which is correct; confirm no shared cache, counter,
-or derived catalog state crosses accounts. Confirm the client-generated `uuid`
-is genuinely distinct per device and install, since a collision would silently
-merge two saves.
-
-**Step 5 — measure rather than redesign concurrency.** Every mutation takes one
-global state lock, and each mutation rewrites the whole state file. Both are
-likely fine at household scale and should be measured under a real multi-device
-test before being changed. Concurrent first-run resource downloads are the more
-plausible bottleneck.
-
-**Step 6 — extend guided setup.** Support installing to several devices against
-one server, or naming per-player data directories. This depends on the physical
-device path, since family devices are real hardware rather than emulators.
-
-## 6. Certification
-
-Two devices, two accounts, played simultaneously, proving:
+Automated coverage proves independent host routing, refusal of an unidentified
+host, legacy-save claiming, durable host mappings, per-account state, and
+restart replay. A physical two-device soak remains useful for:
 
 - independent progress and independent wallets;
 - correct replay when each client retries its own request;
@@ -148,7 +89,7 @@ Two devices, two accounts, played simultaneously, proving:
 - an unroutable request returning a clean unauthorized response rather than
   being attached to the wrong account.
 
-## 7. Explicit non-goals
+## 6. Explicit non-goals
 
 No friends, PvP, co-op, raids, shared HP, ranking, or any social feature. No
 account migration between devices. No remote or internet-facing exposure: this

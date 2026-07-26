@@ -54,6 +54,7 @@ from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StorySta
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
 from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_event_catalog
+from liminal_gate.event_log import EventRecorder, safe_form_diagnostics
 from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, load_summon_skill_catalog
@@ -471,6 +472,11 @@ class BootstrapState:
         if not isinstance(token, str) or not token:
             return False
         with self.lock:
+            # Internal callers and migrations that have no transport address
+            # may still confirm an existing durable binding. HTTP handlers
+            # always pass a host and therefore take the host-ownership path.
+            if client_host is None and self.tokens.get(token) in self.accounts:
+                return True
             owned = self.client_hosts.get(client_host) if isinstance(client_host, str) else None
             if owned in self.accounts:
                 # OTK values collide across clients because they are coarse
@@ -2108,70 +2114,6 @@ class BootstrapState:
             os.close(directory)
 
 
-def _safe_form_diagnostics(body: bytes) -> dict[str, Any]:
-    """Record a small, non-secret view of a form request for local debugging."""
-    try:
-        fields = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
-    except (UnicodeDecodeError, ValueError):
-        return {"request_body_sha256": hashlib.sha256(body).hexdigest()}
-    details: dict[str, Any] = {"request_fields": [name for name, _ in fields]}
-    safe_values = {
-        name: value for name, value in fields
-        if name in {"progressCode", "worldMapNo", "lastUpdate", "chapter", "section"}
-    }
-    if safe_values:
-        details["request_values"] = safe_values
-    # A quest-clear retry is the only durable source for the client-reported
-    # local settlement.  Preserve just its aggregate numeric values so an
-    # operator can report a Network Error without exposing roster, item, or
-    # account data in the default local event log.
-    raw = dict(fields)
-    try:
-        valuables = json.loads(raw["valuables"]) if "valuables" in raw else None
-        battle = json.loads(raw["battle_result"]) if "battle_result" in raw else None
-    except json.JSONDecodeError:
-        valuables = battle = None
-    if isinstance(valuables, dict) and type(valuables.get("coins")) is int:
-        details["reported_wallet_coins"] = valuables["coins"]
-    if isinstance(battle, dict):
-        settlement = {
-            name: battle[name] for name in ("chapter", "section", "coins", "exp")
-            if type(battle.get(name)) is int
-        }
-        if settlement:
-            details["reported_battle_result"] = settlement
-    return details
-
-
-class EventRecorder:
-    """Append route diagnostics without retaining tokens or request bodies."""
-
-    def __init__(self, path: Path | None) -> None:
-        self.path = path
-        self.lock = Lock()
-
-    def record(
-        self, method: str, target: str, status: HTTPStatus,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        if self.path is None:
-            return
-        event = {
-            "method": method,
-            "path": urlsplit(target).path,
-            "status": status.value,
-            "timestamp_utc": int(time.time()),
-        }
-        if details:
-            event.update(details)
-        encoded = json.dumps(event, separators=(",", ":"), sort_keys=True) + "\n"
-        with self.lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as stream:
-                stream.write(encoded)
-                stream.flush()
-
-
 class BootstrapServer(ThreadingHTTPServer):
     def __init__(
         self,
@@ -2409,7 +2351,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         if len(body) != length:
             self._json(HTTPStatus.BAD_REQUEST, {"error": "incomplete_request_body"})
             return
-        self._event_details = _safe_form_diagnostics(body)
+        self._event_details = safe_form_diagnostics(body)
         query = dict(parse_qsl(target.query, keep_blank_values=True))
         token = query.get("otk")
         request_id = query.get("requestID")

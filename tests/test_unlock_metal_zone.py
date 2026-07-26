@@ -54,7 +54,12 @@ class UnlockMetalZoneTest(unittest.TestCase):
             restarted, thread = start()
             try:
                 self.assertEqual((200, success), post(restarted, "one", b""))
-                restarted.state.create_account("poor", "poor-account", {})
+                restarted.state.create_account(
+                    "poor",
+                    "poor-account",
+                    {},
+                    client_host="127.0.0.1",
+                )
                 connection = HTTPConnection(*restarted.server_address)
                 connection.request("POST", "/gd/unlock_metal_zone?otk=poor&requestID=poor-one", body=b"")
                 response = connection.getresponse()

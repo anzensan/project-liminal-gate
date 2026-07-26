@@ -83,7 +83,7 @@ def validate_document(document: object) -> list[Finding]:
     if not isinstance(tokens, dict):
         findings.append(Finding("", "tokens", "the save has no token-binding object"))
     else:
-        for token, owner in sorted(tokens.items()):
+        for token, owner in sorted(tokens.items(), key=lambda item: str(item[0])):
             if not isinstance(token, str) or not isinstance(owner, str):
                 findings.append(Finding("", "tokens", "every token binding must map one string to an account id"))
                 continue

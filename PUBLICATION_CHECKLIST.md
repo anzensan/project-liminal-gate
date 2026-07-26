@@ -1,0 +1,24 @@
+# Publication Checklist
+
+Run this checklist from the independent `project-liminal-gate` repository.
+
+- [ ] `git status --short` is empty.
+- [ ] The intended release commit and remote are reviewed.
+- [ ] No APK, resource, capture, state, key, password, or user-derived game text
+      is tracked or present in the proposed release tree.
+- [ ] `python3 -m unittest discover -s tests -v` passes without resource
+      warnings.
+- [ ] `python3 -m compileall -q liminal_gate tests` passes.
+- [ ] `python3 -m liminal_gate.release_preflight` passes.
+- [ ] `python3 -m liminal_gate.release_audit` passes.
+- [ ] A clean `git archive HEAD` copy passes release preflight.
+- [ ] README commands, relative links, compatibility claims, checkpoint, and
+      endpoint matrix match the implementation.
+- [ ] New mutations have real-HTTP success, denial, retry, collision/body
+      identity, restart, and durable-state coverage.
+- [ ] Local policy and recovered behavior remain visibly distinguished.
+- [ ] `PROJECT_STATUS.md`, `PLANS.md`, and `docs/current-checkpoint.md` record
+      the actual verified boundary and unresolved risks.
+
+Do not publish merely because unit tests are green. Client acceptance and
+differential fidelity claims require their separately recorded evidence.

@@ -3,7 +3,8 @@ local-input/
 project_liminal_gate.egg-info/
 user-data/
 state/
-logs/
+logs/*
+!logs/tooling.md
 build/
 dist/
 *.apk

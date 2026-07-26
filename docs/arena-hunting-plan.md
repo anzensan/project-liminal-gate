@@ -1,6 +1,7 @@
 # Arena and Hunting implementation plan
 
-Status: step 2 partially implemented; steps 1 and 4 still need a capture. This
+Status: Hunting selector and bounded solo lifecycle implemented; Arena VS
+remains deliberately disabled. This
 document separates the solo content that can be made available through the
 surviving client from the original online Arena system, which cannot be made
 functional by adding ordinary HTTP responses.
@@ -10,17 +11,15 @@ functional by adding ordinary HTTP responses.
 | Step | State |
 | --- | --- |
 | 0. Certify account and resource stability | Done. The account lifecycle and the whole Chapter 2--42 story are now certified by the public suite. |
-| 1. Hunting discovery capture | **Outstanding.** Needs the real client at a checkpoint where a selector is enabled. |
-| 2. Hunting vertical slice | Catalog, lifecycle, cost, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py`), with a bundled policy behind `--hunting`. The status/selector projection is **not**, and is correctly blocked on step 1. The pass condition is therefore not met. |
-| 3. Expand by family | Pudding, Tin, Coin Creeps, and Puppet are declared by the bundled policy at all three zones. Metal remains absent: its EXP and Companion bounds are not expressible here, and results carrying Companions or Summons are refused. |
+| 1. Hunting discovery | Static client gates and selector list contract recovered; live historical-service schedule remains unavailable. |
+| 2. Hunting vertical slice | Catalog, selector projection, lifecycle, costs, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py` and `liminal_gate/server_constants.py`). |
+| 3. Expand by family | Bundled local policy declares the recovered Hunting and Metal families with explicit per-stage bounds. |
 | 4. Arena -> Special Quests | Outstanding, and gated on the same kind of capture. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 
-The selector is blocked for a concrete reason, not merely for lack of a
-capture: it lives in `get_server_status.constants`, which this server does not
-send at all, and `docs/server-protocol.md` records that a partial `constants`
-object crashes the client because its setter directly indexes the first 31
-keys. Populating it is a constants work packet, not a one-field addition.
+The selector lives in `get_server_status.constants`. The server sends the
+complete required block and derives both selector lists from account progress;
+it never attempts a one-field partial projection.
 
 ## Product boundary
 
@@ -60,89 +59,20 @@ that is an architectural boundary, not an endpoint backlog.
   not captured. Any availability schedule must be labeled local policy rather
   than historical behavior.
 
-## Delivery order
+## Remaining delivery boundary
 
-### 0. Prerequisite: certify account and resource stability
+Hunting now has strict bundled/user-local catalogs, account-progress selector
+projection, bounded start/clear settlement, one-active-quest enforcement,
+body-scoped replay, and restart coverage. These establish local preservation
+behavior; a future private capture may refine historical unlock schedules or
+stage-specific bounds without changing that architecture.
 
-Before exposing new selectors, certify the current account path with a fresh
-save, one normal Pact, party edit, app-to-title return, restart, and a resource
-download pass. This prevents a selector investigation from being confused with
-the roster/save defects fixed in `108e7f0`.
+Arena -> Special Quests should continue through the existing user-local event
+catalog rather than a second backend. Its next vertical slice needs one
+sanitized selector/flag work packet and real-client acceptance. Absent stages
+remain invisible.
 
-Pass condition: no non-200 `/gd/userdata` write and no missing selector asset
-in `events.jsonl` for the chosen test path.
-
-### 1. Hunting discovery capture
-
-Use a single fresh test account at a controlled progression checkpoint and
-record, without changing the public server:
-
-1. the `get_server_status` response consumed before Hunting opens;
-2. the first enabled Hunting selector and its displayed chapter/section;
-3. the exact `POST /gd/start_quest` request;
-4. the matching clear request, response, retry, and state before/after;
-5. every resource request made while opening the selector and battle.
-
-Preserve raw captures privately. The public work packet records only derived
-field shapes, stage identity, and tester-supplied catalog provenance.
-
-Decision required after capture: a local availability policy. Recommended
-first policy is an explicit user-local catalog with one or more always-available
-stages after the configured story checkpoint; do not emulate a retired calendar
-until one is recovered.
-
-### 2. Hunting vertical slice: one stage, one family
-
-Implement the smallest end-to-end slice, recommended as one Pudding/Tin-style
-Hunting stage before Metal:
-
-- Add a strict user-local Hunting catalog importer/validator. It accepts stage
-  identity, entry cost, unlock policy, and conservative allowed result bounds;
-  it does not package enemy, reward, or resource data.
-- Add a status/selector projection only after the capture establishes the
-  client field name and wire type. It must expose only cataloged identities.
-- Reuse normal start/clear transport but give the active stage its own durable
-  namespace and body-hash/request-ID cache.
-- Validate chapter/section, cost, one active quest, roster ownership, and the
-  submitted result against catalog bounds before mutation.
-- Make accepted result, rejected result, duplicate retry, request-ID collision,
-  process restart mid-battle, and restart after settlement deterministic.
-
-Pass condition: original client opens the selector, starts and clears the
-single stage, returns to the map, and shows the durable local result after a
-server restart.
-
-### 3. Expand Hunting by family, not by a broad enable switch
-
-Expand one independently certified family at a time:
-
-1. Pudding/Tin (bounded item-only results);
-2. Coin Creeps (bounded coin-only results);
-3. Metal (ticket-or-stamina choice plus dynamic EXP/Companion result rules);
-4. Puppet only after its timed-result boundary is captured and bounded.
-
-Each family needs a separate catalog schema, validation matrix, resource smoke
-test, and original-client proof. A client-visible 501/409 is preferable to a
-success response that accepts an unbounded reward claim.
-
-### 4. Arena -> Special Quests: extend the existing solo event path
-
-Do not build a second Arena backend. Extend the current user-local event
-catalog workflow instead:
-
-- Capture the selector visibility condition and exact event flag/list shape
-  for one additional solo Special Quest.
-- Add that one stage to an operator-local event catalog with its matching
-  locally derived character catalog when it grants a character.
-- Exercise selector entry, start, clear, retry, restart, and any local
-  resource/banner load.
-- Keep absent flags/stages invisible rather than rendering an empty or
-  fabricated live-event list.
-
-Pass condition: Arena -> Special Quests shows the configured local stage and
-completes it without enabling any VS/ranking option.
-
-### 5. Keep Arena VS explicitly disabled
+Arena VS stays explicitly disabled.
 
 No HTTP implementation work is planned for `start_vs_quest`, `clear_vs_quest`,
 ranking, or opponent routes. They depend on Photon room lifecycle, peer turns,
@@ -160,7 +90,8 @@ Every new solo stage path must prove:
 - an account owns exactly one active quest across story, Hunting, and Special
   Quests;
 - an accepted request commits its state and replay response atomically;
-- same request ID plus different body returns a conflict without mutation;
+- same request ID plus the same body replays, while a different body is
+  evaluated on its own merits;
 - a rejected request does not alter wallet, roster, party, or active quest;
 - restart preserves the active-stage decision and completed result;
 - direct client resource URLs resolve only through a hash-validated,
@@ -170,7 +101,7 @@ Every new solo stage path must prove:
 
 ## What is needed next
 
-The next work packet is the Hunting discovery capture in step 1. The useful
-input is a sanitized event log plus the exact start/clear request shapes from
-one selector that has actually become enabled. No APK, resource archive,
-account save, token, digest, or private capture should enter the public repo.
+The next work packet is the first reproducible Special Quest or post-Chapter
+2-1 client failure. Useful public input is a sanitized event-log excerpt and
+derived request shape. No APK, resource archive, account save, token,
+authentication digest, or private capture should enter the public repo.

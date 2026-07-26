@@ -12,11 +12,13 @@ python3 -m liminal_gate.server --data-dir user-data
 ```
 
 The bootstrap server also accepts a user-local profile and optional event log.
-The log excludes query strings, request bodies, tokens, digests, account IDs,
-rosters, and item data. In addition to method, route, status, and timestamp, a
-mutation may record field names, non-secret stage/progress values, account
-phase booleans, and aggregate Coin/EXP settlement values. Review an excerpt
-before publishing it; see `CONTRIBUTING.md` for the privacy checklist.
+The log excludes query strings, request bodies, tokens, authentication
+digests, account IDs, rosters, and item data. In addition to method, route,
+status, and timestamp, a mutation may record field names, non-secret
+stage/progress values, account phase booleans, and aggregate Coin/EXP
+settlement values. A malformed non-form body is represented only by its
+SHA-256 and byte length. Review an excerpt before publishing it; see
+`CONTRIBUTING.md` for the privacy checklist.
 
 ## Resource serving
 

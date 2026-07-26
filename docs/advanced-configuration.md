@@ -350,16 +350,17 @@ One battle at a time: a Hunting entry is refused while a story or event stage
 is active, and vice versa. Progress never moves — a Hunting clear settles
 rewards only.
 
-### Not yet available
+### Selector and fidelity boundary
 
-The client's Hunting **selector** is not populated. It reads
-`get_server_status.constants`, which this server does not send at all, and
-`docs/server-protocol.md` records that a partial `constants` object crashes the
-client because its setter directly indexes the first 31 keys. Until that
-projection is captured and proved against the real client, these stages are
-reachable by a client that already knows the identity, not by browsing the
-menu. Metal and Puppet families additionally need their EXP, Companion, and
-timed-result bounds recovered before they can be declared.
+`get_server_status.constants` now sends the complete client-required constants
+block. When a Hunting catalog is enabled, its progress-gated stages populate
+`metalHuntingList` and `huntingHuntingList`; without a catalog both lists are
+empty. A partial constants object is intentionally never served because the
+client indexes required keys directly.
+
+The bundled catalog and any user-supplied catalog remain local preservation
+policy. Selector visibility and bounded settlement tests do not prove the
+retired service's schedules, rotations, encounter contents, or reward odds.
 
 ## Local server configuration file
 
