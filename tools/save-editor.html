@@ -174,9 +174,21 @@
           <tbody></tbody>
         </table>
       </div>
+      <div class="row" style="margin-top:1rem">
+        <div style="flex:2;min-width:12rem">
+          <label for="addId">Add character</label>
+          <input id="addId" list="characterNames" placeholder="ID, or a name once names are loaded">
+          <datalist id="characterNames"></datalist>
+        </div>
+        <div style="flex:1;min-width:7rem"><label for="addLevel">Level</label><input id="addLevel" type="number" min="1" max="90" value="1"></div>
+        <button id="addCharacter" style="margin-top:1.1rem">Add</button>
+      </div>
+      <div id="addNote" class="muted" style="margin-top:.6rem;font-size:.75rem"></div>
       <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
         Level and progression are the two halves of one packed value and are repacked on export.
-        A character removed here is also removed from every party slot naming it.
+        A character removed here is also removed from every party slot naming it. An added one
+        copies the field shape of a character the account already has, so it matches whatever the
+        client wrote, and starts with no progression, no skill boost, and no job slots filled.
       </p>
     </section>
 
@@ -349,6 +361,14 @@ function render() {
       `<td><button data-remove="${index}">Remove</button></td>`;
     body.appendChild(tr);
   });
+  // Offer only characters the account does not already have: adding a
+  // duplicate id is the one thing the roster cannot hold.
+  const owned = new Set((data.chrdata || []).map((row) => row.id));
+  $("characterNames").innerHTML = Object.entries(names.characters)
+    .filter(([id]) => !owned.has(Number(id)))
+    .sort((left, right) => Number(left[0]) - Number(right[0]))
+    .map(([id, name]) => `<option value="${escapeHtml(`${name} (${id})`)}"></option>`)
+    .join("");
   const held = (data.itemList || [])
     .map((count, index) => [index + 1, count])
     .filter(([, count]) => count > 0);
@@ -373,6 +393,61 @@ $("roster").addEventListener("input", (event) => {
       : encodeLevel(level, Math.trunc(value));
   }
   check();
+});
+
+// Accepts an ID, a name, or the "Name (12)" form the datalist offers.
+function resolveCharacterId(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return null;
+  const parenthesised = trimmed.match(/\((\d+)\)\s*$/);
+  if (parenthesised) return Number(parenthesised[1]);
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const lowered = trimmed.toLowerCase();
+  const found = Object.entries(names.characters).find(([, name]) => String(name).toLowerCase() === lowered);
+  return found ? Number(found[0]) : null;
+}
+
+// A new row copies the field shape of one the client already wrote, so it
+// carries exactly the keys and array lengths this save uses rather than a
+// guess. Every value is neutral; only the id and starting level are set.
+function newCharacterRow(id, level) {
+  const existing = (userdata().chrdata || []).find((row) => row && typeof row === "object");
+  const template = existing || { id: 0, buddy: 0, date: 0, flags: 0, jobID: 0, jobLevels: [0, 0, 0], jobSlots: [0, 0, 0], skillBoost: 0 };
+  const row = {};
+  for (const [key, value] of Object.entries(template)) {
+    row[key] = Array.isArray(value) ? value.map(() => 0) : 0;
+  }
+  row.id = id;
+  if (Array.isArray(row.jobLevels) && row.jobLevels.length) row.jobLevels[0] = encodeLevel(level, 0);
+  else row.jobLevels = [encodeLevel(level, 0)];
+  return row;
+}
+
+$("addCharacter").addEventListener("click", () => {
+  const note = $("addNote");
+  const id = resolveCharacterId($("addId").value);
+  const owned = new Set((userdata().chrdata || []).map((row) => row.id));
+  if (id === null || !Number.isInteger(id) || id <= 0) {
+    note.textContent = "Enter a character ID, or a name once a name file is loaded.";
+    note.className = "sev-error";
+    return;
+  }
+  if (owned.has(id)) {
+    note.textContent = `${nameFor("characters", id)} is already on this account.`;
+    note.className = "sev-error";
+    return;
+  }
+  const level = Math.min(LEVEL_CAP, Math.max(1, Math.trunc(Number($("addLevel").value) || 1)));
+  userdata().chrdata.push(newCharacterRow(id, level));
+  // An ID with no name is not refused: a name file is optional, and may be
+  // absent or older than the save.
+  const known = Object.keys(names.characters).length === 0 || String(id) in names.characters;
+  note.textContent = known
+    ? `Added ${nameFor("characters", id)} at level ${level}.`
+    : `Added ${id} at level ${level}. No name file entry for that ID — check it is a real character.`;
+  note.className = known ? "sev-ok" : "sev-warning";
+  $("addId").value = "";
+  render();
 });
 
 $("roster").addEventListener("click", (event) => {
