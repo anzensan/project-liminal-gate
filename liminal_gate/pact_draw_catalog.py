@@ -72,9 +72,12 @@ def build_bundled_pact_policy() -> BundledPactPolicy:
     draw = lambda character_id: PactDraw(character_id, 1, 1, 10)
     return BundledPactPolicy(
         coin_cost=3000,
-        # The original client displays 3 Energy for a normal Truth pull and
-        # 30 Energy for ten.  This is the observed local compatibility cost.
-        energy_cost=3,
+        # The service charged 5 Energy for a single Truth pull.  An earlier
+        # local observation of 3 came from the client's own embedded fallback:
+        # the server had not yet sent `RareSlotEnergy`, so the client displayed
+        # a default rather than the real cost.  It is sent now, from this value,
+        # so the displayed cost and the charged cost are the same number.
+        energy_cost=5,
         new_level=10,
         max_level=90,
         max_skill_boost=1000,

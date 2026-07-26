@@ -55,6 +55,7 @@ from liminal_gate.story_progression_catalog import StoryProgressionCatalog, Stor
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
 from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_event_catalog
 from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
+from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, load_summon_skill_catalog
 
 
@@ -1590,9 +1591,18 @@ class BootstrapState:
                 if cached.get("body_sha256") != digest:
                     return "request_collision", None
                 return "replay", _canonical_payload(cached["payload"])
-            values = _parse_generic_story_start(body)
+            values = _parse_hunting_start(body)
             stage = None if values is None else catalog.by_identity().get((values["chapter"], values["section"]))
-            if values is None or stage is None or values["stamina"] != stage.stamina or values["coins"] != stage.coins:
+            # Only the ticket contract puts an entry pair on the wire: the
+            # client serializes `itemID`/`itemCount` for Metal Zone and for
+            # nothing else, so any other stage must arrive without them.
+            entry_pair = (stage.entry_item_id, stage.entry_item_count) if stage is not None and stage.ticket_optional else (0, 0)
+            if (
+                values is None or stage is None
+                or values["stamina"] != stage.stamina or values["coins"] != stage.coins
+                or (values["itemID"], values["itemCount"]) != entry_pair
+                or values["ticket_form"] != int(stage.ticket_optional)
+            ):
                 return "unsupported_hunting_start", None
             userdata = account["userdata"]
             phase = account.setdefault("tutorial_phase", "initial")
@@ -1613,16 +1623,22 @@ class BootstrapState:
             if not isinstance(items, list) or len(items) != catalog.item_slots or any(type(value) is not int for value in items):
                 return "unsupported_hunting_start", None
             energy, free_energy, coins = (int(userdata.get(name, 0)) for name in ("energy", "freeEnergy", "coins"))
-            if energy + free_energy < stage.stamina or coins < stage.coins:
-                return "success", _canonical_payload({"success": False, "errorCode": 1})
             held = items[stage.entry_item_id - 1] if stage.entry_item_id else 0
-            if stage.entry_item_id and held < stage.entry_item_count:
+            # A ticket is an alternative to stamina, so holding none is not a
+            # failure: the entry falls back to the stamina cost the client
+            # displays in that case.  Only an entry item the stage charges *in
+            # addition* to stamina can refuse for want of the item.
+            spends_ticket = stage.ticket_optional and held >= stage.entry_item_count
+            stamina_due = 0 if spends_ticket else stage.stamina
+            if coins < stage.coins or energy + free_energy < stamina_due:
+                return "success", _canonical_payload({"success": False, "errorCode": 1})
+            if stage.entry_item_id and not stage.ticket_optional and held < stage.entry_item_count:
                 return "success", _canonical_payload({"success": False, "errorCode": 2})
-            free_spend = min(free_energy, stage.stamina)
+            free_spend = min(free_energy, stamina_due)
             userdata["freeEnergy"] = free_energy - free_spend
-            userdata["energy"] = energy - (stage.stamina - free_spend)
+            userdata["energy"] = energy - (stamina_due - free_spend)
             userdata["coins"] = coins - stage.coins
-            if stage.entry_item_id:
+            if stage.entry_item_id and (spends_ticket or not stage.ticket_optional):
                 items[stage.entry_item_id - 1] = held - stage.entry_item_count
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "hunting_active"
@@ -1674,6 +1690,9 @@ class BootstrapState:
             gains = {int(item_id): count for item_id, count in result["items"].items()}
             if not _projected_list(userdata.get("itemList"), clear["itemList"], gains, catalog.item_slots, catalog.max_stack):
                 return "invalid_local_hunting_result", None
+            companions = _granted_hunting_companions(userdata, stage, result, catalog.max_companions)
+            if companions is None:
+                return "invalid_local_hunting_result", None
             wallet_fields = ("energyAppStore", "energy", "energyAndApp", "freeEnergy", "energyGooglePlay", "coins")
             userdata.update({
                 "lastupdate": 1.0,
@@ -1691,6 +1710,12 @@ class BootstrapState:
                 "coins": expected_coins, "freeEnergy": int(userdata.get("freeEnergy", 0)),
                 "chrdata": copy.deepcopy(userdata["chrdata"]), "itemList": copy.deepcopy(userdata["itemList"]),
             })
+            # Only a settlement that actually granted Companions touches the box
+            # or reports it, so the four item and Coin families keep the exact
+            # response they were verified with.
+            if result["buddies"]:
+                userdata["buddyInfo"] = companions
+                payload = _canonical_payload(payload | {"buddyInfo": copy.deepcopy(companions)})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -2266,7 +2291,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             if not token:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": "missing_local_account_token"})
                 return
-            self._signed(HTTPStatus.OK, token, _render(profile.responses["status"], token))
+            payload = _render(profile.responses["status"], token)
+            payload["constants"] = self._server_constants(token)
+            self._signed(HTTPStatus.OK, token, payload)
             return
         if target.path == profile.routes.get("login"):
             account_id = query.get(profile.account_binding["login_query_field"])
@@ -2274,6 +2301,11 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_local_account"})
                 return
             payload = _render(profile.responses["login"], token, account_id)
+            # Required, not decorative: once the status route advertises the
+            # final-major client version, the client's own final-major login
+            # branch indexes `CountryCodes` with this stored value, and reaches
+            # the country-selection modal when nothing is stored.
+            payload |= dict(LOCAL_LOGIN_COUNTRY_FIELDS)
             payload["name"] = self.server.state.accounts[account_id].get("username", payload.get("name", "Player"))
             payload["messageList"] = self.server.state.login_messages(account_id)
             if self.server.event_catalog is not None:
@@ -2485,7 +2517,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             and _parse_story_progression_reveal(body) is not None
         ):
             result, payload = self.server.state.apply_story_progression_reveal(token, request_id, body, self.server.story_progression_catalog)
-        elif kind == "start" and self.server.hunting_catalog is not None and _started_identity(body) in self.server.hunting_catalog.by_identity():
+        elif kind == "start" and self.server.hunting_catalog is not None and _started_hunting_identity(body) in self.server.hunting_catalog.by_identity():
             result, payload = self.server.state.apply_hunting_start(token, request_id, body, self.server.hunting_catalog)
             transitions, kind = (), "hunting_start"
         elif kind == "start" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and (
@@ -2645,6 +2677,28 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _server_constants(self, token: str) -> dict[str, Any]:
+        """Return the constants block for whichever account holds this token.
+
+        The client refetches the status route after every login and after
+        clears, so the zone lists here follow story progress without any push.
+        Both list keys are always present, even when empty: the client's setter
+        reads them directly, and an absent key is not the same as no zones.
+        """
+        pacts = self.server.pact_draw_catalog
+        coins = None if pacts is None else pacts.cost_for_kind(0)
+        energy = None if pacts is None else pacts.cost_for_kind(1)
+        constants = build_server_constants(
+            normal_slot_coins=None if coins is None else coins[1],
+            rare_slot_energy=None if energy is None else energy[1],
+        )
+        constants |= {"metalHuntingList": [], "huntingHuntingList": []}
+        account = self.server.state.accounts.get(self.server.state.tokens.get(token))
+        if account is not None and self.server.hunting_catalog is not None:
+            progress = account.get("userdata", {}).get("progressCode", 0)
+            constants |= self.server.hunting_catalog.client_lists(int(progress))
+        return constants
+
     def log_message(self, format: str, *args: object) -> None:
         return
 
@@ -2671,6 +2725,72 @@ def _cleared_identity(body: bytes) -> tuple[int, int] | None:
 def _started_identity(body: bytes) -> tuple[int, int] | None:
     """The chapter/section a start request names, if it is well formed."""
     values = _parse_generic_story_start(body)
+    return None if values is None else (values["chapter"], values["section"])
+
+
+def _granted_hunting_companions(
+    userdata: dict[str, Any], stage: HuntingStage, result: dict[str, Any], box_capacity: int,
+) -> dict[str, Any] | None:
+    """Project a Metal Zone clear's Companion drops onto the account's box.
+
+    Returns the new Companion box, or `None` when the account's own box is
+    malformed or the grant would overflow it.  The reported drops have already
+    been checked against the stage's declared manifest; what is verified here is
+    the box this grant is being applied to.
+    """
+    raw_info = userdata.get("buddyInfo", {"list": [], "record": []})
+    owned = raw_info.get("list") if isinstance(raw_info, dict) else None
+    if not isinstance(owned, list) or any(
+        not isinstance(row, dict) or type(row.get("iid")) is not int or row["iid"] <= 0 for row in owned
+    ):
+        return None
+    known_ids = {row["iid"] for row in owned}
+    if len(known_ids) != len(owned) or len(owned) + len(result["buddies"]) > box_capacity:
+        return None
+    next_id = userdata.get("nextCompanionInventoryId", max(known_ids, default=0) + 1)
+    if type(next_id) is not int or next_id <= max(known_ids, default=0):
+        return None
+    rows = copy.deepcopy(owned)
+    for companion_id in result["buddies"]:
+        level = stage.companion_drop_levels.get(companion_id)
+        if level is None:
+            return None
+        rows.append({"bid": companion_id, "lv": level, "date": 0.0, "iid": next_id, "exp": 0, "flag": 0, "chrID": 0})
+        next_id += 1
+    userdata["nextCompanionInventoryId"] = next_id
+    return _companion_info(rows)
+
+
+# Metal Zone starts carry the ticket the client would spend instead of stamina,
+# so their form has two fields the ordinary story start does not.
+_TICKET_START_FIELDS = ("stamina", "coins", "itemID", "itemCount", "chapter", "section", "lastUpdate")
+
+
+def _parse_hunting_start(body: bytes) -> dict[str, int] | None:
+    """Parse a Huntland start in either the ordinary or ticket-aware form.
+
+    Kept separate from `_parse_generic_story_start` on purpose: accepting the
+    longer form there would let an ordinary story stage be started with entry
+    fields no story stage declares.
+    """
+    try:
+        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+        if tuple(name for name, _ in pairs) == _TICKET_START_FIELDS:
+            values = {name: int(value) for name, value in pairs}
+            if any(value < 0 for value in values.values()) or values["chapter"] < 2 or values["section"] < 1:
+                return None
+            # Which form arrived is itself part of the contract: a stage without
+            # a ticket alternative is never entered through this form.
+            return values | {"ticket_form": 1}
+    except (UnicodeDecodeError, ValueError):
+        return None
+    ordinary = _parse_generic_story_start(body)
+    return None if ordinary is None else ordinary | {"itemID": 0, "itemCount": 0, "ticket_form": 0}
+
+
+def _started_hunting_identity(body: bytes) -> tuple[int, int] | None:
+    """The chapter/section a Huntland start names, if it is well formed."""
+    values = _parse_hunting_start(body)
     return None if values is None else (values["chapter"], values["section"])
 
 

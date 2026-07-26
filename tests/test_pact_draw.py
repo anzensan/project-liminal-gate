@@ -53,7 +53,7 @@ class PactDrawTest(unittest.TestCase):
             finally:
                 restarted.shutdown(); restarted_thread.join(); restarted.server_close()
 
-    def test_http_bundled_truth_pacts_use_client_displayed_cost_and_persist_wallet_after_restart(self) -> None:
+    def test_http_bundled_truth_pacts_charge_the_served_cost_and_persist_wallet_after_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
@@ -61,7 +61,9 @@ class PactDrawTest(unittest.TestCase):
             server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=build_bundled_pact_policy())
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
-                server.state.create_account("token", "account", {"coins": 0, "energy": 0, "freeEnergy": 50, "chrdata": []})
+                # A Truth pull costs 5 Energy, so a ten-pull is exactly the 50
+                # free Energy a new local account receives.
+                server.state.create_account("token", "account", {"coins": 0, "energy": 0, "freeEnergy": 100, "chrdata": []})
 
                 def draw(request_id: str, count: int) -> tuple[int, dict[str, object]]:
                     connection = HTTPConnection(*server.server_address)
@@ -72,12 +74,12 @@ class PactDrawTest(unittest.TestCase):
                 status, first = draw("truth-one", 1)
                 self.assertEqual(200, status)
                 self.assertTrue(first["success"])
-                self.assertEqual(47, first["freeEnergy"])
+                self.assertEqual(95, first["freeEnergy"])
                 self.assertEqual(1, len(first["chrdata"]))
                 status, ten = draw("truth-ten", 10)
                 self.assertEqual(200, status)
                 self.assertTrue(ten["success"])
-                self.assertEqual(17, ten["freeEnergy"])
+                self.assertEqual(45, ten["freeEnergy"])
                 self.assertEqual(10, len(ten["chrdata"]))
                 self.assertIn(ten["chrdata"][0]["id"], {draw.character_id for draw in build_bundled_pact_policy().truth_draws})
             finally:
@@ -86,8 +88,8 @@ class PactDrawTest(unittest.TestCase):
             persisted = restarted.userdata_for("token")
             self.assertIsNotNone(persisted)
             assert persisted is not None
-            self.assertEqual(17, persisted["freeEnergy"])
-            self.assertEqual(17, persisted["valuables"]["freeEnergy"])
+            self.assertEqual(45, persisted["freeEnergy"])
+            self.assertEqual(45, persisted["valuables"]["freeEnergy"])
 
     def test_http_truth_pact_accepts_an_affordable_remainder_batch(self) -> None:
         """The ten-pull control can submit 1..10, not only its button labels."""
@@ -120,7 +122,7 @@ class PactDrawTest(unittest.TestCase):
             try:
                 server.state.create_account(
                     "token", "account",
-                    {"coins": 0, "energy": 0, "freeEnergy": 20, "chrdata": []},
+                    {"coins": 0, "energy": 0, "freeEnergy": 32, "chrdata": []},
                 )
                 status, first = draw(server, "truth-six")
                 self.assertEqual((200, True, 2, 6), (

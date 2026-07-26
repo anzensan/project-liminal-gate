@@ -375,9 +375,31 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
             f"/gd/get_server_status?platform=GooglePlay&app_version=5.57&otk={token}&digest2=client-value&requestID=request-id"
         )
         self.assertEqual(200, status)
-        self.assertEqual({"success", "digest"}, set(status_payload))
+        self.assertEqual({"success", "digest", "constants"}, set(status_payload))
         self.assertTrue(status_payload["success"])
         self.assertEqual(16, len(status_payload["digest"]))
+        # Both version projections must clear 4.99 or the client disables every
+        # Huntland card, and the country arrays must accompany them or its
+        # final-major login branch dereferences a null.
+        constants = status_payload["constants"]
+        self.assertGreater(constants["currentVersion_iOS"], 4.99)
+        self.assertGreater(constants["currentVersion_Android"], 4.99)
+        for name in ("CountriesJa", "CountriesEn", "CountryCodes", "NoServiceCountryCodes"):
+            self.assertIsInstance(constants[name], list)
+        self.assertEqual(constants["CountryCodes"], ["US"])
+        # A status call before any account exists still answers, with no zones.
+        self.assertEqual([], constants["huntingHuntingList"])
+        self.assertEqual([], constants["metalHuntingList"])
+        # Both boxes must be set. Left unset, the client caps the roster at its
+        # own default of 50 and refuses the pull that would exceed it.
+        self.assertGreater(constants["maxCharacterCount"], 50)
+        self.assertGreater(constants["maxBuddyBoxCount"], 50)
+        # The Pact costs the client will now enforce must be the same numbers
+        # the server charges, or it gates a draw the server would have allowed.
+        pacts = self.server.pact_draw_catalog
+        if pacts is not None:
+            self.assertEqual(pacts.cost_for_kind(0)[1], constants["NormalSlotCoins"])
+            self.assertEqual(pacts.cost_for_kind(1)[1], constants["RareSlotEnergy"])
         account_id = "0123456789ABCDEF0123456789ABCDEF"
         status, signup_payload = self.request(
             f"/gd/signup?uuid={account_id}&token=&platform=GooglePlay&app_version=5.57&otk={token}&digest2=client-value&requestID=signup-request"

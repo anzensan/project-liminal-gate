@@ -40,6 +40,16 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "max_items_total": 0, "item_maxima": {},
                 },
                 {
+                    # A ticket-aware stage: item 5 replaces the stamina cost
+                    # when one is held, and settles EXP plus Companions.
+                    "family": "metal_zone", "chapter": 3000, "section": 11,
+                    "stamina": 4, "coins": 0, "entry_item_id": 5, "entry_item_count": 1,
+                    "ticket_optional": True, "selector": "metal",
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 0, "max_exp": 1000,
+                    "max_items_total": 0, "item_maxima": {},
+                    "companion_maxima": {"11": 2}, "companion_drop_levels": {"11": 1},
+                },
+                {
                     "family": "tin", "chapter": LOCKED_STAGE[0], "section": LOCKED_STAGE[1],
                     "stamina": 1, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
                     "unlock_chapter": 30, "unlock_section": 1,
@@ -108,6 +118,21 @@ class HuntingRuntimeTest(unittest.TestCase):
         return self.post("/gd/start_quest", request_id, [
             ("stamina", str(stamina)), ("coins", "0"), ("chapter", str(chapter)),
             ("section", str(section)), ("lastUpdate", "1"),
+        ])
+
+    def start_with_ticket(
+        self, request_id: str, chapter: int, section: int, stamina: int,
+        item_id: int = 5, item_count: int = 1,
+    ) -> tuple[int, dict]:
+        """Start using the ticket-aware form the client sends for Metal Zone.
+
+        The fixture's ticket is item 5 so it fits the fixture's eight slots; the
+        real Item 50 contract is asserted against the bundled policy instead.
+        """
+        return self.post("/gd/start_quest", request_id, [
+            ("stamina", str(stamina)), ("coins", "0"),
+            ("itemID", str(item_id)), ("itemCount", str(item_count)),
+            ("chapter", str(chapter)), ("section", str(section)), ("lastUpdate", "1"),
         ])
 
     def clear(self, request_id: str, chapter: int, section: int, *, coins: int = 0,
@@ -212,6 +237,69 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.assertEqual((200, True), (status, saved["success"]))
         self.assertEqual("free_roam", self.phase())
         self.assertEqual(200, self.start("after-abandon", 1001, 1, 3)[0])
+
+    def buddy_info(self) -> dict:
+        return self.userdata().get("buddyInfo", {"list": [], "record": []})
+
+    def test_a_held_ticket_is_spent_instead_of_stamina(self) -> None:
+        before = self.userdata()
+        status, started = self.start_with_ticket("metal-ticket", 3000, 11, 4)
+        self.assertEqual((200, True), (status, started["success"]))
+        # The ticket went, the wallet did not.
+        self.assertEqual(1, self.userdata()["itemList"][4])
+        self.assertEqual(
+            (before["energy"], before["freeEnergy"]),
+            (self.userdata()["energy"], self.userdata()["freeEnergy"]),
+        )
+
+    def test_holding_no_ticket_charges_stamina_rather_than_refusing(self) -> None:
+        """A ticket is an alternative to stamina, so its absence is not an error."""
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["userdata"]["itemList"] = [0, 1, 0, 0, 0, 0, 0, 0]
+            self.server.state._persist_locked()
+        status, started = self.start_with_ticket("metal-stamina", 3000, 11, 4)
+        self.assertEqual((200, True), (status, started["success"]))
+        # Two free Energy first, then the remaining two from paid Energy.
+        self.assertEqual((0, 38), (self.userdata()["freeEnergy"], self.userdata()["energy"]))
+        self.assertEqual([0, 1, 0, 0, 0, 0, 0, 0], self.userdata()["itemList"])
+
+    def test_a_ticket_stage_settles_bounded_companions_into_the_box(self) -> None:
+        self.assertEqual([], self.buddy_info()["list"])
+        self.assertEqual(200, self.start_with_ticket("metal-start", 3000, 11, 4)[0])
+        status, cleared = self.clear("metal-clear", 3000, 11, exp=1000, buddies=[11, 11])
+        self.assertEqual(200, status, cleared)
+        granted = self.buddy_info()["list"]
+        self.assertEqual([11, 11], [row["bid"] for row in granted])
+        self.assertEqual([1, 1], [row["lv"] for row in granted])
+        # Inventory ids must be unique and must advance the account's counter.
+        self.assertEqual(2, len({row["iid"] for row in granted}))
+        self.assertEqual(3, self.userdata()["nextCompanionInventoryId"])
+        self.assertEqual(granted, cleared["buddyInfo"]["list"])
+        self.assertEqual("free_roam", self.phase())
+
+    def test_a_companion_claim_beyond_the_manifest_is_refused(self) -> None:
+        for label, kwargs in (
+            ("too-many", {"buddies": [11, 11, 11], "exp": 0}),   # manifest allows two
+            ("undeclared", {"buddies": [12], "exp": 0}),         # not in the manifest
+            ("over-exp", {"buddies": [], "exp": 1001}),          # ceiling is 1000
+        ):
+            with self.subTest(label):
+                self.assertEqual(200, self.start_with_ticket(f"start-{label}", 3000, 11, 4)[0])
+                before = self.userdata()
+                status, refused = self.clear(f"clear-{label}", 3000, 11, **kwargs)
+                self.assertEqual(409, status, refused)
+                self.assertEqual("invalid_local_hunting_result", refused["error"])
+                self.assertEqual(before, self.userdata(), f"{label} mutated the save")
+                self.assertEqual(200, self.clear(f"settle-{label}", 3000, 11)[0])
+
+    def test_each_stage_accepts_only_the_entry_form_the_client_sends_for_it(self) -> None:
+        # Metal Zone is the only family that puts the entry pair on the wire.
+        status, without = self.start("metal-plain", 3000, 11, 4)
+        self.assertEqual((501, "unsupported_hunting_start"), (status, without["error"]))
+        status, wrong_item = self.start_with_ticket("metal-wrong", 3000, 11, 4, item_id=6)
+        self.assertEqual((501, "unsupported_hunting_start"), (status, wrong_item["error"]))
+        status, extra = self.start_with_ticket("pudding-ticket", 1001, 1, 3, item_id=0, item_count=0)
+        self.assertEqual(501, status, extra)
 
     def test_hunting_is_unavailable_without_a_catalog(self) -> None:
         self.stop_server()
