@@ -5,6 +5,84 @@ The README quick start enables its built-in ordinary Chapter 2--42 progression
 policy automatically. Each optional catalog stays local and is supplied by the
 operator.
 
+## Generating the `DummyDll` directory
+
+Several optional features below need `--dummy-dll-dir`, and none of them can
+work without it. It is a directory of stub .NET assemblies you generate from
+your own copy of the game, and it exists for one reason: **the master data is
+readable but its schema is not.**
+
+`ChrDatabase`, `ItemSet`, and `BuddyDatabase` are Unity `MonoBehaviour` objects
+inside `resources.assets`. A Unity build normally stores a *type tree* beside
+serialized data saying which bytes are which field; an IL2CPP release build
+strips it. What remains is an untyped blob. The field layout only exists in the
+compiled code, so it has to be recovered from there before anything can read a
+character or an item. That recovered layout is the `DummyDll` directory: class
+and field definitions with no executable code.
+
+### 1. Unpack the two inputs from your APK
+
+An APK is a zip archive:
+
+```sh
+unzip -j local-input/terra-battle-5.5.7-170.apk \
+  "lib/arm64-v8a/libil2cpp.so" \
+  "assets/bin/Data/Managed/Metadata/global-metadata.dat" \
+  -d il2cpp-input
+```
+
+Use the **arm64-v8a** library. The APK also ships `armeabi-v7a`, whose
+addresses differ from every offset this project records.
+
+### 2. Run Il2CppDumper
+
+Use the pinned version, so your output matches the one this project's findings
+were derived from:
+
+```text
+Il2CppDumper v6.7.46
+https://github.com/Perfare/Il2CppDumper
+tag v6.7.46, commit 8a521b9c180cf13499253f0818cbc729dca767cb
+```
+
+```sh
+Il2CppDumper il2cpp-input/libil2cpp.so il2cpp-input/global-metadata.dat il2cpp-output
+```
+
+A correct run prints its own confirmation:
+
+```text
+Metadata Version: 24
+Il2Cpp Version: 24
+Generate dummy dll... Done!
+```
+
+Check both version numbers read **24**. Anything else means a different library
+or a different build was unpacked, and the type trees will not match.
+
+Il2CppDumper is a .NET program whose upstream build targets net7.0. On a machine
+with only a newer runtime it will not start; retarget its project file to the
+runtime you have and rebuild the unchanged source, rather than looking for a
+fault. That is a build-target mismatch, not a bug.
+
+### 3. Pass the directory
+
+The `DummyDll` folder inside the output is what the commands below want. It
+holds around 48 assemblies, of which `Assembly-CSharp.dll` carries the game's
+own types:
+
+```sh
+python3 -m liminal_gate.tester_setup \
+  --port 8696 --device emulator-5570 \
+  --dummy-dll-dir /path/to/il2cpp-output/DummyDll
+```
+
+With it, setup additionally writes `user-data/character-catalog.json` and
+`user-data/names.json`, the latter being character, item, and Companion names
+decoded from your own metadata for the save editor. Both stay in the ignored
+data directory. Without it, setup skips them and says so; everything else works
+unchanged.
+
 ## Core-story progression
 
 The guided setup uses `--core-story`: it carries only the ordered Chapter 2--42
@@ -150,7 +228,8 @@ tested with the client. Its character IDs are validated against a matching
 catalog derived from your own local APK; neither catalog belongs in Git.
 
 The normal tester command can launch an approved local event catalog once you
-also supply your locally generated Il2CppDumper `DummyDll` directory:
+also supply your locally generated Il2CppDumper `DummyDll` directory; see
+[Generating the `DummyDll` directory](#generating-the-dummydll-directory):
 
 ```sh
 python3 -m liminal_gate.tester_setup \
