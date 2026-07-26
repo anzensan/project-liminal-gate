@@ -2853,14 +2853,27 @@ def _valid_generic_character_record(row: object) -> bool:
     return all(isinstance(row[name], list) and len(row[name]) == 3 and all(type(value) in {int, float} and math.isfinite(value) and value >= 0 and int(value) == value and (name != "jobSlots" or value <= 0xFFFFFFFF) for value in row[name]) for name in ("jobSlots", "jobLevels"))
 
 
+def _drop_trailing_last_update(pairs: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    """Drop a single trailing ``lastUpdate`` pair from a mutation POST body.
+
+    The final client's shared mutation POST helper appends ``&lastUpdate=1``, so
+    strict ordered-field parsers must tolerate it before their exact-tuple
+    check. Only a trailing occurrence is removed, which preserves each form's
+    positional fields; bodies without it are unaffected.
+
+    Routes whose form requires ``lastUpdate`` as a named field parse it
+    directly and must not use this helper.
+    """
+    return pairs[:-1] if pairs and pairs[-1][0] == "lastUpdate" else pairs
+
+
 def _parse_continue(body: bytes) -> int | None:
     """Parse the final-client Continue form, allowing a trailing lastUpdate."""
     try:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
         return None
-    if pairs and pairs[-1][0] == "lastUpdate":
-        pairs = pairs[:-1]
+    pairs = _drop_trailing_last_update(pairs)
     if tuple(name for name, _ in pairs) != ("cost",):
         return None
     try:
@@ -2874,6 +2887,7 @@ def _parse_change_uname(body: bytes) -> str | None:
         pairs = tuple(parse_qsl(body.decode("utf-8"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
         return None
+    pairs = _drop_trailing_last_update(pairs)
     if tuple(name for name, _ in pairs) != ("name",):
         return None
     name = pairs[0][1]
@@ -2882,7 +2896,7 @@ def _parse_change_uname(body: bytes) -> str | None:
 
 def _parse_refill_stamina(body: bytes) -> int | None:
     try:
-        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+        pairs = _drop_trailing_last_update(tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True)))
         return int(pairs[0][1]) if tuple(name for name, _ in pairs) == ("cost",) else None
     except (UnicodeDecodeError, ValueError, IndexError):
         return None
@@ -2893,6 +2907,7 @@ def _parse_statusup_item(body: bytes) -> tuple[int, int, int] | None:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
         return None
+    pairs = _drop_trailing_last_update(pairs)
     if tuple(name for name, _ in pairs) != ("targetChrID", "useItemID", "useAmount"):
         return None
     values = tuple(value for _, value in pairs)
@@ -2924,6 +2939,7 @@ def _parse_rebirth(body: bytes) -> tuple[int, bool] | None:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
         return None
+    pairs = _drop_trailing_last_update(pairs)
     if tuple(name for name, _ in pairs) != ("rebirthID", "useJoker") or not pairs[0][1].isdecimal() or int(pairs[0][1]) <= 0 or pairs[1][1] not in {"False", "True"}:
         return None
     return int(pairs[0][1]), pairs[1][1] == "True"
@@ -2934,6 +2950,7 @@ def _parse_summon_skill_unlock(body: bytes) -> int | None:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
         return None
+    pairs = _drop_trailing_last_update(pairs)
     if tuple(name for name, _ in pairs) != ("targetID",):
         return None
     target_id = pairs[0][1]
