@@ -1,4 +1,6 @@
 # User-supplied materials and generated state must never be committed.
+local-input/
+project_liminal_gate.egg-info/
 user-data/
 state/
 logs/
