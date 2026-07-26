@@ -43,6 +43,7 @@ class LocalServerOptions:
     """Supported, explicit local policies selected during tester setup."""
 
     core_story: bool = True
+    drop_eligibility: bool = True
     pacts: bool = True
     hunting: bool = True
     jobs: bool = True
@@ -460,7 +461,7 @@ def prepare_local_tester(
 
 def server_arguments(
     resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
-    core_story: bool = True, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True, companion_sale: bool = True,
+    core_story: bool = True, drop_eligibility: bool = True, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True, companion_sale: bool = True,
     companion_strengthen: bool = True, companion_evolution: bool = True,
     trading_post: bool = True,
 ) -> list[str]:
@@ -496,6 +497,10 @@ def server_arguments(
         arguments.append("--companion-evolution")
     if trading_post:
         arguments.append("--trading-post")
+    if drop_eligibility:
+        # Without this the client discards every drop it rolls, so guided
+        # setups would report empty monsters/buddies on every clear.
+        arguments.append("--drop-eligibility")
     if event_catalog is not None:
         arguments.extend((
             "--event-catalog", str(event_catalog.resolve()),
@@ -615,7 +620,7 @@ def main() -> int:
         print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
-            options.core_story, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
+            options.core_story, options.drop_eligibility, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
             options.companion_strengthen, options.companion_evolution, options.trading_post,
         ))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
