@@ -168,6 +168,31 @@ The guided setup enables `--pacts`, a built-in local Fellowship/Truth policy.
 Use `--pact-draw-catalog` instead when you need a custom Fellowship-only pool;
 it cannot be combined with `--pacts`.
 
+### Composing an event catalog
+
+The archived events sit in BattleData beside the main story, so their entry
+stamina and start costs come out of the same import that serves ordinary
+stages -- nothing here needs native disassembly:
+
+```sh
+python3 -m liminal_gate.event_catalog_generator \
+    --battledata user-data/battledata.json \
+    --character-catalog user-data/character-catalog.json \
+    --output user-data/event-catalog.json
+```
+
+The generator contributes the 13 recovered manifest identities -- selector flag,
+chapter, and character association -- and takes everything else from your own
+files. Character grants are still validated against your character catalog and
+are omitted with a note when a character is missing, which is the boundary
+`--event-catalog` exists to keep.
+
+Two things it does not claim. The release order is local archive policy: the
+original schedule was never recovered, so the events are permanently available
+rather than scheduled. And an event clear credits no Coins, because BattleData
+records a start cost for these sections but no clear reward -- the same reading
+that leaves Dragon and Machine Road settling at zero.
+
 ### Built-in policies
 
 These carry values recovered from the final client, so the guided setup enables
