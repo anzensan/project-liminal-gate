@@ -15,5 +15,19 @@ dist/
 *.pem
 *.p12
 *.jsonl
+# Resource manifests travel beside the .bin payloads above but do not match
+# *.bin, and the per-category catalogs have no extension at all. The paths
+# above cover the documented layout; these cover an archive unpacked anywhere
+# else.
+*.manifest
+**/BG/BG
+**/BGM/BGM
+**/Banner/Banner
+**/BuddyImages/BuddyImages
+**/BuddyThumbs/BuddyThumbs
+**/Illust/Illust
+**/Pieces/Pieces
+**/SE/SE
+**/Scenario/Scenario
 __pycache__/
 *.py[cod]
