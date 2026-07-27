@@ -213,6 +213,7 @@ class HuntingRuntimeTest(unittest.TestCase):
                 + constants["metalHuntingList"]
             ),
         )
+        self.assertEqual(["3003-1"], constants["specialQuestList"])
 
     def test_prelogin_status_uses_known_host_but_not_an_unrelated_host(self) -> None:
         with self.server.state.lock:
@@ -222,6 +223,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         constants = self.server_status("rotated-after-login")["constants"]
         self.assertEqual(["1001-1", "1003-1"], sorted(constants["huntingHuntingList"]))
         self.assertEqual(["3000-11"], constants["metalHuntingList"])
+        self.assertEqual(["3003-1"], constants["specialQuestList"])
         self.assertIsNone(
             self.server.state.progress_for_status(
                 "unbound",
@@ -233,10 +235,10 @@ class HuntingRuntimeTest(unittest.TestCase):
         login = self.login("login-token")
         self.assertEqual(
             {
-                "sp_ch_3000": {
-                    "name": "sp_ch_3000",
+                "sp_ch_3000-11": {
+                    "name": "sp_ch_3000-11",
                     "value": True,
-                }
+                },
             },
             login["eventFlags"],
         )
@@ -327,6 +329,91 @@ class HuntingRuntimeTest(unittest.TestCase):
         # Two free Energy first, then the remaining two from paid Energy.
         self.assertEqual((0, 38), (self.userdata()["freeEnergy"], self.userdata()["energy"]))
         self.assertEqual([0, 1, 0, 0, 0, 0, 0, 0], self.userdata()["itemList"])
+        # Stamina fallback did not consume a ticket, so a clear cannot claim
+        # that the client is merely repeating a pre-entry ticket balance.
+        before = self.userdata()
+        status, refused = self.clear(
+            "metal-stamina-clear", 3000, 11,
+            item_list=[0, 1, 0, 0, 1, 0, 0, 0],
+        )
+        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual(before, self.userdata())
+        self.assertEqual(200, self.clear("metal-stamina-settle", 3000, 11)[0])
+
+    def test_ticket_clear_preserves_the_committed_spend_and_replays_after_restart(self) -> None:
+        """The final client repeats its pre-entry ticket count at Metal clear."""
+        pre_entry = list(self.userdata()["itemList"])
+        self.assertEqual(2, pre_entry[4])
+        self.assertEqual(200, self.start_with_ticket("metal-stale-ticket-start", 3000, 11, 4)[0])
+        self.assertEqual(1, self.userdata()["itemList"][4])
+        with self.server.state.lock:
+            self.assertIs(
+                True,
+                self.server.state.accounts[self.account_id]["active_hunt_ticket_spent"],
+            )
+
+        self.restart()
+        status, cleared = self.clear(
+            "metal-stale-ticket-clear", 3000, 11,
+            exp=1000, buddies=[11], item_list=pre_entry,
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(1, self.userdata()["itemList"][4])
+        self.assertEqual([11], [row["bid"] for row in self.buddy_info()["list"]])
+
+        # The exact retry remains a replay, including after another restart,
+        # and therefore cannot restore the ticket or duplicate the Companion.
+        self.assertEqual(
+            (status, cleared),
+            self.clear(
+                "metal-stale-ticket-clear", 3000, 11,
+                exp=1000, buddies=[11], item_list=pre_entry,
+            ),
+        )
+        self.restart()
+        self.assertEqual(
+            (status, cleared),
+            self.clear(
+                "metal-stale-ticket-clear", 3000, 11,
+                exp=1000, buddies=[11], item_list=pre_entry,
+            ),
+        )
+        self.assertEqual(1, self.userdata()["itemList"][4])
+        self.assertEqual([11], [row["bid"] for row in self.buddy_info()["list"]])
+
+        status, collision = self.clear(
+            "metal-stale-ticket-clear", 3000, 11,
+            exp=1000, buddies=[11], item_list=self.userdata()["itemList"],
+        )
+        # Replay keys include the body. A changed body cannot inherit the
+        # cached success and instead reaches the now-free-roam phase guard.
+        self.assertEqual(
+            (409, "tutorial_state_conflict"),
+            (status, collision["error"]),
+        )
+
+    def test_a_pre_fix_active_ticket_clear_can_recover_once_without_minting(self) -> None:
+        """A live active battle predating the spend marker remains settleable."""
+        pre_entry = list(self.userdata()["itemList"])
+        self.assertEqual(200, self.start_with_ticket("legacy-metal-start", 3000, 11, 4)[0])
+        with self.server.state.lock:
+            del self.server.state.accounts[self.account_id]["active_hunt_ticket_spent"]
+            self.server.state._persist_locked()
+        self.restart()
+        self.assertIsNone(
+            self.server.state.accounts[self.account_id]["active_hunt_ticket_spent"],
+        )
+
+        status, cleared = self.clear(
+            "legacy-metal-clear", 3000, 11,
+            exp=1000, buddies=[11], item_list=pre_entry,
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(1, self.userdata()["itemList"][4])
+        self.assertEqual([11], [row["bid"] for row in self.buddy_info()["list"]])
+        self.assertIsNone(
+            self.server.state.accounts[self.account_id]["active_hunt_ticket_spent"],
+        )
 
     def test_a_ticket_stage_settles_bounded_companions_into_the_box(self) -> None:
         self.assertEqual([], self.buddy_info()["list"])

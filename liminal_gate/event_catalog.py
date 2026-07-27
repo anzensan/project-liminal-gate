@@ -17,6 +17,7 @@ class EventCatalog:
     stages: tuple[EventStage, ...]
     def by_identity(self): return {(x.chapter, x.section): x for x in self.stages}
     def flags(self): return {x.flag: {"name": x.flag, "value": True} for x in self.stages}
+    def client_list(self): return [f"{x.chapter}-{x.section}" for x in self.stages]
 
 def _hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()

@@ -32,14 +32,23 @@ committed together. Replay identity includes operation, request ID, and body,
 so the same ID with a different body is not mistaken for the earlier request.
 Caches are bounded and survive restart.
 
+Ticket-backed Metal starts commit Item 50 at entry and retain that payment
+choice. The final client repeats its pre-entry ticket count in the later clear;
+only that one stale slot is reconciled, and the server-owned lower balance is
+returned. Stamina fallback and every other inventory slot remain exact.
+
 ## Server constants
 
 `get_server_status` returns the complete required constants object. A partial
 object is not served because client setters directly index required economy,
 version, and country fields. Hunting selector lists are added per account from
-the enabled Hunting catalog and current progress. Detailed static evidence and
-local-policy labels live in `../liminal_gate/server_constants.py` and
-`findings.md`.
+the enabled Hunting catalog and current progress. `specialQuestList` is always
+nonempty: validated user-local event stages replace a closed recovered entry
+used when no event catalog is configured. This prevents the client's fixed
+50-entry fallback from leaking Chapter 3000 rows into Arena -> Special Quests.
+Advertised Metal entries receive exact section flags rather than one broad
+chapter flag. Detailed static evidence and local-policy labels live in
+`../liminal_gate/server_constants.py` and `findings.md`.
 
 ## Evidence labels
 

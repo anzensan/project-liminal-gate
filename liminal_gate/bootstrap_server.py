@@ -1713,6 +1713,7 @@ class BootstrapState:
                 account["tutorial_phase"] = "free_roam"
                 account["active_generic_story"] = None
                 account["active_hunt"] = None
+                account["active_hunt_ticket_spent"] = None
             userdata["lastupdate"] = 1.0
             payload = _canonical_payload({"success": True, "lastupdate": 1.0})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
@@ -1786,6 +1787,12 @@ class BootstrapState:
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "hunting_active"
             account["active_hunt"] = identity
+            # The final client does not remove a Metal Ticket from its local
+            # item list at start. Its later clear therefore repeats the
+            # pre-entry count even though the server has already committed the
+            # spend. Retain the entry choice so only that one stale slot can be
+            # reconciled at clear time; stamina fallback must remain exact.
+            account["active_hunt_ticket_spent"] = spends_ticket
             payload = _canonical_payload({"success": True, "refillStartTime": 0.0})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -1831,7 +1838,12 @@ class BootstrapState:
             if not hunting_settlement_within_bounds(stage, result):
                 return "invalid_local_hunting_result", None
             gains = {int(item_id): count for item_id, count in result["items"].items()}
-            if not _projected_list(userdata.get("itemList"), clear["itemList"], gains, catalog.item_slots, catalog.max_stack):
+            projected_items = _projected_hunting_items(
+                userdata.get("itemList"), clear["itemList"], gains, stage,
+                account.get("active_hunt_ticket_spent"), catalog.item_slots,
+                catalog.max_stack,
+            )
+            if projected_items is None:
                 return "invalid_local_hunting_result", None
             companions = _granted_hunting_companions(userdata, stage, result, catalog.max_companions)
             if companions is None:
@@ -1841,13 +1853,14 @@ class BootstrapState:
                 "lastupdate": 1.0,
                 "coins": expected_coins,
                 "valuables": {name: expected_coins if name == "coins" else int(userdata.get(name, 0)) for name in wallet_fields},
-                "itemList": copy.deepcopy(clear["itemList"]),
+                "itemList": projected_items,
                 # The roster is merged, never replaced: a stale client must not
                 # delete a grant it had not read back.  See `_preserved_roster`.
                 "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
             })
             account["tutorial_phase"] = "free_roam"
             account["active_hunt"] = None
+            account["active_hunt_ticket_spent"] = None
             payload = _canonical_payload({
                 "success": True, "lastupdate": 1.0, "sentMessage": False,
                 "coins": expected_coins, "freeEnergy": int(userdata.get("freeEnergy", 0)),
@@ -2136,6 +2149,7 @@ class BootstrapState:
             account.setdefault("initial_userdata_served", False)
             account.setdefault("active_generic_story", None)
             account.setdefault("active_hunt", None)
+            account.setdefault("active_hunt_ticket_spent", None)
             account.setdefault("claimed_achievements", [])
             account.setdefault("achievement_requests", {})
             account.setdefault("messages", {})
@@ -2146,6 +2160,7 @@ class BootstrapState:
                 or type(account["initial_userdata_served"]) is not bool
                 or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
                 or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
+                or account["active_hunt_ticket_spent"] is not None and type(account["active_hunt_ticket_spent"]) is not bool
                 or not isinstance(account["claimed_achievements"], list)
                 or any(type(value) is not int or value < 1 for value in account["claimed_achievements"])
                 or account["claimed_achievements"] != sorted(set(account["claimed_achievements"]))
@@ -2801,6 +2816,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             normal_slot_coins=None if coins is None else coins[1],
             rare_slot_energy=None if energy is None else energy[1],
         )
+        if self.server.event_catalog is not None:
+            constants["specialQuestList"] = self.server.event_catalog.client_list()
         constants |= {"metalHuntingList": [], "huntingHuntingList": []}
         progress = self.server.state.progress_for_status(
             token,
@@ -3741,6 +3758,49 @@ def _projected_list(current: object, submitted: object, rewards: dict[int, int],
             return False
         expected[item_id - 1] = min(maximum, expected[item_id - 1] + count)
     return submitted == expected
+
+
+def _projected_hunting_items(
+    current: object,
+    submitted: object,
+    rewards: dict[int, int],
+    stage: HuntingStage,
+    ticket_spent: bool | None,
+    slots: int,
+    maximum: int,
+) -> list[int] | None:
+    """Return the server-owned Hunting item projection, if the clear matches.
+
+    The final client repeats its pre-entry Item 50 count when clearing a Metal
+    battle. The server has already committed that ticket spend at start, so an
+    exact clear can differ by the one entry ticket in that slot only. New starts
+    retain whether a ticket was actually spent; ``None`` is limited to an
+    already-active battle loaded from a pre-fix save. In every accepted case the
+    returned inventory keeps the server's lower, already-charged ticket count.
+    """
+    if not (
+        isinstance(current, list)
+        and isinstance(submitted, list)
+        and len(current) == slots
+        and len(submitted) == slots
+        and all(type(value) is int and 0 <= value <= maximum for value in current)
+    ):
+        return None
+    expected = list(current)
+    for item_id, count in rewards.items():
+        if item_id > slots:
+            return None
+        expected[item_id - 1] = min(maximum, expected[item_id - 1] + count)
+    if submitted == expected:
+        return expected
+    if not stage.ticket_optional or ticket_spent is False:
+        return None
+    ticket_index = stage.entry_item_id - 1
+    repeated_pre_entry = list(expected)
+    repeated_pre_entry[ticket_index] += stage.entry_item_count
+    if repeated_pre_entry[ticket_index] > maximum or submitted != repeated_pre_entry:
+        return None
+    return expected
 
 
 def _render(value: Any, token: str, account_id: str | None = None) -> Any:

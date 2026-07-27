@@ -25,10 +25,15 @@ ordered local progression policy, not canonical proof of every original
 reward, drop, encounter, or scripted scene.
 
 Current optional-content observation: a resumed migrated account displays
-Hunting and Metal selector rows after pre-login progress resolution and Metal
-event-flag pairing. Permanent Fate reaches the ordinary Pact transaction with
-the captured `luckType=true` form. These are fast-lane client observations, not
-a replacement for the Chapter 2-1 canonical certification boundary.
+Hunting and Metal selector rows after pre-login progress resolution. Metal
+owns both regular and All Hail the King rows plus both Roads; Arena -> Special
+Quests no longer inherits the client's built-in Metal fallback list. Permanent
+Fate reaches the ordinary Pact transaction with the captured `luckType=true`
+form. A ticket-backed Metal Zone 1 result also settles live: the client repeats
+its pre-entry Item 50 count, the server retains the already-committed spend,
+and the bounded Companion drop persists. These are fast-lane client
+observations, not a replacement for the Chapter 2-1 canonical certification
+boundary.
 
 Security boundary: the server listens on the local network for Android device
 compatibility. Signup/login associates a client host with an account; a new
@@ -39,6 +44,8 @@ Persistence boundary: mutations and body-scoped replay responses commit
 atomically. Save-editor cache clearing covers tutorial, achievement, message,
 and exchange response caches together. Account-state safety copies use
 exclusive creation and cannot overwrite another same-second copy.
+Ticket-backed Metal starts retain the payment choice so clear-time stale-client
+reconciliation cannot restore the ticket or apply to stamina fallback.
 
 Derived-catalog boundary: story-outcome generation rejects native encounter or
 character catalogs whose recorded APK hash differs from the selected APK.

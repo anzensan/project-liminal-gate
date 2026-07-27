@@ -439,6 +439,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         # A status call before any account exists still answers, with no zones.
         self.assertEqual([], constants["huntingHuntingList"])
         self.assertEqual([], constants["metalHuntingList"])
+        # An empty list makes normal Special mode fall back to the client's
+        # built-in 50 entries, including Metal. The closed recovered entry
+        # keeps the server authoritative without rendering an unsupported row.
+        self.assertEqual(["3003-1"], constants["specialQuestList"])
         # Both boxes must be set. Left unset, the client caps the roster at its
         # own default of 50 and refuses the pull that would exceed it.
         self.assertGreater(constants["maxCharacterCount"], 50)

@@ -11,13 +11,21 @@ Private inputs, captures, account state, and original assets remain excluded.
 - **Confirmed by static client analysis:** Hunting selectors read
   `metalHuntingList` and `huntingHuntingList`; the server derives both lists
   from the enabled catalog and account progress.
+- **Confirmed by static client analysis and original-client observation:**
+  normal Special mode falls back to a fixed 50-entry client list when
+  `specialQuestList` is empty. That list contains all Chapter 3000 Metal rows,
+  so the former broad `sp_ch_3000` flag exposed them in Arena -> Special
+  Quests. The server now supplies an explicit Special list and exact Metal
+  section flags; the relaunched client showed the regular Metal row in Metal
+  Zone and no Metal rows in Special Quests.
 - **Confirmed by original-client observation and real-HTTP regressions:** the
   final client requests status before login with a rotated token. A single
   unclaimed migrated account can supply selector progress until login binds
   the client host; afterward, unrelated hosts receive no account-derived
   selector availability.
 - **Confirmed by static client analysis and original-client observation:**
-  advertised Metal rows also require matching `sp_ch_<chapter>` login flags.
+  advertised Metal rows also require matching `sp_ch_<chapter>-<section>`
+  login flags.
   The server derives those flags from the same advertised rows; Hunting and
   Metal lists then rendered in the final client.
 - **Local policy:** the country roster and large character/Companion box sizes
@@ -41,6 +49,13 @@ Private inputs, captures, account state, and original assets remain excluded.
   now preserve those packed values and full roster records while returning the
   plain level expected by the draw callback. A resumed original client then
   completed a live Pact summon and the server recorded HTTP 200.
+- **Confirmed by original-client transport observation and live acceptance:**
+  a ticket-backed Metal Zone clear repeats the pre-entry Item 50 count even
+  though the server has already committed that ticket at `start_quest`. The
+  server records whether the ticket paid for entry, permits only that one stale
+  slot at `clear_quest`, and keeps the lower durable count. The captured
+  Companion 128 result then settled live with HTTP 200 without restoring the
+  ticket.
 - **Confirmed by boundary tests:** request bodies larger than 4 MiB, negative
   lengths, and incomplete bodies fail before mutation.
 - **Confirmed by deterministic collision and reload tests:** account restore,

@@ -1,5 +1,103 @@
 # Execution Plans
 
+## 2026-07-27 Metal and Special Quest selector ownership
+
+Status: completed 2026-07-27.
+
+Objective: keep all supported Chapter 3000 Metal rows in the Metal Zone
+selector and prevent Arena -> Special Quests from inheriting the client's
+built-in Metal fallback list.
+
+Evidence boundary:
+
+- The original client displays only Chapter 3000 sections 11--17 plus Dragon
+  Road and Machine Road in Metal Zone.
+- Arena -> Special Quests displays all Chapter 3000 Metal rows.
+- Static client analysis confirms that Metal mode reads
+  `metalHuntingList`, while normal Special mode reads `specialQuestList` and
+  falls back to a fixed 50-entry client list when the server list is empty.
+- That fixed list contains Chapter 3000 sections 1--7 and 11--17. The current
+  broad `sp_ch_3000` login flag therefore opens every one of those fallback
+  rows.
+
+Required proof:
+
+1. Metal Zone advertises both recovered Chapter 3000 ranges, 1--7 and 11--17,
+   plus Dragon Road and Machine Road at the existing progress gates.
+2. Every advertised Metal row receives its exact `sp_ch_<chapter>-<section>`
+   flag; no broad Chapter 3000 flag is emitted.
+3. The server always sends a nonempty, server-owned `specialQuestList`, using
+   only validated local event-catalog stages when configured and a known,
+   closed client entry when none are configured, so the 50-entry fallback
+   cannot take ownership.
+4. Every advertised row remains startable through the same bounded catalog.
+5. Focused catalog and real-HTTP regressions, warning-strict full tests,
+   clean-candidate release gates, deployment, and original-client selector
+   confirmation pass before publication.
+
+Result:
+
+- The bundled Metal selector now advertises the regular sections 1--7 and All
+  Hail the King sections 11--17, plus Dragon Road and Machine Road, at their
+  existing local-policy progress gates.
+- Login derives exact section flags for every advertised Metal row and no
+  longer emits the broad `sp_ch_3000` flag.
+- Status always supplies an explicit nonempty `specialQuestList`. A configured
+  user-local event catalog owns that list; otherwise a recovered but closed
+  client entry suppresses the built-in 50-entry fallback without exposing an
+  unsupported quest.
+- 61 focused catalog/runtime/HTTP tests and the full 436-test warning-strict
+  suite passed; compilation and diff checks passed.
+- The deployed service restarted through its configured recovery path and
+  returned the expected lists and exact flags over real HTTP. After a full
+  client relaunch, the tester confirmed that Metal Zone showed the regular row
+  and Arena -> Special Quests no longer inherited the Metal rows.
+
+## 2026-07-27 Metal Ticket clear reconciliation
+
+Status: completed 2026-07-27.
+
+Objective: settle the captured original-client Metal Zone 1 clear without
+restoring the Item 50 ticket that the server already consumed at entry.
+
+Evidence boundary:
+
+- The private live capture reports Chapter 3000 section 11, 208066 EXP, one
+  Companion 128 drop, no monsters/items/coins/summons, and a full roster.
+- Every declared reward and wallet check passes. The sole mismatch is Item 50:
+  durable state has 3 after entry while the clear repeats the client's
+  pre-entry count of 4.
+
+Required proof:
+
+1. A ticket-backed Metal start records its entry choice durably.
+2. Its clear may repeat exactly one already-consumed ticket while every other
+   item slot and declared reward remains exact; settlement preserves the
+   server's lower ticket count.
+3. Stamina-fallback Metal and all non-Metal Hunting clears cannot use that
+   reconciliation.
+4. The captured retry shape settles after restart, replays without a second
+   grant, and a different body cannot receive that cached success.
+5. Focused HTTP regressions and the warning-strict release gates pass before
+   deployment.
+
+Result:
+
+- A ticket-backed start now persists whether Item 50 or stamina paid for the
+  entry. Stamina fallback and ordinary Hunting remain exact.
+- Metal clear reconciliation permits only the one pre-entry ticket repeated by
+  the final client. The durable, already-consumed balance remains authoritative;
+  every other item slot and bounded reward must still match.
+- A pre-fix active battle can use the same non-minting reconciliation once,
+  allowing an interrupted live result to recover after the service upgrade.
+- The exact captured clear settled on a temporary copy of the live save,
+  replayed after reload, retained 3 tickets, and granted Companion 128 once.
+- 48 focused Hunting/catalog/state tests and the full 436-test warning-strict
+  suite passed; compilation and diff checks passed.
+- After deployment, the original client retried the paused result successfully.
+  The live server recorded HTTP 200, returned the account to free roam, retained
+  3 tickets, and persisted exactly one additional Companion 128.
+
 ## 2026-07-27 resumed-account Huntland and Tavern compatibility
 
 Status: completed 2026-07-27.

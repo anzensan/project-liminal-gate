@@ -26,6 +26,11 @@ class EventRuntimeTest(unittest.TestCase):
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
                 connection = HTTPConnection(*server.server_address)
+                connection.request("GET", f"/gd/get_server_status?otk={token}")
+                status_response = connection.getresponse()
+                status_payload = json.loads(status_response.read())
+                connection.close()
+                connection = HTTPConnection(*server.server_address)
                 body = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
                 connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-start", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
                 response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
@@ -39,6 +44,11 @@ class EventRuntimeTest(unittest.TestCase):
             self.assertEqual(0.0, payload["refillStartTime"])
             self.assertEqual(200, reenter.status)
             self.assertEqual(payload, reenter_payload)
+            self.assertEqual(200, status_response.status)
+            self.assertEqual(
+                ["2000-1"],
+                status_payload["constants"]["specialQuestList"],
+            )
 
     def test_event_clear_grants_character_over_real_http_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

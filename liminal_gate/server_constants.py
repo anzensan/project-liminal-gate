@@ -39,6 +39,13 @@ FINAL_CLIENT_VERSION = 5.57
 # not a claim about the original service's data.
 LOCAL_COUNTRY_CODE = "US"
 LOCAL_COUNTRY_NAME = "United States"
+# Normal Special mode falls back to UISpecialSelect's fixed 50-entry list when
+# this server list is empty. That fallback contains all Chapter 3000 Metal
+# rows, so a Metal visibility flag makes them leak into Arena -> Special
+# Quests. 3003-1 is a recovered entry in that fixed list; without its event
+# flag it remains closed, while its presence keeps the client from taking the
+# fallback. A configured local event catalog replaces this one-entry fixture.
+CLOSED_SPECIAL_QUEST_SENTINEL = "3003-1"
 
 
 def build_server_constants(
@@ -64,6 +71,7 @@ def build_server_constants(
         "CountriesEn": [LOCAL_COUNTRY_NAME],
         "CountryCodes": [LOCAL_COUNTRY_CODE],
         "NoServiceCountryCodes": [],
+        "specialQuestList": [CLOSED_SPECIAL_QUEST_SENTINEL],
         "minStamina": 1,
         "maxStamina": 100,
         "maxChapter": 40,

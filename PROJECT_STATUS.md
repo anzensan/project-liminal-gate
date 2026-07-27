@@ -20,6 +20,19 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-27 Metal/Special selector ownership: the bundled Metal list now
+  includes both regular sections 1--7 and All Hail the King sections 11--17,
+  plus both Roads. Exact per-section flags replace the broad Chapter 3000 flag,
+  and an explicit server-owned Special Quest list suppresses the client's
+  50-entry fallback. The live status/login payload matched that projection and
+  the relaunched original client confirmed the corrected menu ownership.
+- 2026-07-27 live Metal clear recovery: an original-client Chapter 3000 clear
+  repeated its pre-entry Item 50 count even though the server had already
+  committed the ticket spend. Ticket-backed starts now retain that choice;
+  clear accepts only that one stale slot and preserves the lower durable
+  balance. Exact-capture replay, restart, stamina-fallback, and non-minting
+  regressions passed. The paused live clear then returned HTTP 200, retained
+  3 tickets, granted Companion 128 once, and returned the account to free roam.
 - 2026-07-27 resumed-account Huntland/Tavern compatibility: pre-login status
   resolves migrated progress without exposing it to an unrelated owned host;
   advertised Metal rows receive their required client flags; permanent
@@ -78,6 +91,12 @@ machine-readable/current capability boundary.
 - 2026-07-27 Huntland/Tavern validation: 434 tests passed with resource leaks
   promoted to errors; compilation, diff checks, and clean-candidate preflight
   and repository-history audits passed.
+- 2026-07-27 Metal clear validation: 436 tests passed with resource leaks
+  promoted to errors; exact captured-state replay, compilation, and diff checks
+  passed.
+- 2026-07-27 selector ownership validation: 436 tests passed with resource
+  leaks promoted to errors; 61 focused catalog/runtime/HTTP tests, compilation,
+  diff checks, live HTTP projection, and original-client acceptance passed.
 
 ## Blockers and unresolved fidelity
 

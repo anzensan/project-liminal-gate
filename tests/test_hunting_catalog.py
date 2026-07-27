@@ -177,9 +177,16 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         # absent key is not the same as no zones.
         self.assertEqual([], self.catalog.client_lists(0x01000000 | (3 << 6) | 1)["metalHuntingList"])
         first = self.catalog.client_lists(0x01000000 | (4 << 6) | 1)["metalHuntingList"]
-        self.assertEqual(["1200-1", "1201-1", "3000-11"], sorted(first))
+        self.assertEqual(["1200-1", "1201-1", "3000-1", "3000-11"], sorted(first))
         every = self.catalog.client_lists(0x01000000 | (31 << 6) | 1)["metalHuntingList"]
-        self.assertEqual(["1200-1", "1201-1"] + [f"3000-{10 + zone}" for zone in range(1, 8)], sorted(every))
+        self.assertEqual(
+            sorted(
+                ["1200-1", "1201-1"]
+                + [f"3000-{zone}" for zone in range(1, 8)]
+                + [f"3000-{10 + zone}" for zone in range(1, 8)]
+            ),
+            sorted(every),
+        )
 
     def test_advertised_metal_rows_have_matching_client_event_flags(self) -> None:
         before = self.catalog.client_event_flags(
@@ -191,20 +198,22 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "sp_ch_1200": {"name": "sp_ch_1200", "value": True},
-                "sp_ch_1201": {"name": "sp_ch_1201", "value": True},
-                "sp_ch_3000": {"name": "sp_ch_3000", "value": True},
+                "sp_ch_3000-1": {"name": "sp_ch_3000-1", "value": True},
+                "sp_ch_3000-11": {"name": "sp_ch_3000-11", "value": True},
+                "sp_ch_1200-1": {"name": "sp_ch_1200-1", "value": True},
+                "sp_ch_1201-1": {"name": "sp_ch_1201-1", "value": True},
             },
             first,
         )
 
-    def test_the_duplicate_metal_sections_stay_startable_but_unadvertised(self) -> None:
-        """Chapter 3000 carries each zone twice; the selector must list it once."""
+    def test_regular_and_king_metal_sections_are_both_advertised_and_startable(self) -> None:
+        """The two ranges are distinct client cards, not duplicate list rows."""
         advertised = self.catalog.client_lists(0x01000000 | (31 << 6) | 1)["metalHuntingList"]
         for zone in range(1, 8):
-            self.assertIn((3000, zone), self.stages)
-            self.assertNotIn(f"3000-{zone}", advertised)
-            self.assertEqual("hidden", self.stages[(3000, zone)].selector)
+            for section in (zone, zone + 10):
+                self.assertIn((3000, section), self.stages)
+                self.assertIn(f"3000-{section}", advertised)
+                self.assertEqual("metal", self.stages[(3000, section)].selector)
 
     def test_tiers_unlock_only_after_their_policy_chapter(self) -> None:
         for section, first_allowed in ((1, 4), (2, 10), (3, 19)):

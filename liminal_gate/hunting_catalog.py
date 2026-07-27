@@ -107,24 +107,23 @@ class HuntingCatalog:
         }
 
     def client_event_flags(self, progress_code: int) -> dict[str, dict[str, Any]]:
-        """Return the chapter flags required by advertised Metal selector rows.
+        """Return the exact flags required by advertised Metal selector rows.
 
         Hunting chapters 1000--1099 bypass the per-row event gate in the final
         client. Metal Zone and the two Roads do not: their list entries render
         only when `sp_ch_<chapter>` is also true. Deriving flags from the same
         advertised rows prevents a flag from exposing a stage the catalog
-        would still refuse.
+        would still refuse. Exact section flags are intentional: the broad
+        `sp_ch_3000` fallback also opens every Chapter 3000 row in the client's
+        built-in Arena -> Special Quests list.
         """
-        chapters = {
-            identity.split("-", 1)[0]
-            for identity in self.client_lists(progress_code)["metalHuntingList"]
-        }
+        identities = self.client_lists(progress_code)["metalHuntingList"]
         return {
-            f"sp_ch_{chapter}": {
-                "name": f"sp_ch_{chapter}",
+            f"sp_ch_{identity}": {
+                "name": f"sp_ch_{identity}",
                 "value": True,
             }
-            for chapter in sorted(chapters, key=int)
+            for identity in identities
         }
 
 
@@ -312,9 +311,8 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
     reproduce a recovered service rule.
 
     Chapter 3000 carries each zone twice, at sections 1-7 and again at 11-17.
-    Only the ticket-aware 11-17 range is advertised, matching the reference
-    server; the 1-7 duplicates stay startable but hidden so the selector does
-    not list every zone twice.
+    The client presents them as the regular and All Hail the King families, so
+    both recovered ranges are advertised in the Metal selector.
     """
     stamina = {1: 5, 2: 8, 3: 10}
     pudding_items = _span(13, 17, 21) | {46: 21} | _span(26, 29, 20) | {122: 19, 123: 19, 164: 19, 165: 19}
@@ -352,8 +350,9 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
 def _bundled_metal_stages() -> list[HuntingStage]:
     """Return Chapter 3000's seven zones, each at its two recovered sections."""
     stages: list[HuntingStage] = []
-    for zone in range(1, 8):
-        for section, selector in ((zone, "hidden"), (zone + 10, "metal")):
+    for section_offset in (0, 10):
+        for zone in range(1, 8):
+            section = zone + section_offset
             stages.append(HuntingStage(
                 family="metal_zone", chapter=3000, section=section,
                 stamina=_METAL_STAMINA[zone - 1], coins=0,
@@ -361,7 +360,7 @@ def _bundled_metal_stages() -> list[HuntingStage]:
                 unlock_chapter=_METAL_UNLOCK_AFTER_CHAPTER[zone - 1] + 1, unlock_section=1,
                 max_coins=0, max_exp=_METAL_EXP_CEILING[zone - 1],
                 # Metal settles EXP and Companions only: no Coins, no items.
-                max_items_total=0, item_maxima={}, selector=selector,
+                max_items_total=0, item_maxima={}, selector="metal",
                 companion_maxima=dict(_METAL_COMPANION_MAXIMA[zone - 1]),
                 companion_drop_levels=dict(_METAL_COMPANION_DROP_LEVELS),
             ))
