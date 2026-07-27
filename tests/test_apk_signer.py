@@ -54,3 +54,21 @@ class ApkSignerTest(unittest.TestCase):
         sign_apk(self.unsigned, output, self.zipalign, self.apksigner, self.keystore, "user-key", self.store_password, self.store_password)
         arguments = json.loads(self.root.joinpath("apksigner-args.json").read_text(encoding="utf-8"))
         self.assertNotIn("--key-pass", arguments)
+
+    def test_reports_signer_output_and_exit_code_without_password_contents(self) -> None:
+        failing_signer = self._tool(
+            "failing-apksigner",
+            "import sys\nsys.stdout.write('signer stdout detail\\n')\nsys.stderr.write('Keystore password was incorrect\\n')\nraise SystemExit(7)",
+        )
+        with self.assertRaises(ApkSigningError) as caught:
+            sign_apk(
+                self.unsigned, self.root / "failed.apk", self.zipalign,
+                failing_signer, self.keystore, "user-key",
+                self.store_password, self.key_password,
+            )
+        message = str(caught.exception)
+        self.assertIn("apksigner sign failed (exit code 7)", message)
+        self.assertIn("Keystore password was incorrect", message)
+        self.assertIn("signer stdout detail", message)
+        self.assertNotIn("not-printed", message)
+        self.assertNotIn("also-not-printed", message)

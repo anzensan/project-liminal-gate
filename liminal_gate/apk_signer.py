@@ -47,11 +47,25 @@ def sign_apk(
 
 def _run(arguments: tuple[str, ...], label: str) -> None:
     try:
-        subprocess.run(arguments, check=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            arguments, check=True, stdin=subprocess.DEVNULL,
+            text=True, capture_output=True,
+        )
     except OSError as error:
         raise ApkSigningError(f"{label} could not start") from error
     except subprocess.CalledProcessError as error:
-        raise ApkSigningError(f"{label} failed") from error
+        reported = "\n".join(
+            output.strip()
+            for output in (error.stderr, error.stdout)
+            if output and output.strip()
+        )
+        if reported:
+            raise ApkSigningError(
+                f"{label} failed (exit code {error.returncode}):\n{reported}"
+            ) from error
+        raise ApkSigningError(
+            f"{label} failed (exit code {error.returncode})"
+        ) from error
 
 
 def parse_args() -> argparse.Namespace:

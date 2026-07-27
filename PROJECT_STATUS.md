@@ -36,6 +36,9 @@ machine-readable/current capability boundary.
   prove the app track and Android mixer keep advancing with zero underruns after
   audible output disappears. Public guidance no longer attributes the cutoff
   to `swangle`, core count, or an AudioFlinger/HAL stall.
+- 2026-07-27 tester setup diagnostics: failed `zipalign` or `apksigner` runs
+  now report the Android tool's exit code and captured error output while
+  continuing to pass signing passwords only through local files.
 
 ## Blockers and unresolved fidelity
 
