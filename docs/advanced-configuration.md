@@ -595,6 +595,36 @@ One battle at a time: a Hunting entry is refused while a story or event stage
 is active, and vice versa. Progress never moves — a Hunting clear settles
 rewards only.
 
+## The Chapter-1100 world map routes
+
+Two extra points appear on the ordinary world map once the story has cleared
+Chapter 34: Shin'en Lambda and Mutoh Lambda, five one-battle stages each. There
+is no flag for them and no catalog to supply. The client draws both points
+itself from `UIMap.InitPoints0`, so the server simply accepts their entries.
+
+Each entry costs the recovered 25 stamina and no Coins, and a route's battles
+open one at a time; clearing a battle you have already cleared is allowed and
+does not move the frontier backwards. A clear never touches core story progress:
+a request that tries to advance `progressCode` from one of these stages is
+refused, because this is a World-0 special that must not overwrite the ordinary
+story's own field.
+
+Settlement is empty on purpose. The embedded `dropBuddies` manifest proves which
+Companions each stage could yield — for example a single candidate on each
+route's opening battle, three on its fourth — but nothing captured proves whether
+candidates are guaranteed, exclusive, or independently rolled. Rather than
+invent a rule, the server refuses any reported Companion, Coin, EXP, item,
+monster, Summon, or Luck result here and keeps the manifest for comparison
+against a future trace. Continue is likewise unavailable during these battles,
+matching the chapter's own notice that it cannot be continued after a game over.
+
+One caveat worth recording: the play order within a route is inferred, not
+confirmed. The client stores the ten stages under section ordinals whose titles
+run "battle 4, 3, 2, 1, 5", and this server follows the battle numbering in the
+titles rather than the ordinals. The reason is that the section titled "battle
+1" is, in each route independently, the only one of its five assumed at level 80
+instead of 90 — an ordinal ordering would put the easiest fight last.
+
 ### Selector and fidelity boundary
 
 `get_server_status.constants` now sends the complete client-required constants

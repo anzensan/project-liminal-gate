@@ -74,11 +74,19 @@ each zone waits for, which is well past the verified stopping point:
 | Metal Zone 1, Dragon Road, Machine Road | Chapter 3 |
 | Metal Zones 2 to 7 | Chapters 8, 12, 17, 21, 26, 30 |
 
+| Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
+
 Those thresholds are a local preservation policy, not a recovered schedule: the
 original zones rotated, and no rotation was ever captured, so each one simply
 becomes permanent once you pass its chapter. Nothing you can set on the server
 opens a zone earlier — play the story to it. Empty Hunting and Metal screens on
 a new account are expected, not a fault.
+
+The last row is the exception: the two world-map points after Chapter 34 are the
+client's own gate, not a policy this project chose, and their five battles each
+open one at a time. They award nothing — a clear that reports Companions, EXP,
+or items is refused, because the original drop rule was never captured and a
+plausible invented one is worse than an honest refusal.
 You can test on an Android emulator or on a physical phone or tablet; see
 [Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet)
 for the device path. Graphics and sound are both unreliable under emulation and

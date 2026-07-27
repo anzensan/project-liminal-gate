@@ -67,6 +67,12 @@ from liminal_gate.event_log import EventRecorder, safe_form_diagnostics
 from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
+from liminal_gate.world_map_special import (
+    WORLD_MAP_SPECIAL_CHAPTER,
+    WorldMapSpecialCatalog,
+    build_bundled_world_map_special_policy,
+    initial_route_progress,
+)
 
 
 PROFILE_SCHEMA_VERSION = 1
@@ -1653,7 +1659,7 @@ class BootstrapState:
                 return "unknown_account", None
             phase = account.get("tutorial_phase")
             abandoning_active_story = (
-                phase in {"generic_story_active", "hunting_active"}
+                phase in {"generic_story_active", "hunting_active", "world_map_special_active"}
                 and (characters is not None or party is not None)
             )
             if phase != "free_roam" and not abandoning_active_story:
@@ -1717,6 +1723,7 @@ class BootstrapState:
                 account["active_generic_story"] = None
                 account["active_hunt"] = None
                 account["active_hunt_ticket_spent"] = None
+                account["active_world_map_special"] = None
             userdata["lastupdate"] = 1.0
             payload = _canonical_payload({"success": True, "lastupdate": 1.0})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
@@ -1885,6 +1892,141 @@ class BootstrapState:
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
+
+    def apply_world_map_special_start(
+        self, token: str, request_id: str, body: bytes, catalog: WorldMapSpecialCatalog,
+        now: float | None = None,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Start one Chapter-1100 battle behind the native Chapter-34 map gate."""
+        now = time.time() if now is None else now
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return "unknown_account", None
+            requests = account.setdefault("tutorial_requests", {})
+            digest = hashlib.sha256(body).hexdigest()
+            cached = requests.get(_replay_key(request_id, body))
+            if cached is not None:
+                if cached.get("body_sha256") != digest:
+                    return "request_collision", None
+                return "replay", _canonical_payload(cached["payload"])
+            values = _parse_generic_story_start(body)
+            stage = None if values is None else catalog.by_identity().get((values["chapter"], values["section"]))
+            if (
+                values is None or stage is None
+                or values["stamina"] != stage.stamina or values["coins"] != stage.coins
+            ):
+                return "unsupported_start_quest", None
+            userdata = account["userdata"]
+            progress = int(userdata.get("progressCode", 0))
+            if not catalog.unlocked_at(chapter_for_progress(progress)):
+                return "world_map_special_locked", None
+            frontier = self._world_map_special_progress(account, catalog)
+            if stage.battle > frontier[stage.route]:
+                return "world_map_special_locked", None
+            phase = account.setdefault("tutorial_phase", "initial")
+            identity = {"chapter": stage.chapter, "section": stage.section}
+            if phase == "world_map_special_active" and account.get("active_world_map_special") == identity:
+                # A retry under a fresh request id reports the meter without
+                # debiting it twice, as the story and Hunting starts do.
+                payload = _canonical_payload({"success": True, "refillStartTime": float(userdata.get("refillStartTime", 0.0))})
+                requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+                self._persist_locked()
+                return "success", payload
+            # One active battle per account, shared with story and Hunting.
+            if phase != "free_roam" or account.get("active_generic_story") is not None:
+                return "tutorial_state_conflict", None
+            origin = spend_stamina(
+                float(userdata.get("refillStartTime", 0.0)), stage.stamina,
+                chapter_for_progress(progress), now,
+            )
+            if origin is None:
+                return "success", _canonical_payload({"success": False, "errorCode": 1})
+            userdata["refillStartTime"] = origin
+            _synchronize_wallet_projection(userdata)
+            account["tutorial_phase"] = "world_map_special_active"
+            account["active_world_map_special"] = identity
+            payload = _canonical_payload({"success": True, "refillStartTime": origin})
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            self._persist_locked()
+            return "success", payload
+
+    def apply_world_map_special_clear(
+        self, token: str, request_id: str, body: bytes, catalog: WorldMapSpecialCatalog,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Settle a Chapter-1100 clear without minting an unrecovered reward.
+
+        Two things this route must never do: move the core `progressCode`, which
+        belongs to the ordinary story and would be corrupted by a World-0
+        special claiming it, and grant a Companion from the `dropBuddies`
+        manifest, whose roll rule was never captured.  Both are refusals here,
+        not silent corrections.
+        """
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return "unknown_account", None
+            requests = account.setdefault("tutorial_requests", {})
+            digest = hashlib.sha256(body).hexdigest()
+            cached = requests.get(_replay_key(request_id, body))
+            if cached is not None:
+                if cached.get("body_sha256") != digest:
+                    return "request_collision", None
+                return "replay", _canonical_payload(cached["payload"])
+            clear = _parse_generic_story_clear(body)
+            if clear is None:
+                return "unsupported_clear_quest", None
+            identity = (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
+            stage = catalog.by_identity().get(identity)
+            userdata = account["userdata"]
+            if (
+                stage is None
+                or account.setdefault("tutorial_phase", "initial") != "world_map_special_active"
+                or account.get("active_world_map_special") != {"chapter": identity[0], "section": identity[1]}
+            ):
+                return "tutorial_state_conflict", None
+            if (
+                clear["progressCode"] != int(userdata.get("progressCode", 0))
+                or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
+                or clear["valuables"].get("coins") != int(userdata.get("coins", 0))
+            ):
+                return "tutorial_state_conflict", None
+            if not _zero_base_event_matches(userdata, clear):
+                return "invalid_local_world_map_special_result", None
+            frontier = self._world_map_special_progress(account, catalog)
+            if stage.battle == frontier[stage.route] and stage.battle < catalog.final_battle(stage.route):
+                frontier[stage.route] = stage.battle + 1
+            account["world_map_special_progress"] = frontier
+            userdata["lastupdate"] = 1.0
+            account["tutorial_phase"] = "free_roam"
+            account["active_world_map_special"] = None
+            # Preservation income; see `archive_economy`.
+            award_stage_energy(account, "world_map_special", *identity)
+            _synchronize_wallet_projection(userdata)
+            payload = _canonical_payload({
+                "success": True, "lastupdate": 1.0, "sentMessage": False,
+                "coins": int(userdata.get("coins", 0)),
+                "freeEnergy": int(userdata.get("freeEnergy", 0)),
+                "chrdata": copy.deepcopy(userdata.get("chrdata", [])),
+                "itemList": copy.deepcopy(userdata.get("itemList", [])),
+            })
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            self._persist_locked()
+            return "success", payload
+
+    @staticmethod
+    def _world_map_special_progress(
+        account: dict[str, Any], catalog: WorldMapSpecialCatalog,
+    ) -> dict[str, int]:
+        """The per-route frontier battle, defaulted for accounts saved before it."""
+        stored = account.get("world_map_special_progress")
+        frontier = initial_route_progress(catalog)
+        if isinstance(stored, dict):
+            for route in frontier:
+                value = stored.get(route)
+                if type(value) is int and 1 <= value <= catalog.final_battle(route):
+                    frontier[route] = value
+        return frontier
 
     def apply_generic_story_start(
         self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog | EventCatalog,
@@ -2144,6 +2286,9 @@ class BootstrapState:
             userdata = account["userdata"]
             coins = userdata.get("coins", 0)
             if (
+                # Requiring the generic-story phase also keeps Continue out of
+                # Chapter 1100, whose own notice says it cannot be continued
+                # after a game over, and out of a Hunting battle.
                 account.setdefault("tutorial_phase", "initial") != "generic_story_active"
                 or not isinstance(account.get("active_generic_story"), dict)
                 or type(coins) is not int
@@ -2205,6 +2350,7 @@ class BootstrapState:
             account.setdefault("active_generic_story", None)
             account.setdefault("active_hunt", None)
             account.setdefault("active_hunt_ticket_spent", None)
+            account.setdefault("active_world_map_special", None)
             account.setdefault("claimed_achievements", [])
             account.setdefault("achievement_requests", {})
             account.setdefault("messages", {})
@@ -2216,6 +2362,7 @@ class BootstrapState:
                 or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
                 or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
                 or account["active_hunt_ticket_spent"] is not None and type(account["active_hunt_ticket_spent"]) is not bool
+                or account["active_world_map_special"] is not None and not isinstance(account["active_world_map_special"], dict)
                 or not isinstance(account["claimed_achievements"], list)
                 or any(type(value) is not int or value < 1 for value in account["claimed_achievements"])
                 or account["claimed_achievements"] != sorted(set(account["claimed_achievements"]))
@@ -2337,6 +2484,7 @@ class BootstrapServer(ThreadingHTTPServer):
         event_catalog: EventCatalog | None = None,
         drop_eligibility: bool = False,
         hunting_catalog: HuntingCatalog | None = None,
+        world_map_special_catalog: WorldMapSpecialCatalog | None = None,
         public_data_root: Path | None = None,
     ) -> None:
         self.profile = profile
@@ -2364,6 +2512,13 @@ class BootstrapServer(ThreadingHTTPServer):
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
         self.hunting_catalog = hunting_catalog
+        # The client draws both Chapter-1100 map points itself once the story
+        # has passed Chapter 34, so the route is bundled and always accepted
+        # rather than advertised behind a flag.
+        self.world_map_special_catalog = (
+            build_bundled_world_map_special_policy()
+            if world_map_special_catalog is None else world_map_special_catalog
+        )
         try:
             super().__init__(address, BootstrapHandler)
         except BaseException:
@@ -2709,7 +2864,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             transitions, kind = profile.story_clears, "clear"
         result: str
         payload: dict[str, Any] | None
-        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact", "event_start", "hunting_start", "hunting_clear"}:
+        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact", "event_start", "hunting_start", "hunting_clear", "world_map_special_start", "world_map_special_clear"}:
             pass
         elif (
             kind == "write"
@@ -2718,6 +2873,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             and _parse_story_progression_reveal(body) is not None
         ):
             result, payload = self.server.state.apply_story_progression_reveal(token, request_id, body, self.server.story_progression_catalog)
+        elif kind == "start" and _identity_chapter(_started_identity(body)) == WORLD_MAP_SPECIAL_CHAPTER:
+            result, payload = self.server.state.apply_world_map_special_start(token, request_id, body, self.server.world_map_special_catalog)
+            transitions, kind = (), "world_map_special_start"
+        elif kind == "clear" and _identity_chapter(_cleared_identity(body)) == WORLD_MAP_SPECIAL_CHAPTER:
+            result, payload = self.server.state.apply_world_map_special_clear(token, request_id, body, self.server.world_map_special_catalog)
+            transitions, kind = (), "world_map_special_clear"
         elif kind == "start" and self.server.hunting_catalog is not None and _started_hunting_identity(body) in self.server.hunting_catalog.by_identity():
             result, payload = self.server.state.apply_hunting_start(token, request_id, body, self.server.hunting_catalog)
             transitions, kind = (), "hunting_start"
@@ -2811,6 +2972,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "invalid_local_event_result": HTTPStatus.CONFLICT,
             "hunting_stage_locked": HTTPStatus.CONFLICT,
             "invalid_local_hunting_result": HTTPStatus.CONFLICT,
+            "world_map_special_locked": HTTPStatus.CONFLICT,
+            "invalid_local_world_map_special_result": HTTPStatus.CONFLICT,
             "invalid_local_settlement": HTTPStatus.CONFLICT,
             "invalid_local_clear_state": HTTPStatus.CONFLICT,
             "invalid_local_outcome": HTTPStatus.CONFLICT,
@@ -3000,6 +3163,11 @@ def _parse_hunting_start(body: bytes) -> dict[str, int] | None:
         return None
     ordinary = _parse_generic_story_start(body)
     return None if ordinary is None else ordinary | {"itemID": 0, "itemCount": 0, "ticket_form": 0}
+
+
+def _identity_chapter(identity: tuple[int, int] | None) -> int | None:
+    """The chapter of a parsed identity, used to route a whole chapter's stages."""
+    return None if identity is None else identity[0]
 
 
 def _started_hunting_identity(body: bytes) -> tuple[int, int] | None:
