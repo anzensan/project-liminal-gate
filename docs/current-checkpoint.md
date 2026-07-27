@@ -24,6 +24,12 @@ Current deliberate boundary: Chapter 2-2 through Chapter 42 is enabled as
 ordered local progression policy, not canonical proof of every original
 reward, drop, encounter, or scripted scene.
 
+Current optional-content observation: a resumed migrated account displays
+Hunting and Metal selector rows after pre-login progress resolution and Metal
+event-flag pairing. Permanent Fate reaches the ordinary Pact transaction with
+the captured `luckType=true` form. These are fast-lane client observations, not
+a replacement for the Chapter 2-1 canonical certification boundary.
+
 Security boundary: the server listens on the local network for Android device
 compatibility. Signup/login associates a client host with an account; a new
 token from an unidentified host is refused once ownership exists. Request
@@ -38,5 +44,7 @@ Derived-catalog boundary: story-outcome generation rejects native encounter or
 character catalogs whose recorded APK hash differs from the selected APK.
 Generated catalogs retain their input hashes and native calibration label.
 
-Next unknown boundary: the first reproducible original-client failure after
-Chapter 2-1.
+Next unknown boundaries: the first reproducible original-client failure after
+Chapter 2-1, and the Hunting selector flash after its rows render. The latter
+produced no corresponding server resource request or 404 and needs a client
+runtime capture.

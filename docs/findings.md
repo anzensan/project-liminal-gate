@@ -11,6 +11,15 @@ Private inputs, captures, account state, and original assets remain excluded.
 - **Confirmed by static client analysis:** Hunting selectors read
   `metalHuntingList` and `huntingHuntingList`; the server derives both lists
   from the enabled catalog and account progress.
+- **Confirmed by original-client observation and real-HTTP regressions:** the
+  final client requests status before login with a rotated token. A single
+  unclaimed migrated account can supply selector progress until login binds
+  the client host; afterward, unrelated hosts receive no account-derived
+  selector availability.
+- **Confirmed by static client analysis and original-client observation:**
+  advertised Metal rows also require matching `sp_ch_<chapter>` login flags.
+  The server derives those flags from the same advertised rows; Hunting and
+  Metal lists then rendered in the final client.
 - **Local policy:** the country roster and large character/Companion box sizes
   are compatibility fixtures, not recovered production-service values.
 
@@ -22,6 +31,16 @@ Private inputs, captures, account state, and original assets remain excluded.
 - **Confirmed by restart tests:** accepted mutations and body-scoped replay
   responses persist atomically. A repeated request ID with a different body is
   evaluated as that distinct body.
+- **Confirmed by a prior exact request capture and real-HTTP restart
+  regression:** permanent Pact of Fate reuses the ordinary coin/Energy kinds
+  with `luckType=true`. The bundled archive policy uses the corresponding
+  Fellowship/Truth pool and level-plus-Luck duplicates. Its Luck increment and
+  ceiling are explicit local policy, not recovered production odds.
+- **Confirmed by a migrated-state transport regression:** original-client
+  `chrdata` stores packed level/EXP values as integral JSON doubles. Pact draws
+  now preserve those packed values and full roster records while returning the
+  plain level expected by the draw callback. A resumed original client then
+  completed a live Pact summon and the server recorded HTTP 200.
 - **Confirmed by boundary tests:** request bodies larger than 4 MiB, negative
   lengths, and incomplete bodies fail before mutation.
 - **Confirmed by deterministic collision and reload tests:** account restore,
@@ -61,6 +80,12 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Unresolved
 
+- Hunting rows render, but the selector can flash while showing a loading
+  indicator. Live event diagnostics contained no corresponding resource
+  request or 404, so the remaining boundary is client-side runtime evidence.
+- The retired Tavern “Watch Video” controls are created by client UI and rely
+  on the unavailable ad SDK. Removing them is an APK-patch boundary, not a
+  server catalog flag.
 - Original-client acceptance beyond Chapter 2-1 is not certified.
 - Chapter 2-2 through Chapter 42, bundled Hunting availability, and other
   declared catalogs are local preservation policy unless a narrower finding

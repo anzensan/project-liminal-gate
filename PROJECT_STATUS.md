@@ -20,6 +20,14 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-27 resumed-account Huntland/Tavern compatibility: pre-login status
+  resolves migrated progress without exposing it to an unrelated owned host;
+  advertised Metal rows receive their required client flags; permanent
+  `luckType=true` Fate draws and original-client packed roster records now
+  settle and replay through the ordinary Pact transaction. Live client
+  validation showed Hunting and Metal selectors and completed a Pact summon;
+  locally derived Pact banners are served without adding game images to the
+  repository.
 - 2026-07-27 persistent Linux service: the generic systemd template and
   `scripts/install_systemd_service.sh PORT` install the server-only path as the
   invoking unprivileged user, restart it after any exit, and enable it for
@@ -67,9 +75,18 @@ machine-readable/current capability boundary.
 - 2026-07-27 combined release validation: 429 tests passed with resource leaks
   promoted to errors; compilation, diff checks, and clean-candidate preflight
   and repository-history audits passed.
+- 2026-07-27 Huntland/Tavern validation: 434 tests passed with resource leaks
+  promoted to errors; compilation, diff checks, and clean-candidate preflight
+  and repository-history audits passed.
 
 ## Blockers and unresolved fidelity
 
+- Hunting selector flashing/loading after its rows render. Live diagnostics
+  show no associated banner/resource request or 404, so a client runtime
+  capture is still needed before changing server behavior.
+- Retired Tavern “Watch Video” controls are client/ad-SDK UI. The server does
+  not advertise or implement an ad service; hiding those controls requires a
+  separately validated APK patch.
 - Canonical original-client certification beyond Chapter 2-1.
 - Exact ordinary-story reward/drop authority and scripted-stage exceptions.
 - Battle Summon acquisition and complete equipment/party lifecycle.

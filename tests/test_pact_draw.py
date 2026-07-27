@@ -144,3 +144,115 @@ class PactDrawTest(unittest.TestCase):
                 restarted.shutdown()
                 restarted_thread.join()
                 restarted.server_close()
+
+    def test_migrated_packed_roster_accepts_fate_and_replays_after_restart(self) -> None:
+        """The original client stores packed levels as integral JSON doubles."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.json"
+            profile = load_profile(
+                Path(__file__).resolve().parents[1]
+                / "profiles"
+                / "legacy-client-bootstrap.json"
+            )
+            policy = build_bundled_pact_policy()
+            selected = policy.fellowship_draws[0]
+            packed_level = float((12345 << 12) | 20)
+            roster = []
+            for draw in policy.fellowship_draws:
+                roster.append(
+                    {
+                        "id": draw.character_id,
+                        "buddy": 0,
+                        "date": 0.0,
+                        "jobSlots": [0.0, 0.0, 0.0],
+                        "jobLevels": [
+                            packed_level
+                            if draw.character_id == selected.character_id
+                            else 10.0,
+                            0.0,
+                            0.0,
+                        ],
+                        "jobID": 0,
+                        "flags": 0,
+                        "skillBoost": 0,
+                        "luck": 0
+                        if draw.character_id == selected.character_id
+                        else policy.max_luck,
+                    }
+                )
+
+            def start() -> tuple[BootstrapServer, threading.Thread]:
+                server = BootstrapServer(
+                    ("127.0.0.1", 0),
+                    profile,
+                    BootstrapState(state_path),
+                    pact_draw_catalog=policy,
+                )
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                return server, thread
+
+            body = (
+                "kind=0&count=1&luckType=true&campaignChrID=0"
+                "&eventFlag=0&lastUpdate=1"
+            )
+
+            def draw(server: BootstrapServer) -> tuple[int, dict[str, object]]:
+                connection = HTTPConnection(*server.server_address)
+                connection.request(
+                    "POST",
+                    "/gd/do_slot?otk=token&requestID=fate-packed",
+                    body=body,
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                return response.status, payload
+
+            server, thread = start()
+            try:
+                server.state.create_account(
+                    "token",
+                    "account",
+                    {
+                        "coins": policy.coin_cost,
+                        "energy": 0,
+                        "freeEnergy": 0,
+                        "chrdata": roster,
+                    },
+                )
+                status, first = draw(server)
+                self.assertEqual(200, status)
+                self.assertTrue(first["success"])
+                self.assertEqual(0, first["coins"])
+                self.assertEqual(
+                    {
+                        "id": selected.character_id,
+                        "jobID": 0,
+                        "jobLevels": [21],
+                        "jobSlots": [],
+                        "isNew": False,
+                        "levelAdded": 1,
+                        "skillBoost": 0,
+                        "luck": 50,
+                        "luckup": 50,
+                    },
+                    first["chrdata"][0],
+                )
+                stored = server.state.userdata_for("token")["chrdata"][0]
+                self.assertEqual(float((12345 << 12) | 21), stored["jobLevels"][0])
+                self.assertEqual(50, stored["luck"])
+                self.assertEqual((status, first), draw(server))
+            finally:
+                server.shutdown()
+                thread.join()
+                server.server_close()
+
+            restarted, restarted_thread = start()
+            try:
+                self.assertEqual((200, first), draw(restarted))
+            finally:
+                restarted.shutdown()
+                restarted_thread.join()
+                restarted.server_close()

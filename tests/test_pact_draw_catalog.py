@@ -38,5 +38,6 @@ duplicate_skill_boost = 5
         policy = build_bundled_pact_policy()
         self.assertEqual(("coins", 3000), policy.cost_for_kind(0))
         self.assertEqual(("energy", 5), policy.cost_for_kind(1))
+        self.assertEqual((1000, 50), (policy.max_luck, policy.fate_duplicate_luck))
         self.assertEqual(103, len(policy.draws_for_kind(0)))
         self.assertEqual(122, len(policy.draws_for_kind(1)))

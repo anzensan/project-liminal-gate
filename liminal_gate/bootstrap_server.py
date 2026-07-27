@@ -531,6 +531,42 @@ class BootstrapState:
                 "resolved_account_is_active": account_id == self.active_account_id,
             }
 
+    def progress_for_status(
+        self,
+        token: str,
+        client_host: str | None,
+    ) -> int | None:
+        """Resolve progress for the pre-login status request without binding it.
+
+        The final client fetches server status before login and rotates its OTK,
+        so a direct token lookup misses resumed accounts. A known client host
+        can use its existing ownership, while a legacy or freshly migrated
+        single-account save may expose its active account until the first login
+        establishes host ownership. Once any host is owned, an unrelated host
+        gets no account-derived availability.
+        """
+        with self.lock:
+            account_id = self.tokens.get(token)
+            if account_id not in self.accounts and isinstance(client_host, str):
+                account_id = self.client_hosts.get(client_host)
+            if (
+                account_id not in self.accounts
+                and not self.client_hosts
+                and len(self.accounts) == 1
+            ):
+                account_id = (
+                    self.active_account_id
+                    if self.active_account_id in self.accounts
+                    else next(iter(self.accounts))
+                )
+            account = self.accounts.get(account_id)
+            progress = (
+                None
+                if account is None
+                else account.get("userdata", {}).get("progressCode")
+            )
+            return progress if type(progress) is int and progress >= 0 else None
+
     def replays_cleared_stage(self, token: str, identity: tuple[int, int] | None, catalog: StoryProgressionCatalog | None) -> bool:
         """Whether the account has already cleared the stage it is asking for.
 
@@ -1428,7 +1464,12 @@ class BootstrapState:
             parsed = _parse_ordinary_pact_draw(body)
             if catalog is None or parsed is None:
                 return "unsupported_ordinary_pact", None
-            kind, count = parsed
+            kind, count, luck_type = parsed
+            if luck_type and not isinstance(catalog, BundledPactPolicy):
+                # User-supplied schema version 1 catalogs define only ordinary
+                # Skill Boost duplicates. They cannot silently acquire an
+                # invented Fate/Luck policy.
+                return "unsupported_ordinary_pact", None
             draws, cost = catalog.draws_for_kind(kind), catalog.cost_for_kind(kind)
             if not draws or cost is None:
                 return "unsupported_ordinary_pact", None
@@ -1449,9 +1490,20 @@ class BootstrapState:
                     return "unsupported_ordinary_pact", None
                 results: list[dict[str, Any]] = []
                 for _ in range(count):
-                    if any(type(row.get("skillBoost", 0)) is not int for row in by_id.values()):
+                    eligibility_field = "luck" if luck_type else "skillBoost"
+                    eligibility_cap = catalog.max_luck if luck_type else catalog.max_skill_boost
+                    if any(
+                        type(row.get(eligibility_field, 0)) is not int
+                        for row in by_id.values()
+                    ):
                         return "unsupported_ordinary_pact", None
-                    eligible = [draw for draw in draws if not isinstance(by_id.get(draw.character_id), dict) or by_id[draw.character_id].get("skillBoost", 0) < catalog.max_skill_boost]
+                    eligible = [
+                        draw
+                        for draw in draws
+                        if not isinstance(by_id.get(draw.character_id), dict)
+                        or by_id[draw.character_id].get(eligibility_field, 0)
+                        < eligibility_cap
+                    ]
                     if not eligible:
                         payload = {"success": False, "errorCode": 3}
                         break
@@ -1464,17 +1516,89 @@ class BootstrapState:
                         threshold -= draw.weight
                     current = by_id.get(selected.character_id)
                     if current is None:
-                        current = {"id": selected.character_id, "jobID": 0, "jobLevels": [catalog.new_level], "jobSlots": [], "skillBoost": 0}
+                        current = {
+                            "id": selected.character_id,
+                            "buddy": 0,
+                            "date": 0.0,
+                            "jobSlots": [0.0, 0.0, 0.0],
+                            "jobLevels": [float(catalog.new_level), 0.0, 0.0],
+                            "jobID": 0,
+                            "flags": 0,
+                            "skillBoost": 0,
+                        }
+                        if luck_type:
+                            current["luck"] = 0
                         candidates.append(current); by_id[selected.character_id] = current
-                        results.append({"id": selected.character_id, "jobID": 0, "jobLevels": [catalog.new_level], "jobSlots": [], "isNew": True, "levelAdded": catalog.new_level, "skillBoost": 0})
-                    elif not isinstance(current.get("jobLevels"), list) or not current["jobLevels"] or type(current["jobLevels"][0]) is not int or type(current.get("skillBoost", 0)) is not int or type(current.get("jobID", 0)) is not int or not isinstance(current.get("jobSlots", []), list):
+                        result = {
+                            "id": selected.character_id,
+                            "jobID": 0,
+                            "jobLevels": [catalog.new_level],
+                            "jobSlots": [],
+                            "isNew": True,
+                            "levelAdded": catalog.new_level,
+                            "skillBoost": 0,
+                        }
+                        if luck_type:
+                            result["luck"] = 0
+                        results.append(result)
+                    elif (
+                        not isinstance(current.get("jobLevels"), list)
+                        or not current["jobLevels"]
+                        or type(current["jobLevels"][0]) not in {int, float}
+                        or not math.isfinite(current["jobLevels"][0])
+                        or current["jobLevels"][0] < 0
+                        or int(current["jobLevels"][0]) != current["jobLevels"][0]
+                        or type(current.get("skillBoost", 0)) is not int
+                        or type(current.get("jobID", 0)) is not int
+                        or not isinstance(current.get("jobSlots", []), list)
+                        or (
+                            luck_type
+                            and type(current.get("luck", 0)) is not int
+                        )
+                    ):
                         return "unsupported_ordinary_pact", None
                     else:
-                        old_level, old_boost = current["jobLevels"][0], current.get("skillBoost", 0)
+                        packed_level = int(current["jobLevels"][0])
+                        old_level = packed_level & 0xFFF
+                        old_boost = current.get("skillBoost", 0)
                         level = min(catalog.max_level, old_level + selected.duplicate_level_added)
-                        boost = min(catalog.max_skill_boost, old_boost + selected.duplicate_skill_boost)
-                        current["jobLevels"][0], current["skillBoost"] = level, boost
-                        results.append({"id": selected.character_id, "jobID": int(current.get("jobID", 0)), "jobLevels": [level], "jobSlots": list(current.get("jobSlots", [])), "isNew": False, "levelAdded": level - old_level, "boostUp": boost - old_boost, "skillBoost": boost})
+                        encoded_level = (packed_level & ~0xFFF) | level
+                        current["jobLevels"][0] = (
+                            float(encoded_level)
+                            if type(current["jobLevels"][0]) is float
+                            else encoded_level
+                        )
+                        result = {
+                            "id": selected.character_id,
+                            "jobID": int(current.get("jobID", 0)),
+                            "jobLevels": [level],
+                            "jobSlots": [],
+                            "isNew": False,
+                            "levelAdded": level - old_level,
+                            "skillBoost": old_boost,
+                        }
+                        if luck_type:
+                            old_luck = current.get("luck", 0)
+                            luck = min(
+                                catalog.max_luck,
+                                old_luck + catalog.fate_duplicate_luck,
+                            )
+                            current["luck"] = luck
+                            result |= {
+                                "luck": luck,
+                                "luckup": luck - old_luck,
+                            }
+                        else:
+                            boost = min(
+                                catalog.max_skill_boost,
+                                old_boost + selected.duplicate_skill_boost,
+                            )
+                            current["skillBoost"] = boost
+                            result |= {
+                                "boostUp": boost - old_boost,
+                                "skillBoost": boost,
+                            }
+                        results.append(result)
                 else:
                     if currency == "coins":
                         userdata["coins"] -= total_cost
@@ -2269,8 +2393,19 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             payload |= dict(LOCAL_LOGIN_COUNTRY_FIELDS)
             payload["name"] = self.server.state.accounts[account_id].get("username", payload.get("name", "Player"))
             payload["messageList"] = self.server.state.login_messages(account_id)
+            event_flags: dict[str, Any] = {}
             if self.server.event_catalog is not None:
-                payload["eventFlags"] = self.server.event_catalog.flags()
+                event_flags |= self.server.event_catalog.flags()
+            if self.server.hunting_catalog is not None:
+                progress = self.server.state.accounts[account_id].get(
+                    "userdata", {}
+                ).get("progressCode", 0)
+                if type(progress) is int and progress >= 0:
+                    event_flags |= self.server.hunting_catalog.client_event_flags(
+                        progress
+                    )
+            if event_flags:
+                payload["eventFlags"] = event_flags
             if self.server.drop_eligibility:
                 # Without this the client marks every character and Companion
                 # `canDrop = false` and silently discards each drop it rolls.
@@ -2667,10 +2802,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             rare_slot_energy=None if energy is None else energy[1],
         )
         constants |= {"metalHuntingList": [], "huntingHuntingList": []}
-        account = self.server.state.accounts.get(self.server.state.tokens.get(token))
-        if account is not None and self.server.hunting_catalog is not None:
-            progress = account.get("userdata", {}).get("progressCode", 0)
-            constants |= self.server.hunting_catalog.client_lists(int(progress))
+        progress = self.server.state.progress_for_status(
+            token,
+            self._client_host(),
+        )
+        if progress is not None and self.server.hunting_catalog is not None:
+            constants |= self.server.hunting_catalog.client_lists(progress)
         return constants
 
     def log_message(self, format: str, *args: object) -> None:
@@ -3060,7 +3197,7 @@ def _parse_companion_draw(body: bytes) -> tuple[int, int] | None:
     return values["kind"], values["count"]
 
 
-def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int] | None:
+def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int, bool] | None:
     try:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
@@ -3068,7 +3205,7 @@ def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int] | None:
     if tuple(name for name, _ in pairs) != ("kind", "count", "luckType", "campaignChrID", "eventFlag", "lastUpdate"):
         return None
     values = dict(pairs)
-    if values["kind"] not in {"0", "1"} or values["luckType"] != "false" or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or not values["lastUpdate"].isdecimal():
+    if values["kind"] not in {"0", "1"} or values["luckType"] not in {"false", "true"} or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or not values["lastUpdate"].isdecimal():
         return None
     kind, count = int(values["kind"]), int(values["count"])
     # The client emits an affordable remainder when its ten-pull control has
@@ -3077,7 +3214,7 @@ def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int] | None:
     # accept every client-visible batch from one through ten.
     if not 1 <= count <= 10:
         return None
-    return kind, count
+    return kind, count, values["luckType"] == "true"
 
 
 def _parse_companion_userdata_write(body: bytes) -> list[dict[str, Any]] | None:

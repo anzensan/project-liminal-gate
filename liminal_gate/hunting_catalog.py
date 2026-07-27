@@ -106,6 +106,27 @@ class HuntingCatalog:
             for selector in ("metal", "hunting")
         }
 
+    def client_event_flags(self, progress_code: int) -> dict[str, dict[str, Any]]:
+        """Return the chapter flags required by advertised Metal selector rows.
+
+        Hunting chapters 1000--1099 bypass the per-row event gate in the final
+        client. Metal Zone and the two Roads do not: their list entries render
+        only when `sp_ch_<chapter>` is also true. Deriving flags from the same
+        advertised rows prevents a flag from exposing a stage the catalog
+        would still refuse.
+        """
+        chapters = {
+            identity.split("-", 1)[0]
+            for identity in self.client_lists(progress_code)["metalHuntingList"]
+        }
+        return {
+            f"sp_ch_{chapter}": {
+                "name": f"sp_ch_{chapter}",
+                "value": True,
+            }
+            for chapter in sorted(chapters, key=int)
+        }
+
 
 _STAGE_FIELDS = {
     "family", "chapter", "section", "stamina", "coins", "entry_item_id",

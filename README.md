@@ -55,10 +55,12 @@ through Chapter 42, and local ordinary Pacts:
 - **Pact of Fellowship** uses Coins.
 - **Pact of Truth** uses Energy, 5 for a single pull and 50 for ten; new local
   accounts receive 50 free Energy, which is exactly one ten-pull.
+- **Pact of Fate** uses the same Coin/Energy costs and corresponding local
+  pools, but duplicates gain Luck instead of Skill Boost.
 
 This remains a tester build. The original-client path is verified only through
 Chapter 2-1, so later story stages may need individual compatibility fixes.
-Fate, ticket, campaign, and event Pact variants are intentionally unsupported.
+Ticket, campaign, and event Pact variants are intentionally unsupported.
 
 **Huntland opens on story progress, so it is locked at first.** The Hunting and
 Metal Zone cards stay unavailable until your account has finished the chapter
@@ -650,12 +652,15 @@ given a specific compatibility rule.
 
 It also enables local ordinary Pacts: **Pact of Fellowship** (`kind=0`) spends
 3,000 Coins per pull, while **Pact of Truth** (`kind=1`) spends 5 Energy per
-pull. The client may submit any affordable batch from 1 through 10 even though
-its controls normally label 1, 5, and 10. New local accounts receive 50 free
-Energy, exactly one full Truth ten-pull. The included pools are
-bounded local policy; selection is uniform and duplicate gains are local
-defaults, not a claim about the retired service's per-character odds. Fate,
-ticket, campaign, and event-specific Pact variants remain unsupported.
+pull. Permanent **Pact of Fate** uses those same two costs and corresponding
+local pools when the client sends `luckType=true`; its duplicates gain one
+local-policy level and 5.0 Luck instead of Skill Boost. The client may submit
+any affordable batch from 1 through 10 even though its controls normally label
+1, 5, and 10. New local accounts receive 50 free Energy, exactly one full Truth
+ten-pull. The included pools are bounded local policy; selection is uniform and
+duplicate gains are local defaults, not a claim about the retired service's
+per-character odds. Ticket, campaign, and event-specific Pact variants remain
+unsupported.
 
 The 50-Energy starter grant applies when a local account is first created. To
 test it after upgrading an existing setup, use a new local data directory and

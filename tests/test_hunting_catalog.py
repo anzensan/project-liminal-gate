@@ -181,6 +181,23 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         every = self.catalog.client_lists(0x01000000 | (31 << 6) | 1)["metalHuntingList"]
         self.assertEqual(["1200-1", "1201-1"] + [f"3000-{10 + zone}" for zone in range(1, 8)], sorted(every))
 
+    def test_advertised_metal_rows_have_matching_client_event_flags(self) -> None:
+        before = self.catalog.client_event_flags(
+            0x01000000 | (3 << 6) | 1
+        )
+        self.assertEqual({}, before)
+        first = self.catalog.client_event_flags(
+            0x01000000 | (4 << 6) | 1
+        )
+        self.assertEqual(
+            {
+                "sp_ch_1200": {"name": "sp_ch_1200", "value": True},
+                "sp_ch_1201": {"name": "sp_ch_1201", "value": True},
+                "sp_ch_3000": {"name": "sp_ch_3000", "value": True},
+            },
+            first,
+        )
+
     def test_the_duplicate_metal_sections_stay_startable_but_unadvertised(self) -> None:
         """Chapter 3000 carries each zone twice; the selector must list it once."""
         advertised = self.catalog.client_lists(0x01000000 | (31 << 6) | 1)["metalHuntingList"]

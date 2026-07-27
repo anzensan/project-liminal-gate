@@ -1,5 +1,47 @@
 # Execution Plans
 
+## 2026-07-27 resumed-account Huntland and Tavern compatibility
+
+Status: completed 2026-07-27.
+
+Objective: make the already-supported Hunting, Metal, and permanent Pact
+policies visible and usable after a private-save migration without weakening
+host ownership, replay, or durable-state boundaries.
+
+Required proof:
+
+1. A pre-login status request with a rotated token resolves a single migrated
+   account or an already-owned client host, but not an unrelated host.
+2. Every advertised Metal selector row has the matching client event flag.
+3. Original-client packed floating-point roster records survive an ordinary or
+   Fate Pact mutation without being replaced by the public test schema.
+4. The captured permanent Fate form (`luckType=true`) applies level-plus-Luck
+   duplicate behavior, charges once, and replays after restart.
+5. Real HTTP regressions and the warning-strict release gates pass.
+
+Result:
+
+- Hunting and Metal selector availability is derived from the resumed
+  account's progress before login; the original client displayed both lists.
+- Metal rows receive only the event flags derived from the stages already
+  advertised by the Hunting catalog.
+- Permanent coin/Energy Fate requests use the corresponding
+  Fellowship/Truth local-policy pools. New units begin with zero Luck;
+  duplicates gain one local-policy level and 5.0 Luck without changing Skill
+  Boost.
+- Pact mutation now preserves original-client packed level/EXP values and
+  full roster records. Same-body retries replay the committed result across a
+  service restart.
+- The resumed original client completed a Pact summon after deployment; the
+  live event log records the repaired `/gd/do_slot` request as HTTP 200.
+- The live server's four user-derived Pact banners return HTTP 200. No
+  copyrighted image is included in the repository.
+- The Hunting selector still has a client-side flashing/loading symptom. Live
+  server diagnostics recorded no banner/resource request or 404 during the
+  symptom, so no speculative server response was added.
+- The warning-strict release suite passed 434 tests in 88.764 seconds;
+  compilation and diff checks passed.
+
 ## 2026-07-27 persistent Linux systemd service
 
 Status: completed 2026-07-27.

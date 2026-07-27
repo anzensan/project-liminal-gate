@@ -49,6 +49,8 @@ class BundledPactPolicy:
     new_level: int
     max_level: int
     max_skill_boost: int
+    max_luck: int
+    fate_duplicate_luck: int
     fellowship_draws: tuple[PactDraw, ...]
     truth_draws: tuple[PactDraw, ...]
 
@@ -81,6 +83,12 @@ def build_bundled_pact_policy() -> BundledPactPolicy:
         new_level=10,
         max_level=90,
         max_skill_boost=1000,
+        # Luck uses the client's tenths-of-one-percent wire unit. The public
+        # bundle has no original rarity table from which to derive the lower
+        # rarity-specific caps, so the archive policy uses the client's
+        # absolute 100.0 ceiling and the recovered +5.0 duplicate increment.
+        max_luck=1000,
+        fate_duplicate_luck=50,
         fellowship_draws=tuple(draw(character_id) for character_id in _FELLOWSHIP_IDS),
         truth_draws=tuple(draw(character_id) for character_id in _TRUTH_IDS),
     )

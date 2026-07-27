@@ -111,6 +111,30 @@ class HuntingRuntimeTest(unittest.TestCase):
     def userdata(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]["userdata"]
 
+    def server_status(self, token: str) -> dict:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "GET",
+            f"/gd/get_server_status?platform=GooglePlay&app_version=5.57&otk={token}",
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        self.assertEqual(200, response.status)
+        return payload
+
+    def login(self, token: str) -> dict:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "GET",
+            f"/gd/login?otk={token}&uuid={self.account_id}",
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        self.assertEqual(200, response.status)
+        return payload
+
     def phase(self) -> str:
         return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]["tutorial_phase"]
 
@@ -175,6 +199,47 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.assertEqual((status, cleared), self.clear("hunt-clear", 1001, 1, items={"2": 4}, item_list=[0, 5, 0, 0, 2, 0, 0, 0]))
         self.restart()
         self.assertEqual([0, 5, 0, 0, 2, 0, 0, 0], self.userdata()["itemList"])
+
+    def test_prelogin_status_uses_single_migrated_account_progress(self) -> None:
+        with self.server.state.lock:
+            self.server.state.tokens.clear()
+            self.server.state.client_hosts.clear()
+            self.server.state._persist_locked()
+        constants = self.server_status("rotated-before-login")["constants"]
+        self.assertEqual(
+            ["1001-1", "1003-1", "3000-11"],
+            sorted(
+                constants["huntingHuntingList"]
+                + constants["metalHuntingList"]
+            ),
+        )
+
+    def test_prelogin_status_uses_known_host_but_not_an_unrelated_host(self) -> None:
+        with self.server.state.lock:
+            self.server.state.tokens.clear()
+            self.server.state.client_hosts = {"127.0.0.1": self.account_id}
+            self.server.state._persist_locked()
+        constants = self.server_status("rotated-after-login")["constants"]
+        self.assertEqual(["1001-1", "1003-1"], sorted(constants["huntingHuntingList"]))
+        self.assertEqual(["3000-11"], constants["metalHuntingList"])
+        self.assertIsNone(
+            self.server.state.progress_for_status(
+                "unbound",
+                "192.0.2.10",
+            )
+        )
+
+    def test_login_pairs_advertised_metal_rows_with_required_flags(self) -> None:
+        login = self.login("login-token")
+        self.assertEqual(
+            {
+                "sp_ch_3000": {
+                    "name": "sp_ch_3000",
+                    "value": True,
+                }
+            },
+            login["eventFlags"],
+        )
 
     def test_entry_item_is_consumed_and_a_missing_one_refuses_entry(self) -> None:
         self.assertEqual(2, self.userdata()["itemList"][4])
