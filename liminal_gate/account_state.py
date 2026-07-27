@@ -226,6 +226,46 @@ def adopt(state: Path, source_id: str, target_id: str, confirmed: bool, force: b
     }
 
 
+def switch(state: Path, account_id: str, confirmed: bool) -> dict[str, Any]:
+    """Put the client on a chosen save by swapping it with the active one.
+
+    `adopt` moves a save onto another UUID and discards whatever was there,
+    which is right for recovering from a reinstall and wrong for browsing.
+    Choosing a save should be reversible, so this exchanges the two accounts
+    instead: the chosen save takes the UUID the client currently sends, and the
+    save being left takes the chosen account's old UUID. Nothing is destroyed,
+    and switching back is the same command with the other ID.
+    """
+    if not confirmed:
+        raise AccountStateError("switch requires --yes")
+    lock = acquire_lock(state)
+    try:
+        _, document = read_document(state)
+        accounts = document["accounts"]
+        active_id = document.get("active_account_id")
+        if account_id not in accounts:
+            raise AccountStateError(f"no account {account_id} in {state}; run `inspect` to list them")
+        if active_id is None:
+            raise AccountStateError("no active account to switch away from; use `adopt` instead")
+        if account_id == active_id:
+            raise AccountStateError(f"account {account_id} is already the active one")
+        preserved = preserve(state, "pre-switch")
+        accounts[account_id], accounts[active_id] = accounts[active_id], accounts[account_id]
+        # Tokens and hosts keep naming the UUID the client sends, which is
+        # exactly what should now resolve to the chosen save. Nothing moves.
+        encoded = (json.dumps(document, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        write_document(state, encoded)
+    finally:
+        lock.close()
+    return {
+        "status": "switched",
+        "nowActive": active_id,
+        "swappedWith": account_id,
+        "preservedPrimary": None if preserved is None else str(preserved.resolve()),
+        **summarize(state),
+    }
+
+
 def validate(path: Path) -> dict[str, Any]:
     """Report every invariant an edited save breaks, without changing it."""
     _, document = read_document(path)
@@ -310,6 +350,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     adopt_parser.add_argument("--to", dest="target_id", required=True)
     adopt_parser.add_argument("--yes", action="store_true")
     adopt_parser.add_argument("--force", action="store_true", help="discard progress already on --to")
+    switch_parser = subparsers.add_parser("switch", help="put the client on a different saved account")
+    switch_parser.add_argument("state", type=Path)
+    switch_parser.add_argument("--account", required=True, dest="account_id", help="the account to play")
+    switch_parser.add_argument("--yes", action="store_true")
     validate_parser = subparsers.add_parser("validate", help="check an edited save without changing anything")
     validate_parser.add_argument("state", type=Path)
     apply_parser = subparsers.add_parser("apply", help="replace the save with a validated edited copy")
@@ -333,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
             result = snapshot(args.state, args.output)
         elif args.command == "restore":
             result = restore(args.state, args.source, args.yes)
+        elif args.command == "switch":
+            result = switch(args.state, args.account_id, args.yes)
         elif args.command == "validate":
             result = validate(args.state)
         elif args.command == "apply":

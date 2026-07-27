@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from liminal_gate import account_state
+
 import json
 from pathlib import Path
 import tempfile
@@ -161,3 +163,88 @@ class AccountStateToolTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SwitchTest(unittest.TestCase):
+    """Choosing a save must be reversible; `adopt` is not.
+
+    `adopt` moves a save onto another UUID and discards what was there, which
+    is right for recovering from a reinstall and wrong for picking. `switch`
+    exchanges the two accounts instead, so switching back is the same command.
+    """
+
+    def _state(self, directory: Path, active: str = "uuid-C") -> Path:
+        def account(progress: int, name: str) -> dict:
+            return {
+                "username": name, "tutorial_phase": "free_roam",
+                "tutorial_requests": {"a": {}},
+                "userdata": {"progressCode": progress, "coins": 0, "chrdata": [{"id": 3}]},
+            }
+        path = directory / "bootstrap-state.json"
+        path.write_text(json.dumps({
+            "accounts": {"uuid-A": account(16777601, "Far"), "uuid-C": account(16777346, "Fresh")},
+            "active_account_id": active,
+            "tokens": {"tok": "uuid-C"}, "client_hosts": {"10.0.0.2": "uuid-C"},
+        }), encoding="utf-8")
+        return path
+
+    @staticmethod
+    def _active(path: Path) -> dict:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        return document["accounts"][document["active_account_id"]]
+
+    def test_the_chosen_save_becomes_the_one_the_client_sees(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            account_state.switch(state, "uuid-A", confirmed=True)
+            self.assertEqual(16777601, self._active(state)["userdata"]["progressCode"])
+
+    def test_the_displaced_save_survives(self) -> None:
+        # The whole point: picking is not destroying.
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            account_state.switch(state, "uuid-A", confirmed=True)
+            document = json.loads(state.read_text(encoding="utf-8"))
+            self.assertEqual(
+                16777346, document["accounts"]["uuid-A"]["userdata"]["progressCode"]
+            )
+            self.assertEqual({"uuid-A", "uuid-C"}, set(document["accounts"]))
+
+    def test_switching_twice_returns_to_the_start(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            before = state.read_text(encoding="utf-8")
+            account_state.switch(state, "uuid-A", confirmed=True)
+            account_state.switch(state, "uuid-A", confirmed=True)
+            self.assertEqual(json.loads(before), json.loads(state.read_text(encoding="utf-8")))
+
+    def test_tokens_and_hosts_are_untouched(self) -> None:
+        # They name the UUID the client sends, which must keep resolving.
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            account_state.switch(state, "uuid-A", confirmed=True)
+            document = json.loads(state.read_text(encoding="utf-8"))
+            self.assertEqual({"tok": "uuid-C"}, document["tokens"])
+            self.assertEqual({"10.0.0.2": "uuid-C"}, document["client_hosts"])
+            self.assertEqual("uuid-C", document["active_account_id"])
+
+    def test_preserves_the_previous_file_first(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            result = account_state.switch(state, "uuid-A", confirmed=True)
+            self.assertIsNotNone(result["preservedPrimary"])
+            self.assertTrue(Path(result["preservedPrimary"]).is_file())
+
+    def test_refuses_without_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            with self.assertRaisesRegex(account_state.AccountStateError, "requires --yes"):
+                account_state.switch(state, "uuid-A", confirmed=False)
+
+    def test_refuses_an_unknown_or_already_active_account(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            with self.assertRaisesRegex(account_state.AccountStateError, "no account"):
+                account_state.switch(state, "missing", confirmed=True)
+            with self.assertRaisesRegex(account_state.AccountStateError, "already the active"):
+                account_state.switch(state, "uuid-C", confirmed=True)

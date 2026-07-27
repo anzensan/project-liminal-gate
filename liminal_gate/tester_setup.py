@@ -623,13 +623,37 @@ def report_existing_accounts(data_directory: Path) -> None:
         print(f"  {marker}{account['accountId']}  {where}")
     if len(accounts) > 1:
         print("  (* is the account the client is currently signed into.)")
-        best = max(accounts, key=lambda value: value.get("progressCode") or 0)
-        if not best["active"] and (best.get("progressCode") or 0) > 0:
-            print(
-                f"  Note: {best['accountId']} has more progress than the active account."
-                " Reinstalling signs the client into a new one; re-point it with"
-                " `python3 -m liminal_gate.account_state adopt`."
-            )
+
+
+def offer_account_switch(data_directory: Path, ask: Callable[[str], str] = input) -> None:
+    """Offer to put the client on a different saved account before launching.
+
+    Reinstalling gives the client a new device UUID, so it signs into a fresh
+    account while the previous save sits in the same file. Choosing between
+    them is a local bookkeeping change, and the swap `switch` performs is
+    reversible, so this can be offered rather than left to a manual command.
+    """
+    state = data_directory / "bootstrap-state.json"
+    summary = account_state.summarize(state)
+    accounts = [value for value in (summary.get("accounts") or []) if value.get("played")]
+    if len(accounts) < 2 or not any(value["active"] for value in accounts):
+        return
+    active = next(value for value in accounts if value["active"])
+    others = [value for value in accounts if not value["active"]]
+    if not any((value.get("progressCode") or 0) > (active.get("progressCode") or 0) for value in others):
+        return
+    print("\nAnother saved account has more progress than the one the client is on.")
+    for index, account in enumerate(others, start=1):
+        print(f"  {index}) {account['accountId']}  {_progress_label(account.get('progressCode'))}")
+    print("  0) keep the current account")
+    raw = ask("Play a different account? Enter a number [0]: ").strip() or "0"
+    if not raw.isdecimal() or not 1 <= int(raw) <= len(others):
+        print("Keeping the current account.")
+        return
+    chosen = others[int(raw) - 1]
+    result = account_state.switch(state, chosen["accountId"], confirmed=True)
+    print(f"Now playing {_progress_label(chosen.get('progressCode'))}.")
+    print(f"The previous save is kept and can be switched back to. Backup: {result['preservedPrimary']}")
 
 
 def _progress_label(progress: object) -> str:
@@ -664,6 +688,8 @@ def main() -> int:
             return 0
         install_apk(adb, device, signed, replace_existing=args.replace_existing)
         report_existing_accounts(args.data_dir)
+        if args.configure and sys.stdin.isatty():
+            offer_account_switch(args.data_dir)
         print(f"\nInstalled on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,

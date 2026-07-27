@@ -322,6 +322,36 @@ local installation.
 | `--achievements` | the 8 settleable clear-chapter achievements, each paying 1 Energy and 1x item 50 |
 | `--summon-skills` | all 44 Battle Summon skill tiers across the 16 Summons, with their material costs |
 
+### Choosing which saved account to play
+
+An account is keyed by the client's device UUID, so clearing app data or
+reinstalling signs the client into a new, empty account while the previous save
+stays in the file. Guided setup lists what it finds before launching and, when
+another played account has more progress than the active one, offers to switch:
+
+```
+Another saved account has more progress than the one the client is on.
+  1) 4f2c...  unlocked chapter 6-1
+  0) keep the current account
+```
+
+Outside guided setup the same choice is one command, with the server stopped:
+
+```sh
+python3 -m liminal_gate.account_state inspect user-data/bootstrap-state.json
+python3 -m liminal_gate.account_state switch user-data/bootstrap-state.json \
+    --account <accountId> --yes
+```
+
+`switch` **exchanges** the chosen save with the active one, so nothing is
+destroyed and switching back is the same command with the other ID. A
+timestamped `.pre-switch` copy is written first.
+
+That is the difference between it and `adopt`, which moves a save onto another
+UUID and discards whatever was there. Use `adopt` to recover a save onto a
+reinstalled client permanently; use `switch` to choose between saves you intend
+to keep.
+
 ### If the game crashes at the title screen on a high-memory device
 
 A Unity 2017 IL2CPP build can fault on modern phones with a lot of RAM. The

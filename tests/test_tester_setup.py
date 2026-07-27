@@ -337,15 +337,16 @@ class AccountReportTest(unittest.TestCase):
             "userdata": {} if progress is None else {"progressCode": progress},
         }
 
-    def test_flags_an_account_with_more_progress_than_the_active_one(self) -> None:
+    def test_lists_every_account_and_marks_the_active_one(self) -> None:
+        # The listing reports; acting on it is the picker's job.
         output = self._report({
             "accounts": {"old": self._account(16777601), "new": self._account(16777346)},
             "active_account_id": "new", "tokens": {}, "client_hosts": {},
         })
         self.assertIn("unlocked chapter 6-1", output)
         self.assertIn("unlocked chapter 2-2", output)
-        self.assertIn("old has more progress", output)
-        self.assertIn("adopt", output)
+        self.assertIn("* new", output)
+        self.assertIn("signed into", output)
 
     def test_says_nothing_extra_for_a_single_account(self) -> None:
         output = self._report({
@@ -353,9 +354,9 @@ class AccountReportTest(unittest.TestCase):
             "active_account_id": "only", "tokens": {}, "client_hosts": {},
         })
         self.assertIn("unlocked chapter 6-1", output)
-        self.assertNotIn("more progress", output)
+        self.assertNotIn("signed into", output)
 
-    def test_does_not_nag_when_the_active_account_is_the_furthest(self) -> None:
+    def test_lists_without_advising_when_the_active_account_is_furthest(self) -> None:
         output = self._report({
             "accounts": {"old": self._account(16777346), "new": self._account(16777601)},
             "active_account_id": "new", "tokens": {}, "client_hosts": {},
@@ -375,3 +376,63 @@ class AccountReportTest(unittest.TestCase):
             with contextlib.redirect_stdout(stream):
                 tester_setup.report_existing_accounts(Path(directory))
             self.assertEqual("", stream.getvalue())
+
+
+class AccountSwitchPromptTest(unittest.TestCase):
+    """The picker only appears when it has something worth offering."""
+
+    def _run(self, accounts: dict, active: str, answer: str) -> tuple[str, dict]:
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            state = data / "bootstrap-state.json"
+            state.write_text(json.dumps({
+                "accounts": accounts, "active_account_id": active,
+                "tokens": {"t": active}, "client_hosts": {},
+            }), encoding="utf-8")
+            stream = io.StringIO()
+            with contextlib.redirect_stdout(stream):
+                tester_setup.offer_account_switch(data, ask=lambda _prompt: answer)
+            return stream.getvalue(), json.loads(state.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _account(progress: int, played: bool = True) -> dict:
+        return {
+            "username": "Player",
+            "tutorial_phase": "free_roam" if played else "initial",
+            "tutorial_requests": {"a": {}} if played else {},
+            "userdata": {"progressCode": progress},
+        }
+
+    def test_switches_to_the_chosen_account(self) -> None:
+        output, document = self._run(
+            {"far": self._account(16777601), "here": self._account(16777346)}, "here", "1",
+        )
+        self.assertIn("chapter 6-1", output)
+        self.assertEqual(16777601, document["accounts"]["here"]["userdata"]["progressCode"])
+        # Reversible: the displaced save is still there.
+        self.assertEqual(16777346, document["accounts"]["far"]["userdata"]["progressCode"])
+
+    def test_declining_changes_nothing(self) -> None:
+        for answer in ("0", "", "nonsense"):
+            with self.subTest(answer=answer):
+                _output, document = self._run(
+                    {"far": self._account(16777601), "here": self._account(16777346)}, "here", answer,
+                )
+                self.assertEqual(16777346, document["accounts"]["here"]["userdata"]["progressCode"])
+
+    def test_silent_when_the_active_account_is_already_furthest(self) -> None:
+        output, _document = self._run(
+            {"behind": self._account(16777346), "here": self._account(16777601)}, "here", "1",
+        )
+        self.assertEqual("", output)
+
+    def test_silent_with_a_single_account(self) -> None:
+        output, _document = self._run({"only": self._account(16777601)}, "only", "1")
+        self.assertEqual("", output)
+
+    def test_ignores_never_played_accounts(self) -> None:
+        # An untouched account is not a save worth offering.
+        output, _document = self._run(
+            {"empty": self._account(0, played=False), "here": self._account(16777346)}, "here", "1",
+        )
+        self.assertEqual("", output)
