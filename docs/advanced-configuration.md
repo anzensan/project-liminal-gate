@@ -322,6 +322,36 @@ local installation.
 | `--achievements` | the 8 settleable clear-chapter achievements, each paying 1 Energy and 1x item 50 |
 | `--summon-skills` | all 44 Battle Summon skill tiers across the 16 Summons, with their material costs |
 
+### If the game crashes at the title screen on a high-memory device
+
+A Unity 2017 IL2CPP build can fault on modern phones with a lot of RAM. The
+symptom is the app closing itself a few seconds after launch, and the device log
+shows Unity's own message just before a `signal 11 (Segmentation fault)`:
+
+```
+E Unity : Using memoryadresses from more that 16GB of memory
+```
+
+The game is not mis-signed or mis-patched when this happens; its 64-bit process
+is simply being handed an address the 2017 runtime cannot represent.
+
+A 32-bit process has a 4 GB address space and never produces one, and the APK
+ships both ABIs, so dropping the 64-bit tree sidesteps it:
+
+```sh
+python3 -m liminal_gate.apk_patcher \
+    --source-apk <your.apk> --patch-plan <plan.json> \
+    --output-apk patched.apk --drop-abi arm64-v8a
+```
+
+Nothing is lost by doing this. The server address lives in the ABI-independent
+metadata, and the other local edits are applied to both libraries, so the 32-bit
+build keeps every one of them. The archive is about 20 MB smaller. Align and
+sign the result as usual.
+
+The patcher refuses to drop an ABI the archive does not carry, and refuses to
+drop them all.
+
 ### Drop rates: no campaign doubling, deliberately
 
 The client's drop roll multiplies its recovered per-enemy percentage by a daily

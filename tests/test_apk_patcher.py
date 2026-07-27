@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import zipfile
 
-from liminal_gate.apk_patcher import PatchPlanError, apply_patch_plan, load_patch_plan
+from liminal_gate.apk_patcher import PatchPlan, PatchPlanError, apply_patch_plan, load_patch_plan, native_abis, sha256_file
 
 
 class ApkPatcherTest(unittest.TestCase):
@@ -56,3 +56,97 @@ class ApkPatcherTest(unittest.TestCase):
                 output,
                 load_patch_plan(self.write_plan(source_sha256, expected_hex="000000000000")),
             )
+
+
+class DropAbiTest(unittest.TestCase):
+    """Dropping an ABI is how the process bitness gets chosen from outside.
+
+    A Unity 2017 IL2CPP build faults on devices with enough RAM to hand it an
+    address it cannot represent; a 32-bit process has a 4 GB address space and
+    never produces one. Removing `lib/arm64-v8a/` leaves Android running the
+    remaining ABI.
+    """
+
+    def _archive(self, path: Path, members: dict[str, bytes]) -> None:
+        with zipfile.ZipFile(path, "w") as archive:
+            for name, payload in members.items():
+                archive.writestr(name, payload)
+
+    def _source(self, directory: Path) -> Path:
+        source = directory / "source.apk"
+        self._archive(source, {
+            "assets/bin/Data/Managed/Metadata/global-metadata.dat": b"ROUTINGDATA",
+            "lib/arm64-v8a/libil2cpp.so": b"AAAA",
+            "lib/armeabi-v7a/libil2cpp.so": b"BBBB",
+            "classes.dex": b"DEX",
+        })
+        return source
+
+    #: The plan schema requires at least one patch, so cases that are not about
+    #: patching use this identity edit on a member no ABI drop can remove.
+    KEEPALIVE = {"member": "classes.dex", "offset": 0, "expected_hex": "444558", "replacement_hex": "444558"}
+
+    def _plan(self, directory: Path, source: Path, patches: list[dict]) -> PatchPlan:
+        document = {
+            "schema_version": 1,
+            "source_sha256": sha256_file(source),
+            "patches": patches or [self.KEEPALIVE],
+        }
+        path = directory / "plan.json"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        return load_patch_plan(path)
+
+    def test_reports_the_abis_a_source_carries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(("arm64-v8a", "armeabi-v7a"), native_abis(self._source(Path(directory))))
+
+    def test_drops_only_the_named_tree_and_keeps_everything_else(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self._source(root)
+            output = root / "out.apk"
+            apply_patch_plan(source, output, self._plan(root, source, []), drop_abis=("arm64-v8a",))
+            with zipfile.ZipFile(output) as archive:
+                names = set(archive.namelist())
+            self.assertNotIn("lib/arm64-v8a/libil2cpp.so", names)
+            self.assertIn("lib/armeabi-v7a/libil2cpp.so", names)
+            # The routing literals live here, so a 32-bit build keeps them.
+            self.assertIn("assets/bin/Data/Managed/Metadata/global-metadata.dat", names)
+            self.assertIn("classes.dex", names)
+
+    def test_discards_patches_aimed_at_a_dropped_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self._source(root)
+            patches = [
+                {"member": "lib/arm64-v8a/libil2cpp.so", "offset": 0, "expected_hex": "41414141", "replacement_hex": "5a5a5a5a"},
+                {"member": "lib/armeabi-v7a/libil2cpp.so", "offset": 0, "expected_hex": "42424242", "replacement_hex": "59595959"},
+            ]
+            output = root / "out.apk"
+            apply_patch_plan(source, output, self._plan(root, source, patches + [self.KEEPALIVE]), drop_abis=("arm64-v8a",))
+            with zipfile.ZipFile(output) as archive:
+                self.assertEqual(b"YYYY", archive.read("lib/armeabi-v7a/libil2cpp.so"))
+
+    def test_refuses_to_drop_every_abi(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self._source(root)
+            with self.assertRaisesRegex(PatchPlanError, "no native code"):
+                apply_patch_plan(source, root / "out.apk", self._plan(root, source, []),
+                                 drop_abis=("arm64-v8a", "armeabi-v7a"))
+
+    def test_refuses_an_abi_the_source_does_not_carry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self._source(root)
+            with self.assertRaisesRegex(PatchPlanError, "no native code for"):
+                apply_patch_plan(source, root / "out.apk", self._plan(root, source, []), drop_abis=("x86",))
+
+    def test_dropping_nothing_leaves_the_archive_intact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self._source(root)
+            output = root / "out.apk"
+            apply_patch_plan(source, output, self._plan(root, source, []))
+            with zipfile.ZipFile(source) as a, zipfile.ZipFile(output) as b:
+                self.assertEqual(set(a.namelist()), set(b.namelist()))

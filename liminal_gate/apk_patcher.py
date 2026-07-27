@@ -17,10 +17,28 @@ import zipfile
 
 PATCH_PLAN_SCHEMA_VERSION = 1
 SIGNATURE_SUFFIXES = (".EC", ".RSA", ".DSA", ".SF")
+NATIVE_LIBRARY_PREFIX = "lib/"
 
 
 class PatchPlanError(ValueError):
     """A supplied patch plan is malformed or does not match the source APK."""
+
+
+def native_abis(source_apk: Path) -> tuple[str, ...]:
+    """Return the ABI directory names the archive carries native code for."""
+    with zipfile.ZipFile(source_apk) as source:
+        return tuple(sorted({
+            abi for abi in (_member_abi(info.filename) for info in source.infolist()) if abi
+        }))
+
+
+def _member_abi(member: str) -> str | None:
+    """Return the ABI a `lib/<abi>/...` member belongs to, if it is one."""
+    if not member.startswith(NATIVE_LIBRARY_PREFIX):
+        return None
+    remainder = member[len(NATIVE_LIBRARY_PREFIX):]
+    abi, separator, _ = remainder.partition("/")
+    return abi if separator and abi else None
 
 
 @dataclass(frozen=True)
@@ -61,14 +79,39 @@ def load_patch_plan(path: Path) -> PatchPlan:
     return PatchPlan(source_sha256, tuple(_parse_patch(item) for item in raw_patches))
 
 
-def apply_patch_plan(source_apk: Path, output_apk: Path, plan: PatchPlan) -> None:
-    """Create an unsigned patched APK from local source material and a plan."""
+def apply_patch_plan(
+    source_apk: Path, output_apk: Path, plan: PatchPlan, drop_abis: tuple[str, ...] = (),
+) -> None:
+    """Create an unsigned patched APK from local source material and a plan.
+
+    `drop_abis` removes whole `lib/<abi>/` trees.  Android then runs the app
+    against whichever ABI remains, which is the only way to choose the process
+    bitness from outside the app: dropping `arm64-v8a` from a dual-ABI archive
+    leaves a 32-bit process, whose 4 GB address space cannot reach the
+    addresses this Unity 2017 build faults on when a device has enough RAM to
+    hand it something larger.
+
+    Patches aimed at a dropped tree are discarded with it, which is safe here
+    and checked below: the routing literals live in the ABI-independent
+    metadata, so the remaining library keeps every edit that matters.
+    """
     if source_apk.resolve() == output_apk.resolve():
         raise PatchPlanError("output APK must differ from source APK")
     if sha256_file(source_apk) != plan.source_sha256:
         raise PatchPlanError("source APK SHA-256 does not match patch plan")
+    if drop_abis:
+        available = native_abis(source_apk)
+        unknown = sorted(set(drop_abis) - set(available))
+        if unknown:
+            raise PatchPlanError(f"source APK has no native code for: {unknown}")
+        if not set(available) - set(drop_abis):
+            raise PatchPlanError(
+                "dropping every ABI would leave no native code; the app could not start"
+            )
     patches_by_member: dict[str, list[BinaryPatch]] = {}
     for patch in plan.patches:
+        if _member_abi(patch.member) in drop_abis:
+            continue
         patches_by_member.setdefault(patch.member, []).append(patch)
     output_apk.parent.mkdir(parents=True, exist_ok=True)
     seen_members: set[str] = set()
@@ -77,6 +120,8 @@ def apply_patch_plan(source_apk: Path, output_apk: Path, plan: PatchPlan) -> Non
     ) as output:
         for source_info in source.infolist():
             if _is_signature_member(source_info.filename):
+                continue
+            if _member_abi(source_info.filename) in drop_abis:
                 continue
             data = source.read(source_info.filename)
             for patch in patches_by_member.get(source_info.filename, []):
@@ -149,15 +194,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-apk", required=True, type=Path)
     parser.add_argument("--patch-plan", required=True, type=Path)
     parser.add_argument("--output-apk", required=True, type=Path)
+    parser.add_argument(
+        "--drop-abi", action="append", default=[], metavar="ABI",
+        help="remove a lib/<ABI>/ tree; drop arm64-v8a to run the app as a 32-bit process",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
-        apply_patch_plan(args.source_apk, args.output_apk, load_patch_plan(args.patch_plan))
+        apply_patch_plan(
+            args.source_apk, args.output_apk, load_patch_plan(args.patch_plan),
+            tuple(args.drop_abi),
+        )
     except (OSError, PatchPlanError, zipfile.BadZipFile) as error:
         raise SystemExit(f"patch failed: {error}") from error
+    if args.drop_abi:
+        print(f"dropped native code for: {', '.join(sorted(set(args.drop_abi)))}")
     print(f"wrote unsigned patched APK: {args.output_apk}")
     return 0
 
