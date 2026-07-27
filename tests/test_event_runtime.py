@@ -45,9 +45,11 @@ class EventRuntimeTest(unittest.TestCase):
                 server.shutdown(); thread.join(); server.server_close()
             self.assertEqual(200, response.status)
             self.assertTrue(payload["success"])
-            self.assertEqual(0.0, payload["refillStartTime"])
+            # Entry debits the stamina meter, so the fill origin moves off zero.
+            self.assertGreater(payload["refillStartTime"], 0.0)
+            # Entry moved the stamina meter, so the Energy wallet is intact.
             self.assertEqual(
-                85,
+                100,
                 server.state.accounts["account"]["userdata"]["energy"],
             )
             self.assertEqual(200, reenter.status)
@@ -289,10 +291,12 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             start,
         )
         self.assertEqual((200, True), (status, started["success"]))
-        self.assertEqual((7, 0), (
+        # Entry debits the stamina meter, never the Energy wallet.
+        self.assertEqual((20, 2), (
             self.account()["userdata"]["energy"],
             self.account()["userdata"]["freeEnergy"],
         ))
+        self.assertGreater(self.account()["userdata"]["refillStartTime"], 0.0)
         # A different request id for the same active stage is an accepted retry,
         # but it cannot debit the entry a second time.
         self.assertEqual(
@@ -302,7 +306,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 start,
             )[0],
         )
-        self.assertEqual(7, self.account()["userdata"]["energy"])
+        self.assertEqual(20, self.account()["userdata"]["energy"])
 
         self.restart()
         status, refused = self.post(

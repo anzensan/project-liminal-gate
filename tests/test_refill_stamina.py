@@ -5,6 +5,7 @@ from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
@@ -29,8 +30,12 @@ class RefillStaminaTest(unittest.TestCase):
                 return response.status, payload
 
             try:
+                # An origin at "now" is a meter that has refilled nothing yet,
+                # which is the only state a refill is for.  A fixed early origin
+                # would instead read as a bar that filled to its maximum years
+                # ago; see `stamina_meter.current_stamina`.
                 server.state.create_account("token", "account", {
-                    "refillStartTime": 1.0,
+                    "refillStartTime": time.time(),
                     "freeEnergy": 1,
                     "energy": 3,
                     "energyAppStore": 4,
@@ -67,7 +72,7 @@ class RefillStaminaTest(unittest.TestCase):
                 restarted.state.create_account(
                     "poor",
                     "poor-account",
-                    {"refillStartTime": 1.0},
+                    {"refillStartTime": time.time()},
                     client_host="127.0.0.1",
                 )
                 connection = HTTPConnection(*restarted.server_address)

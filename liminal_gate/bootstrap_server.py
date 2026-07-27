@@ -35,7 +35,9 @@ except ImportError:  # pragma: no cover - exercised on Windows only
     msvcrt = None
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+from liminal_gate.archive_economy import award_chapter_energy, award_stage_energy
 from liminal_gate.resource_catalog import ResourceCatalog, ResourceCatalogError, load_resource_catalog
+from liminal_gate.stamina_meter import chapter_for_progress, current_stamina, max_stamina_for_chapter, spend_stamina
 from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogError, build_bundled_companion_policy, load_companion_catalog
 from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog, CompanionStrengthenCatalogError, build_bundled_companion_strengthen_policy, load_companion_strengthen_catalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
@@ -690,11 +692,14 @@ class BootstrapState:
             if _parse_refill_stamina(body) != 1:
                 return "unsupported_refill_stamina", None
             data = account["userdata"]
-            # `0.0` is the client-visible local representation for a full
-            # stamina meter.  The retired service's actual meter calculation
-            # is not recovered, so a nonzero user-local refill origin means
-            # this account needs a refill; it is not inferred from wallets.
-            if data.get("refillStartTime") == 0.0:
+            # `RefillStaminaErrorCode.NoNeedToRefill`.  Comparing the derived
+            # meter rather than the raw origin matters once entry actually
+            # debits stamina: an origin left nonzero by an earlier quest refills
+            # on its own over time, and charging an Energy to "refill" a bar
+            # that already reached its maximum would quietly waste it.
+            chapter = chapter_for_progress(int(data.get("progressCode", 0)))
+            origin = float(data.get("refillStartTime", 0.0))
+            if current_stamina(origin, chapter, time.time()) >= max_stamina_for_chapter(chapter):
                 payload = {"success": False, "errorCode": 1}
             else:
                 free, energy = int(data.get("freeEnergy", 0)), int(data.get("energy", 0))
@@ -1720,8 +1725,10 @@ class BootstrapState:
 
     def apply_hunting_start(
         self, token: str, request_id: str, body: bytes, catalog: HuntingCatalog,
+        now: float | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Authorise and charge one cataloged local Hunting entry."""
+        now = time.time() if now is None else now
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
             if account is None:
@@ -1752,7 +1759,7 @@ class BootstrapState:
             identity = {"chapter": stage.chapter, "section": stage.section}
             if phase == "hunting_active" and active == identity:
                 # A retry under a *new* request id must not charge again.
-                payload = _canonical_payload({"success": True, "refillStartTime": 0.0})
+                payload = _canonical_payload({"success": True, "refillStartTime": float(userdata.get("refillStartTime", 0.0))})
                 requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
@@ -1764,7 +1771,7 @@ class BootstrapState:
             items = userdata.get("itemList")
             if not isinstance(items, list) or len(items) != catalog.item_slots or any(type(value) is not int for value in items):
                 return "unsupported_hunting_start", None
-            energy, free_energy, coins = (int(userdata.get(name, 0)) for name in ("energy", "freeEnergy", "coins"))
+            coins = int(userdata.get("coins", 0))
             held = items[stage.entry_item_id - 1] if stage.entry_item_id else 0
             # A ticket is an alternative to stamina, so holding none is not a
             # failure: the entry falls back to the stamina cost the client
@@ -1772,13 +1779,15 @@ class BootstrapState:
             # addition* to stamina can refuse for want of the item.
             spends_ticket = stage.ticket_optional and held >= stage.entry_item_count
             stamina_due = 0 if spends_ticket else stage.stamina
-            if coins < stage.coins or energy + free_energy < stamina_due:
+            origin = spend_stamina(
+                float(userdata.get("refillStartTime", 0.0)), stamina_due,
+                chapter_for_progress(int(userdata.get("progressCode", 0))), now,
+            )
+            if coins < stage.coins or origin is None:
                 return "success", _canonical_payload({"success": False, "errorCode": 1})
             if stage.entry_item_id and not stage.ticket_optional and held < stage.entry_item_count:
                 return "success", _canonical_payload({"success": False, "errorCode": 2})
-            free_spend = min(free_energy, stamina_due)
-            userdata["freeEnergy"] = free_energy - free_spend
-            userdata["energy"] = energy - (stamina_due - free_spend)
+            userdata["refillStartTime"] = origin
             userdata["coins"] = coins - stage.coins
             if stage.entry_item_id and (spends_ticket or not stage.ticket_optional):
                 items[stage.entry_item_id - 1] = held - stage.entry_item_count
@@ -1791,7 +1800,7 @@ class BootstrapState:
             # spend. Retain the entry choice so only that one stale slot can be
             # reconciled at clear time; stamina fallback must remain exact.
             account["active_hunt_ticket_spent"] = spends_ticket
-            payload = _canonical_payload({"success": True, "refillStartTime": 0.0})
+            payload = _canonical_payload({"success": True, "refillStartTime": origin})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -1859,6 +1868,9 @@ class BootstrapState:
             account["tutorial_phase"] = "free_roam"
             account["active_hunt"] = None
             account["active_hunt_ticket_spent"] = None
+            # Preservation income; see `archive_economy`.
+            award_stage_energy(account, "hunting", *identity)
+            userdata["valuables"]["freeEnergy"] = int(userdata.get("freeEnergy", 0))
             payload = _canonical_payload({
                 "success": True, "lastupdate": 1.0, "sentMessage": False,
                 "coins": expected_coins, "freeEnergy": int(userdata.get("freeEnergy", 0)),
@@ -1876,9 +1888,10 @@ class BootstrapState:
 
     def apply_generic_story_start(
         self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog | EventCatalog,
-        settlement_catalog: SettlementCatalog | None = None,
+        settlement_catalog: SettlementCatalog | None = None, now: float | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Start one catalog-declared local story stage after the tutorial."""
+        now = time.time() if now is None else now
         with self.lock:
             account_id = self.tokens.get(token)
             account = self.accounts.get(account_id)
@@ -1917,27 +1930,39 @@ class BootstrapState:
                 account.setdefault("tutorial_phase", "initial") == "generic_story_active"
                 and account.get("active_generic_story") == identity
             ):
-                payload = {"success": True, "refillStartTime": 0.0}
+                # A fresh request id for the stage already active is a retry,
+                # so it reports the meter without debiting it a second time.
+                payload = {"success": True, "refillStartTime": float(userdata.get("refillStartTime", 0.0))}
                 requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
             if account["tutorial_phase"] != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
-            if event:
-                energy, free_energy, coins = (
-                    int(userdata.get(name, 0))
-                    for name in ("energy", "freeEnergy", "coins")
+            # Entry debits the stamina meter, never the Energy wallet.  The two
+            # are different currencies: `refillStartTime` is a fill origin the
+            # client turns back into a bar (see `stamina_meter`), while Energy
+            # is the premium balance Pacts and refills spend.  A catalog that
+            # declares no cost defers to the cost the client itself submitted,
+            # matching how a dynamic catalog already defers on clear coins.
+            stamina_cost = stage.stamina if stage.stamina is not None else values["stamina"]
+            # Coins are asymmetric with stamina on purpose.  Stamina refills on
+            # its own, so honouring a client-declared cost the catalog does not
+            # know costs a tester minutes at worst.  Coins are durable and have
+            # no such floor, so an undeclared coin cost is charged as zero
+            # rather than on the client's word.
+            coin_cost = stage.coins if stage.coins is not None else 0
+            origin = spend_stamina(
+                float(userdata.get("refillStartTime", 0.0)), stamina_cost,
+                chapter_for_progress(int(userdata.get("progressCode", 0))), now,
+            )
+            if origin is None or int(userdata.get("coins", 0)) < coin_cost:
+                return "success", _canonical_payload(
+                    {"success": False, "errorCode": 1}
                 )
-                if energy + free_energy < stage.stamina or coins < stage.coins:
-                    return "success", _canonical_payload(
-                        {"success": False, "errorCode": 1}
-                    )
-                free_spend = min(free_energy, stage.stamina)
-                userdata["freeEnergy"] = free_energy - free_spend
-                userdata["energy"] = energy - (stage.stamina - free_spend)
-                userdata["coins"] = coins - stage.coins
-                _synchronize_wallet_projection(userdata)
-            payload = {"success": True, "refillStartTime": 0.0}
+            userdata["refillStartTime"] = origin
+            userdata["coins"] = int(userdata.get("coins", 0)) - coin_cost
+            _synchronize_wallet_projection(userdata)
+            payload = {"success": True, "refillStartTime": origin}
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity
             requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
@@ -2029,6 +2054,14 @@ class BootstrapState:
             })
             if buddy_info is not None:
                 userdata["buddyInfo"] = buddy_info
+            # Preservation income; see `archive_economy`.  The wallet projection
+            # is resynchronised afterwards so the client's nested `valuables`
+            # copy carries the new balance rather than the pre-clear one.
+            award_stage_energy(account, "event" if event else "story", *identity)
+            if dynamic and stage.chapter_boundary:
+                award_chapter_energy(account, stage.chapter)
+            canonical_valuables["freeEnergy"] = int(userdata.get("freeEnergy", 0))
+            userdata["valuables"] = canonical_valuables
             if event:
                 by_id = {row.get("id"): row for row in userdata["chrdata"] if isinstance(row, dict)}
                 for character_id in stage.character_ids:

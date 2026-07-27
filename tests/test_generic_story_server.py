@@ -69,7 +69,8 @@ class GenericStoryServerTest(unittest.TestCase):
         path = f"/gd/start_quest?otk={self.token}&requestID=start-2-2"
         status, started = self.post(path, start)
         self.assertEqual(200, status)
-        self.assertEqual(0.0, started["refillStartTime"])
+        # Entry debits the stamina meter, so the fill origin moves off zero.
+        self.assertGreater(started["refillStartTime"], 0.0)
         status, replay = self.post(path, start)
         self.assertEqual(200, status)
         self.assertEqual(started["refillStartTime"], replay["refillStartTime"])
@@ -113,7 +114,8 @@ class GenericStoryServerTest(unittest.TestCase):
         userdata = persisted["accounts"][self.account_id]["userdata"]
         self.assertEqual(16777347, userdata["progressCode"])
         self.assertEqual(140, userdata["coins"])
-        self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 140}, userdata["valuables"])
+        # `freeEnergy` carries the preservation stage award; see `archive_economy`.
+        self.assertEqual({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 2, "energyGooglePlay": 0, "coins": 140}, userdata["valuables"])
         self.assertEqual("free_roam", persisted["accounts"][self.account_id]["tutorial_phase"])
 
     def test_clear_keeps_a_grant_the_client_had_not_read_back(self) -> None:

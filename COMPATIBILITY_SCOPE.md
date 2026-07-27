@@ -32,13 +32,13 @@ only this bootstrap and initial-account boundary:
 | Chapter 1-4 start/clear | `POST /gd/start_quest`, `POST /gd/clear_quest` | Exact five-field section-4 start followed by confirmed structural clear grammar. | Minimal signed start callback; clear records progress `16777285`, coins, and `sentMessage:false`. |
 | Chapter 1-5 start/clear | `POST /gd/start_quest`, `POST /gd/clear_quest` | Exact five-field section-5 start followed by confirmed structural clear grammar. | Minimal signed start callback; clear records progress `50331777`, coins, and `sentMessage:false`. |
 | Final tutorial map write | `POST /gd/userdata` | Requires exact `progressCode=16777345`, `worldMapNo=0`, `lastUpdate=1` after Chapter 1-5 clear. | Signed `lastupdate: 1.0`; atomically records free-roam progress. |
-| Chapter 2-1 start | `POST /gd/start_quest` | Requires exact five-field Chapter 2 section-1 form after free-roam unlock. | Signed `success: true` and JSON-double `refillStartTime: 0.0`; atomically records active battle phase. |
+| Chapter 2-1 start | `POST /gd/start_quest` | Requires exact five-field Chapter 2 section-1 form after free-roam unlock. | Signed `success: true` and the account's post-spend `refillStartTime`; debits the stamina meter and atomically records active battle phase. |
 | Chapter 2-1 clear | `POST /gd/clear_quest` | Requires the confirmed ordered ten-field Chapter 2 section-1 clear grammar. | Signed `lastupdate: 1.0` and `sentMessage:false`; atomically records reviewed progress/coins. |
-| Built-in ordinary core story | `POST /gd/start_quest`, `POST /gd/clear_quest`, `POST /gd/userdata` | Requires `--core-story`, the recovered ordered Chapter 2-42 identity sequence, normal generic forms, and in-order progression. The client provides nonnegative stamina/coin start fields and reported local clear result. | Signed generic start/clear/map-reveal callbacks with durable ordered progress and replay/collision protection. This is local progression policy; it does not certify historical costs, rewards, drops, or scripted-stage outcomes. |
+| Built-in ordinary core story | `POST /gd/start_quest`, `POST /gd/clear_quest`, `POST /gd/userdata` | Requires `--core-story`, the recovered ordered Chapter 2-42 identity sequence, normal generic forms, and in-order progression. The client provides nonnegative stamina/coin start fields and reported local clear result. | Signed generic start/clear/map-reveal callbacks with durable ordered progress and replay/collision protection. Entry debits the stamina meter at the cost the client declares; an undeclared coin cost is charged as zero. Clears pay preservation Energy. This is local progression policy; it does not certify historical costs, rewards, drops, or scripted-stage outcomes. |
 | Derived Chapter 2--42 story | `POST /gd/start_quest`, `POST /gd/clear_quest` | Requires `--story-progression-catalog`, an ordered locally derived stage, the exact generic form, and request identity. Skipped stages are rejected; cleared stages may replay without regressing progress. | Signed start/clear callbacks; commits computed packed progress and the trusted-local reported battle-coin delta with replay/collision/restart protection. |
 | Derived chapter map reveal | `POST /gd/userdata` | Requires `--story-progression-catalog`, a pending derived chapter-boundary flag, and exact ordered `progressCode`, `worldMapNo`, `lastUpdate` form. | Signed `success:true,lastupdate:1.0`; atomically clears the one-shot reveal bit with replay/collision/restart protection. |
 | Generic-story Continue | `POST /gd/continue` | Requires an active catalog-declared generic story battle, request identity, and exact `cost=1` (optional trailing `lastUpdate`). | Signed `success:true`, integer `energy`, and integer `freeEnergy`; atomically debits the profile-declared 100 local coins. |
-| Stamina refill | `POST /gd/refill_stamina` | Requires request identity and exact one-field `cost=1`, with the client's trailing `lastUpdate` tolerated. A local account needs refill only when `userdata.refillStartTime` is nonzero. | Signed full callback (`refillStartTime`, four Energy projections, `freeEnergy`, `bonusStamina`) or signed `success:false,errorCode:1|2`; commits/replays atomically. |
+| Stamina refill | `POST /gd/refill_stamina` | Requires request identity and exact one-field `cost=1`, with the client's trailing `lastUpdate` tolerated. A local account needs refill only when its derived stamina is below the chapter maximum. | Signed full callback (`refillStartTime`, four Energy projections, `freeEnergy`, `bonusStamina`) or signed `success:false,errorCode:1|2`; commits/replays atomically. |
 | Timed Metal Zone opening | `POST /gd/unlock_metal_zone` | Requires request identity and the recovered empty POST body. | Signed local `metalZoneUnlockTime` JSON-double plus five Energy projections, or signed `success:false,errorCode:2`; commits/replays atomically. One-hour duration/all-zone scope are local preservation policy. |
 | Catalog-gated achievement claim | `POST /gd/achived` | Requires `--achievement-catalog`, request identity, and exact ordered `id`, `lastUpdate=1` fields. Stored local progress must exceed the operator-declared chapter threshold; each local ID is one-shot. | Signed local `achivementFlags`, free Energy, coins, and item projection; commits/replays atomically. Unknown/ineligible claims deliberately return `409 invalid_local_achievement`. |
 | Catalog-gated inbox lifecycle | Login `messageList`; `POST /gd/read_messages`, `POST /gd/delete_messages` | Requires `--message-catalog`; Login uses recovered nested 13-key messages. Mutations require unique JSON `idlist` and optional nonnegative trailing `lastUpdate`. | Read returns the complete client-required local reload projection and commits local rewards once; delete removes only read entries. Both commit/replay atomically. Gifts, character/summon/title/Companion rewards remain unsupported. |
@@ -119,10 +119,22 @@ distinct request. The file is not a session or cookie store.
   unavailable. The active-battle guard and 100-coin debit are explicit local
   preservation policy, not recovered historic wallet behavior.
 - The stamina-refill route, exact canonical `cost` form, seven successful
-  callback keys, and error codes 1/2 are static-confirmed. The local
-  full-meter marker and free-first wallet selection are preservation policy;
-  historic recharge timing and platform-wallet billing behavior are not
-  recovered.
+  callback keys, and error codes 1/2 are static-confirmed. Platform-wallet
+  billing behavior is not recovered.
+- The stamina meter is confirmed. `GameManager.CalcStamina` (ARM64 `0xD9CFC0`)
+  derives the bar from one Unix-seconds fill origin, `UserData.refillStartTime`,
+  as `min((now - origin) / refillInterval, GetMaxStamina()) + bonusStamina`, and
+  `UserData.GetMaxStamina` (`0x19D8BDC`) is a two-branch single-precision curve
+  on the account's chapter scaled by `MaxStaminaBias`, which defaults to 100
+  when the server omits it (`0x19D57AC`). A zero origin therefore means a full
+  meter, not an unset field. Stamina and Energy are separate currencies: quest
+  entry debits the meter, never the Energy wallet.
+- Per-stage and per-chapter Energy income on clear is **local preservation
+  policy, not recovered service behavior**. The retired service sold Energy and
+  gifted it through campaigns and operator mail, none of which this archive can
+  reproduce, and nothing in the client mints it. Without a replacement an
+  account can only ever lose Energy. See `liminal_gate/archive_economy.py` for
+  the rates and the replay-safety argument.
 - The status-up route's field order, item effects, caps, error enum, and
   callback field types are static-confirmed. The supplied catalog, complete
   roster projection, and request-ID cache are user-local preservation policy;

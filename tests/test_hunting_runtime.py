@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from http.client import HTTPConnection
 from pathlib import Path
@@ -161,8 +162,12 @@ class HuntingRuntimeTest(unittest.TestCase):
 
     def clear(self, request_id: str, chapter: int, section: int, *, coins: int = 0,
               items: dict | None = None, item_list: list | None = None, exp: int = 0,
-              buddies: list | None = None) -> tuple[int, dict]:
-        userdata = self.userdata()
+              buddies: list | None = None, snapshot: dict | None = None) -> tuple[int, dict]:
+        # A real retry resends the body it sent the first time.  Rebuilding it
+        # from live userdata would instead echo the Energy the first clear
+        # granted, producing a different body and so a cache miss rather than
+        # the replay the caller is asserting; pass `snapshot` to pin it.
+        userdata = self.userdata() if snapshot is None else snapshot
         return self.post("/gd/clear_quest", request_id, [
             ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
             ("valuables", json.dumps({
@@ -184,19 +189,20 @@ class HuntingRuntimeTest(unittest.TestCase):
     def test_stage_charges_stamina_settles_within_bounds_and_survives_restart(self) -> None:
         status, started = self.start("hunt-start", 1001, 1, 3)
         self.assertEqual((200, True), (status, started["success"]))
-        # Free Energy is spent before paid Energy, as elsewhere in the wallet.
-        self.assertEqual((0, 39), (self.userdata()["freeEnergy"], self.userdata()["energy"]))
+        # Entry debits the stamina meter, not the Energy wallet.
+        self.assertEqual((2, 40), (self.userdata()["freeEnergy"], self.userdata()["energy"]))
         self.assertEqual("hunting_active", self.phase())
 
         self.restart()
-        status, cleared = self.clear("hunt-clear", 1001, 1, items={"2": 4}, item_list=[0, 5, 0, 0, 2, 0, 0, 0])
+        snapshot = copy.deepcopy(self.userdata())
+        status, cleared = self.clear("hunt-clear", 1001, 1, items={"2": 4}, item_list=[0, 5, 0, 0, 2, 0, 0, 0], snapshot=snapshot)
         self.assertEqual(200, status, cleared)
         self.assertEqual([0, 5, 0, 0, 2, 0, 0, 0], self.userdata()["itemList"])
         self.assertEqual("free_roam", self.phase())
         # Settling a Hunting stage never moves story progress.
         self.assertEqual(PROGRESS, self.userdata()["progressCode"])
 
-        self.assertEqual((status, cleared), self.clear("hunt-clear", 1001, 1, items={"2": 4}, item_list=[0, 5, 0, 0, 2, 0, 0, 0]))
+        self.assertEqual((status, cleared), self.clear("hunt-clear", 1001, 1, items={"2": 4}, item_list=[0, 5, 0, 0, 2, 0, 0, 0], snapshot=snapshot))
         self.restart()
         self.assertEqual([0, 5, 0, 0, 2, 0, 0, 0], self.userdata()["itemList"])
 
@@ -326,8 +332,8 @@ class HuntingRuntimeTest(unittest.TestCase):
             self.server.state._persist_locked()
         status, started = self.start_with_ticket("metal-stamina", 3000, 11, 4)
         self.assertEqual((200, True), (status, started["success"]))
-        # Two free Energy first, then the remaining two from paid Energy.
-        self.assertEqual((0, 38), (self.userdata()["freeEnergy"], self.userdata()["energy"]))
+        # Entry debits the stamina meter, so the Energy wallet is untouched.
+        self.assertEqual((2, 40), (self.userdata()["freeEnergy"], self.userdata()["energy"]))
         self.assertEqual([0, 1, 0, 0, 0, 0, 0, 0], self.userdata()["itemList"])
         # Stamina fallback did not consume a ticket, so a clear cannot claim
         # that the client is merely repeating a pre-entry ticket balance.
@@ -353,9 +359,10 @@ class HuntingRuntimeTest(unittest.TestCase):
             )
 
         self.restart()
+        snapshot = copy.deepcopy(self.userdata())
         status, cleared = self.clear(
             "metal-stale-ticket-clear", 3000, 11,
-            exp=1000, buddies=[11], item_list=pre_entry,
+            exp=1000, buddies=[11], item_list=pre_entry, snapshot=snapshot,
         )
         self.assertEqual(200, status, cleared)
         self.assertEqual(1, self.userdata()["itemList"][4])
@@ -367,7 +374,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             (status, cleared),
             self.clear(
                 "metal-stale-ticket-clear", 3000, 11,
-                exp=1000, buddies=[11], item_list=pre_entry,
+                exp=1000, buddies=[11], item_list=pre_entry, snapshot=snapshot,
             ),
         )
         self.restart()
@@ -375,7 +382,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             (status, cleared),
             self.clear(
                 "metal-stale-ticket-clear", 3000, 11,
-                exp=1000, buddies=[11], item_list=pre_entry,
+                exp=1000, buddies=[11], item_list=pre_entry, snapshot=snapshot,
             ),
         )
         self.assertEqual(1, self.userdata()["itemList"][4])
