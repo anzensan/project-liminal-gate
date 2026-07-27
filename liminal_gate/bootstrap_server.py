@@ -33,7 +33,7 @@ try:  # Windows advisory locking
     import msvcrt
 except ImportError:  # pragma: no cover - exercised on Windows only
     msvcrt = None
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from liminal_gate.resource_catalog import ResourceCatalog, ResourceCatalogError, load_resource_catalog
 from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogError, build_bundled_companion_policy, load_companion_catalog
@@ -1629,20 +1629,8 @@ class BootstrapState:
             cached = requests.get(_replay_key(request_id, body))
             if cached is not None:
                 return (("replay", _canonical_payload(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None))
-            userdata = account["userdata"]
-            buddy_info = userdata.get("buddyInfo")
-            owned = buddy_info.get("list") if isinstance(buddy_info, dict) else None
-            if not isinstance(owned, list):
+            if not _apply_companion_delta(account["userdata"], submitted):
                 return "unsupported_companion_userdata", None
-            current = {companion.get("iid"): companion for companion in owned if isinstance(companion, dict) and type(companion.get("iid")) is int}
-            if len(current) != len(owned) or not submitted or any(companion["iid"] not in current or any(companion[name] != current[companion["iid"]].get(name) for name in ("bid", "lv", "date", "iid", "exp", "chrID")) or companion["flag"] & ~0x3 or (current[companion["iid"]].get("flag", 0) & 1 and not companion["flag"] & 1) for companion in submitted):
-                return "unsupported_companion_userdata", None
-            candidates = copy.deepcopy(owned)
-            updates = {companion["iid"]: companion for companion in submitted}
-            for index, companion in enumerate(candidates):
-                if companion["iid"] in updates:
-                    candidates[index] = copy.deepcopy(updates[companion["iid"]])
-            userdata["buddyInfo"] = _companion_info(candidates)
             payload = {"success": True, "lastupdate": 1.0}
             payload = _canonical_payload(payload)
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
@@ -1651,7 +1639,7 @@ class BootstrapState:
 
     def update_character_userdata(
         self, token: str, request_id: str, body: bytes, characters: list[dict[str, Any]] | None,
-        party: dict[str, Any] | None = None,
+        party: dict[str, Any] | None = None, companions: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Persist a client-authored free-roam roster or party layout locally."""
         with self.lock:
@@ -1707,6 +1695,10 @@ class BootstrapState:
                 }
                 if not {member for member in party["teamMembers"] if member}.issubset(roster_ids):
                     return "tutorial_state_conflict", None
+            # Validated before any of it is applied, so an equip write either
+            # commits both halves or changes nothing.
+            if companions is not None and not _apply_companion_delta(userdata, companions):
+                return "unsupported_companion_userdata", None
             if characters is not None:
                 userdata["chrdata"] = candidate_rows
             if party is not None:
@@ -2567,8 +2559,28 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # Companion flags are an independent persisted delta.  Unlike a
             # roster/party layout it has no free-roam-only shape, and the
             # client can submit it before that milestone.
-            companion_write = _parse_companion_userdata_write(body) if party_write is None and character_write is None else None
-            if party_write is not None:
+            # Equip moves dirty the roster and the Companion list together, and
+            # a party swap can carry a Companion delta as well. Both are tried
+            # before the single-half forms, which would otherwise refuse them.
+            party_companion_write = _parse_party_companion_userdata_write(body) if party_write is None else None
+            equip_write = (
+                _parse_companion_equip_userdata_write(body)
+                if party_write is None and party_companion_write is None else None
+            )
+            companion_write = (
+                _parse_companion_userdata_write(body)
+                if party_write is None and character_write is None
+                and party_companion_write is None and equip_write is None else None
+            )
+            if party_companion_write is not None:
+                characters, party, companions = party_companion_write
+                result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, party, companions)
+                transitions, kind = (), "party_userdata"
+            elif equip_write is not None:
+                characters, companions = equip_write
+                result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, None, companions)
+                transitions, kind = (), "companion_userdata"
+            elif party_write is not None:
                 characters, party = party_write
                 result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, party)
                 transitions, kind = (), "party_userdata"
@@ -3287,6 +3299,136 @@ def _parse_companion_userdata_write(body: bytes) -> list[dict[str, Any]] | None:
     if not isinstance(companions, list) or not companions:
         return None
     if any(not isinstance(companion, dict) or set(companion) != fields or type(companion["bid"]) is not int or companion["bid"] <= 0 or type(companion["lv"]) is not int or companion["lv"] < 1 or type(companion["date"]) not in {int, float} or companion["date"] < 0 or any(type(companion[name]) is not int or companion[name] < 0 for name in ("iid", "exp", "flag", "chrID")) or companion["iid"] <= 0 for companion in companions):
+        return None
+    ids = [companion["iid"] for companion in companions]
+    return companions if len(ids) == len(set(ids)) else None
+
+
+def _apply_companion_delta(userdata: dict[str, Any], submitted: list[dict[str, Any]]) -> bool:
+    """Apply a client-authored Companion flag delta in place.
+
+    Shared so the standalone Companion write and the equip forms, which carry
+    the same delta alongside a roster or party change, cannot drift apart.
+    """
+    buddy_info = userdata.get("buddyInfo")
+    owned = buddy_info.get("list") if isinstance(buddy_info, dict) else None
+    if not isinstance(owned, list):
+        return False
+    current = {companion.get("iid"): companion for companion in owned if isinstance(companion, dict) and type(companion.get("iid")) is int}
+    if len(current) != len(owned) or not submitted or any(
+        companion["iid"] not in current
+        or any(companion[name] != current[companion["iid"]].get(name) for name in ("bid", "lv", "date", "iid", "exp"))
+        or companion["flag"] & ~0x3
+        or (current[companion["iid"]].get("flag", 0) & 1 and not companion["flag"] & 1)
+        for companion in submitted
+    ):
+        return False
+    candidates = copy.deepcopy(owned)
+    updates = {companion["iid"]: companion for companion in submitted}
+    for index, companion in enumerate(candidates):
+        if companion["iid"] in updates:
+            candidates[index] = copy.deepcopy(updates[companion["iid"]])
+    userdata["buddyInfo"] = _companion_info(candidates)
+    return True
+
+
+def _parse_party_companion_userdata_write(
+    body: bytes,
+) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]] | None:
+    """Parse a party change that also carries a Companion delta.
+
+    The equip/party screen posts this when swapping a character *and* touching
+    Companion state in one action. It is the party form with `buddyInfo`
+    inserted after `chrdata`, so neither the party parser nor the equip parser
+    above matches it on its own.
+    """
+    fields = (
+        "chrdata", "buddyInfo", "teamMembers", "teamMembers_VS", "teamBuddies_VS",
+        "teamNo", "teamNo_VS", "summonId", "lastUpdate",
+    )
+    try:
+        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if tuple(name for name, _ in pairs) != fields:
+        return None
+    values = dict(pairs)
+    characters = _decoded_roster(values["chrdata"])
+    companions = _decoded_companions(values["buddyInfo"])
+    if characters is None or companions is None or not _valid_last_update(values["lastUpdate"]):
+        return None
+    # Reuse the party form's own validation by handing it the same body with
+    # the Companion delta removed, so the two paths cannot drift apart.
+    without_companions = urlencode([(name, value) for name, value in pairs if name != "buddyInfo"])
+    party = _parse_free_roam_party_userdata_write(without_companions.encode("ascii"))
+    if party is None:
+        return None
+    return party[0], party[1], companions
+
+
+def _parse_companion_equip_userdata_write(
+    body: bytes,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """Parse the equip screen's dual-dirty roster + Companion write.
+
+    Moving a Companion from one character to another dirties both halves at
+    once, so the client posts `chrdata` and `buddyInfo` together. Neither the
+    roster form (no `buddyInfo`) nor the Companion form (no `chrdata`) accepts
+    that, so it was refused and the player saw a network error.
+    """
+    try:
+        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if tuple(name for name, _ in pairs) != ("chrdata", "buddyInfo", "lastUpdate"):
+        return None
+    characters = _decoded_roster(pairs[0][1])
+    companions = _decoded_companions(pairs[1][1])
+    if characters is None or companions is None or not _valid_last_update(pairs[2][1]):
+        return None
+    return characters, companions
+
+
+def _valid_last_update(value: str) -> bool:
+    try:
+        return int(value) >= 0
+    except ValueError:
+        return False
+
+
+def _decoded_roster(value: str) -> list[dict[str, Any]] | None:
+    """Decode and validate a `chrdata` payload shared by several write forms."""
+    try:
+        characters = json.loads(value)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(characters, list) or not all(
+        isinstance(character, dict) and type(character.get("id")) is int and character["id"] > 0
+        for character in characters
+    ):
+        return None
+    ids = [character["id"] for character in characters]
+    return characters if len(ids) == len(set(ids)) else None
+
+
+def _decoded_companions(value: str) -> list[dict[str, Any]] | None:
+    """Decode and validate a `buddyInfo` payload shared by several write forms."""
+    try:
+        companions = json.loads(value)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    fields = {"bid", "lv", "date", "iid", "exp", "flag", "chrID"}
+    if not isinstance(companions, list) or not companions:
+        return None
+    if any(
+        not isinstance(companion, dict) or set(companion) != fields
+        or type(companion["bid"]) is not int or companion["bid"] <= 0
+        or type(companion["lv"]) is not int or companion["lv"] < 1
+        or type(companion["date"]) not in {int, float} or companion["date"] < 0
+        or any(type(companion[name]) is not int or companion[name] < 0 for name in ("iid", "exp", "flag", "chrID"))
+        or companion["iid"] <= 0
+        for companion in companions
+    ):
         return None
     ids = [companion["iid"] for companion in companions]
     return companions if len(ids) == len(set(ids)) else None
