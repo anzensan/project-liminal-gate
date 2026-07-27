@@ -322,6 +322,28 @@ local installation.
 | `--achievements` | the 8 settleable clear-chapter achievements, each paying 1 Energy and 1x item 50 |
 | `--summon-skills` | all 44 Battle Summon skill tiers across the 16 Summons, with their material costs |
 
+### Drop rates: no campaign doubling, deliberately
+
+The client's drop roll multiplies its recovered per-enemy percentage by a daily
+bonus when one is active: `DailyBonusType.ItemDropUp` doubles the item ratio and
+`MonsterDropUp` doubles the monster-recruit ratio. Companion and Battle Summon
+drops are never doubled.
+
+Whether a bonus is active is read from `EventManager.GetBoolean("enableDailyBonus")`,
+which is false for an absent key, a wrong type, or an event outside its date
+window. **This server delivers no such event parameter, so no doubling ever
+fires and the recovered base percentages are exact.**
+
+That is a deliberate default, not an oversight. The original schedule ran a
+bonus two days in three for one chapter in five, anchored to a server-corrected
+clock, and none of that is reproducible here. Serving a constant base rate is
+the honest choice.
+
+It is written down because it is fragile: anything that starts delivering event
+parameters under that name would silently double item and monster drop rates
+across the whole game. If you add event-parameter delivery, decide about
+`enableDailyBonus` explicitly rather than inheriting it.
+
 ### Why drop eligibility is off by default
 
 Without `chrBuddyData` on login the client sets `canDrop = false` on every

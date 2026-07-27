@@ -32,6 +32,10 @@ machine-readable/current capability boundary.
 - 2026-07-26 strict validation: 287 tests passed with resource leaks promoted
   to errors; the exact clean source candidate passed preflight and history
   audit.
+- 2026-07-26 GitHub issue 16 audio discovery: paired working/silent captures
+  prove the app track and Android mixer keep advancing with zero underruns after
+  audible output disappears. Public guidance no longer attributes the cutoff
+  to `swangle`, core count, or an AudioFlinger/HAL stall.
 
 ## Blockers and unresolved fidelity
 
@@ -40,6 +44,9 @@ machine-readable/current capability boundary.
 - Battle Summon acquisition and complete equipment/party lifecycle.
 - Historical event schedules, campaign behavior, and live-service families.
 - Differential certification against excluded private reference evidence.
+- Emulator audio cutoff inside the Unity 2017.4/FMOD producer path. Native
+  translation and the 24 kHz client track are candidate discriminators, not
+  confirmed causes; a matched working Pixel 4 profile capture is outstanding.
 
 ## Next recommended task
 

@@ -379,6 +379,7 @@ def build_catalog(
     unknown_characters: set[int] = set()
     used_items: set[int] = set()
     used_characters: set[int] = set()
+    unevidenced: set[tuple[int, int]] = set()
     known_characters = set(character_ids)
     stages: list[dict[str, Any]] = []
     used_companions: set[int] = set()
@@ -424,6 +425,10 @@ def build_catalog(
             merged_characters[character_id] = max(merged_characters.get(character_id, 0), cap)
         used_characters.update(merged_characters)
 
+        if not merged_items and not merged_characters:
+            # A ceiling permits and an empty one forbids, so this stage will
+            # refuse a clear reporting an item or a recruited monster.
+            unevidenced.add(identity)
         stages.append({
             "chapter": identity[0],
             "section": identity[1],
@@ -451,6 +456,8 @@ def build_catalog(
         "stages": stages,
     }
     report["stages_written"] = len(stages)
+    report["stages_without_outcome_evidence"] = len(unevidenced)
+    report["chapters_without_outcome_evidence"] = sorted({chapter for chapter, _ in unevidenced})
     report["core_stages_with_companion_ceiling"] = sum(
         1 for stage in stages if stage["companion_maxima"] and stage["chapter"] in CORE_CHAPTERS
     )
@@ -553,7 +560,26 @@ def main() -> int:
             f" {report['spawns_from_unrecognised_symbols']} spawn(s) are variant names with no"
             " recognised base enemy"
         )
-    print("  item_maxima and character_maxima are empty: no per-stage item or character drop table is recovered.")
+    print(
+        f"  {report['stages_with_item_ceiling']} stage(s) carry an item ceiling and"
+        f" {report['stages_with_character_ceiling']} a character ceiling, from the per-enemy drop records"
+    )
+    if report["stages_without_outcome_evidence"]:
+        # Loud on purpose. An empty ceiling forbids, so these stages reject
+        # ordinary play rather than merely checking it less strictly.
+        print(
+            f"  WARNING: {report['stages_without_outcome_evidence']} stage(s) have no item or character"
+            f" evidence (chapters {_chapters(report['chapters_without_outcome_evidence'])})."
+        )
+        print(
+            "    A ceiling permits and an empty one forbids, so this catalog will REFUSE any clear of"
+            " those stages whose battle result reports an item or a recruited monster."
+        )
+        print(
+            "    Chapters 2-7 are scripted in MoonSharp rather than natively, so the encounter import"
+            " cannot see them. Pass --baseline with hand-authored maxima for those stages, or do not"
+            " supply this catalog at all -- without it the server does not constrain reported outcomes."
+        )
     for note in notes:
         print(f"  note: {note}")
     return 0

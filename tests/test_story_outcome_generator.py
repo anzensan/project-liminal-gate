@@ -308,3 +308,36 @@ class BuildCatalogTest(unittest.TestCase):
             write_catalog(path, self._build()[0])
             self.assertEqual(1, json.loads(path.read_text(encoding="utf-8"))["schema_version"])
             self.assertEqual([path.name], [entry.name for entry in path.parent.iterdir()])
+
+
+class UnevidencedStageReportTest(unittest.TestCase):
+    """A stage with no item or character evidence must be counted, loudly.
+
+    An empty ceiling forbids rather than permits, so these stages reject
+    ordinary play. Silently emitting them is the trap this report exists to
+    prevent.
+    """
+
+    def test_counts_stages_with_neither_ceiling(self) -> None:
+        characters = {"characters": [{"character_id": 9001}]}
+        enemy_data = {"data": [
+            _enemy(BOMBORG, COMPANION_A, 20.0, items=((5, 2),), job_id=700, job_ratio=5.0),
+            _enemy(TEKSURA, COMPANION_B, 13.0),
+        ]}
+        chr_database = {"data": [{"ID": 700, "chrID": 9001}]}
+        battledata = {"chapters": [{"chapterNo": 8, "sections": [
+            {"dropBuddies": [_code(COMPANION_A, 1)]},
+            {"dropBuddies": [_code(COMPANION_B, 1)]},
+        ]}]}
+        encounters = _encounters([
+            _stage(8, 1, [("CH8_BMAKER", BOMBORG, True, 1)]),
+            _stage(8, 2, [("CH8_TECHSURA", TEKSURA, True, 1)]),
+        ])
+        _catalog, report, _notes = build_catalog(
+            encounters, battledata, enemy_data, chr_database, characters,
+        )
+        # 8-1 has both ceilings; 8-2's enemy drops neither an item nor a monster.
+        self.assertEqual(1, report["stages_without_outcome_evidence"])
+        self.assertEqual([8], report["chapters_without_outcome_evidence"])
+        self.assertEqual(1, report["stages_with_item_ceiling"])
+        self.assertEqual(1, report["stages_with_character_ceiling"])

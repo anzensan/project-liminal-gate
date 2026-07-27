@@ -309,48 +309,54 @@ Cold booting is the part that is easy to miss. An ordinary restart uses quick
 boot, which restores a saved snapshot of the device and can bring the old,
 silent audio device back with it, so the edit looks as though it did nothing.
 
-**Second, sound may still stop for good once you leave the title screen.** The
-original client mixes all music and effects into a single audio output stream,
-so when that stream stalls everything goes quiet at once rather than one sound
-at a time. On a physical device that stream stays open for a whole session
-without interruption; on an emulator it can stall and never recover, leaving
-the title screen audible and the game silent.
+**Second, sound may start normally and become silent after several seconds, even
+while idling at the title screen.** Cold booting, increasing the AVD from four
+to six cores, and switching away from `swangle` did not change this cutoff in
+tester runs. Do not spend time repeating those changes for this particular
+symptom.
 
-The likely cause is the emulator running out of processing time, not anything
-missing. `-gpu swangle` renders the screen in software on the CPU, and a default
-emulator is given only four cores to do that on, so the audio mixer can be
-starved once real gameplay starts drawing. If you want to try to keep sound
-working, raise the core count in the same `config.ini` — for example
-`hw.cpu.ncore=8`, staying a couple below the core count of the machine itself —
-then cold boot again.
+Paired Android audio-state captures show that the app's one audio track remains
+active, routed to the speaker, unmuted, and supplied with data after the sound
+disappears. Both the client track and Android output continue advancing in real
+time with zero underruns. The signal delivered to Android changes from normal
+varying program audio to a fixed-power signal. That rules out the earlier
+CPU-starvation and Android audio-stream-stall explanation; the failure is at
+the old Unity 2017/FMOD producer boundary before Android's mixer.
 
-If you report a sound problem, capture what the audio system says at the moment
-it goes quiet:
+The failing capture came from an x86_64 AVD translating this ARM-only client.
+That translation path and the app's 24 kHz track are leads, not yet confirmed
+causes: one tester's Pixel 4 profile kept audio working but its exact system
+image and ABI have not been compared. The only reliable workaround currently
+demonstrated is a physical phone or tablet.
+
+If you have one emulator profile where audio works and another where it fails,
+capture the discriminator from both:
 
 ```sh
-adb logcat -c
-# launch the game, enter the game past the title screen, wait for the silence
-adb logcat -d | grep -Ei "OpenSLES|AudioTrack|AudioFlinger|underrun|obtainBuffer" > audio-log.txt
+adb shell getprop ro.product.cpu.abilist
+adb shell getprop ro.dalvik.vm.native.bridge
+adb shell getprop ro.build.fingerprint
+adb shell dumpsys package com.mistwalkercorp.guardians > terra-battle-package.txt
+adb shell dumpsys media.audio_flinger > audio-flinger.txt
 ```
 
-PowerShell has no `grep`; use `Select-String` instead:
+In PowerShell, the same commands work; use `Out-File` to make the encoding
+explicit:
 
 ```powershell
-adb logcat -c
-# launch the game, enter the game past the title screen, wait for the silence
-adb logcat -d | Select-String "OpenSLES|AudioTrack|AudioFlinger|underrun|obtainBuffer" |
-  ForEach-Object { $_.Line } | Out-File -Encoding utf8 audio-log.txt
+adb shell getprop ro.product.cpu.abilist
+adb shell getprop ro.dalvik.vm.native.bridge
+adb shell getprop ro.build.fingerprint
+adb shell dumpsys package com.mistwalkercorp.guardians |
+  Out-File -Encoding utf8 terra-battle-package.txt
+adb shell dumpsys media.audio_flinger |
+  Out-File -Encoding utf8 audio-flinger.txt
 ```
 
-If either filter gives you trouble, capture everything instead and attach that.
-It is larger but always works, and nothing is lost by filtering later:
-
-```sh
-adb logcat -d > full-log.txt
-```
-
-Include `audio-log.txt`, your emulator system image, and the core count from
-`config.ini`.
+Include both profiles' `config.ini`, `terra-battle-package.txt`, and
+`audio-flinger.txt` files, and label which profile works. Those values can
+separate the emulator profile, native translation, and sample-rate paths
+without another broad logcat capture.
 
 ### 2. Arrange your local files
 
@@ -1011,7 +1017,7 @@ apart. Give those a `--data-dir` and a port each instead.
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
 | Resource-manifest error on server start | Confirm the resource root, then rerun `python3 -m liminal_gate.resource_catalog_builder`. |
 | No sound at all on an emulator | The emulator was probably created with audio output switched off. Add `hw.audioInput=yes` and `hw.audioOutput=yes` to the device's `config.ini`, then **cold boot** it — an ordinary restart can restore the silent device from a snapshot. See [Sound on the emulator](#sound-on-the-emulator). |
-| Sound plays on an emulator title screen, then stops for good in the game | An emulator limitation, not the server. All music and effects share one audio output stream, and the emulator can stall it permanently once software rendering starts competing for the CPU. Raise `hw.cpu.ncore` and cold boot, or test on a physical device. See [Sound on the emulator](#sound-on-the-emulator). |
+| Sound starts on an emulator, then becomes silent after several seconds | An emulator/client compatibility failure, not the server. Paired captures rule out muting, rerouting, Android mixer underruns, and the earlier CPU-starvation theory; the old Unity/FMOD producer keeps feeding a fixed-power signal. A physical device is the only reliable workaround currently demonstrated. See [Sound on the emulator](#sound-on-the-emulator). |
 | Sound is distorted, cuts out, or does not return on a physical device | Check `user-data/events.jsonl` for `404` requests beneath `/resources/SE/` or `/resources/BGM/`. A missing sound bundle in your local resource set can cause this; include those paths in the issue report. On an emulator, see the two rows above first. |
 | A request fails after Chapter 2-1 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
 
