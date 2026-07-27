@@ -357,10 +357,12 @@ the enemy record's `DropBuddyID`/`DropBuddyRatio` and the stage's own
 `dropBuddies` allowlist and per-battle cap. Marking every recovered master
 eligible is a preservation choice, not a recovered per-account entitlement.
 
-`rebirthList` is deliberately omitted from the object. It gates Rebirth
-availability rather than drops, and the `availableVersion` values it carries are
-not in this repository's bundled Rebirth data, so emitting them would assert a
-gate that has not been recovered.
+The object carries all three of `chrList`, `buddyList`, and `rebirthList`. That
+is not optional: the client null-guards `chrBuddyData` itself and then reads its
+child lists unconditionally, so sending the object with a list missing throws
+inside its login reader and the client hangs on "Connecting..." forever. An
+earlier build omitted `rebirthList` on the reasoning that it gates Rebirth
+rather than drops -- true, and irrelevant.
 
 Four of them make an explicit **local policy** choice rather than a claim about
 the retired service, and say so in their own code: Companion draw selects

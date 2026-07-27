@@ -60,7 +60,7 @@ def _login(drop_eligibility: bool) -> dict:
 class DropEligibilityTest(unittest.TestCase):
     def test_allowlist_covers_every_bundled_master(self) -> None:
         data = login_chr_buddy_data()
-        self.assertEqual({"chrList", "buddyList"}, set(data))
+        self.assertEqual({"chrList", "buddyList", "rebirthList"}, set(data))
         self.assertEqual(character_master_ids(), data["chrList"])
         self.assertEqual(companion_master_ids(), data["buddyList"])
         # Ascending, unique, and positive: the client indexes these directly.
@@ -70,10 +70,24 @@ class DropEligibilityTest(unittest.TestCase):
                 self.assertTrue(all(isinstance(v, int) and v > 0 for v in data[key]))
         self.assertEqual(497, len(data["buddyList"]))
 
-    def test_rebirth_list_is_not_invented(self) -> None:
-        # availableVersion is not carried in the bundled Rebirth data, so the
-        # key is omitted rather than filled with guessed version numbers.
-        self.assertNotIn("rebirthList", login_chr_buddy_data())
+    def test_every_list_is_present_because_the_client_reads_them_unguarded(self) -> None:
+        # The client null-guards chrBuddyData itself and then reads all three
+        # child lists unconditionally: an absent list falls into the
+        # null-reference thrower inside login and the client hangs on
+        # "Connecting..." forever. Omitting one is not a safe degradation.
+        data = login_chr_buddy_data()
+        self.assertEqual({"chrList", "buddyList", "rebirthList"}, set(data))
+        self.assertTrue(all(data[key] for key in data))
+
+    def test_rebirth_versions_are_the_recovered_figures(self) -> None:
+        entries = login_chr_buddy_data()["rebirthList"]
+        self.assertEqual(65, len(entries))
+        self.assertEqual([{"ID", "version"}] * len(entries), [set(entry) for entry in entries])
+        ids = [entry["ID"] for entry in entries]
+        self.assertEqual(sorted(set(ids)), ids)
+        # Every recipe is at or below the final client's own 5.5.7, so none of
+        # these versions withholds a recipe.
+        self.assertLessEqual(max(entry["version"] for entry in entries), 5.5)
 
     def test_login_omits_the_field_by_default(self) -> None:
         self.assertNotIn("chrBuddyData", _login(drop_eligibility=False))
