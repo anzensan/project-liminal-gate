@@ -12,6 +12,7 @@ from liminal_gate.story_outcome_generator import (
     MAX_COMPANIONS,
     StoryOutcomeGeneratorError,
     build_catalog,
+    build_derivation_source,
     companion_drops_by_enemy,
     native_stage_maxima,
     section_companion_maxima,
@@ -24,6 +25,7 @@ from liminal_gate.story_outcome_generator import (
 BOMBORG, ELECTROTICK, TEKSURA = 95, 92, 94
 COMPANION_A, COMPANION_B = 111, 226
 UNKNOWN_COMPANION = 60000
+APK_SHA256 = "a" * 64
 
 
 def _code(companion_id: int, cap: int) -> dict[str, int]:
@@ -45,7 +47,15 @@ def _enemy(
 def _encounters(stages: list[dict[str, object]]) -> dict[str, object]:
     return {
         "schema_version": 1, "provenance": "user-derived",
-        "source": {"abi": "arm64", "apk_sha256": "a" * 64},
+        "source": {
+            "profile": "terra-battle-android-5.5.7-170",
+            "abi": "arm64",
+            "apk_sha256": APK_SHA256,
+            "dump_cs_sha256": "b" * 64,
+            "libil2cpp_sha256": "c" * 64,
+            "objdump": "GNU objdump 2.44",
+            "vtable_calibration": "verified",
+        },
         "stages": stages,
     }
 
@@ -168,7 +178,13 @@ class NativeCompanionMaximaTest(unittest.TestCase):
         for document in (
             {**_encounters([_stage(8, 1, [])]), "provenance": "user-supplied"},
             {**_encounters([_stage(8, 1, [])]), "schema_version": 2},
-            {**_encounters([_stage(8, 1, [])]), "source": {"abi": "armv7"}},
+            {
+                **_encounters([_stage(8, 1, [])]),
+                "source": {
+                    **_encounters([])["source"],
+                    "abi": "armv7",
+                },
+            },
             {**_encounters([]), "stages": []},
         ):
             with self.subTest(document=document), self.assertRaisesRegex(StoryOutcomeGeneratorError, "user-derived ARM64"):
@@ -185,7 +201,13 @@ class NativeCompanionMaximaTest(unittest.TestCase):
 
 class BuildCatalogTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.characters = {"characters": [{"character_id": 9002}, {"character_id": 9001}]}
+        self.characters = {
+            "source": {
+                "profile": "terra-battle-android-5.5.7-170",
+                "apk_sha256": APK_SHA256,
+            },
+            "characters": [{"character_id": 9002}, {"character_id": 9001}],
+        }
         self.enemy_data = {"data": [
             _enemy(BOMBORG, COMPANION_A, 20.0, items=((5, 2),), job_id=700, job_ratio=5.0),
             _enemy(TEKSURA, COMPANION_B, 13.0, items=((5, 1), (9, 3))),
@@ -301,6 +323,64 @@ class BuildCatalogTest(unittest.TestCase):
         self.assertEqual(4, loaded.rules[(8, 1)].companion_maxima[COMPANION_A])
         self.assertEqual(DEFAULT_COMPANION_DROP_LEVEL, loaded.companion_masters[COMPANION_A].drop_level)
         self.assertEqual((3, 2, 3), (report["stages_written"], report["distinct_companions"], report["core_stages_with_companion_ceiling"] + 1))
+
+    def test_rejects_native_or_character_inputs_from_a_different_apk(self) -> None:
+        for field in ("native", "character"):
+            encounters = self.encounters
+            characters = self.characters
+            if field == "native":
+                encounters = {
+                    **self.encounters,
+                    "source": {
+                        **self.encounters["source"],
+                        "apk_sha256": "f" * 64,
+                    },
+                }
+            else:
+                characters = {
+                    **self.characters,
+                    "source": {
+                        **self.characters["source"],
+                        "apk_sha256": "f" * 64,
+                    },
+                }
+            with self.subTest(field=field), self.assertRaisesRegex(
+                StoryOutcomeGeneratorError,
+                "different APK",
+            ):
+                build_derivation_source(
+                    encounters,
+                    characters,
+                    APK_SHA256,
+                    "d" * 64,
+                    "e" * 64,
+                )
+
+    def test_generated_catalog_retains_input_hashes_and_calibration(self) -> None:
+        source = build_derivation_source(
+            self.encounters,
+            self.characters,
+            APK_SHA256,
+            "d" * 64,
+            "e" * 64,
+            "f" * 64,
+        )
+        catalog = self._build(source=source)[0]
+        self.assertEqual(source, catalog["source"])
+        self.assertEqual(
+            "verified",
+            catalog["source"]["native_encounters"]["vtable_calibration"],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "story-outcomes.json"
+            write_catalog(path, catalog)
+            load_story_outcome_catalog(path)
+
+    def test_unverified_native_calibration_stays_explicit(self) -> None:
+        self.encounters["source"]["vtable_calibration"] = "unverified"
+        _catalog, report, notes = self._build()
+        self.assertEqual("unverified", report["vtable_calibration"])
+        self.assertTrue(any("unverified" in note for note in notes))
 
     def test_written_catalogs_are_json_and_leave_no_temporary_behind(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

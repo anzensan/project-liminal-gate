@@ -7,8 +7,9 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, ProfileError, load_launch_config, load_profile
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, ProfileError, load_launch_config, load_profile, parse_args
 from liminal_gate.server_config import ServerConfigError, load_server_config
 
 
@@ -78,6 +79,49 @@ class ServerConfigTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertTrue(load_server_config(configuration_path).pacts)
+
+    def test_config_only_launcher_arguments_load_the_documented_toml_mode(self) -> None:
+        configuration_path = self.root / "server.toml"
+        configuration_path.write_text(
+            'schema_version = 1\nprovenance = "user-supplied"\nprofile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\n',
+            encoding="utf-8",
+        )
+        with patch("sys.argv", ["liminal-gate-bootstrap-server", "--config", str(configuration_path)]):
+            config = load_launch_config(parse_args())
+        self.assertEqual(self.root / "profiles" / "bootstrap.json", config.profile)
+        self.assertEqual(self.root / "state" / "bootstrap.json", config.state_file)
+
+    def test_config_cannot_be_mixed_with_an_explicit_boolean_flag(self) -> None:
+        configuration_path = self.root / "server.toml"
+        configuration_path.write_text(
+            'schema_version = 1\nprovenance = "user-supplied"\nprofile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\n',
+            encoding="utf-8",
+        )
+        with patch(
+            "sys.argv",
+            ["liminal-gate-bootstrap-server", "--config", str(configuration_path), "--core-story"],
+        ):
+            with self.assertRaisesRegex(ProfileError, "cannot be combined"):
+                load_launch_config(parse_args())
+
+    def test_every_bundled_policy_flag_requires_a_toml_boolean(self) -> None:
+        configuration_path = self.root / "server.toml"
+        prefix = (
+            'schema_version = 1\nprovenance = "user-supplied"\n'
+            'profile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\n'
+        )
+        for field, value in (
+            ("drop_eligibility", '"false"'),
+            ("achievements", "1"),
+            ("summon_skills", "[true]"),
+        ):
+            with self.subTest(field=field):
+                configuration_path.write_text(
+                    f"{prefix}{field} = {value}\n",
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ServerConfigError, f"{field} must be a boolean"):
+                    load_server_config(configuration_path)
 
     def test_unknown_keys_and_non_user_provenance_fail(self) -> None:
         configuration_path = self.root / "server.toml"

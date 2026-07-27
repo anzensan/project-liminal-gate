@@ -24,9 +24,34 @@ Private inputs, captures, account state, and original assets remain excluded.
   evaluated as that distinct body.
 - **Confirmed by boundary tests:** request bodies larger than 4 MiB, negative
   lengths, and incomplete bodies fail before mutation.
+- **Confirmed by deterministic collision and reload tests:** account restore,
+  adoption, switching, and edited-save application create a durable safety copy
+  before mutation. Same-second copies use exclusive creation and distinct
+  suffixes, so no earlier copy is overwritten.
+- **Confirmed by guided-setup regression:** a fresh active account no longer
+  hides an older played account; the reversible switch preserves the displaced
+  fresh save.
+
+## Configuration and derived-data boundaries
+
+- **Confirmed by parsed-launcher and TOML tests:** `--config` works by itself,
+  remains mutually exclusive with individual flags, and every bundled-policy
+  option requires a TOML boolean rather than accepting a truthy string, number,
+  or array.
+- **Confirmed by parser regressions:** routes using the final client's shared
+  optional mutation trailer accept only the observed `lastUpdate=1`; other
+  values remain visible to the exact form parser and are rejected.
+- **Confirmed by provenance regressions:** story-outcome generation requires
+  the native encounter map and character catalog to name the selected APK.
+  Output retains the APK and derived-file hashes, native library and `dump.cs`
+  hashes, optional baseline hash, tool identity, and verified/unverified
+  calibration label.
 
 ## Public-release boundary
 
+- **Confirmed by the 2026-07-27 follow-up run:** 417 tests passed with
+  `ResourceWarning` promoted to error, including the generated-outcome
+  real-HTTP settlement path and account-state reload checks.
 - **Confirmed by release tests:** preflight scans generated-output directories
   rather than hiding them, while the repository audit rejects dirty state and
   prohibited path names anywhere in Git history.

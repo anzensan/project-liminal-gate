@@ -436,3 +436,19 @@ class AccountSwitchPromptTest(unittest.TestCase):
             {"empty": self._account(0, played=False), "here": self._account(16777346)}, "here", "1",
         )
         self.assertEqual("", output)
+
+    def test_offers_a_played_save_when_the_active_account_is_a_fresh_reinstall(self) -> None:
+        output, document = self._run(
+            {"old": self._account(16777601), "fresh": self._account(0, played=False)},
+            "fresh",
+            "1",
+        )
+        self.assertIn("chapter 6-1", output)
+        self.assertEqual(
+            16777601,
+            document["accounts"]["fresh"]["userdata"]["progressCode"],
+        )
+        self.assertEqual(
+            0,
+            document["accounts"]["old"]["userdata"]["progressCode"],
+        )

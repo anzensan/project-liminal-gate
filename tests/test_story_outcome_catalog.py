@@ -39,3 +39,41 @@ companion_maxima = { "8001" = 1 }
             path = Path(directory) / "outcomes.json"; path.write_text(json.dumps(document), encoding="utf-8")
             with self.assertRaisesRegex(StoryOutcomeCatalogError, "undeclared"):
                 load_story_outcome_catalog(path)
+
+    def test_rejects_mismatched_generated_source_provenance(self) -> None:
+        document = {
+            "schema_version": 1,
+            "provenance": "user-supplied",
+            "character_ids": [1],
+            "item_slots": 1,
+            "max_stack": 1,
+            "max_companions": 1,
+            "companion_masters": [],
+            "stages": [{
+                "chapter": 2,
+                "section": 1,
+                "item_maxima": {},
+                "character_maxima": {},
+                "companion_maxima": {},
+            }],
+            "source": {
+                "profile": "terra-battle-android-5.5.7-170",
+                "apk_sha256": "a" * 64,
+                "native_encounters_sha256": "b" * 64,
+                "character_catalog_sha256": "c" * 64,
+                "native_encounters": {
+                    "profile": "terra-battle-android-5.5.7-170",
+                    "abi": "arm64",
+                    "apk_sha256": "d" * 64,
+                    "dump_cs_sha256": "e" * 64,
+                    "libil2cpp_sha256": "f" * 64,
+                    "objdump": "GNU objdump 2.44",
+                    "vtable_calibration": "verified",
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "outcomes.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(StoryOutcomeCatalogError, "native source"):
+                load_story_outcome_catalog(path)

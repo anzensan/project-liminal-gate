@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from liminal_gate.account_state import (
     REPLAY_CACHE_FIELDS,
@@ -234,6 +235,23 @@ class SwitchTest(unittest.TestCase):
             result = account_state.switch(state, "uuid-A", confirmed=True)
             self.assertIsNotNone(result["preservedPrimary"])
             self.assertTrue(Path(result["preservedPrimary"]).is_file())
+
+    def test_same_second_switches_create_distinct_immutable_safety_copies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = self._state(Path(directory))
+            original = state.read_bytes()
+            with patch(
+                "liminal_gate.account_state.timestamp",
+                return_value="20260727T120000Z",
+            ):
+                first = account_state.switch(state, "uuid-A", confirmed=True)
+                intermediate = state.read_bytes()
+                second = account_state.switch(state, "uuid-A", confirmed=True)
+            first_path = Path(first["preservedPrimary"])
+            second_path = Path(second["preservedPrimary"])
+            self.assertNotEqual(first_path, second_path)
+            self.assertEqual(original, first_path.read_bytes())
+            self.assertEqual(intermediate, second_path.read_bytes())
 
     def test_refuses_without_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

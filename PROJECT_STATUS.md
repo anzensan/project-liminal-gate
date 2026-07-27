@@ -20,6 +20,22 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-27 persistent Linux service: the generic systemd template and
+  `scripts/install_systemd_service.sh PORT` install the server-only path as the
+  invoking unprivileged user, restart it after any exit, and enable it for
+  normal multi-user boot. Live validation confirmed an active and enabled unit,
+  recovery to a new PID after a forced main-process failure, and identical
+  resource delivery over LAN and private-overlay paths. The public README
+  documents prerequisites, foreground validation, client preparation on
+  another computer, systemd lifecycle commands, and optional subnet-routed
+  access without embedding validation-host details.
+- 2026-07-27 dedicated server-only setup:
+  `python3 -m liminal_gate.server_setup --port PORT` validates and hashes the
+  resource tree, retains durable state beneath `user-data/`, enables every
+  standard bundled policy, and runs on the LAN without inspecting an APK or
+  invoking Android SDK, ADB, Java, signing, emulator, or device paths. A live
+  dedicated-host run served the same hash-validated resource over LAN and
+  private-overlay paths; no new original-client boundary was claimed.
 - Source-only public repository and noncommercial framing.
 - Hash-validated user-owned resource serving and guarded local APK tooling.
 - Account backup, recovery, adoption, validation, and save editor.
@@ -39,6 +55,18 @@ machine-readable/current capability boundary.
 - 2026-07-27 tester setup diagnostics: failed `zipalign` or `apksigner` runs
   now report the Android tool's exit code and captured error output while
   continuing to pass signing passwords only through local files.
+- 2026-07-27 full-review follow-up: repaired TOML-only launch and strict
+  policy-boolean validation; made account safety copies non-overwriting;
+  restored fresh-reinstall account selection; bound generated story outcomes
+  to exact APK provenance; restricted optional mutation trailers to
+  `lastUpdate=1`; and corrected the parity roadmap's item/character ceiling
+  claim.
+- 2026-07-27 strict validation: 417 tests passed with resource leaks promoted
+  to errors; compilation and focused transport, persistence, parser, launcher,
+  and provenance regressions passed.
+- 2026-07-27 combined release validation: 429 tests passed with resource leaks
+  promoted to errors; compilation, diff checks, and clean-candidate preflight
+  and repository-history audits passed.
 
 ## Blockers and unresolved fidelity
 

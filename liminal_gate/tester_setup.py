@@ -635,11 +635,11 @@ def offer_account_switch(data_directory: Path, ask: Callable[[str], str] = input
     """
     state = data_directory / "bootstrap-state.json"
     summary = account_state.summarize(state)
-    accounts = [value for value in (summary.get("accounts") or []) if value.get("played")]
+    accounts = summary.get("accounts") or []
     if len(accounts) < 2 or not any(value["active"] for value in accounts):
         return
     active = next(value for value in accounts if value["active"])
-    others = [value for value in accounts if not value["active"]]
+    others = [value for value in accounts if not value["active"] and value.get("played")]
     if not any((value.get("progressCode") or 0) > (active.get("progressCode") or 0) for value in others):
         return
     print("\nAnother saved account has more progress than the one the client is on.")

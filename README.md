@@ -14,6 +14,39 @@ clears Chapter 2-1. The guided setup also enables a bulk ordinary-story policy
 for Chapter 2-2 through Chapter 42; it is not a claim that every later reward,
 drop, or scripted scene has been historically reproduced.
 
+## Table of contents
+
+- [Current tester status](#current-tester-status)
+  - [Local-network safety](#local-network-safety)
+- [What you need](#what-you-need)
+  - [Install and check the tools first](#install-and-check-the-tools-first)
+- [Quick start: emulator tester path](#quick-start-emulator-tester-path)
+  - [0. Open a Terminal in the project folder](#0-open-a-terminal-in-the-project-folder)
+  - [1. Create and start an emulator](#1-create-and-start-an-emulator)
+  - [2. Arrange your local files](#2-arrange-your-local-files)
+  - [Run only the server on a separate Linux machine](#run-only-the-server-on-a-separate-linux-machine)
+  - [3. One-command setup, install, and server start](#3-one-command-setup-install-and-server-start)
+  - [Optional: enable a reviewed local event catalog](#optional-enable-a-reviewed-local-event-catalog)
+  - [4. Manual setup](#4-manual-setup-only-if-you-need-to-troubleshoot)
+  - [4a. Validate and map the local inputs](#4a-validate-and-map-the-local-inputs)
+  - [4b. Create a local test signing key](#4b-create-a-local-test-signing-key)
+  - [4c. Create and sign the redirected APK](#4c-create-and-sign-the-redirected-apk)
+  - [4d. Start the server and install the APK](#4d-start-the-server-and-install-the-apk)
+  - [5. What to test](#5-what-to-test)
+- [Install on a physical phone or tablet](#install-on-a-physical-phone-or-tablet)
+  - [A. Prepare the device](#a-prepare-the-device)
+  - [B. Find this machine's network address](#b-find-this-machines-network-address)
+  - [C. Keep that address from changing](#c-keep-that-address-from-changing)
+  - [D. Choose a port with at most four digits](#d-choose-a-port-with-at-most-four-digits)
+  - [E. Run setup against the device](#e-run-setup-against-the-device)
+  - [F. First run over Wi-Fi](#f-first-run-over-wi-fi)
+- [Look after your save](#look-after-your-save)
+  - [Editing a save](#editing-a-save)
+  - [If you reinstall the app and your progress is gone](#if-you-reinstall-the-app-and-your-progress-is-gone)
+  - [Two players on one server](#two-players-on-one-server)
+- [Troubleshooting](#troubleshooting)
+- [More documentation](#more-documentation)
+
 ## Current tester status
 
 The guided setup now enables ordinary story progression beyond the tutorial,
@@ -408,6 +441,127 @@ Get-ChildItem "$HOME\Downloads", "$HOME\Desktop" -Recurse -File -Filter "terra-b
 Get-ChildItem "$HOME\Downloads", "$HOME\Desktop" -Recurse -Directory -ErrorAction SilentlyContinue |
   Where-Object { $_.FullName -like "*\data_u2017\android" }
 ```
+
+### Run only the server on a separate Linux machine
+
+Use this path when the APK will be prepared and installed from another computer
+but the compatibility server and resources should remain on an always-on Linux
+machine. The server machine needs:
+
+- Python 3.11 or newer and this source checkout;
+- the matching Android resource tree;
+- a stable address that the client device can reach; and
+- an unused TCP port allowed by the machine's firewall.
+
+It does **not** need the APK, Android SDK, ADB, Java, a signing key, an emulator,
+or a connected Android device. Its local input layout is:
+
+```text
+local-input/
+  resources/
+    data_u2017/
+      android/
+        BG/
+        Scenario/
+        ...other resource categories...
+user-data/
+```
+
+The examples below use port `8642`. Choose another port if necessary, but use
+that same port everywhere and keep it to four digits or fewer for the legacy
+client patch.
+
+#### Validate and run it in the foreground
+
+From the repository root:
+
+```sh
+python3 -m liminal_gate.server_setup --port 8642 --prepare-only
+python3 -m liminal_gate.server_setup --port 8642
+```
+
+The first command validates and hashes the resources without opening a socket.
+The second rebuilds the manifest, enables the standard bundled policies,
+listens on all network interfaces, and runs in the foreground. Account state,
+request diagnostics, and generated manifests remain beneath `user-data/`.
+Press Control-C to stop it.
+
+From another machine on the trusted network, verify the listener by replacing
+`SERVER_ADDRESS` with the server's address:
+
+```sh
+curl --fail http://SERVER_ADDRESS:8642/en/news/app
+```
+
+#### Prepare the APK on the other computer
+
+The client-preparation computer still needs its own APK, matching resources,
+Android Build Tools, and Java. Build without installing or starting a second
+server by passing the dedicated server's stable address:
+
+```sh
+python3 -m liminal_gate.tester_setup \
+  --device-host 192.168.1.10 \
+  --port 8642 \
+  --prepare-only
+```
+
+Replace `192.168.1.10` with the dedicated server's reserved LAN address. Install
+the resulting `user-data/liminal-gate-test.apk` on the intended device. The
+address and port are compiled into that APK; changing either later requires
+preparing and reinstalling it again.
+
+#### Keep the server running with systemd
+
+On a Linux distribution that uses systemd, the included installer renders the
+unit for the current checkout, current user, and selected port. It verifies,
+installs, enables, and starts the service, prompting for sudo only for the
+system-level operations. Keep the checkout in a path without spaces:
+
+```sh
+./scripts/install_systemd_service.sh 8642
+```
+
+The service runs as the invoking non-root user, restarts after an unexpected
+exit, and starts during normal multi-user boot. Its systemd protections leave
+only this checkout's `user-data/` writable. The invoking user must therefore be
+able to read the source and resource tree and write `user-data/`.
+
+Common operations:
+
+```sh
+systemctl status project-liminal-gate.service
+journalctl -u project-liminal-gate.service -f
+sudo systemctl restart project-liminal-gate.service
+sudo systemctl stop project-liminal-gate.service
+sudo systemctl start project-liminal-gate.service
+```
+
+After updating the checkout, restart the service to load the new code. Rerun
+the installer instead when the checkout path, service user, or port changes.
+
+To remove only the systemd integration while preserving resources and account
+state:
+
+```sh
+sudo systemctl disable --now project-liminal-gate.service
+sudo rm /etc/systemd/system/project-liminal-gate.service
+sudo systemctl daemon-reload
+```
+
+#### Optional access away from home
+
+Do not port-forward this plain-HTTP preservation service or expose it directly
+to the public Internet. A private overlay network is the safer remote-access
+boundary.
+
+One APK can use direct Wi-Fi at home and Tailscale while away if the server is
+configured as a [Tailscale subnet
+router](https://tailscale.com/kb/1019/subnets). Advertise the home subnet, keep
+the APK pointed at the server's reserved LAN address, and connect the client
+device to Tailscale only while away. Subnet routing, route approval, firewall
+rules, and tailnet access controls are network-administration steps outside
+this project.
 
 ### 3. One-command setup, install, and server start
 
@@ -912,7 +1066,9 @@ python3 -m liminal_gate.account_state restore \
 ```
 
 Restoring keeps your current save alongside as a timestamped
-`.pre-restore.*.json`, so a restore is itself undoable.
+`.pre-restore.*.json`, so a restore is itself undoable. If several safety
+copies are made in the same second, each receives a distinct suffix rather
+than overwriting an earlier copy.
 
 ### Editing a save
 

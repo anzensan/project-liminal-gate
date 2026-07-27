@@ -20,7 +20,7 @@ from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS
 from liminal_gate.story_catalog import load_story_catalog
 from liminal_gate.story_outcome_catalog import load_story_outcome_catalog
-from liminal_gate.story_outcome_generator import DEFAULT_COMPANION_DROP_LEVEL, build_catalog, write_catalog
+from liminal_gate.story_outcome_generator import DEFAULT_COMPANION_DROP_LEVEL, build_catalog, build_derivation_source, write_catalog
 
 
 BOMBORG, ELECTROTICK = 95, 92
@@ -34,7 +34,15 @@ class StoryDropSettlementServerTest(unittest.TestCase):
         """Compose the catalog exactly as the command-line generator does."""
         encounters = {
             "schema_version": 1, "provenance": "user-derived",
-            "source": {"abi": "arm64", "apk_sha256": "a" * 64},
+            "source": {
+                "profile": "terra-battle-android-5.5.7-170",
+                "abi": "arm64",
+                "apk_sha256": "a" * 64,
+                "dump_cs_sha256": "b" * 64,
+                "libil2cpp_sha256": "c" * 64,
+                "objdump": "GNU objdump 2.44",
+                "vtable_calibration": "verified",
+            },
             "stages": [{
                 "chapter": 2, "section": 2, "resolved": True, "exact": True,
                 "spawns": [
@@ -57,8 +65,28 @@ class StoryDropSettlementServerTest(unittest.TestCase):
              "items": empty_slots, "DropJobID": 0, "DropRatio": 0.0},
         ]}
         chr_database = {"data": [{"ID": 1, "chrID": CHARACTER}]}
-        characters = {"characters": [{"character_id": CHARACTER}]}
-        catalog, _report, _notes = build_catalog(encounters, battledata, enemy_data, chr_database, characters)
+        characters = {
+            "source": {
+                "profile": "terra-battle-android-5.5.7-170",
+                "apk_sha256": "a" * 64,
+            },
+            "characters": [{"character_id": CHARACTER}],
+        }
+        source = build_derivation_source(
+            encounters,
+            characters,
+            "a" * 64,
+            "d" * 64,
+            "e" * 64,
+        )
+        catalog, _report, _notes = build_catalog(
+            encounters,
+            battledata,
+            enemy_data,
+            chr_database,
+            characters,
+            source=source,
+        )
         return catalog
 
     def _clear_fields(self, buddies: list[int]) -> list[tuple[str, str]]:

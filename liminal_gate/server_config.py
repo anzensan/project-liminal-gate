@@ -104,28 +104,25 @@ def load_server_config(path: Path) -> ServerConfig:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
         raise ServerConfigError("port must be an integer from 1 through 65535")
-    if type(core_story) is not bool:
-        raise ServerConfigError("core_story must be a boolean")
-    if type(pacts) is not bool:
-        raise ServerConfigError("pacts must be a boolean")
-    if type(hunting) is not bool:
-        raise ServerConfigError("hunting must be a boolean")
-    if type(jobs) is not bool:
-        raise ServerConfigError("jobs must be a boolean")
-    if type(rebirth) is not bool:
-        raise ServerConfigError("rebirth must be a boolean")
-    if type(status_items) is not bool:
-        raise ServerConfigError("status_items must be a boolean")
-    if type(companion_draw) is not bool:
-        raise ServerConfigError("companion_draw must be a boolean")
-    if type(companion_sale) is not bool:
-        raise ServerConfigError("companion_sale must be a boolean")
-    if type(companion_strengthen) is not bool:
-        raise ServerConfigError("companion_strengthen must be a boolean")
-    if type(companion_evolution) is not bool:
-        raise ServerConfigError("companion_evolution must be a boolean")
-    if type(trading_post) is not bool:
-        raise ServerConfigError("trading_post must be a boolean")
+    boolean_values = {
+        "core_story": core_story,
+        "pacts": pacts,
+        "hunting": hunting,
+        "jobs": jobs,
+        "rebirth": rebirth,
+        "status_items": status_items,
+        "companion_draw": companion_draw,
+        "companion_sale": companion_sale,
+        "companion_strengthen": companion_strengthen,
+        "companion_evolution": companion_evolution,
+        "trading_post": trading_post,
+        "drop_eligibility": drop_eligibility,
+        "achievements": achievements,
+        "summon_skills": summon_skills,
+    }
+    for field, value in boolean_values.items():
+        if type(value) is not bool:
+            raise ServerConfigError(f"{field} must be a boolean")
     return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, **paths)
 
 

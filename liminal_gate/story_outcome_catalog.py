@@ -44,8 +44,10 @@ def load_story_outcome_catalog(path: Path) -> StoryOutcomeCatalog:
     except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
         raise StoryOutcomeCatalogError("could not read story-outcome catalog JSON or TOML") from error
     required = {"schema_version", "provenance", "character_ids", "item_slots", "max_stack", "max_companions", "companion_masters", "stages"}
-    if not isinstance(value, dict) or set(value) != required or value.get("schema_version") != 1 or value.get("provenance") != "user-supplied":
+    if not isinstance(value, dict) or not required <= set(value) or set(value) - required != ({"source"} if "source" in value else set()) or value.get("schema_version") != 1 or value.get("provenance") != "user-supplied":
         raise StoryOutcomeCatalogError("story-outcome catalog has an invalid schema or provenance")
+    if "source" in value:
+        _source(value["source"])
     character_ids = _ids(value["character_ids"], "character_ids")
     numeric = ("item_slots", "max_stack", "max_companions")
     if any(type(value[name]) is not int or value[name] <= 0 for name in numeric):
@@ -66,6 +68,64 @@ def load_story_outcome_catalog(path: Path) -> StoryOutcomeCatalog:
     if any(any(companion_id not in masters_by_id for companion_id in rule.companion_maxima) or any(character_id not in character_ids for character_id in rule.character_maxima) or any(item_id > value["item_slots"] for item_id in rule.item_maxima) for rule in rules):
         raise StoryOutcomeCatalogError("stage maxima reference an undeclared ID")
     return StoryOutcomeCatalog(frozenset(character_ids), *(value[name] for name in numeric), masters_by_id, {identity: rule for identity, rule in zip(identities, rules)})
+
+
+def _valid_sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
+def _source(value: object) -> None:
+    required = {
+        "profile",
+        "apk_sha256",
+        "native_encounters_sha256",
+        "character_catalog_sha256",
+        "native_encounters",
+    }
+    if (
+        not isinstance(value, dict)
+        or not required <= set(value)
+        or set(value) - required not in (set(), {"baseline_sha256"})
+        or value.get("profile") != "terra-battle-android-5.5.7-170"
+        or not all(
+            _valid_sha256(value.get(field))
+            for field in (
+                "apk_sha256",
+                "native_encounters_sha256",
+                "character_catalog_sha256",
+            )
+        )
+        or (
+            "baseline_sha256" in value
+            and not _valid_sha256(value["baseline_sha256"])
+        )
+    ):
+        raise StoryOutcomeCatalogError("story-outcome catalog has invalid source provenance")
+    native = value["native_encounters"]
+    native_required = {
+        "profile",
+        "abi",
+        "apk_sha256",
+        "dump_cs_sha256",
+        "libil2cpp_sha256",
+        "objdump",
+        "vtable_calibration",
+    }
+    if (
+        not isinstance(native, dict)
+        or set(native) != native_required
+        or native.get("profile") != value["profile"]
+        or native.get("abi") != "arm64"
+        or native.get("apk_sha256") != value["apk_sha256"]
+        or not all(
+            _valid_sha256(native.get(field))
+            for field in ("dump_cs_sha256", "libil2cpp_sha256")
+        )
+        or not isinstance(native.get("objdump"), str)
+        or not native["objdump"]
+        or native.get("vtable_calibration") not in {"verified", "unverified"}
+    ):
+        raise StoryOutcomeCatalogError("story-outcome catalog has invalid native source provenance")
 
 
 def _ids(value: object, name: str) -> list[int]:

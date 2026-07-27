@@ -18,7 +18,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -140,11 +139,27 @@ def write_document(state: Path, data: bytes) -> None:
 def preserve(state: Path, label: str) -> Path | None:
     if not state.exists():
         return None
-    preserved = state.with_name(f"{state.name}.{label}.{timestamp()}.json")
-    shutil.copyfile(state, preserved)
-    with preserved.open("rb") as stream:
-        os.fsync(stream.fileno())
-    return preserved
+    basename = f"{state.name}.{label}.{timestamp()}.json"
+    suffix = 0
+    while True:
+        preserved = state.with_name(basename if suffix == 0 else f"{basename}.{suffix}")
+        try:
+            with state.open("rb") as source, preserved.open("xb") as destination:
+                while chunk := source.read(1024 * 1024):
+                    destination.write(chunk)
+                destination.flush()
+                os.fsync(destination.fileno())
+            directory = os.open(state.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            return preserved
+        except FileExistsError:
+            suffix += 1
+        except BaseException:
+            preserved.unlink(missing_ok=True)
+            raise
 
 
 def snapshot(state: Path, destination: Path | None) -> dict[str, Any]:

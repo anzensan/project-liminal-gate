@@ -81,7 +81,7 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from liminal_gate.character_catalog_importer import CharacterCatalogImportError, load_master_trees
+from liminal_gate.character_catalog_importer import CharacterCatalogImportError, SOURCE_PROFILE, load_master_trees, sha256_file
 from liminal_gate.companion_master_data import COMPANION_MASTER_ROWS
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK
 from liminal_gate.server_constants import build_server_constants
@@ -110,6 +110,90 @@ CORE_CHAPTERS = range(2, 43)
 
 class StoryOutcomeGeneratorError(ValueError):
     """The supplied local inputs cannot produce a story-outcome catalog."""
+
+
+def _valid_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _native_source(source: object) -> dict[str, str]:
+    required = {
+        "profile",
+        "abi",
+        "apk_sha256",
+        "dump_cs_sha256",
+        "libil2cpp_sha256",
+        "objdump",
+        "vtable_calibration",
+    }
+    if (
+        not isinstance(source, dict)
+        or set(source) != required
+        or source.get("profile") != SOURCE_PROFILE
+        or source.get("abi") != "arm64"
+        or not all(
+            _valid_sha256(source.get(field))
+            for field in ("apk_sha256", "dump_cs_sha256", "libil2cpp_sha256")
+        )
+        or not isinstance(source.get("objdump"), str)
+        or not source["objdump"]
+        or source.get("vtable_calibration") not in {"verified", "unverified"}
+    ):
+        raise StoryOutcomeGeneratorError(
+            "input must be a user-derived ARM64 native encounter map with complete source provenance"
+        )
+    return {field: source[field] for field in sorted(required)}
+
+
+def build_derivation_source(
+    encounters: dict[str, Any],
+    characters: dict[str, Any],
+    apk_sha256: str,
+    native_encounters_sha256: str,
+    character_catalog_sha256: str,
+    baseline_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Validate that all derived inputs belong to one APK and retain their hashes."""
+    native = _native_source(encounters.get("source"))
+    character_source = characters.get("source")
+    if (
+        not _valid_sha256(apk_sha256)
+        or not _valid_sha256(native_encounters_sha256)
+        or not _valid_sha256(character_catalog_sha256)
+        or (
+            baseline_sha256 is not None
+            and not _valid_sha256(baseline_sha256)
+        )
+        or not isinstance(character_source, dict)
+        or set(character_source) != {"profile", "apk_sha256"}
+        or character_source.get("profile") != SOURCE_PROFILE
+        or not _valid_sha256(character_source.get("apk_sha256"))
+    ):
+        raise StoryOutcomeGeneratorError(
+            "story-outcome inputs have incomplete or invalid source provenance"
+        )
+    if native["apk_sha256"] != apk_sha256:
+        raise StoryOutcomeGeneratorError(
+            "native encounter map was derived from a different APK"
+        )
+    if character_source["apk_sha256"] != apk_sha256:
+        raise StoryOutcomeGeneratorError(
+            "character catalog was derived from a different APK"
+        )
+    result: dict[str, Any] = {
+        "profile": SOURCE_PROFILE,
+        "apk_sha256": apk_sha256,
+        "native_encounters_sha256": native_encounters_sha256,
+        "character_catalog_sha256": character_catalog_sha256,
+        "native_encounters": native,
+    }
+    if baseline_sha256 is not None:
+        result["baseline_sha256"] = baseline_sha256
+    return result
 
 
 def _read(path: Path, what: str) -> Any:
@@ -256,12 +340,11 @@ def native_stage_maxima(
     if (
         encounters.get("schema_version") != 1
         or encounters.get("provenance") != "user-derived"
-        or not isinstance(encounters.get("source"), dict)
-        or encounters["source"].get("abi") != "arm64"
         or not isinstance(encounters.get("stages"), list)
         or not encounters["stages"]
     ):
         raise StoryOutcomeGeneratorError("input must be a user-derived ARM64 native encounter map")
+    _native_source(encounters.get("source"))
     maxima: dict[tuple[int, int], dict[str, dict[int, int]]] = {}
     inferred_stages: set[tuple[int, int]] = set()
     # Two different failures, kept apart because they mean different things.
@@ -341,6 +424,7 @@ def build_catalog(
     characters: dict[str, Any],
     baseline: dict[str, Any] | None = None,
     exact_only: bool = False,
+    source: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     """Return ``(catalog, join report, notes)`` for the supplied local inputs."""
     character_ids = sorted({
@@ -386,8 +470,11 @@ def build_catalog(
     for identity in sorted(section_maxima):
         native_rule = native_maxima.get(identity, {})
         merged: dict[int, int] = {}
-        for source in (section_maxima[identity], native_rule.get("companions", {})):
-            for companion_id, cap in source.items():
+        for companion_source in (
+            section_maxima[identity],
+            native_rule.get("companions", {}),
+        ):
+            for companion_id, cap in companion_source.items():
                 if companion_id not in recovered_companions:
                     unknown_companions.add(companion_id)
                     continue
@@ -455,6 +542,15 @@ def build_catalog(
         ],
         "stages": stages,
     }
+    if source is not None:
+        catalog["source"] = source
+    calibration = encounters["source"]["vtable_calibration"]
+    report["vtable_calibration"] = calibration
+    if calibration != "verified":
+        notes.append(
+            "native encounter vtable calibration is unverified for this APK; "
+            "the label is retained in catalog source provenance"
+        )
     report["stages_written"] = len(stages)
     report["stages_without_outcome_evidence"] = len(unevidenced)
     report["chapters_without_outcome_evidence"] = sorted({chapter for chapter, _ in unevidenced})
@@ -521,15 +617,30 @@ def main() -> int:
     if args.output.exists() and not args.force:
         raise SystemExit(f"refusing to overwrite {args.output} without --force")
     try:
-        trees = load_master_trees(args.apk.resolve(strict=True), args.dummy_dll_dir, ("BattleData", "EnemyData", "ChrDatabase"))
+        apk = args.apk.resolve(strict=True)
+        native_encounters_path = args.native_encounters.resolve(strict=True)
+        character_catalog_path = args.character_catalog.resolve(strict=True)
+        baseline_path = None if args.baseline is None else args.baseline.resolve(strict=True)
+        encounters = _read(native_encounters_path, "native encounter map")
+        characters = _read(character_catalog_path, "character catalog")
+        source = build_derivation_source(
+            encounters,
+            characters,
+            sha256_file(apk),
+            sha256_file(native_encounters_path),
+            sha256_file(character_catalog_path),
+            None if baseline_path is None else sha256_file(baseline_path),
+        )
+        trees = load_master_trees(apk, args.dummy_dll_dir, ("BattleData", "EnemyData", "ChrDatabase"))
         catalog, report, notes = build_catalog(
-            _read(args.native_encounters, "native encounter map"),
+            encounters,
             trees["BattleData"],
             trees["EnemyData"],
             trees["ChrDatabase"],
-            _read(args.character_catalog, "character catalog"),
-            None if args.baseline is None else _read(args.baseline, "baseline story-outcome catalog"),
+            characters,
+            None if baseline_path is None else _read(baseline_path, "baseline story-outcome catalog"),
             args.exact_only,
+            source,
         )
         write_catalog(args.output, catalog)
         load_story_outcome_catalog(args.output)

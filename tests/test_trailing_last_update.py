@@ -58,6 +58,12 @@ class TrailingLastUpdateTest(unittest.TestCase):
             with self.subTest(parse.__name__):
                 self.assertIsNone(parse(body + b"&lastUpdate=1&lastUpdate=1"))
 
+    def test_only_the_observed_last_update_value_is_tolerated(self) -> None:
+        for parse, body, _ in FORMS:
+            for value in (b"", b"0", b"-1", b"2", b"garbage"):
+                with self.subTest(parse=parse.__name__, value=value):
+                    self.assertIsNone(parse(body + b"&lastUpdate=" + value))
+
     def test_leading_last_update_is_not_accepted(self) -> None:
         # The helper strips a trailing pair only, so positional fields survive.
         self.assertIsNone(_parse_refill_stamina(b"lastUpdate=1&cost=50"))

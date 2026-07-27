@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-07-26
+Date: 2026-07-27
 
 Mode: public-release implementation hardening.
 
@@ -31,7 +31,12 @@ bodies are capped at 4 MiB.
 
 Persistence boundary: mutations and body-scoped replay responses commit
 atomically. Save-editor cache clearing covers tutorial, achievement, message,
-and exchange response caches together.
+and exchange response caches together. Account-state safety copies use
+exclusive creation and cannot overwrite another same-second copy.
+
+Derived-catalog boundary: story-outcome generation rejects native encounter or
+character catalogs whose recorded APK hash differs from the selected APK.
+Generated catalogs retain their input hashes and native calibration label.
 
 Next unknown boundary: the first reproducible original-client failure after
 Chapter 2-1.

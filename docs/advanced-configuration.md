@@ -190,6 +190,14 @@ python3 -m liminal_gate.story_outcome_generator \
   --output user-data/derived/story-outcomes.json
 ```
 
+The generator hashes the selected APK and requires both the native encounter
+map and character catalog to name that exact APK. Cross-build inputs fail
+instead of being joined. Generated JSON retains the APK, native encounter,
+character catalog, optional baseline, `dump.cs`, and `libil2cpp.so` hashes plus
+the native vtable-calibration label. An `unverified` calibration remains
+allowed for a different client build, but is reported and preserved rather
+than silently presented as verified.
+
 Two sources are unioned, and the larger ceiling wins:
 
 - each stage's own `BattleData.Section.dropBuddies` allowlist, which packs a
@@ -345,7 +353,9 @@ python3 -m liminal_gate.account_state switch user-data/bootstrap-state.json \
 
 `switch` **exchanges** the chosen save with the active one, so nothing is
 destroyed and switching back is the same command with the other ID. A
-timestamped `.pre-switch` copy is written first.
+timestamped `.pre-switch` copy is written first. Same-second operations receive
+distinct suffixes and use exclusive file creation, so an earlier safety copy is
+never overwritten.
 
 That is the difference between it and `adopt`, which moves a save onto another
 UUID and discards whatever was there. Use `adopt` to recover a save onto a

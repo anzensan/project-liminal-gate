@@ -2871,7 +2871,7 @@ def _drop_trailing_last_update(pairs: tuple[tuple[str, str], ...]) -> tuple[tupl
     Routes whose form requires ``lastUpdate`` as a named field parse it
     directly and must not use this helper.
     """
-    return pairs[:-1] if pairs and pairs[-1][0] == "lastUpdate" else pairs
+    return pairs[:-1] if pairs and pairs[-1] == ("lastUpdate", "1") else pairs
 
 
 def _parse_continue(body: bytes) -> int | None:
@@ -3682,14 +3682,24 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_launch_config(args: argparse.Namespace) -> ServerConfig:
-    fields = (
+    value_fields = (
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
-        "story_catalog", "story_progression_catalog", "core_story", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
+        "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
-        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "pacts", "event_catalog", "character_catalog", "hunting_catalog", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "achievement_catalog", "message_catalog", "exchange_catalog", "drop_eligibility", "achievements", "summon_skills",
+        "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "event_catalog", "character_catalog", "hunting_catalog",
+        "achievement_catalog", "message_catalog", "exchange_catalog",
+    )
+    flag_fields = (
+        "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items",
+        "companion_draw", "companion_sale", "companion_strengthen",
+        "companion_evolution", "trading_post", "drop_eligibility",
+        "achievements", "summon_skills",
     )
     if args.config is not None:
-        if any(getattr(args, field, None) is not None for field in fields):
+        if (
+            any(getattr(args, field, None) is not None for field in value_fields)
+            or any(getattr(args, field, False) for field in flag_fields)
+        ):
             raise ProfileError("--config cannot be combined with individual launcher options")
         return load_server_config(args.config)
     if args.profile is None or args.state_file is None:
