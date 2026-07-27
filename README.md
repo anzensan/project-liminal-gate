@@ -228,18 +228,36 @@ Choose **Create device**, select a phone profile, choose a recent Android
 system image, and start the new device. Use a fresh emulator profile for this
 test build when possible.
 
-The current known-good Windows report used a **Pixel 6 with Android 12** and
-completed the verified path through Chapter 2-1. Some newer Android API levels
-have caused the original APK to crash when opening game areas **on emulator
-system images**. This has not been reproduced on physical hardware: a Samsung
-tablet running a current Android release runs the same build correctly. Treat it
-as an emulator image limitation rather than a general Android version limit, and
-not as a local-server response. If you see an immediate crash on a newer image,
-retry with a Pixel 6 Android 12 system image before investigating server logs.
+**Choose an Android 14 image with translated ABI support.** This is the current
+recommendation and it matters more than the phone profile. The app is built for
+`arm64-v8a` and `armeabi-v7a` only, so on an x86 computer the emulator has to
+translate ARM code, and which translator it uses depends on the Android version:
+Android 11 through 13 use the older **Houdini**, Android 14 uses **Berberis**,
+which handles this Unity build and its audio noticeably better. Reported by a
+tester and confirmed by another, whose emulator audio had previously cut out
+within a minute and then ran uninterrupted on Android 14.
+
+In **Device Manager → Create device**, pick a phone profile, then choose a
+system image whose name includes **Translated ABI** (for example
+*Android 14 · arm64-v8a · Translated ABI*). Use a fresh emulator profile for
+this test build when possible.
+
+If installing fails with `INSTALL_FAILED_NO_MATCHING_ABIS: Failed to extract
+native libraries, res=-113`, the image has no ARM translation. That is the whole
+cause: pick a Translated ABI image and install again. Nothing is wrong with the
+APK or the signing.
+
+Older reports completed the verified path through Chapter 2-1 on a **Pixel 6
+with Android 12**, so that image still works for play, but its audio is
+unreliable and it is no longer the suggested starting point. Some newer Android
+API levels have caused the original APK to crash when opening game areas **on
+emulator system images**. This has not been reproduced on physical hardware: a
+Samsung tablet running a current Android release runs the same build correctly.
+Treat it as an emulator image limitation rather than a general Android version
+limit, and not as a local-server response.
 
 Avoid Android 16 system images that use **16 KB page size**: the original APK
-is not compatible with that emulator configuration. A standard, non-16-KB
-Android 12 image is the recommended emulator baseline. The current setup already
+is not compatible with that emulator configuration. The current setup already
 recognizes Windows `zipalign.exe` and `apksigner.bat`; if it still reports those
 tools missing, update to the latest project revision before editing any Python
 files.
@@ -306,10 +324,17 @@ current terminal, so it will not affect your other projects.
 
 #### Sound on the emulator
 
-Emulator audio is unreliable for this build, in two separate ways. Neither is a
-server problem: the local resource set delivers every sound and music file the
-client asks for, and the same build plays audio continuously on physical
-hardware. If sound matters to you, test on a real phone or tablet.
+**Start with an Android 14 Translated ABI image; it fixes the worst of this.**
+Emulator audio going silent after a minute or two has been traced to the older
+**Houdini** ARM translator used by Android 11 through 13. Android 14's
+**Berberis** does not show it: a tester whose audio had reliably died within a
+minute ran five minutes uninterrupted after switching. See
+[Create and start an emulator](#1-create-and-start-an-emulator).
+
+Neither problem below is a server problem: the local resource set delivers every
+sound and music file the client asks for, and the same build plays audio
+continuously on physical hardware. If you are on an older image and sound
+matters to you, test on a real phone or tablet.
 
 **First, many emulators start with audio output switched off.** Android Studio
 does not always write `hw.audioOutput` into a new device's configuration, so
