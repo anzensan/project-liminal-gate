@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import json
+from liminal_gate import tester_setup
+
 import subprocess
 import tempfile
 from pathlib import Path
@@ -304,3 +309,69 @@ class LocalSigningToolTest(unittest.TestCase):
                  patch("liminal_gate.tester_setup.sign_apk"):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None)
         self.assertEqual(["keystore", "build-tools", "inventory"], order)
+
+
+class AccountReportTest(unittest.TestCase):
+    """Reinstalling reads as lost progress; the launch report is the antidote.
+
+    An account is keyed by the client's device UUID, so clearing app data signs
+    the client into a new, empty account while the real save stays in the same
+    file. Nothing in the client says so.
+    """
+
+    def _report(self, document: dict) -> str:
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            (data / "bootstrap-state.json").write_text(json.dumps(document), encoding="utf-8")
+            stream = io.StringIO()
+            with contextlib.redirect_stdout(stream):
+                tester_setup.report_existing_accounts(data)
+            return stream.getvalue()
+
+    @staticmethod
+    def _account(progress: int | None, played: bool = True) -> dict:
+        return {
+            "username": "Player",
+            "tutorial_phase": "free_roam" if played else "initial",
+            "tutorial_requests": {"a": {}} if played else {},
+            "userdata": {} if progress is None else {"progressCode": progress},
+        }
+
+    def test_flags_an_account_with_more_progress_than_the_active_one(self) -> None:
+        output = self._report({
+            "accounts": {"old": self._account(16777601), "new": self._account(16777346)},
+            "active_account_id": "new", "tokens": {}, "client_hosts": {},
+        })
+        self.assertIn("unlocked chapter 6-1", output)
+        self.assertIn("unlocked chapter 2-2", output)
+        self.assertIn("old has more progress", output)
+        self.assertIn("adopt", output)
+
+    def test_says_nothing_extra_for_a_single_account(self) -> None:
+        output = self._report({
+            "accounts": {"only": self._account(16777601)},
+            "active_account_id": "only", "tokens": {}, "client_hosts": {},
+        })
+        self.assertIn("unlocked chapter 6-1", output)
+        self.assertNotIn("more progress", output)
+
+    def test_does_not_nag_when_the_active_account_is_the_furthest(self) -> None:
+        output = self._report({
+            "accounts": {"old": self._account(16777346), "new": self._account(16777601)},
+            "active_account_id": "new", "tokens": {}, "client_hosts": {},
+        })
+        self.assertNotIn("more progress", output)
+
+    def test_an_unplayed_account_reads_as_not_started(self) -> None:
+        output = self._report({
+            "accounts": {"fresh": self._account(None, played=False)},
+            "active_account_id": "fresh", "tokens": {}, "client_hosts": {},
+        })
+        self.assertIn("not started", output)
+
+    def test_silent_when_no_state_file_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            stream = io.StringIO()
+            with contextlib.redirect_stdout(stream):
+                tester_setup.report_existing_accounts(Path(directory))
+            self.assertEqual("", stream.getvalue())

@@ -31,6 +31,7 @@ from liminal_gate.master_strings import (
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
+from liminal_gate import account_state
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
 
 
@@ -600,6 +601,45 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def report_existing_accounts(data_directory: Path) -> None:
+    """Say which saved account the client will land on, before the server starts.
+
+    An account is keyed by the client's device UUID, so clearing app data or
+    reinstalling signs the client into a brand new account while the previous
+    save sits in the same file, complete and unreachable. That reads as lost
+    progress, and nothing in the client says otherwise, so it is worth one line
+    here rather than a JSON hunt later.
+    """
+    state = data_directory / "bootstrap-state.json"
+    summary = account_state.summarize(state)
+    accounts = summary.get("accounts") or []
+    if not summary.get("exists") or not accounts:
+        return
+    print(f"\nSaved accounts in {state.name}: {len(accounts)}")
+    for account in accounts:
+        marker = "* " if account["active"] else "  "
+        progress = account.get("progressCode")
+        where = "not started" if not account.get("played") else _progress_label(progress)
+        print(f"  {marker}{account['accountId']}  {where}")
+    if len(accounts) > 1:
+        print("  (* is the account the client is currently signed into.)")
+        best = max(accounts, key=lambda value: value.get("progressCode") or 0)
+        if not best["active"] and (best.get("progressCode") or 0) > 0:
+            print(
+                f"  Note: {best['accountId']} has more progress than the active account."
+                " Reinstalling signs the client into a new one; re-point it with"
+                " `python3 -m liminal_gate.account_state adopt`."
+            )
+
+
+def _progress_label(progress: object) -> str:
+    """Render a stored progressCode as the chapter and section it unlocks."""
+    if type(progress) is not int or progress <= 0:
+        return "no recorded progress"
+    low = progress & 0xFFFF
+    return f"unlocked chapter {low >> 6}-{low & 0x3F}"
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -623,7 +663,8 @@ def main() -> int:
         if device is None:
             return 0
         install_apk(adb, device, signed, replace_existing=args.replace_existing)
-        print(f"Installed on {device}. Starting the local server; press Control-C when finished.")
+        report_existing_accounts(args.data_dir)
+        print(f"\nInstalled on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
             options.core_story, options.drop_eligibility, options.achievements, options.summon_skills, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
