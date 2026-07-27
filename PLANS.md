@@ -1,5 +1,86 @@
 # Execution Plans
 
+## 2026-07-27 Hunting selector runtime stability
+
+Status: discovery in progress.
+
+Objective: stop the original client's Hunting selector from flashing while
+retaining the real, progress-gated Hunting rows and their existing bounded
+server lifecycle.
+
+Evidence boundary:
+
+- The selector renders its four unlocked tier-1 rows, then the whole list
+  flashes around the Attack of the Coin Creeps card and loading indicator.
+- Live server diagnostics record no banner/resource failure or selector-time
+  endpoint error.
+- Static client analysis identifies a per-frame `UISpecialSelect.Update`
+  writer of the list root position that runs only when rows exist. The exact
+  oscillator remains unproved at runtime.
+
+Required proof before a client patch:
+
+1. Capture the original client while the flash occurs and exclude a failing
+   resource, event timer, or subjugation request.
+2. Identify the exact ARM64 and ARMv7 instruction boundary responsible for the
+   repeated movement without disabling list initialization, scrolling, or
+   selection.
+3. Add source-byte-guarded dual-ABI plan entries and tests only if that boundary
+   is confirmed.
+4. Rebuild locally and confirm stable rendering plus a successful Hunting
+   start; do not add duplicate rows or unlock later tiers as a layout hack.
+
+## 2026-07-27 bundled Strikes Back vertical slice
+
+Status: published 2026-07-27 with original-client clear still pending.
+
+Objective: restore the packaged non-collaboration Counter Descent families to
+Huntland -> Strikes Back through the standard server-only path.
+
+Evidence boundary:
+
+- `UISpecialSelect` mode 8 reads `descentHuntingList`; the standard public
+  server does not send that list.
+- The final client contains Chapters 8000--8007, five sections each. Recovered
+  BattleData fixes their stamina to 5/10/15/15/15 and records no static Coin or
+  item reward.
+- The prior private implementation advertised one folded `<chapter>-1` row per
+  unlocked family, opening Chapters 8000 and 8001 for the current account.
+- Historical dates and server-authored reward/drop behavior remain
+  unrecovered, so unlocks are permanent local policy and clears are zero-base.
+
+Required proof:
+
+1. The standard `--hunting` policy supplies all 40 startable stage identities,
+   but `descentHuntingList` advertises only one folded row per family after the
+   documented Chapter 5--12 gates.
+2. Login emits only flags paired with those advertised rows; Counter Descent
+   rows do not leak into Arena -> Special Quests.
+3. Start charges exact stamina once, refuses locked/wrong-cost entries, and
+   replays across restart without a second charge.
+4. Clear accepts only unchanged progress, roster, inventory, Summons, and a
+   zero reward result; retry after restart cannot grant twice.
+5. Focused real-HTTP tests, full warning-strict tests, deployment, and one
+   original-client Strikes Back start/clear pass before publication.
+
+Result:
+
+- The standard Hunting policy supplies Chapters 8000--8007, five sections per
+  family, while `descentHuntingList` folds each unlocked family to one tier-1
+  selector row. The current account receives only Chapters 8000 and 8001.
+- Login flags come from the same progress-filtered projection. Counter Descent
+  rows remain separate from Arena -> Special Quests.
+- Real-HTTP regressions prove exact stamina debit, locked and wrong-cost
+  rejection, active-stage retry without a second debit, restart recovery,
+  zero-base clear validation, and restart-safe clear replay.
+- The full 440-test warning-strict suite, compilation, diff checks, deployment,
+  live status/login projection, and original-client selector plus Chapter
+  8000-1 fight entry passed.
+- At the user's publication request, the original-client battle-clear callback
+  had not yet been observed. That client-visible clear remains the next
+  Strikes Back boundary; the passing synthetic real-HTTP clear is not presented
+  as a substitute.
+
 ## 2026-07-27 Metal and Special Quest selector ownership
 
 Status: completed 2026-07-27.

@@ -54,7 +54,13 @@ from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StorySta
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
 from liminal_gate.drop_eligibility import login_chr_buddy_data
-from liminal_gate.event_catalog import EventCatalog, EventCatalogError, load_event_catalog
+from liminal_gate.event_catalog import (
+    EventCatalog,
+    EventCatalogError,
+    build_bundled_counter_descent_policy,
+    load_event_catalog,
+    merge_event_catalogs,
+)
 from liminal_gate.event_log import EventRecorder, safe_form_diagnostics
 from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
@@ -1903,8 +1909,14 @@ class BootstrapState:
                 or stage.coins is not None and values["coins"] != stage.coins
             ):
                 return "unsupported_start_quest", None
+            event = isinstance(catalog, EventCatalog)
+            userdata = account["userdata"]
+            if event and not stage.unlocked_at(
+                int(userdata.get("progressCode", 0))
+            ):
+                return "event_stage_locked", None
             if isinstance(catalog, StoryProgressionCatalog):
-                current = int(account["userdata"].get("progressCode", 0))
+                current = int(userdata.get("progressCode", 0))
                 expected = catalog.expected_clear_progress(current, (stage.chapter, stage.section))
                 if expected is None:
                     return "tutorial_state_conflict", None
@@ -1919,6 +1931,20 @@ class BootstrapState:
                 return "success", payload
             if account["tutorial_phase"] != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
+            if event:
+                energy, free_energy, coins = (
+                    int(userdata.get(name, 0))
+                    for name in ("energy", "freeEnergy", "coins")
+                )
+                if energy + free_energy < stage.stamina or coins < stage.coins:
+                    return "success", _canonical_payload(
+                        {"success": False, "errorCode": 1}
+                    )
+                free_spend = min(free_energy, stage.stamina)
+                userdata["freeEnergy"] = free_energy - free_spend
+                userdata["energy"] = energy - (stage.stamina - free_spend)
+                userdata["coins"] = coins - stage.coins
+                _synchronize_wallet_projection(userdata)
             payload = {"success": True, "refillStartTime": 0.0}
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity
@@ -1981,6 +2007,10 @@ class BootstrapState:
             failed = next((name for name, passed in checks if not passed), None)
             if failed is not None:
                 return (f"event_clear_{failed}_conflict" if event else "tutorial_state_conflict"), None
+            if event and stage.zero_base and not _zero_base_event_matches(
+                userdata, clear
+            ):
+                return "invalid_local_event_result", None
             if settlement_catalog is not None and not _settlement_matches(userdata, clear, identity, settlement_catalog):
                 return "invalid_local_settlement", None
             if clear_state_catalog is not None and not _clear_state_matches(userdata, clear, clear_state_catalog):
@@ -2409,12 +2439,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             payload["name"] = self.server.state.accounts[account_id].get("username", payload.get("name", "Player"))
             payload["messageList"] = self.server.state.login_messages(account_id)
             event_flags: dict[str, Any] = {}
+            progress = self.server.state.accounts[account_id].get(
+                "userdata", {}
+            ).get("progressCode", 0)
             if self.server.event_catalog is not None:
-                event_flags |= self.server.event_catalog.flags()
+                event_flags |= self.server.event_catalog.flags(
+                    progress if type(progress) is int and progress >= 0 else None
+                )
             if self.server.hunting_catalog is not None:
-                progress = self.server.state.accounts[account_id].get(
-                    "userdata", {}
-                ).get("progressCode", 0)
                 if type(progress) is int and progress >= 0:
                     event_flags |= self.server.hunting_catalog.client_event_flags(
                         progress
@@ -2730,6 +2762,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "unsupported_companion_draw": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_companion_userdata": HTTPStatus.NOT_IMPLEMENTED,
             "unsupported_ordinary_pact": HTTPStatus.NOT_IMPLEMENTED,
+            "event_stage_locked": HTTPStatus.CONFLICT,
+            "invalid_local_event_result": HTTPStatus.CONFLICT,
             "hunting_stage_locked": HTTPStatus.CONFLICT,
             "invalid_local_hunting_result": HTTPStatus.CONFLICT,
             "invalid_local_settlement": HTTPStatus.CONFLICT,
@@ -2816,13 +2850,20 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             normal_slot_coins=None if coins is None else coins[1],
             rare_slot_energy=None if energy is None else energy[1],
         )
-        if self.server.event_catalog is not None:
-            constants["specialQuestList"] = self.server.event_catalog.client_list()
-        constants |= {"metalHuntingList": [], "huntingHuntingList": []}
+        constants |= {
+            "metalHuntingList": [],
+            "huntingHuntingList": [],
+            "descentHuntingList": [],
+        }
         progress = self.server.state.progress_for_status(
             token,
             self._client_host(),
         )
+        if self.server.event_catalog is not None:
+            event_lists = self.server.event_catalog.client_lists(progress)
+            if event_lists["specialQuestList"]:
+                constants["specialQuestList"] = event_lists["specialQuestList"]
+            constants["descentHuntingList"] = event_lists["descentHuntingList"]
         if progress is not None and self.server.hunting_catalog is not None:
             constants |= self.server.hunting_catalog.client_lists(progress)
         return constants
@@ -3526,6 +3567,26 @@ def _parse_message_ids(body: bytes) -> list[str] | None:
     return identifiers if type(identifiers) is list and identifiers and len(identifiers) == len(set(identifiers)) and all(isinstance(identifier, str) and identifier for identifier in identifiers) else None
 
 
+def _zero_base_event_matches(
+    userdata: dict[str, Any], clear: dict[str, Any],
+) -> bool:
+    """Require a Counter Descent clear to grant nothing unrecovered."""
+    result = clear["battle_result"]
+    return (
+        result["coins"] == 0
+        and result["exp"] == 0
+        and result["items"] == {}
+        and result["buddies"] == []
+        and result["monsters"] == []
+        and result["summons"] == []
+        and result["luckynum"] == 0
+        and result["boostup"] == [0] * 6
+        and clear["chrdata"] == userdata.get("chrdata")
+        and clear["itemList"] == userdata.get("itemList")
+        and clear["summonList"] == userdata.get("summonList")
+    )
+
+
 def _settlement_matches(userdata: dict[str, Any], clear: dict[str, Any], identity: tuple[int, int], catalog: SettlementCatalog) -> bool:
     rule = catalog.rules.get(identity)
     current = userdata.get("chrdata", [])
@@ -3984,6 +4045,11 @@ def main() -> int:
         if args.hunting and args.hunting_catalog is not None:
             raise ProfileError("--hunting cannot be combined with --hunting-catalog")
         hunts = build_bundled_hunting_policy() if args.hunting else (None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog))
+        if args.hunting:
+            events = merge_event_catalogs(
+                build_bundled_counter_descent_policy(),
+                events,
+            )
         if args.achievements and args.achievement_catalog is not None:
             raise ProfileError("--achievements cannot be combined with --achievement-catalog")
         achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))

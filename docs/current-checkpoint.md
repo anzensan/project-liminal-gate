@@ -31,9 +31,11 @@ Quests no longer inherits the client's built-in Metal fallback list. Permanent
 Fate reaches the ordinary Pact transaction with the captured `luckType=true`
 form. A ticket-backed Metal Zone 1 result also settles live: the client repeats
 its pre-entry Item 50 count, the server retains the already-committed spend,
-and the bounded Companion drop persists. These are fast-lane client
-observations, not a replacement for the Chapter 2-1 canonical certification
-boundary.
+and the bounded Companion drop persists. Strikes Back now shows its first two
+progress-gated families and the original client entered Spinetrich Kino
+Chapter 8000-1. Its clear callback has not yet been observed. These are
+fast-lane client observations, not a replacement for the Chapter 2-1 canonical
+certification boundary.
 
 Security boundary: the server listens on the local network for Android device
 compatibility. Signup/login associates a client host with an account; a new
@@ -52,6 +54,6 @@ character catalogs whose recorded APK hash differs from the selected APK.
 Generated catalogs retain their input hashes and native calibration label.
 
 Next unknown boundaries: the first reproducible original-client failure after
-Chapter 2-1, and the Hunting selector flash after its rows render. The latter
-produced no corresponding server resource request or 404 and needs a client
-runtime capture.
+Chapter 2-1, the Strikes Back Chapter 8000-1 clear callback, and the Hunting
+selector flash after its rows render. The latter produced no corresponding
+server resource request or 404 and needs a client runtime capture.

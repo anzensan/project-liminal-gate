@@ -1,6 +1,13 @@
 import hashlib,json,tempfile,unittest
 from pathlib import Path
-from liminal_gate.event_catalog import load_event_catalog,EventCatalogError
+from liminal_gate.event_catalog import (
+    EventCatalog,
+    EventCatalogError,
+    EventStage,
+    build_bundled_counter_descent_policy,
+    load_event_catalog,
+    merge_event_catalogs,
+)
 class EventCatalogTest(unittest.TestCase):
  def test_local_event_grant_matches_catalog(self):
   with tempfile.TemporaryDirectory() as d:
@@ -44,3 +51,62 @@ class EventFlagRuleTest(unittest.TestCase):
         message = str(refused.exception)
         self.assertIn("sp_ch_7010", message)
         self.assertIn("sp_ch_7010-2", message)
+
+
+class BundledCounterDescentPolicyTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.catalog = build_bundled_counter_descent_policy()
+
+    @staticmethod
+    def progress_at(chapter: int) -> int:
+        return 0x01000000 | (chapter << 6) | 1
+
+    def test_declares_all_eight_families_and_five_sections(self) -> None:
+        self.assertEqual(
+            [
+                (chapter, section)
+                for chapter in range(8000, 8008)
+                for section in range(1, 6)
+            ],
+            sorted(self.catalog.by_identity()),
+        )
+        for chapter in range(8000, 8008):
+            self.assertEqual(
+                [5, 10, 15, 15, 15],
+                [
+                    self.catalog.by_identity()[(chapter, section)].stamina
+                    for section in range(1, 6)
+                ],
+            )
+            self.assertTrue(
+                all(
+                    self.catalog.by_identity()[(chapter, section)].zero_base
+                    for section in range(1, 6)
+                )
+            )
+
+    def test_projects_one_folded_row_per_unlocked_family(self) -> None:
+        self.assertEqual(
+            [],
+            self.catalog.client_lists(self.progress_at(5))[
+                "descentHuntingList"
+            ],
+        )
+        lists = self.catalog.client_lists(self.progress_at(7))
+        self.assertEqual(["8000-1", "8001-1"], lists["descentHuntingList"])
+        self.assertEqual([], lists["specialQuestList"])
+        self.assertEqual(
+            ["sp_ch_8000", "sp_ch_8001"],
+            sorted(self.catalog.flags(self.progress_at(7))),
+        )
+
+    def test_bundled_zero_base_rows_own_generated_duplicates(self) -> None:
+        generated = EventCatalog((
+            EventStage("generated", "sp_ch_8000", 8000, 1, 99, 0, 0, ()),
+            EventStage("other", "sp_ch_2000", 2000, 1, 15, 0, 0, ()),
+        ))
+        merged = merge_event_catalogs(self.catalog, generated)
+        self.assertIsNotNone(merged)
+        self.assertEqual(5, merged.by_identity()[(8000, 1)].stamina)
+        self.assertTrue(merged.by_identity()[(8000, 1)].zero_base)
+        self.assertIn((2000, 1), merged.by_identity())

@@ -13,8 +13,8 @@ functional by adding ordinary HTTP responses.
 | 0. Certify account and resource stability | Done. The account lifecycle and the whole Chapter 2--42 story are now certified by the public suite. |
 | 1. Hunting discovery | Static client gates and selector list contract recovered; live historical-service schedule remains unavailable. |
 | 2. Hunting vertical slice | Catalog, selector projection, lifecycle, costs, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py` and `liminal_gate/server_constants.py`). |
-| 3. Expand by family | Bundled local policy declares the recovered Hunting and Metal families with explicit per-stage bounds. |
-| 4. Arena -> Special Quests | Outstanding, and gated on the same kind of capture. |
+| 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, and eight packaged Counter Descent families with explicit per-stage bounds. |
+| 4. Arena -> Special Quests | Its selector is server-owned; additional stages remain gated on reviewed local inputs. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 
 The selector lives in `get_server_status.constants`. The server sends the
@@ -26,6 +26,7 @@ it never attempts a one-field partial projection.
 | Client destination | Public goal | Explicit non-goal |
 | --- | --- | --- |
 | Hunting | User-local, solo Metal/Hunting stages selected and settled through the normal quest lifecycle. | Recreating retired rotations, paid-entry systems, or unbounded client-authoritative rewards. |
+| Huntland -> Strikes Back | Packaged non-collaboration Counter Descent families, progress-gated and settled through the bounded normal quest lifecycle. | Claiming recovered historical dates, rotations, or rewards. |
 | Arena -> Special Quests | User-local, solo event/archive stages, using the existing local-event catalog path. | Treating Special Quests as PvP or a live event schedule. |
 | Arena VS / ranking | Remain visibly unavailable. | Photon rooms, friends, matchmaking, rankings, co-op, raids, or a simulated service presented as the original Arena. |
 
@@ -66,6 +67,12 @@ projection, bounded start/clear settlement, one-active-quest enforcement,
 body-scoped replay, and restart coverage. These establish local preservation
 behavior; a future private capture may refine historical unlock schedules or
 stage-specific bounds without changing that architecture.
+
+Strikes Back reuses the same lifecycle through the event catalog. The bundled
+Counter Descent policy declares Chapters 8000--8007 with five tiers each,
+folds each unlocked family to one selector row, and validates a zero-base
+clear. Original-client selector navigation and Chapter 8000-1 entry are
+confirmed; the client clear callback is still outstanding.
 
 Arena -> Special Quests should continue through the existing user-local event
 catalog rather than a second backend. Its next vertical slice needs one

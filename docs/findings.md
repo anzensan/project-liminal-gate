@@ -28,6 +28,12 @@ Private inputs, captures, account state, and original assets remain excluded.
   login flags.
   The server derives those flags from the same advertised rows; Hunting and
   Metal lists then rendered in the final client.
+- **Confirmed by static client analysis, live transport, and original-client
+  observation:** Strikes Back reads `descentHuntingList`. One folded tier-1 row
+  per unlocked Chapter 8000--8007 family plus its matching chapter flag opens
+  that family's five-tier card. Spinetrich Kino and Kraken Kino rendered for
+  the current progress, and Chapter 8000-1 reached `start_quest` and loaded its
+  battle resources.
 - **Local policy:** the country roster and large character/Companion box sizes
   are compatibility fixtures, not recovered production-service values.
 
@@ -80,6 +86,11 @@ Private inputs, captures, account state, and original assets remain excluded.
   Output retains the APK and derived-file hashes, native library and `dump.cs`
   hashes, optional baseline hash, tool identity, and verified/unverified
   calibration label.
+- **Local policy with recovered static costs:** packaged Counter Descent
+  Chapters 8000--8007 unlock permanently after local Chapter 5--12 gates.
+  Their five tiers cost 5/10/15/15/15 stamina. No recovered base reward is
+  granted, so clear accepts only a zero-base result and unchanged
+  server-owned state.
 
 ## Public-release boundary
 
@@ -98,6 +109,9 @@ Private inputs, captures, account state, and original assets remain excluded.
 - Hunting rows render, but the selector can flash while showing a loading
   indicator. Live event diagnostics contained no corresponding resource
   request or 404, so the remaining boundary is client-side runtime evidence.
+- Strikes Back selector and Chapter 8000-1 fight entry are accepted by the
+  original client. Its battle-clear callback and return to free roam remain
+  unobserved; only the bounded real-HTTP regression has exercised that clear.
 - The retired Tavern “Watch Video” controls are created by client UI and rely
   on the unavailable ad SDK. Removing them is an APK-patch boundary, not a
   server catalog flag.

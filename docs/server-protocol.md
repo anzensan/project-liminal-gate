@@ -47,8 +47,18 @@ nonempty: validated user-local event stages replace a closed recovered entry
 used when no event catalog is configured. This prevents the client's fixed
 50-entry fallback from leaking Chapter 3000 rows into Arena -> Special Quests.
 Advertised Metal entries receive exact section flags rather than one broad
-chapter flag. Detailed static evidence and local-policy labels live in
+chapter flag. `descentHuntingList` separately folds each progress-unlocked
+Counter Descent family to its tier-1 identity; login supplies only the matching
+chapter flags. Detailed static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
+
+Counter Descent starts use the ordinary `start_quest` route. The bundled policy
+accepts only Chapters 8000--8007, sections 1--5, with exact stamina costs of
+5/10/15/15/15. A successful entry commits the debit and active stage together;
+retry or restart cannot debit it again. `clear_quest` requires unchanged
+progress, roster, inventory, Summons, and a zero base reward because no
+server-authored reward was recovered. This is preservation policy, not a claim
+about historical event schedules or rewards.
 
 ## Evidence labels
 

@@ -20,6 +20,13 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-27 Strikes Back vertical slice: the standard Hunting policy now
+  exposes the eight packaged non-collaboration Counter Descent families through
+  the dedicated, progress-gated `descentHuntingList`, with five startable tiers
+  per family and exact recovered stamina costs. Start and zero-base clear are
+  bounded, replay-safe, and restart-safe. The live client displayed Spinetrich
+  Kino and Kraken Kino and entered Chapter 8000-1 successfully; its battle-clear
+  callback remains unobserved and is not claimed as client-certified.
 - 2026-07-27 Metal/Special selector ownership: the bundled Metal list now
   includes both regular sections 1--7 and All Hail the King sections 11--17,
   plus both Roads. Exact per-section flags replace the broad Chapter 3000 flag,
@@ -97,12 +104,19 @@ machine-readable/current capability boundary.
 - 2026-07-27 selector ownership validation: 436 tests passed with resource
   leaks promoted to errors; 61 focused catalog/runtime/HTTP tests, compilation,
   diff checks, live HTTP projection, and original-client acceptance passed.
+- 2026-07-27 Strikes Back validation: 440 tests passed with resource leaks
+  promoted to errors; focused catalog and real-HTTP restart/replay checks,
+  compilation, diff checks, live projection, and original-client fight entry
+  passed.
 
 ## Blockers and unresolved fidelity
 
 - Hunting selector flashing/loading after its rows render. Live diagnostics
   show no associated banner/resource request or 404, so a client runtime
   capture is still needed before changing server behavior.
+- Original-client Strikes Back battle clear and return to free roam. Selector,
+  tier navigation, and Chapter 8000-1 entry are confirmed; clear is currently
+  covered only by the real-HTTP regression.
 - Retired Tavern “Watch Video” controls are client/ad-SDK UI. The server does
   not advertise or implement an ad service; hiding those controls requires a
   separately validated APK patch.
