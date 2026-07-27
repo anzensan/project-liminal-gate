@@ -200,19 +200,32 @@ Two sources are unioned, and the larger ceiling wins:
 Neither subsumes the other. The allowlist covers stages the native map cannot
 resolve; the native map covers Companions the allowlist omits.
 
-#### What it cannot know
+#### Item and character ceilings
 
-`StoryOutcomeRule` also carries `item_maxima` and `character_maxima`. No
-per-stage item or character drop table has been recovered -- `EnemyData` carries
-a Job drop rather than an item, and carries no character drop at all -- so both
-are emitted **empty**, and an empty ceiling forbids the outcome rather than
-permitting it.
+`StoryOutcomeRule` also carries `item_maxima` and `character_maxima`, and an
+empty ceiling **forbids** the outcome rather than permitting it. Both are
+therefore derived from the same per-enemy records the Companion ceiling reads,
+so a clear that legitimately rewards an item or a recruited monster is accepted:
 
-Stated plainly: a generated catalog makes Companion drops work and refuses any
-clear whose battle result reports an item or a character. If your client reports
-those, pass an operator-authored catalog as `--baseline`. Its capacities, its
-`item_maxima`/`character_maxima`, and its Companion drop levels are carried
-through unchanged, and only the Companion ceilings are widened.
+- **Items** come from `EnemyParams.items`, a four-slot `ItemCode` array where
+  `code >> 8` is the item and `code & 0xFF` the count. 845 recovered enemy
+  records carry at least one. There is no per-item ratio, so every item an enemy
+  names contributes a ceiling.
+- **Characters** come from `EnemyParams.DropJobID`, which names a `ChrJobParams`
+  row whose `chrID` is the character the client recruits. A zero `DropRatio`
+  never rolls and contributes nothing, matching the Companion reading.
+
+A stage the native map cannot join has no item or character evidence and its
+ceilings stay empty. The run report counts those stages, so you can see exactly
+where a clear reporting an item or a recruited monster would be refused. Pass an
+operator-authored catalog as `--baseline` to fill them: its capacities, maxima,
+and Companion drop levels are carried through unchanged and the recovered
+ceilings are unioned on top.
+
+**This catalog is optional strictness.** The guided setup does not pass it, and
+without it the server does not constrain reported outcomes at all -- items and
+monster drops settle from the client's own battle result. Supply it only when
+you want the stricter validation and accept its coverage limits.
 
 Three further boundaries, all reported by the commands themselves:
 

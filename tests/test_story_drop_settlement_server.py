@@ -49,12 +49,16 @@ class StoryDropSettlementServerTest(unittest.TestCase):
             # native map finds two enemies able to drop it.
             {"dropBuddies": [{"code": (COMPANION << 8) | 1}]},
         ]}]}
+        empty_slots = [{"code": 0}] * 4
         enemy_data = {"data": [
-            {"ID": BOMBORG, "DropBuddyID": COMPANION, "DropBuddyRatio": 20.0},
-            {"ID": ELECTROTICK, "DropBuddyID": COMPANION, "DropBuddyRatio": 0.0},
+            {"ID": BOMBORG, "DropBuddyID": COMPANION, "DropBuddyRatio": 20.0,
+             "items": empty_slots, "DropJobID": 0, "DropRatio": 0.0},
+            {"ID": ELECTROTICK, "DropBuddyID": COMPANION, "DropBuddyRatio": 0.0,
+             "items": empty_slots, "DropJobID": 0, "DropRatio": 0.0},
         ]}
+        chr_database = {"data": [{"ID": 1, "chrID": CHARACTER}]}
         characters = {"characters": [{"character_id": CHARACTER}]}
-        catalog, _report, _notes = build_catalog(encounters, battledata, enemy_data, characters)
+        catalog, _report, _notes = build_catalog(encounters, battledata, enemy_data, chr_database, characters)
         return catalog
 
     def _clear_fields(self, buddies: list[int]) -> list[tuple[str, str]]:

@@ -13,7 +13,7 @@ from liminal_gate.story_outcome_generator import (
     StoryOutcomeGeneratorError,
     build_catalog,
     companion_drops_by_enemy,
-    native_companion_maxima,
+    native_stage_maxima,
     section_companion_maxima,
     write_catalog,
 )
@@ -30,8 +30,16 @@ def _code(companion_id: int, cap: int) -> dict[str, int]:
     return {"code": (companion_id << 8) | cap}
 
 
-def _enemy(record_id: int, companion_id: int = 0, ratio: float = 0.0) -> dict[str, object]:
-    return {"ID": record_id, "DropBuddyID": companion_id, "DropBuddyRatio": ratio}
+def _enemy(
+    record_id: int, companion_id: int = 0, ratio: float = 0.0,
+    items: tuple[tuple[int, int], ...] = (), job_id: int = 0, job_ratio: float = 0.0,
+) -> dict[str, object]:
+    slots = [{"code": (item << 8) | count} for item, count in items]
+    slots += [{"code": 0}] * (4 - len(slots))
+    return {
+        "ID": record_id, "DropBuddyID": companion_id, "DropBuddyRatio": ratio,
+        "items": slots, "DropJobID": job_id, "DropRatio": job_ratio,
+    }
 
 
 def _encounters(stages: list[dict[str, object]]) -> dict[str, object]:
@@ -113,31 +121,31 @@ class NativeCompanionMaximaTest(unittest.TestCase):
 
     def test_a_stage_ceiling_is_how_many_droppers_it_spawns(self) -> None:
         encounters = _encounters([_stage(8, 1, [("CH8_BMAKER", BOMBORG, True, 4), ("CH8_L_TICK", ELECTROTICK, True, 6)])])
-        maxima, report = native_companion_maxima(encounters, self.drops, exact_only=False)
-        self.assertEqual({(8, 1): {COMPANION_A: 4}}, maxima)
+        maxima, report = native_stage_maxima(encounters, self.drops, {}, {}, exact_only=False)
+        self.assertEqual({COMPANION_A: 4}, maxima[(8, 1)]["companions"])
         self.assertEqual((1, 0, 0), (report["stages_joined"], report["stages_unjoinable"], report["stages_with_inferred_ceiling"]))
 
     def test_two_droppers_of_the_same_companion_add_up(self) -> None:
         drops = {BOMBORG: COMPANION_A, TEKSURA: COMPANION_A}
         encounters = _encounters([_stage(8, 1, [("CH8_BMAKER", BOMBORG, True, 2), ("CH8_TECHSURA", TEKSURA, True, 3)])])
-        self.assertEqual({(8, 1): {COMPANION_A: 5}}, native_companion_maxima(encounters, drops, exact_only=False)[0])
+        self.assertEqual({COMPANION_A: 5}, native_stage_maxima(encounters, drops, {}, {}, exact_only=False)[0][(8, 1)]["companions"])
 
     def test_an_inferred_variant_contributes_but_is_counted_separately(self) -> None:
         encounters = _encounters([_stage(8, 2, [("CH8_BMAKER_NM", BOMBORG, False, 2)])])
-        maxima, report = native_companion_maxima(encounters, self.drops, exact_only=False)
-        self.assertEqual({(8, 2): {COMPANION_A: 2}}, maxima)
+        maxima, report = native_stage_maxima(encounters, self.drops, {}, {}, exact_only=False)
+        self.assertEqual({COMPANION_A: 2}, maxima[(8, 2)]["companions"])
         self.assertEqual(1, report["stages_with_inferred_ceiling"])
 
     def test_exact_only_drops_a_stage_that_rests_on_a_variant(self) -> None:
         encounters = _encounters([_stage(8, 2, [("CH8_BMAKER_NM", BOMBORG, False, 2)])])
-        maxima, report = native_companion_maxima(encounters, self.drops, exact_only=True)
+        maxima, report = native_stage_maxima(encounters, self.drops, {}, {}, exact_only=True)
         self.assertEqual(({}, 1, 0), (maxima, report["stages_unjoinable"], report["stages_with_inferred_ceiling"]))
 
     def test_a_stage_missing_one_enemy_record_contributes_nothing(self) -> None:
         # Understating a ceiling refuses a legitimate clear, so a partly-joined
         # stage is left to its own BattleData allowlist instead.
         encounters = _encounters([_stage(38, 1, [("CH8_BMAKER", BOMBORG, True, 2), ("CH38_RUKU", 1800, True, 3)])])
-        maxima, report = native_companion_maxima(encounters, self.drops, exact_only=False)
+        maxima, report = native_stage_maxima(encounters, self.drops, {}, {}, exact_only=False)
         self.assertEqual({}, maxima)
         self.assertEqual((1, 1, 3, [38]), (
             report["stages_unjoinable"], report["symbols_without_enemy_record"],
@@ -149,7 +157,7 @@ class NativeCompanionMaximaTest(unittest.TestCase):
             _stage(38, 1, [("CH38_RUKU", 1800, True, 3)]),
             _stage(21, 4, [("CH21_WHITE1", None, False, 1)]),
         ])
-        report = native_companion_maxima(encounters, self.drops, exact_only=False)[1]
+        report = native_stage_maxima(encounters, self.drops, {}, {}, exact_only=False)[1]
         self.assertEqual((1, 3, 1, 1), (
             report["symbols_without_enemy_record"], report["spawns_without_enemy_record"],
             report["unrecognised_symbols"], report["spawns_from_unrecognised_symbols"],
@@ -164,24 +172,29 @@ class NativeCompanionMaximaTest(unittest.TestCase):
             {**_encounters([]), "stages": []},
         ):
             with self.subTest(document=document), self.assertRaisesRegex(StoryOutcomeGeneratorError, "user-derived ARM64"):
-                native_companion_maxima(document, self.drops, exact_only=False)
+                native_stage_maxima(document, self.drops, {}, {}, exact_only=False)
 
     def test_rejects_a_malformed_stage_or_spawn(self) -> None:
         with self.assertRaisesRegex(StoryOutcomeGeneratorError, "invalid stage"):
-            native_companion_maxima(_encounters([{"chapter": 8}]), self.drops, exact_only=False)
+            native_stage_maxima(_encounters([{"chapter": 8}]), self.drops, {}, {}, exact_only=False)
         broken = _stage(8, 1, [("CH8_BMAKER", BOMBORG, True, 1)])
         broken["spawns"] = [{"symbol": "CH8_BMAKER", "enemy_id": 95, "exact": "yes", "count": 1}]
         with self.assertRaisesRegex(StoryOutcomeGeneratorError, "invalid spawn"):
-            native_companion_maxima(_encounters([broken]), self.drops, exact_only=False)
+            native_stage_maxima(_encounters([broken]), self.drops, {}, {}, exact_only=False)
 
 
 class BuildCatalogTest(unittest.TestCase):
     def setUp(self) -> None:
         self.characters = {"characters": [{"character_id": 9002}, {"character_id": 9001}]}
         self.enemy_data = {"data": [
-            _enemy(BOMBORG, COMPANION_A, 20.0),
-            _enemy(TEKSURA, COMPANION_B, 13.0),
-            _enemy(ELECTROTICK, COMPANION_A, 0.0),
+            _enemy(BOMBORG, COMPANION_A, 20.0, items=((5, 2),), job_id=700, job_ratio=5.0),
+            _enemy(TEKSURA, COMPANION_B, 13.0, items=((5, 1), (9, 3))),
+            # Job drop with a zero ratio never rolls, so it contributes nothing.
+            _enemy(ELECTROTICK, COMPANION_A, 0.0, job_id=701, job_ratio=0.0),
+        ]}
+        self.chr_database = {"data": [
+            {"ID": 700, "chrID": 9001},
+            {"ID": 701, "chrID": 9002},
         ]}
         self.battledata = {"chapters": [{"chapterNo": 8, "sections": [
             {"dropBuddies": [_code(COMPANION_A, 1)]},
@@ -195,7 +208,7 @@ class BuildCatalogTest(unittest.TestCase):
         ])
 
     def _build(self, **kwargs: object) -> tuple[dict[str, object], dict[str, object], list[str]]:
-        return build_catalog(self.encounters, self.battledata, self.enemy_data, self.characters, **kwargs)  # type: ignore[arg-type]
+        return build_catalog(self.encounters, self.battledata, self.enemy_data, self.chr_database, self.characters, **kwargs)  # type: ignore[arg-type]
 
     def _rules(self, catalog: dict[str, object]) -> dict[tuple[int, int], dict[str, object]]:
         return {(rule["chapter"], rule["section"]): rule for rule in catalog["stages"]}  # type: ignore[index,union-attr]
@@ -209,9 +222,18 @@ class BuildCatalogTest(unittest.TestCase):
         # 8-3: neither source offers anything, and the stage is still written.
         self.assertEqual({}, rules[(8, 3)]["companion_maxima"])
 
-    def test_item_and_character_maxima_are_empty_without_a_baseline(self) -> None:
-        for rule in self._build()[0]["stages"]:  # type: ignore[union-attr]
-            self.assertEqual(({}, {}), (rule["item_maxima"], rule["character_maxima"]))
+    def test_item_and_character_ceilings_come_from_the_recovered_drop_data(self) -> None:
+        # A ceiling permits and an empty one forbids, so these have to be
+        # derived: leaving them empty refuses a clear that legitimately reports
+        # an item or a recruited monster.
+        rules = self._rules(self._build()[0])
+        self.assertEqual({"5": 8}, rules[(8, 1)]["item_maxima"])
+        self.assertEqual({"9001": 4}, rules[(8, 1)]["character_maxima"])
+        self.assertEqual({"5": 1, "9": 3}, rules[(8, 2)]["item_maxima"])
+
+    def test_a_zero_ratio_job_drop_contributes_no_character_ceiling(self) -> None:
+        # Same reading the Companion ceiling already applies to its own ratio.
+        self.assertEqual({}, self._rules(self._build()[0])[(8, 3)]["character_maxima"])
 
     def test_declares_every_used_companion_at_the_recovered_drop_level(self) -> None:
         catalog = self._build()[0]

@@ -25,22 +25,30 @@ native map cannot resolve; the native map covers Companions the section list
 omits.  The ceiling taken is the larger of the two, which is what a ceiling
 means: it permits a roll the client legitimately made and invents nothing.
 
-What this deliberately does not know
-------------------------------------
+Item and character ceilings
+---------------------------
 
-``StoryOutcomeRule`` also carries ``item_maxima`` and ``character_maxima``.
-Nothing in this project has recovered a per-stage item or character drop table
-for the ordinary story -- ``EnemyData`` carries a Job drop, not an item, and
-carries no character drop at all -- so both are emitted **empty**, and an empty
-ceiling *forbids* the outcome rather than permitting it.
+``StoryOutcomeRule`` also carries ``item_maxima`` and ``character_maxima``, and
+an empty ceiling *forbids* the outcome rather than permitting it.  Both are
+therefore derived here rather than left empty, from the same per-enemy records
+the Companion ceiling already reads:
 
-Read that plainly before using this: a generated catalog makes Companion drops
-work and refuses any clear whose battle result reports an item or a character.
-That is the correct reading of a ceiling built from what is known, not a claim
-that the original game dropped neither.  If your client reports those outcomes,
-pass an operator-authored catalog as ``--baseline``; its capacities, its
-``item_maxima``/``character_maxima``, and its Companion drop levels are carried
-through unchanged and only the Companion ceilings are widened.
+* **Items** come from ``EnemyParams.items``, a four-slot ``ItemCode`` array in
+  which ``code >> 8`` is the item and ``code & 0xFF`` the count.  845 of the
+  recovered enemy records carry at least one.  There is no per-item ratio, so
+  every item an enemy names contributes a ceiling.
+* **Characters** come from ``EnemyParams.DropJobID``, which names a
+  ``ChrJobParams`` row whose ``chrID`` is the character the client actually
+  recruits -- the monster drop ``AddDropMon`` records.  A zero ``DropRatio``
+  never rolls and contributes nothing, matching how the Companion ceiling reads
+  its own ratio.
+
+A stage the native map cannot join still has no item or character evidence, and
+its ceilings stay empty.  The run report counts those stages so an operator
+opting into strict validation can see exactly where a clear reporting an item or
+a recruited monster would be refused, and ``--baseline`` carries an
+operator-authored catalog through unchanged while the recovered ceilings are
+unioned on top.
 
 Inferred variants
 -----------------
@@ -134,6 +142,72 @@ def companion_drops_by_enemy(tree: dict[str, Any]) -> dict[int, int]:
     return drops
 
 
+def item_drops_by_enemy(tree: dict[str, Any]) -> dict[int, dict[int, int]]:
+    """Map each enemy record ID to the items it can drop, with their counts.
+
+    ``EnemyParams.items`` is a four-slot ``ItemCode`` array; ``code >> 8`` is the
+    item and ``code & 0xFF`` the count, and a zero code is an empty slot.  Unlike
+    the Companion drop this carries no per-item ratio, so every named item
+    contributes a ceiling: a ceiling permits, and refusing an item the enemy
+    demonstrably carries would reject a legitimate clear.
+    """
+    rows = tree.get("data")
+    if not isinstance(rows, list) or not rows:
+        raise StoryOutcomeGeneratorError("EnemyData must contain a nonempty data array")
+    drops: dict[int, dict[int, int]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or type(row.get("ID")) is not int:
+            raise StoryOutcomeGeneratorError("EnemyData record has missing required fields")
+        slots = row.get("items")
+        if not isinstance(slots, list):
+            raise StoryOutcomeGeneratorError("EnemyData record has an invalid items array")
+        carried: dict[int, int] = {}
+        for slot in slots:
+            if not isinstance(slot, dict) or type(slot.get("code")) is not int or slot["code"] < 0:
+                raise StoryOutcomeGeneratorError("EnemyData item slot has an invalid code")
+            code = slot["code"]
+            if not code:
+                continue
+            item_id, count = code >> 8, code & 0xFF
+            if item_id <= 0 or count <= 0:
+                continue
+            carried[item_id] = max(carried.get(item_id, 0), count)
+        drops[row["ID"]] = carried
+    return drops
+
+
+def character_drops_by_enemy(enemy_tree: dict[str, Any], chr_tree: dict[str, Any]) -> dict[int, int]:
+    """Map each enemy record ID to the character it can be recruited as.
+
+    ``EnemyParams.DropJobID`` names a ``ChrJobParams`` row, and that row's
+    ``chrID`` is the character the client actually adds -- the monster-recruit
+    drop that `AddDropMon` records.  A zero ``DropRatio`` never rolls, matching
+    how the Companion ceiling already reads its own ratio.
+    """
+    jobs = chr_tree.get("data")
+    if not isinstance(jobs, list) or not jobs:
+        raise StoryOutcomeGeneratorError("ChrDatabase must contain a nonempty data array")
+    character_by_job: dict[int, int] = {}
+    for job in jobs:
+        if not isinstance(job, dict) or type(job.get("ID")) is not int or type(job.get("chrID")) is not int:
+            raise StoryOutcomeGeneratorError("ChrJobParams row has an invalid ID or chrID")
+        character_by_job[job["ID"]] = job["chrID"]
+
+    rows = enemy_tree.get("data")
+    if not isinstance(rows, list) or not rows:
+        raise StoryOutcomeGeneratorError("EnemyData must contain a nonempty data array")
+    drops: dict[int, int] = {}
+    for row in rows:
+        fields = ("ID", "DropJobID", "DropRatio")
+        if not isinstance(row, dict) or any(field not in row for field in fields):
+            raise StoryOutcomeGeneratorError("EnemyData record has missing required fields")
+        if type(row["DropJobID"]) is not int or not isinstance(row["DropRatio"], (int, float)):
+            raise StoryOutcomeGeneratorError("EnemyData record has invalid Job drop fields")
+        job_id = row["DropJobID"]
+        drops[row["ID"]] = character_by_job.get(job_id, 0) if job_id > 0 and row["DropRatio"] > 0 else 0
+    return drops
+
+
 def section_companion_maxima(tree: dict[str, Any]) -> dict[tuple[int, int], dict[int, int]]:
     """Read every stage's own ``dropBuddies`` allowlist out of BattleData."""
     chapters = tree.get("chapters")
@@ -165,10 +239,14 @@ def section_companion_maxima(tree: dict[str, Any]) -> dict[tuple[int, int], dict
     return maxima
 
 
-def native_companion_maxima(
-    encounters: dict[str, Any], enemy_drops: dict[int, int], exact_only: bool,
-) -> tuple[dict[tuple[int, int], dict[int, int]], dict[str, Any]]:
-    """Join the native encounter map to the per-enemy Companion drops.
+def native_stage_maxima(
+    encounters: dict[str, Any],
+    enemy_drops: dict[int, int],
+    enemy_items: dict[int, dict[int, int]],
+    enemy_characters: dict[int, int],
+    exact_only: bool,
+) -> tuple[dict[tuple[int, int], dict[str, dict[int, int]]], dict[str, Any]]:
+    """Join the native encounter map to the per-enemy Companion, item, and character drops.
 
     A stage contributes only when *every* one of its spawns resolves to an
     enemy record.  A partly-joined stage would understate its own ceiling, and
@@ -184,7 +262,7 @@ def native_companion_maxima(
         or not encounters["stages"]
     ):
         raise StoryOutcomeGeneratorError("input must be a user-derived ARM64 native encounter map")
-    maxima: dict[tuple[int, int], dict[int, int]] = {}
+    maxima: dict[tuple[int, int], dict[str, dict[int, int]]] = {}
     inferred_stages: set[tuple[int, int]] = set()
     # Two different failures, kept apart because they mean different things.
     # A symbol with no enemy record is the permanent Chapter 38-42 gap: the
@@ -202,6 +280,8 @@ def native_companion_maxima(
             raise StoryOutcomeGeneratorError("native encounter map has an invalid stage")
         identity = (stage["chapter"], stage["section"])
         counts: dict[int, int] = {}
+        item_counts: dict[int, int] = {}
+        character_counts: dict[int, int] = {}
         inferred = False
         complete = True
         for spawn in stage["spawns"]:
@@ -225,15 +305,22 @@ def native_companion_maxima(
             companion_id = enemy_drops[enemy_id]
             if companion_id:
                 counts[companion_id] = counts.get(companion_id, 0) + spawn["count"]
+            for item_id, per_kill in enemy_items.get(enemy_id, {}).items():
+                item_counts[item_id] = item_counts.get(item_id, 0) + per_kill * spawn["count"]
+            character_id = enemy_characters.get(enemy_id, 0)
+            if character_id:
+                character_counts[character_id] = character_counts.get(character_id, 0) + spawn["count"]
         if not complete:
             unresolved_stages.add(identity)
             continue
-        maxima[identity] = counts
-        if inferred and counts:
+        maxima[identity] = {"companions": counts, "items": item_counts, "characters": character_counts}
+        if inferred and (counts or item_counts or character_counts):
             inferred_stages.add(identity)
     report = {
         "stages_in_map": len(encounters["stages"]),
         "stages_joined": len(maxima),
+        "stages_with_item_ceiling": sum(1 for value in maxima.values() if value["items"]),
+        "stages_with_character_ceiling": sum(1 for value in maxima.values() if value["characters"]),
         "stages_unjoinable": len(unresolved_stages),
         "stages_with_inferred_ceiling": len(inferred_stages),
         "symbols_without_enemy_record": len(missing_records),
@@ -250,6 +337,7 @@ def build_catalog(
     encounters: dict[str, Any],
     battledata: dict[str, Any],
     enemy_data: dict[str, Any],
+    chr_database: dict[str, Any],
     characters: dict[str, Any],
     baseline: dict[str, Any] | None = None,
     exact_only: bool = False,
@@ -264,7 +352,13 @@ def build_catalog(
     recovered_companions = {row[0] for row in COMPANION_MASTER_ROWS}
 
     section_maxima = section_companion_maxima(battledata)
-    native_maxima, report = native_companion_maxima(encounters, companion_drops_by_enemy(enemy_data), exact_only)
+    native_maxima, report = native_stage_maxima(
+        encounters,
+        companion_drops_by_enemy(enemy_data),
+        item_drops_by_enemy(enemy_data),
+        character_drops_by_enemy(enemy_data, chr_database),
+        exact_only,
+    )
 
     baseline_rules: dict[tuple[int, int], dict[str, Any]] = {}
     baseline_levels: dict[int, int] = {}
@@ -282,11 +376,16 @@ def build_catalog(
 
     notes: list[str] = []
     unknown_companions: set[int] = set()
+    unknown_characters: set[int] = set()
+    used_items: set[int] = set()
+    used_characters: set[int] = set()
+    known_characters = set(character_ids)
     stages: list[dict[str, Any]] = []
     used_companions: set[int] = set()
     for identity in sorted(section_maxima):
+        native_rule = native_maxima.get(identity, {})
         merged: dict[int, int] = {}
-        for source in (section_maxima[identity], native_maxima.get(identity, {})):
+        for source in (section_maxima[identity], native_rule.get("companions", {})):
             for companion_id, cap in source.items():
                 if companion_id not in recovered_companions:
                     unknown_companions.add(companion_id)
@@ -296,11 +395,40 @@ def build_catalog(
         for companion_id, cap in _maxima(baseline_rule.get("companion_maxima", {})).items():
             merged[companion_id] = max(merged.get(companion_id, 0), cap)
         used_companions |= set(merged)
+
+        # A ceiling permits; an empty one forbids. Both of these are unioned
+        # from the recovered per-enemy drop data rather than left empty, so a
+        # clear that legitimately reports an item or a recruited monster is
+        # accepted instead of refused.
+        merged_items: dict[int, int] = dict(native_rule.get("items", {}))
+        # Baseline values are operator-authored, so an out-of-range ID there is
+        # a mistake worth refusing; recovered values are filtered with a note.
+        for key, cap in _maxima_document(baseline_rule.get("item_maxima", {}), capacities["item_slots"]).items():
+            item_id = int(key)
+            merged_items[item_id] = max(merged_items.get(item_id, 0), cap)
+        merged_items = {
+            item_id: min(cap, capacities["max_stack"])
+            for item_id, cap in merged_items.items()
+            if 1 <= item_id <= capacities["item_slots"]
+        }
+        used_items.update(merged_items)
+
+        merged_characters: dict[int, int] = {}
+        for character_id, cap in native_rule.get("characters", {}).items():
+            if character_id in known_characters:
+                merged_characters[character_id] = cap
+            else:
+                unknown_characters.add(character_id)
+        for key, cap in _maxima_document(baseline_rule.get("character_maxima", {}), None, known_characters).items():
+            character_id = int(key)
+            merged_characters[character_id] = max(merged_characters.get(character_id, 0), cap)
+        used_characters.update(merged_characters)
+
         stages.append({
             "chapter": identity[0],
             "section": identity[1],
-            "item_maxima": _maxima_document(baseline_rule.get("item_maxima", {}), capacities["item_slots"]),
-            "character_maxima": _maxima_document(baseline_rule.get("character_maxima", {}), None, set(character_ids)),
+            "item_maxima": {str(key): merged_items[key] for key in sorted(merged_items)},
+            "character_maxima": {str(key): merged_characters[key] for key in sorted(merged_characters)},
             "companion_maxima": {str(key): merged[key] for key in sorted(merged)},
         })
     if unknown_companions:
@@ -386,11 +514,12 @@ def main() -> int:
     if args.output.exists() and not args.force:
         raise SystemExit(f"refusing to overwrite {args.output} without --force")
     try:
-        trees = load_master_trees(args.apk.resolve(strict=True), args.dummy_dll_dir, ("BattleData", "EnemyData"))
+        trees = load_master_trees(args.apk.resolve(strict=True), args.dummy_dll_dir, ("BattleData", "EnemyData", "ChrDatabase"))
         catalog, report, notes = build_catalog(
             _read(args.native_encounters, "native encounter map"),
             trees["BattleData"],
             trees["EnemyData"],
+            trees["ChrDatabase"],
             _read(args.character_catalog, "character catalog"),
             None if args.baseline is None else _read(args.baseline, "baseline story-outcome catalog"),
             args.exact_only,
