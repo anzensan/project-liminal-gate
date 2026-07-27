@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest import mock
+
 import contextlib
 import io
 import json
@@ -11,7 +13,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, MINIMUM_KEY_PASSWORD_LENGTH, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, ensure_keystore, find_build_tools, find_keytool, install_apk, prepare_local_tester, prompt_key_password, resolve_adb, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
+from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, MINIMUM_KEY_PASSWORD_LENGTH, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, ensure_keystore, find_build_tools, find_keytools, install_apk, prepare_local_tester, prompt_key_password, resolve_adb, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
 class GuidedServerPolicyTest(unittest.TestCase):
@@ -246,7 +248,8 @@ class LocalSigningToolTest(unittest.TestCase):
             (java_home / "bin/keytool.exe").write_text("local", encoding="utf-8")
             with patch("liminal_gate.tester_setup.shutil.which", return_value=None), \
                  patch.dict("liminal_gate.tester_setup.os.environ", {"JAVA_HOME": str(java_home)}, clear=True):
-                self.assertEqual(java_home / "bin/keytool.exe", find_keytool())
+                # Best first; a real Android Studio on this machine may follow.
+                self.assertEqual(java_home / "bin/keytool.exe", find_keytools()[0])
 
     def test_finds_the_keytool_bundled_with_windows_android_studio(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -256,7 +259,7 @@ class LocalSigningToolTest(unittest.TestCase):
             (bundled / "keytool.exe").write_text("local", encoding="utf-8")
             with patch("liminal_gate.tester_setup.shutil.which", return_value=None), \
                  patch.dict("liminal_gate.tester_setup.os.environ", {"LOCALAPPDATA": str(local_app_data)}, clear=True):
-                self.assertEqual(bundled / "keytool.exe", find_keytool())
+                self.assertEqual(bundled / "keytool.exe", find_keytools()[0])
 
     def test_a_missing_keytool_names_the_jdk_rather_than_the_sdk(self) -> None:
         # The bundled locations are emptied rather than merely unset: this
@@ -265,7 +268,7 @@ class LocalSigningToolTest(unittest.TestCase):
              patch("liminal_gate.tester_setup._bundled_java_bin_directories", return_value=()), \
              patch.dict("liminal_gate.tester_setup.os.environ", {}, clear=True):
             with self.assertRaisesRegex(TesterSetupError, "JDK"):
-                find_keytool()
+                find_keytools()
 
     def test_falls_back_to_the_sdk_platform_tools_adb(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -285,7 +288,7 @@ class LocalSigningToolTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             data = Path(temporary)
             failure = subprocess.CalledProcessError(1, ("keytool",), stderr="keytool error: password too short")
-            with patch("liminal_gate.tester_setup.find_keytool", return_value=Path("keytool")), \
+            with patch("liminal_gate.tester_setup.find_keytools", return_value=(Path("keytool"),)), \
                  patch("liminal_gate.tester_setup.prompt_key_password", return_value="longenough"), \
                  patch("liminal_gate.tester_setup.subprocess.run", side_effect=failure):
                 with self.assertRaisesRegex(TesterSetupError, "password too short"):
@@ -452,3 +455,62 @@ class AccountSwitchPromptTest(unittest.TestCase):
             0,
             document["accounts"]["old"]["userdata"]["progressCode"],
         )
+
+
+class KeystoreFallbackTest(unittest.TestCase):
+    """A keytool that cannot start should not end setup.
+
+    On Windows a broken Java installation returns an NT status code and no
+    output at all, so the tester sees a bare number. Android Studio's bundled
+    runtime is usually intact, so it is worth trying.
+    """
+
+    def test_decodes_exit_codes_that_mean_the_program_never_ran(self) -> None:
+        self.assertIn("0xC0000135", tester_setup.describe_tool_exit(3221225781) or "")
+        # An ordinary non-zero exit is keytool reporting a real problem.
+        self.assertIsNone(tester_setup.describe_tool_exit(1))
+        self.assertIsNone(tester_setup.describe_tool_exit(0))
+
+    def _run(self, results: list, keytools: tuple[Path, ...]) -> tuple[str, list]:
+        calls: list = []
+
+        def fake_run(command, **_kwargs):
+            calls.append(command[0])
+            outcome = results[len(calls) - 1]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        stream = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            keystore = Path(directory) / "test.keystore"
+            password_file = Path(directory) / "password.txt"
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(mock.patch.object(tester_setup, "find_keytools", return_value=keytools))
+                stack.enter_context(mock.patch.object(tester_setup, "prompt_key_password", return_value="testing123"))
+                stack.enter_context(mock.patch.object(tester_setup.subprocess, "run", fake_run))
+                stack.enter_context(contextlib.redirect_stdout(stream))
+                tester_setup.ensure_keystore(keystore, password_file)
+        return stream.getvalue(), calls
+
+    def test_falls_back_to_the_next_keytool_when_one_cannot_start(self) -> None:
+        launch_failure = subprocess.CalledProcessError(3221225781, "keytool", output="", stderr="")
+        output, calls = self._run([launch_failure, None], (Path("/broken/keytool"), Path("/bundled/keytool")))
+        self.assertEqual(["/broken/keytool", "/bundled/keytool"], calls)
+        self.assertIn("trying another", output)
+
+    def test_does_not_retry_a_keytool_that_reported_a_real_problem(self) -> None:
+        # It refused the request; another copy would refuse it identically.
+        refusal = subprocess.CalledProcessError(1, "keytool", output="", stderr="Key password is too short")
+        with self.assertRaisesRegex(tester_setup.TesterSetupError, "too short"):
+            self._run([refusal, None], (Path("/a/keytool"), Path("/b/keytool")))
+
+    def test_reports_every_attempt_when_all_of_them_fail_to_start(self) -> None:
+        failure = subprocess.CalledProcessError(3221225781, "keytool", output="", stderr="")
+        with self.assertRaises(tester_setup.TesterSetupError) as caught:
+            self._run([failure, failure], (Path("/a/keytool"), Path("/b/keytool")))
+        message = str(caught.exception)
+        self.assertIn("/a/keytool", message)
+        self.assertIn("/b/keytool", message)
+        self.assertIn("0xC0000135", message)
+        self.assertIn("JAVA_HOME", message)

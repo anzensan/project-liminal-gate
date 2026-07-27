@@ -290,18 +290,42 @@ def _bundled_java_bin_directories() -> tuple[Path, ...]:
     )
 
 
-def find_keytool() -> Path:
-    """Locate keytool on PATH, under JAVA_HOME, or in Android Studio's runtime."""
+#: Windows NT status codes a process returns when it never started. These are
+#: reported as an exit code with no output at all, so the number is the only
+#: evidence the tester ever sees.
+WINDOWS_LAUNCH_FAILURES = {
+    3221225781: "a DLL it needs could not be loaded (0xC0000135)",
+    3221225595: "a DLL it needs is the wrong version (0xC0000139)",
+    3221225477: "it could not be initialised (0xC0000005)",
+}
+
+
+def describe_tool_exit(returncode: int) -> str | None:
+    """Explain an exit code that means the program never ran, if it is one."""
+    return WINDOWS_LAUNCH_FAILURES.get(returncode)
+
+
+def find_keytools() -> tuple[Path, ...]:
+    """Every keytool worth trying, best first.
+
+    More than one is returned deliberately.  A `keytool` on `PATH` can belong to
+    a broken or half-removed Java installation and fail before it runs, which on
+    Windows surfaces as an exit code and no output whatsoever.  Android Studio's
+    bundled runtime is almost always intact, so it is worth trying next rather
+    than stopping at the first candidate.
+    """
+    candidates: list[Path] = []
     on_path = shutil.which("keytool")
     if on_path is not None:
-        return Path(on_path)
+        candidates.append(Path(on_path))
     java_home = os.environ.get("JAVA_HOME")
     directories = ((Path(java_home) / "bin",) if java_home else ()) + _bundled_java_bin_directories()
     for directory in directories:
         keytool = _find_tool(directory, KEYTOOL_NAMES)
-        if keytool is not None:
-            print(f"Using the keytool bundled with your JDK: {keytool}")
-            return keytool
+        if keytool is not None and keytool not in candidates:
+            candidates.append(keytool)
+    if candidates:
+        return tuple(candidates)
     raise TesterSetupError(
         "keytool is unavailable. It comes with a JDK rather than with the Android SDK, so adding the "
         "SDK to PATH does not provide it. Install a JDK, or point JAVA_HOME at the runtime bundled "
@@ -365,24 +389,44 @@ def prompt_key_password(confirm: bool, ask: Callable[[str], str] = getpass.getpa
 def ensure_keystore(keystore: Path, password_file: Path) -> None:
     if keystore.is_file() and password_file.is_file():
         return
-    keytool = find_keytool()
+    keytools = find_keytools()
     keystore.parent.mkdir(parents=True, exist_ok=True)
     password = prompt_key_password(confirm=not keystore.exists())
     if not keystore.exists():
-        try:
-            subprocess.run((
-                str(keytool), "-genkeypair", "-v", "-keystore", str(keystore), "-alias", KEY_ALIAS,
-                "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
-                "-dname", "CN=Local Tester, OU=Testing, O=Project Liminal Gate, L=Local, ST=Local, C=US",
-                "-storepass", password, "-keypass", password,
-            ), check=True, text=True, capture_output=True)
-        except subprocess.CalledProcessError as error:
-            # keytool's own message is the useful part; without it the failure
-            # reads as unexplained.
-            reported = (error.stderr or error.stdout or "").strip()
-            raise TesterSetupError(f"could not create the local test keystore: {reported or f'keytool exited {error.returncode}'}") from error
-        except OSError as error:
-            raise TesterSetupError(f"could not run keytool at {keytool}: {error}") from error
+        attempts: list[str] = []
+        for index, keytool in enumerate(keytools):
+            try:
+                subprocess.run((
+                    str(keytool), "-genkeypair", "-v", "-keystore", str(keystore), "-alias", KEY_ALIAS,
+                    "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
+                    "-dname", "CN=Local Tester, OU=Testing, O=Project Liminal Gate, L=Local, ST=Local, C=US",
+                    "-storepass", password, "-keypass", password,
+                ), check=True, text=True, capture_output=True)
+                break
+            except subprocess.CalledProcessError as error:
+                # keytool's own message is the useful part. When it is empty the
+                # program never ran, and the exit code is the only evidence.
+                reported = (error.stderr or error.stdout or "").strip()
+                launch_failure = describe_tool_exit(error.returncode)
+                attempts.append(f"{keytool}: {reported or launch_failure or f'exited {error.returncode}'}")
+                # A keytool that refused the request will refuse it again, so
+                # only a failure to start is worth retrying elsewhere.
+                if not launch_failure and reported:
+                    raise TesterSetupError(
+                        f"could not create the local test keystore: {reported}"
+                    ) from error
+            except OSError as error:
+                attempts.append(f"{keytool}: {error}")
+            if index + 1 < len(keytools):
+                print(f"That keytool could not run; trying another: {keytools[index + 1]}")
+        else:
+            joined = "\n  ".join(attempts)
+            raise TesterSetupError(
+                "could not create the local test keystore. Every keytool found failed to run:\n  "
+                f"{joined}\nThis usually means the Java installation those belong to is incomplete. "
+                "Installing a current JDK, or pointing JAVA_HOME at the runtime bundled with Android "
+                "Studio, gives setup a working one."
+            )
         print(f"Created the local test signing key: {keystore}")
     write_password_file(password_file, password)
 
