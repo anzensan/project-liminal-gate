@@ -34,6 +34,12 @@ Focused real-HTTP Pact/equipment coverage and focused catalog, setup,
 configuration, and archival-route checks also passed, together with
 compilation, diff, YAML, and clean-candidate publication gates.
 
+Latest live deployment: Beelink implementation commit `3fe4336` runs without
+the retired `--summon-skills` default. The child command still loads
+`story-outcomes.json` and `companion-equipment.json`; durable state matched its
+pre-deploy backup byte-for-byte, and loopback and LAN current-time requests
+returned HTTP 200.
+
 Publication lane:
 
 ```sh

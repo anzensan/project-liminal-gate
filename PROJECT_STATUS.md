@@ -307,7 +307,10 @@ machine-readable/current capability boundary.
   now agrees with guided setup and omits retired `--summon-skills` by default.
   The explicit archival route and recovered cost table remain intact. Thirty-six
   focused launcher/configuration/policy/HTTP tests and all 596 warning-strict
-  tests passed in 116.003 seconds.
+  tests passed in 116.003 seconds. Implementation commit `3fe4336` was deployed
+  to the Beelink: its live child command omits the retired flag, retains the
+  story-outcome and Companion-equipment catalogs, preserves the exact
+  pre-deploy state hash, and passes loopback and LAN HTTP checks.
 
 ## Blockers and unresolved fidelity
 

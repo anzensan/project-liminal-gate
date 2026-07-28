@@ -39,8 +39,11 @@ Result:
   field, and explicit CLI flag remain available and tested.
 - Thirty-six focused launcher, configuration, policy, and real-HTTP archival
   mutation tests passed. The warning-strict full suite passed all 596 tests in
-  116.003 seconds; compilation, diff, YAML, publication, commit, deployment,
-  and live-command results are recorded in the status files.
+  116.003 seconds; compilation, diff, YAML, and publication gates passed.
+- Implementation commit `3fe4336` was pushed and deployed to the Beelink. Its
+  live child command omits `--summon-skills`, retains both required generated
+  catalog arguments, preserves the pre-deploy state hash, and answers loopback
+  and LAN transport checks with HTTP 200.
 
 ## 2026-07-28 remaining solo systems: master-backed Companion equip restrictions
 
