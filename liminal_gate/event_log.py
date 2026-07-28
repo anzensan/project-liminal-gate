@@ -54,6 +54,94 @@ def safe_form_diagnostics(body: bytes) -> dict[str, Any]:
     return details
 
 
+# Form fields whose value is a JSON document rather than a scalar. A write is
+# refused on the *shape* of one of these, so that is what a diagnostic needs.
+_JSON_FORM_FIELDS = (
+    "chrdata", "buddyInfo", "teamMembers", "party", "itemList", "summonList",
+    "valuables", "battle_result",
+)
+# The only key names a diagnostic may repeat. A body must never introduce a
+# new string into the log, so a name is echoed when this server already models
+# it and is counted otherwise. These are the keys the write validators, the
+# stored projection, and the settlement parsers name for themselves.
+_KNOWN_KEYS = frozenset({
+    # The Companion row and the stored `buddyInfo` projection around it.
+    "bid", "lv", "date", "iid", "exp", "flag", "chrID", "list", "record",
+    # Roster and party.
+    "id", "teamMembers", "jobLevels", "job", "equip",
+    # Wallet projections.
+    "coins", "energy", "freeEnergy", "energyAppStore", "energyAndApp",
+    "energyGooglePlay", "bonusStamina", "refillStartTime",
+    # Battle settlement.
+    "chapter", "section", "items", "buddies", "summons", "monsters",
+})
+
+
+def _key_view(names: Any) -> dict[str, Any]:
+    """Split key names into the ones this server models and a count of the rest."""
+    known = sorted(name for name in names if name in _KNOWN_KEYS)
+    view: dict[str, Any] = {"keys": known}
+    unrecognized = len(names) - len(known)
+    if unrecognized:
+        view["unrecognized_keys"] = unrecognized
+    return view
+
+
+def _json_shape(value: Any) -> dict[str, Any]:
+    """Describe a decoded JSON value by structure and type, never by content."""
+    if isinstance(value, list):
+        shape: dict[str, Any] = {"type": "list", "entries": len(value)}
+        rows = [row for row in value if isinstance(row, dict)]
+        if rows:
+            shape["key_sets"] = len({tuple(sorted(row)) for row in rows})
+            types: dict[str, list[str]] = {}
+            for row in rows:
+                for key, item in row.items():
+                    name = type(item).__name__
+                    if name not in types.setdefault(key, []):
+                        types[key].append(name)
+            view = _key_view(types)
+            shape["entry_types"] = {key: sorted(types[key]) for key in view["keys"]}
+            if "unrecognized_keys" in view:
+                shape["unrecognized_entry_keys"] = view["unrecognized_keys"]
+        elif value:
+            shape["entry_types"] = sorted({type(row).__name__ for row in value})
+        return shape
+    if isinstance(value, dict):
+        return {"type": "object", **_key_view(value)}
+    return {"type": type(value).__name__}
+
+
+def refused_write_shapes(body: bytes) -> dict[str, Any]:
+    """Structure of a refused write's JSON fields: types and key names only.
+
+    A refusal to parse otherwise records just the field list, which is
+    identical to the accepted form — the difference that caused it lives in
+    the shape, and bodies are never logged. Six live equip writes were refused
+    on a field tuple that succeeded minutes later, and nothing in the log could
+    say which half or which key was at fault.
+
+    No value ever appears here, and no string from the body does either: only
+    JSON types, entry counts, how many distinct key sets a list holds, and key
+    names this server already models. An unmodelled key is counted, not named.
+    """
+    try:
+        fields = dict(
+            parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True)
+        )
+    except (UnicodeDecodeError, ValueError):
+        return {}
+    shapes: dict[str, Any] = {}
+    for name in _JSON_FORM_FIELDS:
+        if name not in fields:
+            continue
+        try:
+            shapes[name] = _json_shape(json.loads(fields[name]))
+        except (ValueError, json.JSONDecodeError):
+            shapes[name] = {"type": "invalid_json"}
+    return shapes
+
+
 class EventRecorder:
     """Append route diagnostics without retaining account identities or bodies."""
 

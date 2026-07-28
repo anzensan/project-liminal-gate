@@ -20,6 +20,14 @@ settlement values. A malformed non-form body is represented only by its
 SHA-256 and byte length. Review an excerpt before publishing it; see
 `CONTRIBUTING.md` for the privacy checklist.
 
+A refusal to parse a body — any `unsupported_*` result — additionally records
+`request_shapes`: for each JSON-valued form field, its JSON type, entry count,
+how many distinct key sets its rows use, and the value types seen against each
+key. The field list alone cannot explain such a refusal, because a supported
+form and a refused one can carry the identical field names. Key names are
+echoed only when this server already models them; anything else is counted,
+so no string from the body itself can reach the log.
+
 ## Resource serving
 
 Resource serving requires both `--resource-root` and `--resource-manifest`.

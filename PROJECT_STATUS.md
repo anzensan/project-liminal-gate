@@ -20,6 +20,16 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 a refused write says why: an `unsupported_*` result recorded only
+  the field list, which cannot distinguish a supported form from a refused one
+  — six live equip writes were refused on a field tuple that the same client
+  had accepted minutes earlier, and nothing in the log could name the half or
+  the key at fault. Refusals now record `request_shapes`: per JSON-valued
+  field, its type, entry count, distinct key-set count, and the value types
+  seen against each key. The privacy boundary is unchanged and now explicit —
+  key names appear only when this server already models them, so no string
+  from a body can reach the log. The existing log-privacy regression caught
+  the first draft echoing body key names.
 - 2026-07-27 endpoint refusals reach the screen that asked: every route that
   refused an action semantically emitted `success:false` with its own code in
   `errorCode`. That is the *transport* namespace (`AppServerUtil.ErrorCode`:

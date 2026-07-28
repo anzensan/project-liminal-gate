@@ -63,7 +63,7 @@ from liminal_gate.event_catalog import (
     load_event_catalog,
     merge_event_catalogs,
 )
-from liminal_gate.event_log import EventRecorder, safe_form_diagnostics
+from liminal_gate.event_log import EventRecorder, refused_write_shapes, safe_form_diagnostics
 from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
@@ -2992,6 +2992,15 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "invalid_local_clear_state": HTTPStatus.CONFLICT,
             "invalid_local_outcome": HTTPStatus.CONFLICT,
         }
+        if result.startswith("unsupported_"):
+            # Every one of these means "this body did not parse", and the field
+            # list alone cannot say why: the supported equip write and the six
+            # refused ones carried the identical tuple. Record the shape.
+            shapes = refused_write_shapes(body)
+            if shapes:
+                details = dict(getattr(self, "_event_details", None) or {})
+                details["request_shapes"] = shapes
+                self._event_details = details
         self._json(statuses[result], {"error": result})
 
     def do_HEAD(self) -> None:
