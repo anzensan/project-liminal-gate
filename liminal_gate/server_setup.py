@@ -55,7 +55,6 @@ STANDARD_POLICY_FLAGS = (
     "--trading-post",
     "--drop-eligibility",
     "--achievements",
-    "--summon-skills",
 )
 
 

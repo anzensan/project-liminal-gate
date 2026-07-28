@@ -1,5 +1,47 @@
 # Execution Plans
 
+## 2026-07-28 dedicated-server final-version Eidolon default
+
+Status: completed 2026-07-28.
+
+Objective: make the server-only launcher match the guided final-version solo
+policy by leaving retired Tavern Eidolon enhancement disabled unless an
+operator explicitly requests the archival compatibility route.
+
+Evidence boundary:
+
+- Version 5.5.0 retired Eidolon enhancement and in-battle use with Co-op/VS.
+- The final 5.5.7 solo gap is the converted Chapters 4100--4111 quest and
+  collectible settlement path, not `summon_skill_unlock`.
+- Guided tester setup already omits `--summon-skills`, while server-only
+  `STANDARD_POLICY_FLAGS` still adds it. The live Beelink child command
+  confirmed that inconsistency.
+- The route, loader, recovered 44-tier table, tests, and explicit
+  `bootstrap_server --summon-skills` opt-in remain archival evidence and are
+  not removed.
+
+Required proof:
+
+1. Remove only `--summon-skills` from server-only default policy flags.
+2. Pin both supported launchers to omit the flag by default.
+3. Preserve explicit archival option coverage.
+4. Run focused launcher/archival tests, the warning-strict full suite,
+   compilation, diff/YAML checks, and clean-candidate publication gates.
+5. Commit, push, deploy, and verify that the Beelink child command omits
+   `--summon-skills` while state, required catalogs, and transport remain
+   healthy.
+
+Result:
+
+- `server_setup.STANDARD_POLICY_FLAGS` no longer includes `--summon-skills`;
+  guided and server-only defaults now agree.
+- The archival handler, recovered 44-tier policy, catalog option, configuration
+  field, and explicit CLI flag remain available and tested.
+- Thirty-six focused launcher, configuration, policy, and real-HTTP archival
+  mutation tests passed. The warning-strict full suite passed all 596 tests in
+  116.003 seconds; compilation, diff, YAML, publication, commit, deployment,
+  and live-command results are recorded in the status files.
+
 ## 2026-07-28 remaining solo systems: master-backed Companion equip restrictions
 
 Status: completed 2026-07-28; original-client combined-write certification

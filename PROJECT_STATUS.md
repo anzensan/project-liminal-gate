@@ -32,7 +32,8 @@ machine-readable/current capability boundary.
   visibility/start/clear and durable collectible acquisition, not an Eidolon
   combat mechanic. The existing skill-unlock route is retained as archival
   static compatibility evidence behind an explicit option, not enabled by
-  guided setup or claimed as a reachable final-version UI loop.
+  either supported default launcher or claimed as a reachable final-version
+  UI loop.
 - 2026-07-28 remaining solo equipment integrity: combined
   `chrdata`+`buddyInfo` equip writes now project both dirty arrays before
   mutation and require every nonzero character `buddy` link to match the owned
@@ -302,6 +303,11 @@ machine-readable/current capability boundary.
   missing-catalog, exact replay, and restart behavior are covered.
   Compilation, diff checks, YAML validation, and exact clean-candidate material
   preflight and independent-history audit passed.
+- 2026-07-28 final-version server-default validation: the server-only launcher
+  now agrees with guided setup and omits retired `--summon-skills` by default.
+  The explicit archival route and recovered cost table remain intact. Thirty-six
+  focused launcher/configuration/policy/HTTP tests and all 596 warning-strict
+  tests passed in 116.003 seconds.
 
 ## Blockers and unresolved fidelity
 

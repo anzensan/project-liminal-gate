@@ -108,6 +108,8 @@ former Co-op Eidolon quests were converted to single-player quests. Those
 optional Chapters 4100--4111 and their collectible reward settlement are not
 yet supported; they remain capture-gated rather than receiving invented
 acquisition rules. Guided setup does not enable the retired enhancement route.
+The server-only launcher also leaves it disabled by default; archival analysis
+can still opt into `bootstrap_server --summon-skills` explicitly.
 
 The last row is the exception: the two world-map points after Chapter 34 are the
 client's own gate, not a policy this project chose, and their five battles each

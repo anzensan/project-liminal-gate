@@ -56,8 +56,13 @@ Private inputs, captures, account state, and original assets remain excluded.
   recovered `summon_skill_unlock` route and all 44 material-cost rows remain
   useful for documenting the client binary. Version 5.5.0 retired the
   enhancement surface, so the bundled route is not required for ordinary
-  final-version solo play, is no longer enabled by guided setup, and is not
-  claimed to be reachable through its UI.
+  final-version solo play, is no longer enabled by either supported default
+  launcher, and is not claimed to be reachable through its UI. The explicit
+  archival option remains available.
+- **Confirmed by launcher and archival-route regressions:** guided and
+  server-only default command lines omit `--summon-skills`, while the explicit
+  bundled policy still loads and its mutation remains replay- and restart-safe
+  over the real HTTP route.
 - **Confirmed by static client analysis:** the final-major UI gate requires
   both platform versions to exceed 4.99. Evidence and ARM64 ranges are recorded
   in `liminal_gate/server_constants.py`.

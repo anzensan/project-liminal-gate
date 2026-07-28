@@ -26,9 +26,10 @@ account and persisted tutorial state after a full server restart. All 548
 captured requests returned HTTP 200. This certifies the onboarding and restart
 path; it is not a new client boundary beyond Chapter 2-1.
 
-Latest source validation: 596 warning-strict tests passed in 115.659 seconds
+Latest source validation: 596 warning-strict tests passed in 116.003 seconds
 after the Fellowship Ticket, combined-equip integrity, final-version
-Eidolon-classification, and master-backed Companion restriction slices.
+Eidolon-classification, master-backed Companion restriction, and server-only
+final-version default slices.
 Focused real-HTTP Pact/equipment coverage and focused catalog, setup,
 configuration, and archival-route checks also passed, together with
 compilation, diff, YAML, and clean-candidate publication gates.
@@ -52,8 +53,8 @@ selector, Chapters 4100--4111, and collectible result path. This optional solo
 quest/acquisition lifecycle remains unsupported until a successful
 original-client result and before/after owned-Eidolon state establish its
 mapping and settlement. The recovered skill-unlock route remains archival
-compatibility evidence behind an explicit option, not a guided default or a
-claimed reachable final-version UI loop.
+compatibility evidence behind an explicit option, not a guided or server-only
+default or a claimed reachable final-version UI loop.
 
 Current optional-content observation: a resumed migrated account displays
 Hunting and Metal selector rows after pre-login progress resolution. Metal

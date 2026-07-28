@@ -69,7 +69,8 @@ converted to single-player and award collectible Eidolons through a distinct
 result path. That quest/acquisition path remains unsupported until its selector
 and before/after ownership mapping are captured; the server does not fabricate
 them from the legacy skill-cost table. Guided setup leaves the legacy route
-disabled; an operator must select its archival option explicitly.
+disabled, as does the server-only launcher; an operator must select its
+archival option explicitly.
 
 Ticket-backed Metal starts commit Item 50 at entry and retain that payment
 choice. The final client repeats its pre-entry ticket count in the later clear;

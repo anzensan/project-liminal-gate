@@ -420,7 +420,8 @@ Co-op/VS ended. The summon-skill options preserve the statically recovered
 legacy transport and cost table for archival interoperability; they are not
 needed for normal final 5.5.7 solo play and do not implement collectible
 acquisition from the converted solo Eidolon quests. Guided setup leaves this
-route disabled.
+route disabled, as does the server-only launcher. An operator can still select
+`bootstrap_server --summon-skills` explicitly for archival interoperability.
 
 The guided setup enables `--pacts`, a built-in local Fellowship/Truth policy.
 Use `--pact-draw-catalog` instead when you need a custom Fellowship-only pool;
@@ -475,7 +476,7 @@ local installation.
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
 | `--drop-eligibility` | the login `chrBuddyData` allowlist: 346 character and 497 Companion master IDs |
 | `--achievements` | the 8 settleable clear-chapter achievements, each paying 1 Energy and 1x item 50 |
-| `--summon-skills` | all 44 archival Eidolon skill tiers across the 16 Summons, with their material costs |
+| `--summon-skills` | explicit archival opt-in: all 44 Eidolon skill tiers across the 16 Summons, with their material costs; neither supported default launcher enables it |
 
 ### Choosing which saved account to play
 

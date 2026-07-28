@@ -64,6 +64,7 @@ class ServerOnlySetupTest(unittest.TestCase):
         )
         for flag in STANDARD_POLICY_FLAGS:
             self.assertIn(flag, arguments)
+        self.assertNotIn("--summon-skills", arguments)
         rendered = " ".join(arguments).lower()
         for android_term in ("apk", "adb", "zipalign", "apksigner", "keystore"):
             self.assertNotIn(android_term, rendered)
