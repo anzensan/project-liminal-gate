@@ -479,6 +479,18 @@ def write_local_names(path: Path, apk: Path, trees: dict[str, dict[str, object]]
 _OBJDUMP_CANDIDATES = ("llvm-objdump", "objdump", "gobjdump")
 
 
+#: Said at setup time rather than discovered as an empty Companion box hours
+#: later.  Every other feature works without a DummyDll directory, so nothing
+#: else in the run hints that one outcome is missing: the catalog that lets a
+#: clear mint a Companion is composed from master data whose field layout exists
+#: only in the compiled code, which is what the DummyDll directory recovers.
+STORY_DROPS_NEED_DUMMY_DLL = (
+    "Story Companion drops: OFF -- deriving them needs --dummy-dll-dir "
+    "(see docs/advanced-configuration.md). Everything else works without it; "
+    "Metal Zone Companions still drop."
+)
+
+
 def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> str | None:
     """Return the first disassembler on PATH that can read AArch64, if any.
 
@@ -617,6 +629,8 @@ def prepare_local_tester(
             write_local_names(data_directory / "names.json", apk, trees)
             if derive_drops:
                 derive_story_outcome_catalog(apk, dummy_dll_dir, data_directory, dump_cs)
+        elif derive_drops:
+            print(STORY_DROPS_NEED_DUMMY_DLL)
         manifest = build_resource_manifest(resource_root)
         resource_manifest = data_directory / "resources.json"
         write_resource_manifest(resource_manifest, manifest)

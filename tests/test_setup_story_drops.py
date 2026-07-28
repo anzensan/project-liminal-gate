@@ -15,7 +15,26 @@ import unittest
 from unittest.mock import patch
 
 from liminal_gate.server_setup import DEFAULT_OUTCOME_CATALOG
-from liminal_gate.tester_setup import derive_story_outcome_catalog, find_aarch64_objdump
+from liminal_gate.tester_setup import (
+    STORY_DROPS_NEED_DUMMY_DLL,
+    derive_story_outcome_catalog,
+    find_aarch64_objdump,
+    prepare_local_tester,
+)
+
+
+class _StopSetup(Exception):
+    """Cut the run short once the branch under test has been reached."""
+
+
+def _prepare_after_inputs(apk: Path, data: Path, dummy_dll_dir: Path | None):
+    """Drive `prepare_local_tester` far enough to reach the derived-data branch."""
+    with patch("liminal_gate.tester_setup.resolve_resource_root", side_effect=lambda value: value), \
+         patch("liminal_gate.tester_setup.ensure_keystore"), \
+         patch("liminal_gate.tester_setup.find_build_tools", return_value=("zipalign", "apksigner")):
+        return prepare_local_tester(
+            apk, data, data, 8002, None, dummy_dll_dir=dummy_dll_dir,
+        )
 
 
 class FindAarch64ObjdumpTest(unittest.TestCase):
@@ -109,6 +128,35 @@ class DeriveStoryOutcomeCatalogTest(unittest.TestCase):
             # The APK here is not a real one, so the import fails inside. An
             # install that is otherwise fine must survive that.
             self.assertIsNone(self._derive())
+
+    def test_the_absent_dummy_dll_notice_names_the_option_and_the_exception(self) -> None:
+        """Silence here reads as "drops work", and is found hours later.
+
+        Every other feature works without a DummyDll directory, so nothing else
+        in the run hints that one outcome is missing.
+        """
+        self.assertIn("--dummy-dll-dir", STORY_DROPS_NEED_DUMMY_DLL)
+        self.assertIn("Metal Zone", STORY_DROPS_NEED_DUMMY_DLL)
+
+    def test_setup_prints_that_notice_when_no_dummy_dll_directory_is_given(self) -> None:
+        printed: list[str] = []
+        with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), \
+             patch("liminal_gate.tester_setup.write_import_manifest"), \
+             patch("liminal_gate.tester_setup.build_resource_manifest", side_effect=_StopSetup), \
+             patch("builtins.print", side_effect=lambda *args, **_kw: printed.append(str(args[0]) if args else "")):
+            with self.assertRaises(_StopSetup):
+                _prepare_after_inputs(self.apk, self.data, dummy_dll_dir=None)
+        self.assertIn(STORY_DROPS_NEED_DUMMY_DLL, printed)
+
+    def test_setup_stays_quiet_about_drops_when_it_will_derive_them(self) -> None:
+        printed: list[str] = []
+        with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), \
+             patch("liminal_gate.tester_setup.write_import_manifest"), \
+             patch("liminal_gate.tester_setup.load_master_trees", side_effect=_StopSetup), \
+             patch("builtins.print", side_effect=lambda *args, **_kw: printed.append(str(args[0]) if args else "")):
+            with self.assertRaises(_StopSetup):
+                _prepare_after_inputs(self.apk, self.data, dummy_dll_dir=self.dummy_dll)
+        self.assertNotIn(STORY_DROPS_NEED_DUMMY_DLL, printed)
 
     def test_the_catalog_lands_where_the_server_launcher_looks_for_it(self) -> None:
         # server_setup picks the file up by this name with no further wiring, so
