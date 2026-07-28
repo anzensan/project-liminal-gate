@@ -1,7 +1,7 @@
 # Arena and Hunting implementation plan
 
-Status: Hunting selector and bounded solo lifecycle implemented; Arena VS
-remains deliberately disabled. This
+Status: Hunting and the first bounded default Special Quest are implemented;
+Arena VS remains deliberately disabled. This
 document separates the solo content that can be made available through the
 surviving client from the original online Arena system, which cannot be made
 functional by adding ordinary HTTP responses.
@@ -14,7 +14,7 @@ functional by adding ordinary HTTP responses.
 | 1. Hunting discovery | Static client gates and selector list contract recovered; live historical-service schedule remains unavailable. |
 | 2. Hunting vertical slice | Catalog, selector projection, lifecycle, costs, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py` and `liminal_gate/server_constants.py`). |
 | 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, and eight packaged Counter Descent families with explicit per-stage bounds. |
-| 4. Arena -> Special Quests | Its selector is server-owned; additional stages remain gated on reviewed local inputs. |
+| 4. Arena -> Special Quests | Default recovered Chapter 3003-1 is bundled after Chapter 3; additional stages remain gated on reviewed local inputs. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 
 The selector lives in `get_server_status.constants`. The server sends the
@@ -27,7 +27,7 @@ it never attempts a one-field partial projection.
 | --- | --- | --- |
 | Hunting | User-local, solo Metal/Hunting stages selected and settled through the normal quest lifecycle. | Recreating retired rotations, paid-entry systems, or unbounded client-authoritative rewards. |
 | Huntland -> Strikes Back | Packaged non-collaboration Counter Descent families, progress-gated and settled through the bounded normal quest lifecycle. | Claiming recovered historical dates, rotations, or rewards. |
-| Arena -> Special Quests | User-local, solo event/archive stages, using the existing local-event catalog path. | Treating Special Quests as PvP or a live event schedule. |
+| Arena -> Special Quests | Bundled Chapter 3003-1 plus user-local solo event/archive stages, using the bounded Hunting/event lifecycle. | Treating Special Quests as PvP or a live event schedule. |
 | Arena VS / ranking | Remain visibly unavailable. | Photon rooms, friends, matchmaking, rankings, co-op, raids, or a simulated service presented as the original Arena. |
 
 The current `GET /gd/multiplay_enable` response must remain the confirmed
@@ -74,10 +74,12 @@ folds each unlocked family to one selector row, and validates a zero-base
 clear. Original-client selector navigation and Chapter 8000-1 entry are
 confirmed; the client clear callback is still outstanding.
 
-Arena -> Special Quests should continue through the existing user-local event
-catalog rather than a second backend. Its next vertical slice needs one
-sanitized selector/flag work packet and real-client acceptance. Absent stages
-remain invisible.
+Arena -> Special Quests now has one default bounded slice: recovered Chapter
+3003-1, advertised after Chapter 3 with its exact section flag and settled
+through the Hunting transaction. Its permanent availability and 1,500 Coin
+ceiling are local policy. A reviewed user-local event catalog replaces that
+default list; additional stages remain invisible until their inputs are
+reviewed and their own bounded contracts exist.
 
 Arena VS stays explicitly disabled.
 
@@ -108,7 +110,8 @@ Every new solo stage path must prove:
 
 ## What is needed next
 
-The next work packet is the first reproducible Special Quest or post-Chapter
-2-1 client failure. Useful public input is a sanitized event-log excerpt and
-derived request shape. No APK, resource archive, account save, token,
-authentication digest, or private capture should enter the public repo.
+The next work packet is original-client acceptance for the default Special
+Quest or the first reproducible post-Chapter-2-1 client failure. Useful public
+input is a sanitized event-log excerpt and derived request shape. No APK,
+resource archive, account save, token, authentication digest, or private
+capture should enter the public repo.

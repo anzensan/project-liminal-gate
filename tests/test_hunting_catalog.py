@@ -93,7 +93,8 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         self.assertEqual(
             [(chapter, section) for chapter in (1001, 1002, 1003, 1004) for section in (1, 2, 3)]
             + [(chapter, 1) for chapter in (1200, 1201)]
-            + [(3000, section) for section in (*range(1, 8), *range(11, 18))],
+            + [(3000, section) for section in (*range(1, 8), *range(11, 18))]
+            + [(3003, 1)],
             sorted(self.stages),
         )
         self.assertEqual((181, 999), (self.catalog.item_slots, self.catalog.max_stack))
@@ -188,6 +189,14 @@ class BundledHuntingPolicyTest(unittest.TestCase):
             sorted(every),
         )
 
+    def test_advertises_the_default_special_quest_after_chapter_three(self) -> None:
+        before = self.catalog.client_lists(0x01000000 | (3 << 6) | 1)
+        self.assertEqual([], before["specialQuestList"])
+        after = self.catalog.client_lists(0x01000000 | (4 << 6) | 1)
+        self.assertEqual(["3003-1"], after["specialQuestList"])
+        special = self.stages[(3003, 1)]
+        self.assertEqual(("special", 5, 1500), (special.selector, special.stamina, special.max_coins))
+
     def test_advertised_metal_rows_have_matching_client_event_flags(self) -> None:
         before = self.catalog.client_event_flags(
             0x01000000 | (3 << 6) | 1
@@ -202,6 +211,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
                 "sp_ch_3000-11": {"name": "sp_ch_3000-11", "value": True},
                 "sp_ch_1200-1": {"name": "sp_ch_1200-1", "value": True},
                 "sp_ch_1201-1": {"name": "sp_ch_1201-1", "value": True},
+                "sp_ch_3003-1": {"name": "sp_ch_3003-1", "value": True},
             },
             first,
         )

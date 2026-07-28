@@ -28,6 +28,12 @@ Private inputs, captures, account state, and original assets remain excluded.
   login flags.
   The server derives those flags from the same advertised rows; Hunting and
   Metal lists then rendered in the final client.
+- **Confirmed by static client analysis:** Arena -> Special Quests reads the
+  server `specialQuestList` and exact `sp_ch_<chapter>-<section>` flags.
+  **Local policy:** after Chapter 3, the bundled server advertises recovered
+  Chapter 3003-1 (*Money Money Time*) through the bounded Hunting transaction.
+  Its permanent availability and 1,500 Coin ceiling are not recovered service
+  behavior; Tower and Arena VS remain unsupported.
 - **Confirmed by static client analysis, live transport, and original-client
   observation:** Strikes Back reads `descentHuntingList`. One folded tier-1 row
   per unlocked Chapter 8000--8007 family plus its matching chapter flag opens

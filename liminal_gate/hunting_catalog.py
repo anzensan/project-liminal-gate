@@ -27,10 +27,11 @@ class HuntingCatalogError(ValueError):
 
 
 #: Which client selector advertises a stage.  `UISpecialSelect` mode 7 reads
-#: `huntingHuntingList` and mode 6 reads `metalHuntingList`; `hidden` is for a
-#: stage the server will honour if asked but does not advertise, which is how a
-#: duplicate stage identity stays startable without appearing twice.
-SELECTORS = ("hunting", "metal", "hidden")
+#: `huntingHuntingList`, mode 6 reads `metalHuntingList`, and normal Arena
+#: Special mode reads `specialQuestList`; `hidden` is for a stage the server
+#: will honour if asked but does not advertise, which is how a duplicate stage
+#: identity stays startable without appearing twice.
+SELECTORS = ("hunting", "metal", "special", "hidden")
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,7 @@ class HuntingCatalog:
         return {(stage.chapter, stage.section): stage for stage in self.stages}
 
     def client_lists(self, progress_code: int) -> dict[str, list[str]]:
-        """Return the zone lists the client's Huntland selectors read.
+        """Return the zone lists the client's Huntland and Special selectors read.
 
         The client hard-codes no thresholds of its own, so a zone the server
         does not name here simply does not exist to it.  Deriving both lists
@@ -98,16 +99,21 @@ class HuntingCatalog:
         never be advertised without also being startable, which would turn a
         locked card into a failed request.
         """
-        return {
+        lists = {
             f"{selector}HuntingList": [
                 stage.identity_label() for stage in self.stages
                 if stage.selector == selector and stage.unlocked_at(progress_code)
             ]
             for selector in ("metal", "hunting")
         }
+        lists["specialQuestList"] = [
+            stage.identity_label() for stage in self.stages
+            if stage.selector == "special" and stage.unlocked_at(progress_code)
+        ]
+        return lists
 
     def client_event_flags(self, progress_code: int) -> dict[str, dict[str, Any]]:
-        """Return the exact flags required by advertised Metal selector rows.
+        """Return the exact flags required by advertised Metal and Special rows.
 
         Hunting chapters 1000--1099 bypass the per-row event gate in the final
         client. Metal Zone and the two Roads do not: their list entries render
@@ -117,7 +123,8 @@ class HuntingCatalog:
         `sp_ch_3000` fallback also opens every Chapter 3000 row in the client's
         built-in Arena -> Special Quests list.
         """
-        identities = self.client_lists(progress_code)["metalHuntingList"]
+        lists = self.client_lists(progress_code)
+        identities = lists["metalHuntingList"] + lists["specialQuestList"]
         return {
             f"sp_ch_{identity}": {
                 "name": f"sp_ch_{identity}",
@@ -313,6 +320,11 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
     Chapter 3000 carries each zone twice, at sections 1-7 and again at 11-17.
     The client presents them as the regular and All Hail the King families, so
     both recovered ranges are advertised in the Metal selector.
+
+    The recovered Chapter 3003-1 Special Quest is also included. Its identity,
+    five-stamina entry, and exact client visibility flag are recovered; the
+    1,500 Coin result ceiling and permanent Chapter 3 availability are local
+    preservation policy, not a recovered event schedule or reward rule.
     """
     stamina = {1: 5, 2: 8, 3: 10}
     pudding_items = _span(13, 17, 21) | {46: 21} | _span(26, 29, 20) | {122: 19, 123: 19, 164: 19, 165: 19}
@@ -344,6 +356,13 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
         ))
     stages.extend(_bundled_metal_stages())
     stages.extend(_bundled_road_stages())
+    stages.append(HuntingStage(
+        family="money_money_time", chapter=3003, section=1, stamina=5, coins=0,
+        entry_item_id=0, entry_item_count=0,
+        unlock_chapter=4, unlock_section=1,
+        max_coins=1500, max_exp=0, max_items_total=0, item_maxima={},
+        selector="special",
+    ))
     return HuntingCatalog(tuple(stages), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
 
 

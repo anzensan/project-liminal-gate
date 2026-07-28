@@ -43,11 +43,12 @@ returned. Stamina fallback and every other inventory slot remain exact.
 object is not served because client setters directly index required economy,
 version, and country fields. Hunting selector lists are added per account from
 the enabled Hunting catalog and current progress. `specialQuestList` is always
-nonempty: validated user-local event stages replace a closed recovered entry
-used when no event catalog is configured. This prevents the client's fixed
-50-entry fallback from leaking Chapter 3000 rows into Arena -> Special Quests.
-Advertised Metal entries receive exact section flags rather than one broad
-chapter flag. `descentHuntingList` separately folds each progress-unlocked
+nonempty: after Chapter 3 the bundled local Hunting policy supplies recovered
+Chapter 3003-1; a validated user-local event catalog replaces it. Before that
+threshold, a closed recovered entry suppresses the client's fixed 50-entry
+fallback, which would otherwise leak Chapter 3000 rows into Arena -> Special
+Quests. Advertised Metal and Special entries receive exact section flags rather
+than one broad chapter flag. `descentHuntingList` separately folds each progress-unlocked
 Counter Descent family to its tier-1 identity; login supplies only the matching
 chapter flags. Detailed static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
@@ -59,6 +60,13 @@ retry or restart cannot debit it again. `clear_quest` requires unchanged
 progress, roster, inventory, Summons, and a zero base reward because no
 server-authored reward was recovered. This is preservation policy, not a claim
 about historical event schedules or rewards.
+
+The bundled Special Quest uses that same Hunting transaction: Chapter 3003-1
+charges 5 stamina, accepts no EXP, items, or Companions, and has a local 1,500
+Coin ceiling. Start, clear, refusal, replay, and restart behavior are therefore
+identical to the bounded Hunting lifecycle. Its permanent availability and
+Coin ceiling are local policy; only the stage identity, entry cost, and client
+visibility flag are recovered.
 
 ## Evidence labels
 

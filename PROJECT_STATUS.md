@@ -20,6 +20,15 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 default Special Quest support: the guided server now advertises
+  recovered Chapter 3003-1 (*Money Money Time*) after Chapter 3, together with
+  its exact `sp_ch_3003-1` flag. It uses the existing bounded Hunting start and
+  clear transaction, so its five-stamina entry, rejected-result behavior,
+  body-scoped replay, and restart handling are covered by real HTTP tests. The
+  permanent unlock and 1,500 Coin ceiling are explicit local preservation
+  policy, not a claim about the retired event rotation or reward rule. A
+  reviewed user-local event catalog replaces this default Special list. Tower
+  and Arena VS remain unsupported.
 - 2026-07-28 ordinary chapter completion restores stamina as explicit local
   preservation policy: a successful core-story chapter-boundary clear commits
   `refillStartTime: 0.0`, the final client's own full-meter representation.

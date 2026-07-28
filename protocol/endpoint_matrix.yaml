@@ -22,7 +22,7 @@ capabilities:
     status: local_policy
     transport_tests: true
     restart_tests: true
-  - family: hunting_and_metal
+  - family: hunting_metal_and_default_special
     routes: [start_quest, clear_quest, unlock_metal_zone]
     status: local_policy
     transport_tests: true

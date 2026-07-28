@@ -51,6 +51,13 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "companion_maxima": {"11": 2}, "companion_drop_levels": {"11": 1},
                 },
                 {
+                    "family": "money_money_time", "chapter": 3003, "section": 1,
+                    "stamina": 5, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
+                    "selector": "special",
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 1500, "max_exp": 0,
+                    "max_items_total": 0, "item_maxima": {},
+                },
+                {
                     "family": "tin", "chapter": LOCKED_STAGE[0], "section": LOCKED_STAGE[1],
                     "stamina": 1, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
                     "unlock_chapter": 30, "unlock_section": 1,
@@ -245,9 +252,32 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "name": "sp_ch_3000-11",
                     "value": True,
                 },
+                "sp_ch_3003-1": {
+                    "name": "sp_ch_3003-1",
+                    "value": True,
+                },
             },
             login["eventFlags"],
         )
+
+    def test_special_quest_settles_and_replays_after_restart(self) -> None:
+        status, started = self.start("special-start", 3003, 1, 5)
+        self.assertEqual((200, True), (status, started["success"]))
+        # Entry debits the client stamina meter, not the Energy wallet.
+        self.assertEqual((2, 40), (self.userdata()["freeEnergy"], self.userdata()["energy"]))
+
+        self.restart()
+        snapshot = copy.deepcopy(self.userdata())
+        status, cleared = self.clear("special-clear", 3003, 1, coins=1500, snapshot=snapshot)
+        self.assertEqual((200, True), (status, cleared["success"]))
+        self.assertEqual(1600, self.userdata()["coins"])
+        self.assertEqual("free_roam", self.phase())
+        self.assertEqual(
+            (status, cleared),
+            self.clear("special-clear", 3003, 1, coins=1500, snapshot=snapshot),
+        )
+        self.restart()
+        self.assertEqual(1600, self.userdata()["coins"])
 
     def test_entry_item_is_consumed_and_a_missing_one_refuses_entry(self) -> None:
         self.assertEqual(2, self.userdata()["itemList"][4])

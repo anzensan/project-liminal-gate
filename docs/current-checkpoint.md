@@ -27,7 +27,9 @@ reward, drop, encounter, or scripted scene.
 Current optional-content observation: a resumed migrated account displays
 Hunting and Metal selector rows after pre-login progress resolution. Metal
 owns both regular and All Hail the King rows plus both Roads; Arena -> Special
-Quests no longer inherits the client's built-in Metal fallback list. Permanent
+Quests no longer inherits the client's built-in Metal fallback list and, after
+Chapter 3, receives bundled Chapter 3003-1 through the bounded Hunting
+lifecycle. Permanent
 Fate reaches the ordinary Pact transaction with the captured `luckType=true`
 form. A ticket-backed Metal Zone 1 result also settles live: the client repeats
 its pre-entry Item 50 count, the server retains the already-committed spend,
@@ -53,7 +55,8 @@ Derived-catalog boundary: story-outcome generation rejects native encounter or
 character catalogs whose recorded APK hash differs from the selected APK.
 Generated catalogs retain their input hashes and native calibration label.
 
-Next unknown boundaries: the first reproducible original-client failure after
-Chapter 2-1, the Strikes Back Chapter 8000-1 clear callback, and the Hunting
-selector flash after its rows render. The latter produced no corresponding
-server resource request or 404 and needs a client runtime capture.
+Next unknown boundaries: original-client acceptance of default Special Quest
+3003-1, the first reproducible original-client failure after Chapter 2-1, the
+Strikes Back Chapter 8000-1 clear callback, and the Hunting selector flash
+after its rows render. The latter produced no corresponding server resource
+request or 404 and needs a client runtime capture.

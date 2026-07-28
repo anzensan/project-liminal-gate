@@ -2116,7 +2116,6 @@ class BootstrapState:
         settlement_catalog: SettlementCatalog | None = None,
         outcome_catalog: StoryOutcomeCatalog | None = None,
         clear_state_catalog: ClearStateCatalog | None = None,
-        outcome_companions_only: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
         """Settle one trusted-local catalog stage without imported master data.
 
@@ -2175,7 +2174,7 @@ class BootstrapState:
                 return "invalid_local_settlement", None
             if clear_state_catalog is not None and not _clear_state_matches(userdata, clear, clear_state_catalog):
                 return "invalid_local_clear_state", None
-            buddy_info = None if outcome_catalog is None else _outcome_buddy_info(userdata, clear, identity, outcome_catalog, clear_state_catalog, outcome_companions_only)
+            buddy_info = None if outcome_catalog is None else _outcome_buddy_info(userdata, clear, identity, outcome_catalog, clear_state_catalog)
             if outcome_catalog is not None and buddy_info is None:
                 return "invalid_local_outcome", None
             wallet_fields = (
@@ -2493,7 +2492,6 @@ class BootstrapServer(ThreadingHTTPServer):
         hunting_catalog: HuntingCatalog | None = None,
         world_map_special_catalog: WorldMapSpecialCatalog | None = None,
         public_data_root: Path | None = None,
-        outcome_companions_only: bool = False,
     ) -> None:
         self.profile = profile
         self.state = state
@@ -2506,7 +2504,6 @@ class BootstrapServer(ThreadingHTTPServer):
         self.drop_eligibility = drop_eligibility
         self.settlement_catalog = settlement_catalog
         self.story_outcome_catalog = story_outcome_catalog
-        self.outcome_companions_only = outcome_companions_only
         self.statusup_catalog = statusup_catalog
         self.job_catalog = job_catalog
         self.rebirth_catalog = rebirth_catalog
@@ -2931,7 +2928,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # over whatever the player has since earned and chosen.
             if event is not None or replaying or not _profile_clear_matches(body, transitions):
                 catalog = event or self.server.story_catalog or self.server.story_progression_catalog
-                result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog, self.server.outcome_companions_only) if catalog is not None else ("unsupported_clear_quest", None)
+                result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog) if catalog is not None else ("unsupported_clear_quest", None)
             else:
                 result, payload = self.server.state.apply_tutorial_transition(
                     token,
@@ -3099,13 +3096,22 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             token,
             self._client_host(),
         )
+        has_local_special_events = False
         if self.server.event_catalog is not None:
             event_lists = self.server.event_catalog.client_lists(progress)
             if event_lists["specialQuestList"]:
                 constants["specialQuestList"] = event_lists["specialQuestList"]
+                has_local_special_events = True
             constants["descentHuntingList"] = event_lists["descentHuntingList"]
         if progress is not None and self.server.hunting_catalog is not None:
-            constants |= self.server.hunting_catalog.client_lists(progress)
+            hunting_lists = self.server.hunting_catalog.client_lists(progress)
+            constants["metalHuntingList"] = hunting_lists["metalHuntingList"]
+            constants["huntingHuntingList"] = hunting_lists["huntingHuntingList"]
+            # A reviewed local event catalog takes precedence over the bundled
+            # preservation slice. Below Chapter 3 keep the closed sentinel so
+            # the client never falls back to its built-in 50-row Metal list.
+            if hunting_lists["specialQuestList"] and not has_local_special_events:
+                constants["specialQuestList"] = hunting_lists["specialQuestList"]
         return constants
 
     def log_message(self, format: str, *args: object) -> None:
@@ -4044,55 +4050,29 @@ def _is_initial_story_character(row: dict[str, Any]) -> bool:
     )
 
 
-def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identity: tuple[int, int], catalog: StoryOutcomeCatalog, clear_state_catalog: ClearStateCatalog | None = None, companions_only: bool = False) -> dict[str, list[dict[str, Any]]] | None:
-    """Validate client-reported outcome maxima and author local Companion rows.
-
-    ``companions_only`` narrows the check to the Companion outcome alone: the
-    reported items, recruited monsters, roster delta, and Summons are left
-    unconstrained, exactly as they are when no catalog is supplied at all.
-
-    That mode exists because the three ceilings are not equally well evidenced.
-    A stage's Companion ceiling comes from ``BattleData.Section.dropBuddies``,
-    which the client itself carries for every stage; its item and character
-    ceilings come from joining the native encounter map to ``EnemyData``, which
-    cannot see the MoonSharp-scripted chapters or the chapters whose enemy rows
-    the client never shipped.  An empty ceiling *forbids*, so on those stages the
-    strict reading refuses ordinary play -- a clear reporting a routine item drop
-    is rejected -- purely for want of recoverable evidence.  Narrowing to the
-    ceiling that is actually complete turns the catalog into what a self-hoster
-    wants from it (story Companion drops settle instead of being discarded)
-    without making any other outcome stricter than it was before.
-
-    The roster and Summon checks are dropped with them on purpose.  Both compare
-    the client's submitted view against the durable one, and `_preserved_roster`
-    documents why those can legitimately diverge: the server can hold a character
-    the client has not read back yet.  Enforcing them here would refuse clears
-    for a bookkeeping lag that has nothing to do with the reported outcome.
-    """
+def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identity: tuple[int, int], catalog: StoryOutcomeCatalog, clear_state_catalog: ClearStateCatalog | None = None) -> dict[str, list[dict[str, Any]]] | None:
+    """Validate client-reported outcome maxima and author local Companion rows."""
     rule = catalog.rules.get(identity)
     result = clear["battle_result"]
     current_rows = userdata.get("chrdata")
     submitted_rows = clear["chrdata"]
-    if rule is None:
+    if rule is None or not isinstance(current_rows, list) or any(not _valid_generic_character_record(row) or row["id"] not in catalog.character_ids for row in current_rows):
         return None
-    if not companions_only:
-        if not isinstance(current_rows, list) or any(not _valid_generic_character_record(row) or row["id"] not in catalog.character_ids for row in current_rows):
-            return None
-        current_ids = {row["id"] for row in current_rows}
-        submitted_ids = {row["id"] for row in submitted_rows}
-        if len(current_ids) != len(current_rows) or not current_ids <= submitted_ids or not submitted_ids <= catalog.character_ids:
-            return None
-        new_ids = submitted_ids - current_ids
-        reported_monsters = Counter(result["monsters"])
-        reported_new = Counter({character_id: count for character_id, count in reported_monsters.items() if character_id not in current_ids})
-        reported_duplicates = reported_monsters - reported_new
-        if Counter(new_ids) != reported_new or not outcome_allowed(reported_monsters, rule.character_maxima) or (reported_duplicates and clear_state_catalog is None):
-            return None
-        reported_items = Counter({int(item_id): count for item_id, count in result["items"].items()})
-        if not outcome_allowed(reported_items, rule.item_maxima) or not _projected_list(userdata.get("itemList", []), clear["itemList"], dict(reported_items), catalog.item_slots, catalog.max_stack):
-            return None
-        if result["summons"] or clear["summonList"] != userdata.get("summonList", []):
-            return None
+    current_ids = {row["id"] for row in current_rows}
+    submitted_ids = {row["id"] for row in submitted_rows}
+    if len(current_ids) != len(current_rows) or not current_ids <= submitted_ids or not submitted_ids <= catalog.character_ids:
+        return None
+    new_ids = submitted_ids - current_ids
+    reported_monsters = Counter(result["monsters"])
+    reported_new = Counter({character_id: count for character_id, count in reported_monsters.items() if character_id not in current_ids})
+    reported_duplicates = reported_monsters - reported_new
+    if Counter(new_ids) != reported_new or not outcome_allowed(reported_monsters, rule.character_maxima) or (reported_duplicates and clear_state_catalog is None):
+        return None
+    reported_items = Counter({int(item_id): count for item_id, count in result["items"].items()})
+    if not outcome_allowed(reported_items, rule.item_maxima) or not _projected_list(userdata.get("itemList", []), clear["itemList"], dict(reported_items), catalog.item_slots, catalog.max_stack):
+        return None
+    if result["summons"] or clear["summonList"] != userdata.get("summonList", []):
+        return None
     raw_info = userdata.get("buddyInfo", {"list": [], "record": []})
     owned = raw_info.get("list") if isinstance(raw_info, dict) else None
     if not isinstance(owned, list) or any(not isinstance(row, dict) or set(row) != {"bid", "lv", "date", "iid", "exp", "flag", "chrID"} or type(row.get("bid")) is not int or type(row.get("iid")) is not int or row["iid"] <= 0 for row in owned):
@@ -4331,7 +4311,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--core-story", action="store_true", help="enable the bundled ordinary Chapter 2--42 progression policy without reward data")
     parser.add_argument("--settlement-catalog", type=Path, help="optional user-local generic-story identity/reward constraints")
     parser.add_argument("--story-outcome-catalog", type=Path, help="user-local generic-story reported-outcome bounds and Companion drop levels")
-    parser.add_argument("--outcome-companions-only", action="store_true", help="apply --story-outcome-catalog to the Companion outcome alone, leaving reported items, monsters, and Summons unconstrained")
     parser.add_argument("--clear-state-catalog", type=Path, help="user-local generic-story character EXP and Skill-Boost constraints")
     parser.add_argument("--statusup-catalog", type=Path, help="user-local item/character rules for status-up progression")
     parser.add_argument("--job-catalog", type=Path, help="user-local ordered job-unlock costs")
@@ -4376,7 +4355,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items",
         "companion_draw", "companion_sale", "companion_strengthen",
         "companion_evolution", "trading_post", "drop_eligibility",
-        "achievements", "summon_skills", "outcome_companions_only",
+        "achievements", "summon_skills",
     )
     if args.config is not None:
         if (
@@ -4397,8 +4376,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         event_log=args.event_log, resource_root=args.resource_root, resource_manifest=args.resource_manifest, public_data_root=getattr(args, "public_data_root", None),
         story_catalog=args.story_catalog, core_story=getattr(args, "core_story", False), settlement_catalog=args.settlement_catalog,
         story_progression_catalog=args.story_progression_catalog,
-        story_outcome_catalog=args.story_outcome_catalog, outcome_companions_only=getattr(args, "outcome_companions_only", False),
-        clear_state_catalog=args.clear_state_catalog, statusup_catalog=args.statusup_catalog,
+        story_outcome_catalog=args.story_outcome_catalog, clear_state_catalog=args.clear_state_catalog, statusup_catalog=args.statusup_catalog,
         job_catalog=args.job_catalog, rebirth_catalog=args.rebirth_catalog,
         summon_skill_catalog=args.summon_skill_catalog, companion_catalog=args.companion_catalog,
         companion_strengthen_catalog=args.companion_strengthen_catalog,
@@ -4436,8 +4414,6 @@ def main() -> int:
         if stories is not None and progression is not None:
             raise ProfileError("--story-catalog and --story-progression-catalog cannot be combined")
         settlements = None if args.settlement_catalog is None else load_settlement_catalog(args.settlement_catalog)
-        if getattr(args, "outcome_companions_only", False) and args.story_outcome_catalog is None:
-            raise ProfileError("--outcome-companions-only requires --story-outcome-catalog")
         story_outcomes = None if args.story_outcome_catalog is None else load_story_outcome_catalog(args.story_outcome_catalog)
         clear_states = None if args.clear_state_catalog is None else load_clear_state_catalog(args.clear_state_catalog)
         if args.status_items and args.statusup_catalog is not None:
@@ -4512,7 +4488,6 @@ def main() -> int:
             drop_eligibility=getattr(args, 'drop_eligibility', False),
             hunting_catalog=hunts,
             public_data_root=args.public_data_root,
-            outcome_companions_only=getattr(args, "outcome_companions_only", False),
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error
