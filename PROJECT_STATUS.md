@@ -20,6 +20,16 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-27 rotated-token authenticated reads: the client replaces its OTK
+  about every three seconds, so an authenticated read almost never arrives on a
+  token an earlier mutation bound. `get_current_exchange` resolved its token by
+  raw lookup and answered `401 unknown_account`, which surfaced on a live
+  server as a network error when the player entered the trading post. Both it
+  and `userdata_after_close` now resolve through `bind_rotated_token`, exactly
+  as the `userdata` read and every mutation already did. The household guard is
+  unchanged and covered by test: an unidentified LAN host is still refused once
+  any client has identified itself. `RotatedTokenReadTest` closes the gap that
+  hid this, where every exchange test reused the literal signup token.
 - 2026-07-27 Strikes Back vertical slice: the standard Hunting policy now
   exposes the eight packaged non-collaboration Counter Descent families through
   the dedicated, progress-gated `descentHuntingList`, with five startable tiers

@@ -125,3 +125,62 @@ class BundledTradingPostTest(unittest.TestCase):
         offer = next(o for o in self.open_offers.values() if o.initial_count == 1)
         payload, _ = self.trade(offer, amount=2)
         self.assertEqual((False, 6), (payload["success"], payload["errorCode"]))
+
+
+class RotatedTokenReadTest(unittest.TestCase):
+    """Authenticated reads must survive the client's three-second OTK rotation.
+
+    The live save that exposed this had a bound host and 83 recorded tokens:
+    the browse request still arrived on a value none of them matched, because
+    it was minted after the last mutation, and the counter answered 401.
+    """
+
+    def setUp(self) -> None:
+        self.profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        state = BootstrapState(Path(self.directory.name) / "state.json")
+        items = [0] * 181
+        items[181 - 1] = 20000
+        # The host is recorded exactly as signup/login records it, so the
+        # ownership branch — not the legacy no-host fallback — is what answers.
+        state.create_account("login-token", "account", {
+            "coins": 0, "itemList": items, "chrdata": [],
+            "buddyInfo": {"list": [], "record": []},
+        }, exchange_catalog=build_bundled_exchange_policy(), client_host="127.0.0.1")
+        self.server = BootstrapServer(("127.0.0.1", 0), self.profile, state,
+                                      exchange_catalog=build_bundled_exchange_policy())
+        thread = threading.Thread(target=self.server.serve_forever)
+        thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(thread.join)
+        self.addCleanup(self.server.shutdown)
+
+    def get(self, path: str) -> tuple[int, dict]:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    def test_the_trading_post_opens_on_a_token_no_mutation_bound(self) -> None:
+        status, payload = self.get("/gd/get_current_exchange?otk=ROTATED0000000A")
+        self.assertEqual(200, status, payload)
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["itemList"][0]["items"])
+
+    def test_a_resume_read_survives_the_same_rotation(self) -> None:
+        status, payload = self.get("/gd/userdata_after_close?otk=ROTATED0000000B")
+        self.assertEqual(200, status, payload)
+        self.assertTrue(payload["success"])
+
+    def test_an_unidentified_host_is_still_refused(self) -> None:
+        # Binding by host must not become "any token opens the counter": the
+        # household guard is the whole reason the raw lookup was there.
+        self.server.state.client_hosts["10.0.0.9"] = "other-account"
+        status, payload = self.get("/gd/get_current_exchange?otk=ROTATED0000000C")
+        self.assertEqual(200, status, payload)
+        del self.server.state.client_hosts["127.0.0.1"]
+        status, payload = self.get("/gd/get_current_exchange?otk=ROTATED0000000D")
+        self.assertEqual((401, "unknown_account"), (status, payload["error"]))

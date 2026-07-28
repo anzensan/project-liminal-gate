@@ -2654,7 +2654,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             self._signed(HTTPStatus.OK, token, {"success": True, **userdata})
             return
         if target.path == profile.routes.get("userdata_after_close"):
-            userdata = self.server.state.userdata_for(token)
+            # Same rotated-OTK reasoning as the read above: a resume can carry
+            # a token the server has never seen.
+            userdata = (
+                self.server.state.userdata_for(token)
+                if token and self.server.state.bind_rotated_token(token, self._client_host())
+                else None
+            )
             if userdata is None:
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_local_account"})
                 return
@@ -2673,6 +2679,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             self._signed(HTTPStatus.OK, token, _render(profile.responses["special_event"], token))
             return
         if target.path == profile.routes.get("get_current_exchange"):
+            # The OTK rotates every three seconds, so the token that opens the
+            # trading post is almost never the one the last mutation bound.
+            # Resolve it by client host exactly as the userdata read and every
+            # mutation do, or an otherwise valid session gets a network error
+            # at the counter.
+            if token and not self.server.state.bind_rotated_token(token, self._client_host()):
+                self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_account"})
+                return
             result, payload = self.server.state.current_exchange(token, self.server.exchange_catalog)
             if result == "success": self._signed(HTTPStatus.OK, token or "", {"success": True, **(payload or {})})
             else: self._json(HTTPStatus.NOT_IMPLEMENTED if result == "unsupported_exchange" else HTTPStatus.UNAUTHORIZED, {"error": result})
