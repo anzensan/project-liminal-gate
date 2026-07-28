@@ -249,9 +249,22 @@ class BuildCatalogTest(unittest.TestCase):
         # derived: leaving them empty refuses a clear that legitimately reports
         # an item or a recruited monster.
         rules = self._rules(self._build()[0])
-        self.assertEqual({"5": 8}, rules[(8, 1)]["item_maxima"])
+        # One per enemy able to drop it. The low byte of an `ItemCode` is a drop
+        # rate, not a stack count -- the recovered table runs to 100 -- so
+        # Bomborg's rate of 2 over four spawns is a ceiling of four, not eight.
+        self.assertEqual({"5": 4}, rules[(8, 1)]["item_maxima"])
         self.assertEqual({"9001": 4}, rules[(8, 1)]["character_maxima"])
-        self.assertEqual({"5": 1, "9": 3}, rules[(8, 2)]["item_maxima"])
+        self.assertEqual({"5": 1, "9": 1}, rules[(8, 2)]["item_maxima"])
+
+    def test_a_zero_rate_item_contributes_no_ceiling(self) -> None:
+        # Same reading the Companion and Job ceilings apply to their own ratios.
+        enemy_data = {"data": [_enemy(BOMBORG, COMPANION_A, 20.0, items=((5, 0), (9, 4)))]}
+        catalog, _report, _notes = build_catalog(
+            _encounters([_stage(8, 1, [("CH8_BMAKER", BOMBORG, True, 3)])]),
+            {"chapters": [{"chapterNo": 8, "sections": [{"dropBuddies": [_code(COMPANION_A, 1)]}]}]},
+            enemy_data, self.chr_database, self.characters,
+        )
+        self.assertEqual({"9": 3}, catalog["stages"][0]["item_maxima"])
 
     def test_a_zero_ratio_job_drop_contributes_no_character_ceiling(self) -> None:
         # Same reading the Companion ceiling already applies to its own ratio.

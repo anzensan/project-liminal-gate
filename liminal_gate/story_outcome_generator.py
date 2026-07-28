@@ -280,13 +280,19 @@ def companion_drops_by_enemy(tree: dict[str, Any]) -> dict[int, int]:
 
 
 def item_drops_by_enemy(tree: dict[str, Any]) -> dict[int, dict[int, int]]:
-    """Map each enemy record ID to the items it can drop, with their counts.
+    """Map each enemy record ID to the items it can drop.
 
-    ``EnemyParams.items`` is a four-slot ``ItemCode`` array; ``code >> 8`` is the
-    item and ``code & 0xFF`` the count, and a zero code is an empty slot.  Unlike
-    the Companion drop this carries no per-item ratio, so every named item
-    contributes a ceiling: a ceiling permits, and refusing an item the enemy
-    demonstrably carries would reject a legitimate clear.
+    ``EnemyParams.items`` is a four-slot ``ItemCode`` array where ``code >> 8``
+    is the item and a zero code is an empty slot.
+
+    The low byte is a **drop rate, not a stack count**.  Across the recovered
+    table it takes 24 distinct values spanning 0 to 100, including 100 itself 21
+    times and 80, 57, and 52 in between; no enemy carries a hundred copies of an
+    item, and 100 is a guaranteed drop.  Reading it as a count multiplied every
+    ceiling by the drop rate, which produced numbers that permitted far more than
+    the stage could yield.  It is read here the same way `DropBuddyRatio` is: a
+    rate above zero means the enemy can drop the item, and each such enemy
+    contributes one to the ceiling.
     """
     rows = tree.get("data")
     if not isinstance(rows, list) or not rows:
@@ -305,10 +311,12 @@ def item_drops_by_enemy(tree: dict[str, Any]) -> dict[int, dict[int, int]]:
             code = slot["code"]
             if not code:
                 continue
-            item_id, count = code >> 8, code & 0xFF
-            if item_id <= 0 or count <= 0:
+            item_id, rate = code >> 8, code & 0xFF
+            if item_id <= 0 or rate <= 0:
+                # A zero rate never rolls, exactly as a zero `DropBuddyRatio`
+                # contributes no Companion ceiling.
                 continue
-            carried[item_id] = max(carried.get(item_id, 0), count)
+            carried[item_id] = 1
         drops[row["ID"]] = carried
     return drops
 
@@ -484,8 +492,10 @@ def _stage_maxima(
             companion_id = enemy_drops[enemy_id]
             if companion_id:
                 counts[companion_id] = counts.get(companion_id, 0) + spawn["count"]
-            for item_id, per_kill in enemy_items.get(enemy_id, {}).items():
-                item_counts[item_id] = item_counts.get(item_id, 0) + per_kill * spawn["count"]
+            for item_id in enemy_items.get(enemy_id, {}):
+                # One per enemy able to drop it, the same rule the Companion
+                # ceiling uses. The recovered table states a rate, not a count.
+                item_counts[item_id] = item_counts.get(item_id, 0) + spawn["count"]
             character_id = enemy_characters.get(enemy_id, 0)
             if character_id:
                 character_counts[character_id] = character_counts.get(character_id, 0) + spawn["count"]

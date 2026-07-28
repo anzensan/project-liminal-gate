@@ -285,9 +285,11 @@ therefore derived from the same per-enemy records the Companion ceiling reads,
 so a clear that legitimately rewards an item or a recruited monster is accepted:
 
 - **Items** come from `EnemyParams.items`, a four-slot `ItemCode` array where
-  `code >> 8` is the item and `code & 0xFF` the count. 845 recovered enemy
-  records carry at least one. There is no per-item ratio, so every item an enemy
-  names contributes a ceiling.
+  `code >> 8` is the item and the low byte is a **drop rate**, not a stack
+  count: across the recovered table it takes 24 distinct values from 0 to 100,
+  including 100 itself. An enemy whose rate is above zero contributes one to the
+  ceiling, exactly as a nonzero `DropBuddyRatio` does for Companions; a zero rate
+  never rolls and contributes nothing.
 - **Characters** come from `EnemyParams.DropJobID`, which names a `ChrJobParams`
   row whose `chrID` is the character the client recruits. A zero `DropRatio`
   never rolls and contributes nothing, matching the Companion reading.
