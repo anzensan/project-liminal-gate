@@ -77,11 +77,19 @@ python3 -m liminal_gate.tester_setup \
   --dummy-dll-dir /path/to/il2cpp-output/DummyDll
 ```
 
-With it, setup additionally writes `user-data/character-catalog.json` and
-`user-data/names.json`, the latter being character, item, and Companion names
-decoded from your own metadata for the save editor. Both stay in the ignored
+With it, setup additionally writes `user-data/character-catalog.json`,
+`user-data/names.json` (character, item, and Companion names decoded from your
+own metadata, for the save editor), and `user-data/story-outcomes.json`, the
+catalog that lets a story clear mint a Companion at all. All stay in the ignored
 data directory. Without it, setup skips them and says so; everything else works
-unchanged.
+unchanged, but story battles award no Companions.
+
+Deriving the drop catalog also needs `dump.cs` — the sibling of `DummyDll` in
+the Il2CppDumper output, found automatically or set with `--dump-cs` — and a
+disassembler on `PATH` that reads AArch64. Setup confirms that rather than
+assuming it, because a stock GNU `objdump` is often single-target; install LLVM
+or `binutils-multiarch` if it reports none. A missing prerequisite is reported
+and skipped, never fatal. `--no-story-drops` skips the step outright.
 
 ## Core-story progression
 
@@ -619,7 +627,7 @@ result ceilings — and no enemy, encounter, reward, or resource data.
 
 The quickest path is the bundled policy, which covers Pudding Time, Tin Parade,
 Attack of the Coin Creeps, Puppet Show, Metal Zone, Dragon Road, Machine Road,
-and the default Chapter 3003-1 Special Quest:
+Crystal Road, and the default Chapter 3003-1 Special Quest:
 
 ```sh
 python3 -m liminal_gate.bootstrap_server \
@@ -640,7 +648,10 @@ EXP ceilings, and Companion manifests are declared by the bundled policy; an
 undeclared result is refused. Dragon and Machine Road currently settle zero
 base rewards because no complete reward contract was recovered. The default
 Special Quest is also bounded: Chapter 3003-1 accepts up to 1,500 Coins and no
-EXP, items, or Companions. See
+EXP, items, or Companions. Crystal Road (3004-1) is a permanent local Huntland
+route after Chapter 3: its seven-stamina entry and three-battle client record
+are recovered, while its published material/Ticket/power-up table is explicit
+local policy. It accepts at most two declared items from those channels. See
 [the external quest reference ledger](external-quest-reference-ledger.md) for
 the approved-source facts and the stages that remain deliberately unavailable.
 

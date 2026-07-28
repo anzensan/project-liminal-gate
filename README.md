@@ -72,6 +72,7 @@ each zone waits for, which is well past the verified stopping point:
 | Hunting tier 2 | Chapter 9 |
 | Hunting tier 3 | Chapter 18 |
 | Metal Zone 1, Dragon Road, Machine Road | Chapter 3 |
+| Crystal Road | Chapter 3 |
 | Metal Zones 2 to 7 | Chapters 8, 12, 17, 21, 26, 30 |
 
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
@@ -668,14 +669,15 @@ unlocks, Rebirth, and status items are all enabled — setup no longer asks you
 to choose between them. To isolate one feature while troubleshooting, run
 `liminal_gate.bootstrap_server` directly with only the flags you want; see
 [docs/advanced-configuration.md](docs/advanced-configuration.md).
-Story battles do not award Companions unless you build a story-outcome catalog
-from your own APK — the client rolls the drop and the server has no authority to
-mint it, so it is discarded. Metal Zone keeps dropping its two Companions
-because those come from the bundled Hunting policy instead. If you build one and
-save it as `story-outcomes.json` in the data directory, the launcher picks it up
-and says so at startup. It bounds the Companion drop and nothing else, so it can
-only add drops, never refuse a clear you would otherwise have passed; see [What
-the catalog enforces, and what it admits it cannot](docs/advanced-configuration.md#what-the-catalog-enforces-and-what-it-admits-it-cannot).
+Story battles award Companions only when a story-outcome catalog derived from
+your own APK is present — the client rolls the drop and the server otherwise has
+no authority to mint it, so it is discarded. Setup derives that catalog for you
+when you give it `--dummy-dll-dir`, and prints how many stages can drop a
+Companion. Without it, Metal Zone still drops its two Companions, because those
+come from the bundled Hunting policy instead, and story battles drop none. The
+catalog bounds the Companion drop and nothing else, so it can only add drops,
+never refuse a clear you would otherwise have passed; see [What the catalog
+enforces, and what it admits it cannot](docs/advanced-configuration.md#what-the-catalog-enforces-and-what-it-admits-it-cannot).
 An advanced event question appears only for people who already have a reviewed
 local event catalog. **DummyDll is not required for normal play, Hunting,
 Special Quests, or Tower.** It is generated analysis metadata from your own APK

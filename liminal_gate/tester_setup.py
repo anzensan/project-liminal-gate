@@ -33,6 +33,24 @@ from liminal_gate.resource_catalog_builder import build_resource_manifest, write
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
 from liminal_gate import account_state
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
+from liminal_gate.native_encounter_importer import (
+    NativeEncounterImportError,
+    import_encounters as import_native_encounters,
+    write_document as write_native_document,
+)
+from liminal_gate.scenario_encounter_importer import (
+    ScenarioEncounterImportError,
+    import_encounters as import_scenario_encounters,
+    write_document as write_scenario_document,
+)
+from liminal_gate.server_setup import DEFAULT_OUTCOME_CATALOG
+from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
+from liminal_gate.story_outcome_generator import (
+    StoryOutcomeGeneratorError,
+    build_catalog as build_story_outcome_catalog,
+    build_derivation_source as build_outcome_source,
+    write_catalog as write_story_outcome_catalog,
+)
 
 
 class TesterSetupError(RuntimeError):
@@ -454,10 +472,122 @@ def write_local_names(path: Path, apk: Path, trees: dict[str, dict[str, object]]
     return True
 
 
+#: Disassemblers tried, in order, for the native encounter import.  LLVM's leads
+#: on purpose: it is built with every target, whereas a distribution's stock GNU
+#: `objdump` is frequently single-target and cannot read an AArch64 library at
+#: all unless `binutils-multiarch` is installed.
+_OBJDUMP_CANDIDATES = ("llvm-objdump", "objdump", "gobjdump")
+
+
+def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> str | None:
+    """Return the first disassembler on PATH that can read AArch64, if any.
+
+    Support is confirmed rather than assumed: LLVM lists its registered targets
+    under ``--version`` and GNU lists its architectures under ``--info``, and a
+    stock GNU build on an x86 host commonly lists neither.  Picking one that
+    cannot read the library would surface as a confusing failure thousands of
+    disassembly calls later.
+    """
+    for candidate in candidates:
+        if shutil.which(candidate) is None:
+            continue
+        for flag in ("--version", "--info"):
+            try:
+                completed = subprocess.run(
+                    (candidate, flag), stdin=subprocess.DEVNULL,
+                    capture_output=True, text=True, timeout=30,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if "aarch64" in completed.stdout.lower():
+                return candidate
+    return None
+
+
+def derive_story_outcome_catalog(
+    apk: Path, dummy_dll_dir: Path, data_directory: Path, dump_cs: Path | None = None,
+) -> Path | None:
+    """Compose the story-outcome catalog the drop path needs, if it can.
+
+    Without this file a clear mints no Companion at all: the client rolls the
+    drop and `clear_quest` has no authority to write it, so the whole story can
+    be played without one appearing.  It cannot be shipped -- it is derived from
+    the operator's own APK -- so the guided setup derives it, leaving it under
+    the name `server_setup` already looks for.
+
+    Returns the catalog path, or `None` when a prerequisite is missing.  A
+    missing disassembler must not fail an install that is otherwise fine, so the
+    shortfall is reported and setup continues; every other feature works, and
+    only story Companion drops stay off.
+    """
+    resolved_dump_cs = dump_cs if dump_cs is not None else dummy_dll_dir.parent / "dump.cs"
+    if not resolved_dump_cs.is_file():
+        print(
+            "Story Companion drops: skipped -- no dump.cs beside the DummyDll directory "
+            f"(looked for {resolved_dump_cs}). It is written by the same Il2CppDumper run."
+        )
+        return None
+    objdump = find_aarch64_objdump()
+    if objdump is None:
+        print(
+            "Story Companion drops: skipped -- no disassembler on PATH that reads AArch64. "
+            "Install LLVM (llvm-objdump) or binutils-multiarch, then re-run setup."
+        )
+        return None
+    character_catalog = data_directory / "character-catalog.json"
+    if not character_catalog.is_file():
+        print("Story Companion drops: skipped -- the local character catalog was not derived.")
+        return None
+    derived = data_directory / "derived"
+    derived.mkdir(parents=True, exist_ok=True)
+    catalog_path = data_directory / DEFAULT_OUTCOME_CATALOG
+    try:
+        print(f"Deriving story Companion drops (disassembling chapter programs with {objdump})...")
+        native_path = derived / "native-encounters.json"
+        write_native_document(native_path, import_native_encounters(apk, resolved_dump_cs, objdump))
+        # Chapters 2-7 have no compiled battle program; their encounters come
+        # from the client's MoonSharp scripts instead.
+        scenario_path = derived / "scenario-encounters.json"
+        scenario_document, _report = import_scenario_encounters(apk, resolved_dump_cs)
+        write_scenario_document(scenario_path, scenario_document)
+        native_document, characters = _read_json(native_path), _read_json(character_catalog)
+        trees = load_master_trees(apk, dummy_dll_dir, ("BattleData", "EnemyData", "ChrDatabase"))
+        catalog, report, notes = build_story_outcome_catalog(
+            native_document,
+            trees["BattleData"], trees["EnemyData"], trees["ChrDatabase"], characters,
+            source=build_outcome_source(
+                native_document, characters, sha256_file(apk),
+                sha256_file(native_path), sha256_file(character_catalog), None,
+                scenario_document, sha256_file(scenario_path),
+            ),
+            scenario=scenario_document,
+        )
+        write_story_outcome_catalog(catalog_path, catalog)
+        load_story_outcome_catalog(catalog_path)
+    except (
+        NativeEncounterImportError, ScenarioEncounterImportError, StoryOutcomeGeneratorError,
+        StoryOutcomeCatalogError, CharacterCatalogImportError, OSError,
+    ) as error:
+        print(f"Story Companion drops: skipped -- {error}")
+        return None
+    print(
+        f"Story Companion drops: ON -- {report['core_stages_with_companion_ceiling']} story stage(s) "
+        f"can mint a Companion, {report['distinct_companions']} distinct Companion(s)."
+    )
+    for note in notes:
+        print(f"  note: {note}")
+    return catalog_path
+
+
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def prepare_local_tester(
     apk: Path, resource_root: Path, data_directory: Path, port: int, build_tools: Path | None,
     dummy_dll_dir: Path | None = None, event_catalog: Path | None = None,
     device_host: str = EMULATOR_LOOPBACK_HOST,
+    derive_drops: bool = True, dump_cs: Path | None = None,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
     if not 1 <= port <= 65535:
@@ -485,6 +615,8 @@ def prepare_local_tester(
             character_catalog = build_character_catalog(trees["ChrDatabase"], sha256_file(apk))
             write_character_catalog(data_directory / "character-catalog.json", character_catalog)
             write_local_names(data_directory / "names.json", apk, trees)
+            if derive_drops:
+                derive_story_outcome_catalog(apk, dummy_dll_dir, data_directory, dump_cs)
         manifest = build_resource_manifest(resource_root)
         resource_manifest = data_directory / "resources.json"
         write_resource_manifest(resource_manifest, manifest)
@@ -630,8 +762,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--build-tools", type=Path, help="Android SDK Build Tools version directory")
-    parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json")
+    parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json and the story Companion drop catalog")
     parser.add_argument("--event-catalog", type=Path, help="optional user-local event-stage catalog; requires --dummy-dll-dir")
+    parser.add_argument("--dump-cs", type=Path, help="Il2CppDumper dump.cs; defaults to the file beside --dummy-dll-dir")
+    parser.add_argument(
+        "--no-story-drops", dest="derive_drops", action="store_false",
+        help="skip deriving the story Companion drop catalog; story clears then mint no Companion",
+    )
     parser.add_argument("--no-configure", dest="configure", action="store_false", help="skip interactive local-server options and use the standard defaults")
     parser.set_defaults(configure=True)
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
@@ -727,6 +864,7 @@ def main() -> int:
         signed = prepare_local_tester(
             args.apk, args.resource_root, args.data_dir, args.port, args.build_tools,
             options.dummy_dll_dir, options.event_catalog, args.device_host,
+            derive_drops=args.derive_drops, dump_cs=args.dump_cs,
         )
         if device is None:
             return 0
