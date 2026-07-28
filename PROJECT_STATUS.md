@@ -7,6 +7,9 @@ Public-release hardening and client-compatible single-player expansion.
 ## Verified boundary
 
 - The original Android client path is verified through Chapter 2-1.
+- The maintainer reports an uninterrupted physical-device playthrough through
+  Chapter 8-4 with no client-visible failure. That is operator acceptance, not
+  a replacement for the preserved trace-based Chapter 2-1 certification.
 - The guided server provides ordered ordinary-story progression through
   Chapter 42 as explicit local policy.
 - Supported mutations use durable atomic state and body-scoped replay across
@@ -20,6 +23,33 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 final-version Eidolon classification: Version 5.5.0 retired
+  Eidolon battle summoning, its multiplayer charging-gauge use, and Tavern
+  enhancement. Those are not missing solo systems for the final 5.5.7 client.
+  Former Co-op Eidolon quests were converted to single-player, however, and
+  the final client retains their selector and distinct collectible result
+  path. The remaining optional gap is therefore Chapters 4100--4111 quest
+  visibility/start/clear and durable collectible acquisition, not an Eidolon
+  combat mechanic. The existing skill-unlock route is retained as archival
+  static compatibility evidence behind an explicit option, not enabled by
+  guided setup or claimed as a reachable final-version UI loop.
+- 2026-07-28 remaining solo equipment integrity: combined
+  `chrdata`+`buddyInfo` equip writes now project both dirty arrays before
+  mutation and require every nonzero character `buddy` link to match the owned
+  Companion inventory record's `chrID` in both directions. One-sided
+  Companion-only retargets and mismatched combined moves are refused without
+  changing either half. Real-HTTP replay and restart coverage passes.
+  Required-level, exclusive-character/ancestor, and species eligibility still
+  need public master-data authority and original-client acceptance.
+- 2026-07-28 remaining solo Pact payment slice: the strict permanent
+  `kind=20,count=1` form now spends one Item 81 Fellowship Ticket through the
+  existing bounded Fellowship pool. Ordinary draws retain Skill Boost
+  duplicate behavior; `luckType=true` uses the Fellowship-side Fate Luck
+  policy. Success returns the detached post-spend inventory without charging
+  Coins or Energy. Missing-ticket, ticket-priority, exact replay, and restart
+  paths are covered over real HTTP. Campaign/event selectors and mixed
+  ticket/coin batches remain unsupported, and original-client acceptance is
+  still pending.
 - 2026-07-28 clean public onboarding: a clean public-source clone, fresh Python
   environment, immutable final APK, matching resource tree, and external
   platform tools completed the whole documented path without any pre-generated
@@ -248,6 +278,17 @@ machine-readable/current capability boundary.
   promoted to errors; focused catalog and real-HTTP restart/replay checks,
   compilation, diff checks, live projection, and original-client fight entry
   passed.
+- 2026-07-28 Fellowship Ticket validation: 10 focused Pact/catalog tests and
+  the full 588-test warning-strict suite passed; compilation and diff checks
+  passed. No original-client ticket draw is claimed yet.
+- 2026-07-28 combined-equip validation: four focused real-HTTP
+  Companion/party tests and the full 589-test warning-strict suite passed in
+  115.497 seconds; compilation, diff checks, and clean-candidate material
+  preflight passed.
+- 2026-07-28 final-version Eidolon classification validation: 28 focused
+  setup/configuration/legacy-route tests and the full 589-test warning-strict
+  suite passed in 116.973 seconds; compilation, diff checks, YAML validation,
+  and clean-candidate publication gates passed.
 
 ## Blockers and unresolved fidelity
 
@@ -262,7 +303,14 @@ machine-readable/current capability boundary.
   separately validated APK patch.
 - Canonical original-client certification beyond Chapter 2-1.
 - Exact ordinary-story reward/drop authority and scripted-stage exceptions.
-- Battle Summon acquisition and complete equipment/party lifecycle.
+- Final-version solo Eidolon quest visibility and collectible reward settlement
+  for Chapters 4100--4111. Eidolon battle summoning and enhancement are not
+  gaps: Version 5.5.0 retired them with multiplayer.
+- Companion equip required-level, exclusive-character/ancestor, and species
+  eligibility backed by public generated masters, plus end-to-end
+  original-client equipment/party certification.
+- Original-client acceptance of the permanent Item 81 Fellowship/Fate ticket
+  draw; current proof is static client evidence plus real-HTTP regression.
 - Historical event schedules, campaign behavior, and live-service families.
 - Differential certification against excluded private reference evidence.
 - Emulator audio cutoff inside the Unity 2017.4/FMOD producer path. Native

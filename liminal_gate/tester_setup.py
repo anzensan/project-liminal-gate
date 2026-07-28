@@ -77,7 +77,7 @@ class LocalServerOptions:
     core_story: bool = True
     drop_eligibility: bool = True
     achievements: bool = True
-    summon_skills: bool = True
+    summon_skills: bool = False
     pacts: bool = True
     hunting: bool = True
     jobs: bool = True
@@ -913,7 +913,7 @@ def prepare_local_tester(
 
 def server_arguments(
     resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
-    core_story: bool = True, drop_eligibility: bool = True, achievements: bool = True, summon_skills: bool = True, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True, companion_sale: bool = True,
+    core_story: bool = True, drop_eligibility: bool = True, achievements: bool = True, summon_skills: bool = False, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True, companion_sale: bool = True,
     companion_strengthen: bool = True, companion_evolution: bool = True,
     trading_post: bool = True,
 ) -> list[str]:

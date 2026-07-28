@@ -397,7 +397,7 @@ catalog is passed at launch:
 | `--statusup-catalog` | status-item use rules |
 | `--job-catalog` | ordered job-unlock costs |
 | `--rebirth-catalog` | Rebirth recipes and material rules |
-| `--summon-skill-catalog` | Battle Summon skill costs (see `--summon-skills` for the bundled policy) |
+| `--summon-skill-catalog` | archival Eidolon skill costs (see `--summon-skills` for the bundled policy) |
 | `--companion-catalog` | Companion sale/master values |
 | `--companion-strengthen-catalog` | Companion EXP and bonus policy |
 | `--companion-evolution-catalog` | Companion evolution recipes |
@@ -407,9 +407,18 @@ catalog is passed at launch:
 All mutations are designed to persist local state and replay an identical
 request safely across restart. Unsupported variants return an explicit error.
 
+Version 5.5.0 discontinued Eidolon enhancement and in-battle summoning when
+Co-op/VS ended. The summon-skill options preserve the statically recovered
+legacy transport and cost table for archival interoperability; they are not
+needed for normal final 5.5.7 solo play and do not implement collectible
+acquisition from the converted solo Eidolon quests. Guided setup leaves this
+route disabled.
+
 The guided setup enables `--pacts`, a built-in local Fellowship/Truth policy.
 Use `--pact-draw-catalog` instead when you need a custom Fellowship-only pool;
-it cannot be combined with `--pacts`.
+it cannot be combined with `--pacts`. Both accept the final client's
+single-draw Item 81 Fellowship Ticket form; only the bundled policy also has
+the Luck rules needed for its `luckType=true` Fate variant.
 
 ### Composing an event catalog
 
@@ -458,7 +467,7 @@ local installation.
 | `--pacts` | the local Fellowship/Truth Pact pools and costs |
 | `--drop-eligibility` | the login `chrBuddyData` allowlist: 346 character and 497 Companion master IDs |
 | `--achievements` | the 8 settleable clear-chapter achievements, each paying 1 Energy and 1x item 50 |
-| `--summon-skills` | all 44 Battle Summon skill tiers across the 16 Summons, with their material costs |
+| `--summon-skills` | all 44 archival Eidolon skill tiers across the 16 Summons, with their material costs |
 
 ### Choosing which saved account to play
 

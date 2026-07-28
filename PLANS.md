@@ -1,5 +1,157 @@
 # Execution Plans
 
+## 2026-07-28 remaining solo systems: final-version Eidolon classification
+
+Status: completed 2026-07-28; converted solo quest settlement remains
+capture-gated.
+
+Objective: distinguish retired multiplayer Eidolon mechanics from the
+collection content that still exists in the final 5.5.7 client, so the solo
+completion list does not require recreating an unreachable battle system.
+
+Evidence boundary:
+
+- Version 5.5.0 discontinued Co-op and VS. Eidolons can no longer be summoned
+  in battle, and their Tavern enhancement function was discontinued.
+- The former Co-op Eidolon quests were converted to single-player quests.
+  Final-client static evidence retains the Mode 4 selector,
+  `eidolonQuestList`, Chapters 4100--4111, and a distinct result path carrying
+  Summon collectible rewards.
+- Owned Eidolons remain visible as collectibles under Options. That surviving
+  collection surface is separate from the removed charging gauge and battle
+  summon mechanic.
+- The recovered `summon_skill_unlock` transport and material table are useful
+  archival compatibility evidence, but they are not a required or proven
+  reachable final-version solo loop.
+
+Result:
+
+- Eidolon battle summoning, its charging gauge, Co-op/VS integration, and
+  Tavern enhancement are no longer classified as remaining solo systems.
+- The remaining optional solo gap is the converted Eidolon quest lifecycle:
+  selector visibility, start/clear, and durable collectible acquisition for
+  Chapters 4100--4111.
+- No acquisition mapping, reward settlement, or selector semantics were
+  invented. Implementing that optional slice still requires an
+  original-client quest/result capture with before/after owned-Eidolon state.
+- Documentation, capability labels, and launcher help now state this boundary.
+  Guided setup no longer enables the retired enhancement route by default;
+  operators can still request its archival policy explicitly. No combat or
+  acquisition behavior changed.
+- Twenty-eight focused setup, configuration, and legacy-route tests passed.
+  The warning-strict full suite passed all 589 tests in 116.973 seconds;
+  compilation, diff checks, machine-readable YAML validation, and
+  clean-candidate publication gates passed.
+
+## 2026-07-28 remaining solo systems: Companion equip integrity
+
+Status: completed 2026-07-28; master-backed eligibility and client acceptance
+remain pending.
+
+Objective: make the already-recognized combined `chrdata`, `buddyInfo`,
+`lastUpdate` equip form enforce the recovered owned, one-to-one bidirectional
+relationship before either half becomes durable.
+
+Evidence boundary:
+
+- Dual-ABI serializer/equip paths establish the exact combined form and that
+  both dirty arrays represent one coupled mutation.
+- A character's nonzero `buddy` is a Companion inventory ID; that Companion's
+  `chrID` must point back to the same owned character. The resulting account
+  may not assign one Companion to multiple characters.
+- Required-level, exclusive-character/ancestor, and species eligibility require
+  additional Companion/job master fields that the current public runtime does
+  not carry. This slice must not invent those values or claim that wider
+  lifecycle complete.
+
+Required proof:
+
+1. Project the Companion delta without mutating live state, merge the character
+   delta, and validate the complete candidate relationship.
+2. Accept a real-HTTP equip move, persist both directions together, replay it
+   exactly, and retain it after restart.
+3. Reject a one-sided/mismatched move with neither half changed.
+4. Preserve standalone Companion preference writes and ordinary party writes.
+5. Run focused transport tests, the warning-strict full suite, compilation,
+   diff checks, and clean-candidate publication preflight.
+
+Result:
+
+- Companion deltas are now projected without mutating live state. Combined
+  equip writes validate the merged character roster and projected Companion
+  inventory before either is committed.
+- Each nonzero character `buddy` must be an owned, uniquely assigned Companion
+  inventory ID whose `chrID` points back to that character. Standalone
+  Companion preference writes can no longer retarget `chrID`.
+- A focused real-HTTP regression proves atomic mismatch and one-sided
+  rejection, valid equip movement, exact replay, and persistence after a full
+  server restart. Existing Companion preference and ordinary party tests pass.
+- The warning-strict full suite passed 589 tests in 115.497 seconds.
+  Compilation, diff checks, and clean-candidate publication preflight passed.
+- Required-level, exclusive-character/ancestor, and species validation remains
+  gated on adding the relevant generated master fields to the public runtime.
+  Original-client combined-equip acceptance remains unclaimed.
+
+## 2026-07-28 remaining solo systems: Fellowship Ticket Pacts
+
+Status: completed 2026-07-28; original-client acceptance remains pending.
+
+Objective: close the permanent Item 81 ticket-funded Fellowship and
+Fellowship-side Fate draw loop through the final client's exact `kind=20`
+transport without broadening into unrecovered campaign/event rate tables.
+
+Evidence boundary:
+
+- Dual-ABI client metadata identifies `NormalItem=20`, Item 81 as Fellowship
+  Ticket, and the shared ordered `do_slot` form.
+- The recovered permanent forms are exactly one draw with
+  `campaignChrID=0`, `eventFlag=0`, and either ordinary or Fate `luckType`.
+- The public server already has bounded Fellowship/Fate pools and duplicate
+  policy. Ticket draws reuse those policies; they do not introduce a new pool
+  or claim retired-service odds.
+- The success callback reads the post-spend inventory. A successful ticket
+  response must therefore include a detached `itemList` snapshot alongside the
+  normal wallet and character result fields.
+- The missing-ticket error-2 mapping is compatibility policy pending a live
+  original-client refusal capture.
+
+Required proof:
+
+1. The strict parser accepts only `kind=20,count=1` with zero campaign/event
+   selectors, while existing coin/Energy batches remain unchanged.
+2. Ordinary ticket draws apply Fellowship Skill Boost semantics; Fate ticket
+   draws apply Fellowship-side Luck semantics.
+3. Success consumes exactly one Item 81 without spending Coins or Energy and
+   returns the persisted post-spend inventory.
+4. A missing ticket refuses without changing inventory, wallet, roster, or
+   random selection state.
+5. An exact real-HTTP retry replays byte-identically, and a retry after server
+   restart does not consume or grant twice.
+6. Focused Pact tests, the warning-strict full suite, compilation, and diff
+   checks pass. Original-client acceptance remains a separate certification
+   boundary.
+
+Result:
+
+- The parser admits only the exact one-draw `kind=20` permanent envelope and
+  continues to reject nonzero campaign/event selectors.
+- Item 81 now pays for the existing Fellowship pool. Ordinary ticket results
+  retain Skill Boost semantics; `luckType=true` results retain the bundled
+  Fellowship-side Fate Luck semantics.
+- Success consumes exactly one ticket, returns a detached post-spend
+  `itemList`, and leaves Coins and Energy unchanged. A Fellowship coin request
+  is refused while the ticket remains because mixed payment is unproved.
+- Real-HTTP tests cover ticket priority, ordinary success, Fate duplicate
+  behavior, missing inventory, exact same-process replay, and replay after a
+  complete server restart.
+- Ten focused Pact/catalog tests passed. The warning-strict full suite passed
+  588 tests in 114.571 seconds. Compilation and diff checks passed. A clean
+  tracked-source candidate with this diff passed publication material
+  preflight; the working checkout itself retains ignored onboarding evidence
+  under `build/` and `user-data/` and is therefore not a release candidate.
+- Campaign/event variants, mixed ticket/coin batches, and original-client
+  ticket-draw acceptance remain outside this completed slice.
+
 ## 2026-07-28 clean public-onboarding certification
 
 Status: completed 2026-07-28.

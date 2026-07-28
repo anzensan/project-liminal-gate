@@ -23,11 +23,12 @@ class GuidedServerPolicyTest(unittest.TestCase):
     def arguments(self, **options) -> list[str]:
         return server_arguments(Path("resources"), Path("data"), 8696, **options)
 
-    def test_recommended_mode_enables_every_bundled_policy(self) -> None:
+    def test_recommended_mode_enables_current_solo_policies(self) -> None:
         arguments = self.arguments()
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth", "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements", "--summon-skills"):
+                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements"):
             self.assertIn(flag, arguments)
+        self.assertNotIn("--summon-skills", arguments)
 
     def choose(self):
         """Answer the only remaining prompt: decline the event catalog."""
@@ -46,8 +47,9 @@ class GuidedServerPolicyTest(unittest.TestCase):
         )
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth",
                      "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements", "--summon-skills"):
+                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements"):
             self.assertIn(flag, self.arguments())
+        self.assertNotIn("--summon-skills", self.arguments())
 
 
 class TesterSetupTest(unittest.TestCase):

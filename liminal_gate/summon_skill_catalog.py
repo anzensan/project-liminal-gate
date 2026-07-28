@@ -87,11 +87,13 @@ BUNDLED_ITEM_SLOTS = 181
 
 
 def build_bundled_summon_skill_policy() -> SummonSkillCatalog:
-    """Return the guided-path local Battle Summon skill policy.
+    """Return the archival local Battle Summon skill policy.
 
     Costs are the recovered `SummonData` -> `ChrJobParams` join; see
     :mod:`liminal_gate.summon_skill_data`. Nothing here concerns how a Summon is
-    acquired, which remains unrecovered.
+    acquired, which remains unrecovered. Version 5.5.0 retired the enhancement
+    UI, so this policy preserves a static transport rather than enabling a
+    required final-version solo loop.
     """
     levels = {
         (summon_id, skill_level): SummonSkillLevel(

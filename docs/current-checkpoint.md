@@ -6,6 +6,11 @@ Mode: public-release implementation hardening.
 
 Deepest canonical client path: clean local setup through Chapter 2-1 clear.
 
+Operator acceptance note: the maintainer has played continuously through
+Chapter 8-4 on a physical device without a client-visible failure. That run is
+not yet a preserved trace-based certification, so it does not replace the
+canonical Chapter 2-1 checkpoint.
+
 Fast validation lane:
 
 ```sh
@@ -21,6 +26,12 @@ account and persisted tutorial state after a full server restart. All 548
 captured requests returned HTTP 200. This certifies the onboarding and restart
 path; it is not a new client boundary beyond Chapter 2-1.
 
+Latest source validation: 589 warning-strict tests passed in 116.973 seconds
+after the Fellowship Ticket, combined-equip integrity, and final-version
+Eidolon-classification slices. Focused real-HTTP Pact/equipment coverage,
+focused setup and archival-route checks, compilation, diff checks, YAML
+validation, and clean-candidate publication gates also passed.
+
 Publication lane:
 
 ```sh
@@ -32,6 +43,17 @@ Current deliberate boundary: Chapter 2-2 through Chapter 42 is enabled as
 ordered local progression policy, not canonical proof of every original
 reward, drop, encounter, or scripted scene.
 
+Current Eidolon boundary: Version 5.5.0 retired in-battle Eidolon summoning,
+its multiplayer charging gauge, and Tavern enhancement, so none is required
+for final 5.5.7 solo completeness. The former Co-op Eidolon quests became
+single-player quests, and final-client static evidence retains their Mode 4
+selector, Chapters 4100--4111, and collectible result path. This optional solo
+quest/acquisition lifecycle remains unsupported until a successful
+original-client result and before/after owned-Eidolon state establish its
+mapping and settlement. The recovered skill-unlock route remains archival
+compatibility evidence behind an explicit option, not a guided default or a
+claimed reachable final-version UI loop.
+
 Current optional-content observation: a resumed migrated account displays
 Hunting and Metal selector rows after pre-login progress resolution. Metal
 owns both regular and All Hail the King rows plus both Roads; Hunting also
@@ -40,12 +62,19 @@ flag. Arena -> Special Quests no longer inherits the client's built-in Metal
 fallback list and, after Chapter 3, receives bundled Chapter 3003-1 through
 the bounded Hunting lifecycle. Permanent
 Fate reaches the ordinary Pact transaction with the captured `luckType=true`
-form. A ticket-backed Metal Zone 1 result also settles live: the client repeats
-its pre-entry Item 50 count, the server retains the already-committed spend,
-and the bounded Companion drop persists. Strikes Back now shows its first two
-progress-gated families and the original client entered Spinetrich Kino
-Chapter 8000-1. Its clear callback has not yet been observed. These are
-fast-lane client observations, not a replacement for the Chapter 2-1 canonical
+form. The statically recovered one-draw Item 81 Fellowship Ticket form now
+settles ordinary and Fellowship-side Fate draws through real HTTP with durable
+replay/restart coverage; original-client acceptance is pending. Combined
+Companion equip writes now require an atomic owned bidirectional link across
+their character and Companion dirty arrays, with real-HTTP restart proof;
+master-backed level/character/species eligibility and original-client
+acceptance remain pending. A
+ticket-backed Metal Zone 1 result also settles live: the client repeats its
+pre-entry Item 50 count, the server retains the already-committed spend, and
+the bounded Companion drop persists. Strikes Back now shows its first two
+progress-gated families and the original client entered Spinetrich Kino Chapter
+8000-1. Its clear callback has not yet been observed. These are fast-lane
+client observations, not a replacement for the Chapter 2-1 canonical
 certification boundary.
 
 Security boundary: the server listens on the local network for Android device
@@ -64,8 +93,11 @@ Derived-catalog boundary: story-outcome generation rejects native encounter or
 character catalogs whose recorded APK hash differs from the selected APK.
 Generated catalogs retain their input hashes and native calibration label.
 
-Next unknown boundaries: original-client acceptance of default Special Quest
-3003-1 and Crystal Road 3004-1, the first reproducible original-client failure
-after Chapter 2-1, the Strikes Back Chapter 8000-1 clear callback, and the
-Hunting selector flash after its rows render. The latter produced no
-corresponding server resource request or 404 and needs a client runtime capture.
+Next unknown boundaries: original-client acceptance of the Item 81
+Fellowship/Fate ticket draw, default Special Quest 3003-1, and Crystal Road
+3004-1; the first reproducible original-client failure after Chapter 8-4; the
+Strikes Back Chapter 8000-1 clear callback; and the Hunting selector flash
+after its rows render. An optional later boundary is one converted solo
+Eidolon quest result with before/after collectible state. The Hunting flash
+produced no corresponding server resource request or 404 and needs a client
+runtime capture.

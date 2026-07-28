@@ -36,6 +36,28 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Client compatibility constants
 
+- **Confirmed by final-version service notes and final-client static
+  analysis:** Version 5.5.0 discontinued Co-op/VS, in-battle Eidolon use, and
+  Tavern Eidolon enhancement. The final 5.5.7 client still carries
+  `eidolonQuestList`, the Mode 4 selector, Chapters 4100--4111, and a distinct
+  result path for Summon collectibles because the former Co-op Eidolon quests
+  became single-player quests. Owned Eidolons remain viewable under Options.
+  The missing solo boundary is therefore optional quest visibility,
+  start/clear, and durable collectible acquisition—not a charging gauge or
+  battle summon system.
+  Public source trail: the archived community
+  [Eidolons status](https://terrabattle.fandom.com/wiki/Eidolons) records the
+  final behavior and collection location; the contemporary
+  [5.5.0 announcement report](https://www.siliconera.com/terra-battles-ver-5-5-0-update-is-the-final-major-update-to-the-game/)
+  records that the Co-op Eidolon quests became single-player quests. The
+  selector, chapter, and result-path details come from the supplied final APK,
+  not those public summaries.
+- **Static archival compatibility, not final-version UI acceptance:** the
+  recovered `summon_skill_unlock` route and all 44 material-cost rows remain
+  useful for documenting the client binary. Version 5.5.0 retired the
+  enhancement surface, so the bundled route is not required for ordinary
+  final-version solo play, is no longer enabled by guided setup, and is not
+  claimed to be reachable through its UI.
 - **Confirmed by static client analysis:** the final-major UI gate requires
   both platform versions to exceed 4.99. Evidence and ARM64 ranges are recorded
   in `liminal_gate/server_constants.py`.
@@ -99,6 +121,14 @@ Private inputs, captures, account state, and original assets remain excluded.
   with `luckType=true`. The bundled archive policy uses the corresponding
   Fellowship/Truth pool and level-plus-Luck duplicates. Its Luck increment and
   ceiling are explicit local policy, not recovered production odds.
+- **Confirmed statically and by real-HTTP replay/restart regression; original
+  client acceptance pending:** `NormalItem=20` is the exact one-draw Item 81
+  Fellowship Ticket payment form. It reuses the Fellowship pool for ordinary
+  Skill Boost draws and the Fellowship-side Fate Luck policy when
+  `luckType=true`, spends no Coins or Energy, and returns the post-spend
+  `itemList`. Coin Fellowship draws are refused while a ticket remains because
+  no mixed ticket/coin batch is recovered. Campaign/event selectors remain
+  outside this boundary.
 - **Confirmed by a migrated-state transport regression:** original-client
   `chrdata` stores packed level/EXP values as integral JSON doubles. Pact draws
   now preserve those packed values and full roster records while returning the
@@ -120,6 +150,17 @@ Private inputs, captures, account state, and original assets remain excluded.
 - **Confirmed by guided-setup regression:** a fresh active account no longer
   hides an older played account; the reversible switch preserves the displaced
   fresh save.
+- **Strongly inferred from dual-ABI serializer/equip paths and proven by
+  real-HTTP replay/restart regression:** the combined
+  `chrdata`, `buddyInfo`, `lastUpdate` form is one atomic Companion equip
+  mutation. The public server now requires owned, one-to-one bidirectional
+  `character.buddy`/`companion.chrID` links and refuses one-sided retargets
+  without changing either array. Required-level, exclusive-character/ancestor,
+  and species eligibility remain open because the public runtime does not yet
+  carry the authorizing master fields.
+- **Operator-observed, trace certification pending:** the maintainer played
+  through Chapter 8-4 on a physical device without a client-visible failure.
+  The preserved trace-based canonical checkpoint remains Chapter 2-1.
 
 ## Configuration and derived-data boundaries
 

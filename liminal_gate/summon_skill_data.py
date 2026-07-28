@@ -3,6 +3,10 @@
 `SummonData` names the `ChrJobParams` job row backing each Summon's skill tier;
 this table is that join, carrying each tier's Coin cost and material list.
 
+Version 5.5.0 discontinued Eidolon enhancement and in-battle use with Co-op/VS.
+The route and table remain in the final binary as archival compatibility
+evidence; they are not a required or proven reachable final-version solo loop.
+
 Every one of the sixteen Summons has a level 0 that costs nothing and requires
 no materials -- the skill the Summon ships with. Summons 1 and 2 have only that
 level; the other fourteen each have two paid tiers above it, so there are 44

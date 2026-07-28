@@ -95,6 +95,9 @@ PACT_BANNER_FILES = {
     "/public_data/banners/slb_friend_01_en.png": "slb_friend_01_en.png",
     "/public_data/banners/sl_luck_01_en.png": "sl_truth_01_en.png",
 }
+# Final-client `UIBarSlot.NormalSlotItemId`. Unlike campaign/event selectors,
+# this permanent payment identity is embedded in the surviving client.
+FELLOWSHIP_TICKET_ITEM_ID = 81
 
 # Profile route names accepted by the mutation transport. Keeping this list in
 # one place makes an added route explicit: it must be admitted here, dispatched
@@ -1649,7 +1652,12 @@ class BootstrapState:
                 # Skill Boost duplicates. They cannot silently acquire an
                 # invented Fate/Luck policy.
                 return "unsupported_ordinary_pact", None
-            draws, cost = catalog.draws_for_kind(kind), catalog.cost_for_kind(kind)
+            ticket_draw = kind == 20
+            # NormalItem is a payment variant of the Fellowship-side pool, not
+            # a third pool. The exact recovered client form permits one result.
+            draw_kind = 0 if ticket_draw else kind
+            draws = catalog.draws_for_kind(draw_kind)
+            cost = ("ticket", 1) if ticket_draw else catalog.cost_for_kind(kind)
             if not draws or cost is None:
                 return "unsupported_ordinary_pact", None
             currency, unit_cost = cost
@@ -1657,8 +1665,25 @@ class BootstrapState:
             rows = userdata.get("chrdata")
             if not isinstance(rows, list) or type(userdata.get("coins")) is not int or type(userdata.get("energy", 0)) is not int or type(userdata.get("freeEnergy", 0)) is not int:
                 return "unsupported_ordinary_pact", None
+            items = userdata.get("itemList")
+            ticket_index = FELLOWSHIP_TICKET_ITEM_ID - 1
+            valid_ticket_inventory = (
+                isinstance(items, list)
+                and len(items) > ticket_index
+                and all(type(value) is int and value >= 0 for value in items)
+            )
+            ticket_count = items[ticket_index] if valid_ticket_inventory else 0
+            if ticket_draw and not valid_ticket_inventory:
+                return "unsupported_ordinary_pact", None
             total_cost = unit_cost * count
-            if currency == "coins" and userdata["coins"] < total_cost:
+            # The final client exposes NormalItem as a distinct one-ticket
+            # operation. No mixed ticket/coin batch has been recovered, so a
+            # Fellowship-side coin request must spend the visible ticket first.
+            if currency == "ticket" and ticket_count < total_cost:
+                payload = {"success": False, "errorCode": 2}
+            elif currency == "coins" and ticket_count:
+                payload = {"success": False, "errorCode": 2}
+            elif currency == "coins" and userdata["coins"] < total_cost:
                 payload = {"success": False, "errorCode": 2}
             elif currency == "energy" and userdata["energy"] + userdata["freeEnergy"] < total_cost:
                 payload = {"success": False, "errorCode": 1}
@@ -1781,12 +1806,19 @@ class BootstrapState:
                 else:
                     if currency == "coins":
                         userdata["coins"] -= total_cost
-                    else:
+                    elif currency == "energy":
                         free_spend = min(userdata["freeEnergy"], total_cost)
                         userdata["freeEnergy"] -= free_spend
                         userdata["energy"] -= total_cost - free_spend
+                    else:
+                        assert isinstance(items, list)
+                        new_items = copy.deepcopy(items)
+                        new_items[ticket_index] -= total_cost
+                        userdata["itemList"] = new_items
                     userdata["chrdata"] = candidates
                     payload = {"success": True, "coins": userdata["coins"], "energy": userdata["energy"], "freeEnergy": userdata["freeEnergy"], "chrdata": results}
+                    if currency == "ticket":
+                        payload["itemList"] = copy.deepcopy(userdata["itemList"])
             payload = _canonical_payload(payload)
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -1868,14 +1900,26 @@ class BootstrapState:
                 }
                 if not {member for member in party["teamMembers"] if member}.issubset(roster_ids):
                     return "tutorial_state_conflict", None
-            # Validated before any of it is applied, so an equip write either
-            # commits both halves or changes nothing.
-            if companions is not None and not _apply_companion_delta(userdata, companions):
-                return "unsupported_companion_userdata", None
+            # Project and validate both halves before either is applied, so an
+            # equip write cannot leave a one-sided character/Companion link.
+            candidate_companions = None
+            if companions is not None:
+                candidate_companions = _project_companion_delta(
+                    userdata, companions, allow_equipment=True,
+                )
+                if (
+                    candidate_companions is None
+                    or not _valid_companion_equipment(
+                        candidate_rows, candidate_companions,
+                    )
+                ):
+                    return "unsupported_companion_userdata", None
             if characters is not None:
                 userdata["chrdata"] = candidate_rows
             if party is not None:
                 userdata.update(copy.deepcopy(party))
+            if candidate_companions is not None:
+                userdata["buddyInfo"] = _companion_info(candidate_companions)
             if abandoning_active_story:
                 # Give Up and a declined interrupted-battle resume both send
                 # normal userdata saves (the former may contain only chrdata).
@@ -3783,9 +3827,15 @@ def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int, bool] | None:
     if tuple(name for name, _ in pairs) != ("kind", "count", "luckType", "campaignChrID", "eventFlag", "lastUpdate"):
         return None
     values = dict(pairs)
-    if values["kind"] not in {"0", "1"} or values["luckType"] not in {"false", "true"} or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or not values["lastUpdate"].isdecimal():
+    if values["kind"] not in {"0", "1", "20"} or values["luckType"] not in {"false", "true"} or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or not values["lastUpdate"].isdecimal():
         return None
     kind, count = int(values["kind"]), int(values["count"])
+    if kind == 20:
+        return (
+            (kind, count, values["luckType"] == "true")
+            if count == 1 and values["lastUpdate"] == "1"
+            else None
+        )
     # The client emits an affordable remainder when its ten-pull control has
     # less than a full batch available (for example, count=6 with 20 Energy).
     # Button labels are not the wire contract; retain the strict envelope but
@@ -3812,8 +3862,13 @@ def _parse_companion_userdata_write(body: bytes) -> list[dict[str, Any]] | None:
     return companions if len(ids) == len(set(ids)) else None
 
 
-def _apply_companion_delta(userdata: dict[str, Any], submitted: list[dict[str, Any]]) -> bool:
-    """Apply a client-authored Companion flag delta in place.
+def _project_companion_delta(
+    userdata: dict[str, Any],
+    submitted: list[dict[str, Any]],
+    *,
+    allow_equipment: bool = False,
+) -> list[dict[str, Any]] | None:
+    """Return a client-authored Companion delta projected over owned records.
 
     Shared so the standalone Companion write and the equip forms, which carry
     the same delta alongside a roster or party change, cannot drift apart.
@@ -3821,23 +3876,91 @@ def _apply_companion_delta(userdata: dict[str, Any], submitted: list[dict[str, A
     buddy_info = userdata.get("buddyInfo")
     owned = buddy_info.get("list") if isinstance(buddy_info, dict) else None
     if not isinstance(owned, list):
-        return False
+        return None
     current = {companion.get("iid"): companion for companion in owned if isinstance(companion, dict) and type(companion.get("iid")) is int}
     if len(current) != len(owned) or not submitted or any(
         companion["iid"] not in current
         or any(companion[name] != current[companion["iid"]].get(name) for name in ("bid", "lv", "date", "iid", "exp"))
+        or (
+            not allow_equipment
+            and companion["chrID"] != current[companion["iid"]].get("chrID")
+        )
         or companion["flag"] & ~0x3
         or (current[companion["iid"]].get("flag", 0) & 1 and not companion["flag"] & 1)
         for companion in submitted
     ):
-        return False
+        return None
     candidates = copy.deepcopy(owned)
     updates = {companion["iid"]: companion for companion in submitted}
     for index, companion in enumerate(candidates):
         if companion["iid"] in updates:
             candidates[index] = copy.deepcopy(updates[companion["iid"]])
+    return candidates
+
+
+def _apply_companion_delta(userdata: dict[str, Any], submitted: list[dict[str, Any]]) -> bool:
+    """Apply a validated standalone Companion preference delta in place."""
+    candidates = _project_companion_delta(userdata, submitted)
+    if candidates is None:
+        return False
     userdata["buddyInfo"] = _companion_info(candidates)
     return True
+
+
+def _valid_companion_equipment(
+    characters: list[dict[str, Any]], companions: list[dict[str, Any]],
+) -> bool:
+    """Require one owned bidirectional link for every equipped Companion."""
+    by_character: dict[int, dict[str, Any]] = {}
+    for character in characters:
+        character_id = character.get("id") if isinstance(character, dict) else None
+        buddy = character.get("buddy", 0) if isinstance(character, dict) else None
+        if (
+            type(character_id) is not int
+            or character_id <= 0
+            or character_id in by_character
+            or type(buddy) is not int
+            or buddy < 0
+        ):
+            return False
+        by_character[character_id] = character
+    by_inventory: dict[int, dict[str, Any]] = {}
+    for companion in companions:
+        inventory_id = companion.get("iid") if isinstance(companion, dict) else None
+        if (
+            type(inventory_id) is not int
+            or inventory_id <= 0
+            or inventory_id in by_inventory
+        ):
+            return False
+        by_inventory[inventory_id] = companion
+    equipped = [
+        character.get("buddy", 0)
+        for character in characters
+        if character.get("buddy", 0)
+    ]
+    if len(equipped) != len(set(equipped)):
+        return False
+    for character_id, character in by_character.items():
+        buddy = character.get("buddy", 0)
+        if buddy and (
+            buddy not in by_inventory
+            or by_inventory[buddy].get("chrID") != character_id
+        ):
+            return False
+    return all(
+        type(companion.get("chrID")) is int
+        and companion["chrID"] >= 0
+        and (
+            companion["chrID"] == 0
+            or (
+                companion["chrID"] in by_character
+                and by_character[companion["chrID"]].get("buddy", 0)
+                == companion["iid"]
+            )
+        )
+        for companion in companions
+    )
 
 
 def _parse_party_companion_userdata_write(
@@ -4618,7 +4741,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--statusup-catalog", type=Path, help="user-local item/character rules for status-up progression")
     parser.add_argument("--job-catalog", type=Path, help="user-local ordered job-unlock costs")
     parser.add_argument("--rebirth-catalog", type=Path, help="user-local Rebirth recipe and Joker policy")
-    parser.add_argument("--summon-skill-catalog", type=Path, help="user-local Battle Summon skill costs")
+    parser.add_argument("--summon-skill-catalog", type=Path, help="user-local archival Eidolon skill costs for the retired enhancement route")
     parser.add_argument("--companion-catalog", type=Path, help="user-local Companion master values for ownership mutations")
     parser.add_argument("--companion-strengthen-catalog", type=Path, help="user-local Companion progression values and bonus policy")
     parser.add_argument("--companion-evolution-catalog", type=Path, help="user-local Companion evolution rows and costs")
@@ -4636,7 +4759,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-sale", action="store_true", help="enable the bundled local Companion sale values")
     parser.add_argument("--drop-eligibility", action="store_true", help="send the bundled login drop-eligibility allowlist so the client keeps the drops it rolls")
     parser.add_argument("--achievements", action="store_true", help="enable the bundled local clear-chapter achievement policy")
-    parser.add_argument("--summon-skills", action="store_true", help="enable the bundled local Battle Summon skill-unlock costs")
+    parser.add_argument("--summon-skills", action="store_true", help="enable the bundled archival Eidolon skill costs for the retired enhancement route")
     parser.add_argument("--companion-strengthen", action="store_true", help="enable the bundled local Companion strengthen progression")
     parser.add_argument("--companion-evolution", action="store_true", help="enable the bundled local Companion evolution recipes")
     parser.add_argument("--trading-post", action="store_true", help="enable the bundled local Trading Post offers")

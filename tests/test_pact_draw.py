@@ -7,11 +7,248 @@ import tempfile
 import threading
 import unittest
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import (
+    BootstrapServer,
+    BootstrapState,
+    _parse_ordinary_pact_draw,
+    load_profile,
+)
 from liminal_gate.pact_draw_catalog import build_bundled_pact_policy, load_pact_draw_catalog
 
 
 class PactDrawTest(unittest.TestCase):
+    def test_ticket_form_is_strict_and_does_not_admit_campaign_variants(self) -> None:
+        prefix = "kind=20&count=1&luckType=false&campaignChrID=0&eventFlag=0"
+        self.assertEqual(
+            (20, 1, False),
+            _parse_ordinary_pact_draw(f"{prefix}&lastUpdate=1".encode()),
+        )
+        self.assertEqual(
+            (20, 1, True),
+            _parse_ordinary_pact_draw(
+                b"kind=20&count=1&luckType=true&campaignChrID=0"
+                b"&eventFlag=0&lastUpdate=1"
+            ),
+        )
+        for body in (
+            b"kind=20&count=2&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+            b"kind=20&count=1&luckType=false&campaignChrID=1&eventFlag=0&lastUpdate=1",
+            b"kind=20&count=1&luckType=false&campaignChrID=0&eventFlag=1&lastUpdate=1",
+            b"kind=20&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=2",
+        ):
+            with self.subTest(body=body):
+                self.assertIsNone(_parse_ordinary_pact_draw(body))
+
+    def test_http_fellowship_ticket_spends_once_and_replays_after_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            profile = load_profile(
+                Path(__file__).resolve().parents[1]
+                / "profiles"
+                / "legacy-client-bootstrap.json"
+            )
+            policy = build_bundled_pact_policy()
+            body = (
+                "kind=20&count=1&luckType=false&campaignChrID=0"
+                "&eventFlag=0&lastUpdate=1"
+            )
+
+            def start() -> tuple[BootstrapServer, threading.Thread]:
+                server = BootstrapServer(
+                    ("127.0.0.1", 0),
+                    profile,
+                    BootstrapState(state_path),
+                    pact_draw_catalog=policy,
+                )
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                return server, thread
+
+            def draw(
+                server: BootstrapServer, request_id: str, request_body: str = body,
+            ) -> tuple[int, dict[str, object]]:
+                connection = HTTPConnection(*server.server_address)
+                connection.request(
+                    "POST",
+                    f"/gd/do_slot?otk=token&requestID={request_id}",
+                    body=request_body,
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                return response.status, payload
+
+            items = [0] * 181
+            items[80] = 1
+            server, thread = start()
+            try:
+                server.state.create_account(
+                    "token",
+                    "account",
+                    {
+                        "coins": policy.coin_cost,
+                        "energy": 7,
+                        "freeEnergy": 11,
+                        "itemList": items,
+                        "chrdata": [],
+                    },
+                )
+                before_priority_refusal = server.state.userdata_for("token")
+                coin_status, coin_refused = draw(
+                    server,
+                    "coin-before-ticket",
+                    (
+                        "kind=0&count=1&luckType=false&campaignChrID=0"
+                        "&eventFlag=0&lastUpdate=1"
+                    ),
+                )
+                self.assertEqual(
+                    (200, True, 2),
+                    (
+                        coin_status,
+                        coin_refused["success"],
+                        coin_refused["cmdError"],
+                    ),
+                )
+                self.assertEqual(
+                    before_priority_refusal,
+                    server.state.userdata_for("token"),
+                )
+
+                status, first = draw(server, "ticket-one")
+                self.assertEqual((200, True), (status, first["success"]))
+                self.assertEqual(
+                    (policy.coin_cost, 7, 11, 0, 1),
+                    (
+                        first["coins"],
+                        first["energy"],
+                        first["freeEnergy"],
+                        first["itemList"][80],
+                        len(first["chrdata"]),
+                    ),
+                )
+                self.assertIn(
+                    first["chrdata"][0]["id"],
+                    {draw.character_id for draw in policy.fellowship_draws},
+                )
+                self.assertEqual((status, first), draw(server, "ticket-one"))
+
+                before_refusal = server.state.userdata_for("token")
+                refused_status, refused = draw(server, "ticket-empty")
+                self.assertEqual(
+                    (200, True, 2),
+                    (refused_status, refused["success"], refused["cmdError"]),
+                )
+                self.assertEqual(before_refusal, server.state.userdata_for("token"))
+            finally:
+                server.shutdown()
+                thread.join()
+                server.server_close()
+
+            restarted, restarted_thread = start()
+            try:
+                self.assertEqual((200, first), draw(restarted, "ticket-one"))
+                persisted = restarted.state.userdata_for("token")
+                assert persisted is not None
+                self.assertEqual(0, persisted["itemList"][80])
+                self.assertEqual(1, len(persisted["chrdata"]))
+            finally:
+                restarted.shutdown()
+                restarted_thread.join()
+                restarted.server_close()
+
+    def test_http_fate_ticket_uses_fellowship_luck_policy_without_spending_coins(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            profile = load_profile(
+                Path(__file__).resolve().parents[1]
+                / "profiles"
+                / "legacy-client-bootstrap.json"
+            )
+            policy = build_bundled_pact_policy()
+            selected = policy.fellowship_draws[0]
+            roster = [
+                {
+                    "id": draw.character_id,
+                    "buddy": 0,
+                    "date": 0.0,
+                    "jobSlots": [0.0, 0.0, 0.0],
+                    "jobLevels": [10.0, 0.0, 0.0],
+                    "jobID": 0,
+                    "flags": 0,
+                    "skillBoost": 17,
+                    "luck": 0
+                    if draw.character_id == selected.character_id
+                    else policy.max_luck,
+                }
+                for draw in policy.fellowship_draws
+            ]
+            items = [0] * 181
+            items[80] = 1
+            server = BootstrapServer(
+                ("127.0.0.1", 0),
+                profile,
+                BootstrapState(state_path),
+                pact_draw_catalog=policy,
+            )
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                server.state.create_account(
+                    "token",
+                    "account",
+                    {
+                        "coins": policy.coin_cost,
+                        "energy": 0,
+                        "freeEnergy": 0,
+                        "itemList": items,
+                        "chrdata": roster,
+                    },
+                )
+                connection = HTTPConnection(*server.server_address)
+                connection.request(
+                    "POST",
+                    "/gd/do_slot?otk=token&requestID=fate-ticket",
+                    body=(
+                        "kind=20&count=1&luckType=true&campaignChrID=0"
+                        "&eventFlag=0&lastUpdate=1"
+                    ),
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+
+                self.assertEqual((200, True), (response.status, payload["success"]))
+                self.assertEqual(policy.coin_cost, payload["coins"])
+                self.assertEqual(0, payload["itemList"][80])
+                self.assertEqual(
+                    {
+                        "id": selected.character_id,
+                        "jobID": 0,
+                        "jobLevels": [11],
+                        "jobSlots": [],
+                        "isNew": False,
+                        "levelAdded": 1,
+                        "skillBoost": 17,
+                        "luck": 50,
+                        "luckup": 50,
+                    },
+                    payload["chrdata"][0],
+                )
+                stored = server.state.userdata_for("token")
+                assert stored is not None
+                selected_row = next(
+                    row for row in stored["chrdata"]
+                    if row["id"] == selected.character_id
+                )
+                self.assertEqual((17, 50), (
+                    selected_row["skillBoost"], selected_row["luck"],
+                ))
+            finally:
+                server.shutdown()
+                thread.join()
+                server.server_close()
+
     def test_http_pact_draw_replays_and_persists(self) -> None:
         catalog_document = {
             "schema_version": 1, "provenance": "user-supplied", "coin_cost": 10,

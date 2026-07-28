@@ -14,6 +14,11 @@ clears Chapter 2-1. The guided setup also enables a bulk ordinary-story policy
 for Chapter 2-2 through Chapter 42; it is not a claim that every later reward,
 drop, or scripted scene has been historically reproduced.
 
+The maintainer has also played continuously through Chapter 8-4 on a physical
+device without a client-visible failure. That is valuable operator acceptance,
+but Chapter 2-1 remains the preserved trace-based certification checkpoint
+until the later run is independently recorded and reviewed.
+
 ## Table of contents
 
 - [Current tester status](#current-tester-status)
@@ -59,9 +64,12 @@ through Chapter 42, and local ordinary Pacts:
 - **Pact of Fate** uses the same Coin/Energy costs and corresponding local
   pools, but duplicates gain Luck instead of Skill Boost.
 
-This remains a tester build. The original-client path is verified only through
-Chapter 2-1, so later story stages may need individual compatibility fixes.
-Ticket, campaign, and event Pact variants are intentionally unsupported.
+This remains a tester build. The preserved original-client evidence checkpoint
+is Chapter 2-1, so later story stages may still need individual compatibility
+fixes despite the successful physical-device playthrough through Chapter 8-4.
+Single Item 81 Fellowship Ticket draws are supported for Fellowship and the
+Fellowship-side Pact of Fate. Campaign and event Pact variants remain
+intentionally unsupported.
 
 **Huntland opens on story progress, so it is locked at first.** The Hunting and
 Metal Zone cards stay unavailable until your account has finished the chapter
@@ -91,6 +99,15 @@ settlement policy; it is not a claim about the original event rotation or
 rewards. Arena VS, rankings, multiplayer, and Tower are not implemented and
 remain unavailable rather than presenting a menu that cannot complete a
 durable solo quest.
+
+**Eidolons are not a missing final-version battle mechanic.** Version 5.5.0
+retired Co-op/VS, the in-battle Eidolon charging gauge, and Tavern Eidolon
+enhancement. The final 5.5.7 client therefore does not need those systems for
+solo play. Owned Eidolons remain collectible entries under Options, and the
+former Co-op Eidolon quests were converted to single-player quests. Those
+optional Chapters 4100--4111 and their collectible reward settlement are not
+yet supported; they remain capture-gated rather than receiving invented
+acquisition rules. Guided setup does not enable the retired enhancement route.
 
 The last row is the exception: the two world-map points after Chapter 34 are the
 client's own gate, not a policy this project chose, and their five battles each
@@ -784,8 +801,10 @@ any affordable batch from 1 through 10 even though its controls normally label
 1, 5, and 10. New local accounts receive 50 free Energy, exactly one full Truth
 ten-pull. The included pools are bounded local policy; selection is uniform and
 duplicate gains are local defaults, not a claim about the retired service's
-per-character odds. Ticket, campaign, and event-specific Pact variants remain
-unsupported.
+per-character odds. The exact `kind=20,count=1` form spends one Item 81
+Fellowship Ticket before Coins for either an ordinary Fellowship draw or its
+`luckType=true` Fate variant. Mixed ticket/coin batches, campaign Pacts, and
+event-specific Pacts remain unsupported.
 
 The 50-Energy starter grant applies when a local account is first created. To
 test it after upgrading an existing setup, use a new local data directory and

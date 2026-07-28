@@ -35,6 +35,7 @@ capabilities:
   - family: progression_mutations
     routes: [continue, refill_stamina, use_statusup_item, add_job, rebirth, summon_skill_unlock]
     status: local_policy
+    note: "summon_skill_unlock preserves a legacy static contract; Version 5.5.0 retired its UI and Eidolon battle use"
     transport_tests: true
     restart_tests: true
   - family: messages_achievements_trading

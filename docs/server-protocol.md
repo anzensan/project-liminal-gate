@@ -32,6 +32,39 @@ committed together. Replay identity includes operation, request ID, and body,
 so the same ID with a different body is not mistaken for the earlier request.
 Caches are bounded and survive restart.
 
+The permanent Fellowship Ticket form is
+`kind=20&count=1&luckType=<false|true>&campaignChrID=0&eventFlag=0&lastUpdate=1`.
+Item 81 pays for the existing Fellowship pool: ordinary draws use the local
+Skill Boost duplicate policy, while `luckType=true` uses the Fellowship-side
+Fate Luck policy. A successful transaction consumes exactly one ticket,
+returns the post-spend `itemList`, and does not charge Coins or Energy. A
+Fellowship-side coin draw is refused while a ticket remains because no mixed
+ticket/coin batch has been recovered. Missing-ticket error 2 is compatibility
+policy pending a live refusal capture. Nonzero campaign/event selectors remain
+unsupported.
+
+Combined Companion equip writes use the exact ordered
+`chrdata`, `buddyInfo`, `lastUpdate` form. Both values are dirty-record arrays,
+projected over the server-owned roster and Companion inventory before mutation.
+Every nonzero character `buddy` inventory ID must point to an owned Companion
+whose `chrID` points back to that character, and one Companion cannot be linked
+to multiple characters. A mismatched or one-sided move changes neither half.
+Standalone `buddyInfo`, `lastUpdate` writes may change the recovered
+seen/favorite flags but cannot retarget `chrID`. Required-level,
+exclusive-character/ancestor, and species eligibility remain unsupported until
+the public runtime has generated master fields that can authorize them.
+
+`summon_skill_unlock` is a recovered archival transport with a bounded local
+material-cost policy. It does not imply a required or reachable final-version
+solo feature: Version 5.5.0 discontinued Tavern Eidolon enhancement along with
+Co-op/VS and in-battle Eidolon use. Final 5.5.7 solo coverage instead has a
+separate optional gap in Chapters 4100--4111, whose former Co-op quests were
+converted to single-player and award collectible Eidolons through a distinct
+result path. That quest/acquisition path remains unsupported until its selector
+and before/after ownership mapping are captured; the server does not fabricate
+them from the legacy skill-cost table. Guided setup leaves the legacy route
+disabled; an operator must select its archival option explicitly.
+
 Ticket-backed Metal starts commit Item 50 at entry and retain that payment
 choice. The final client repeats its pre-entry ticket count in the later clear;
 only that one stale slot is reconciled, and the server-owned lower balance is
