@@ -34,6 +34,13 @@ Private inputs, captures, account state, and original assets remain excluded.
   Chapter 3003-1 (*Money Money Time*) through the bounded Hunting transaction.
   Its permanent availability and 1,500 Coin ceiling are not recovered service
   behavior; Tower and Arena VS remain unsupported.
+- **Confirmed by supplied final-APK analysis:** BattleData identifies Chapter
+  3004-1 as *Crystal Road* (`クリスタルロード`): three battles and seven stamina.
+  `UISpecialSelect` mode 7 reads `huntingHuntingList`, while the generic
+  non-1000-series gate requires `sp_ch_3004-1`. **Local policy:** its bounded
+  transaction accepts up to two Items from material IDs 1--17 and the
+  Ticket/power-up IDs 50 and 53--56. The reference table's historical odds are
+  not implemented or claimed; original-client acceptance is still unverified.
 - **Confirmed by static client analysis, live transport, and original-client
   observation:** Strikes Back reads `descentHuntingList`. One folded tier-1 row
   per unlocked Chapter 8000--8007 family plus its matching chapter flag opens

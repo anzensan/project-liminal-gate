@@ -94,7 +94,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
             [(chapter, section) for chapter in (1001, 1002, 1003, 1004) for section in (1, 2, 3)]
             + [(chapter, 1) for chapter in (1200, 1201)]
             + [(3000, section) for section in (*range(1, 8), *range(11, 18))]
-            + [(3003, 1)],
+            + [(3003, 1), (3004, 1)],
             sorted(self.stages),
         )
         self.assertEqual((181, 999), (self.catalog.item_slots, self.catalog.max_stack))
@@ -164,11 +164,11 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         self.assertEqual([], before_any["huntingHuntingList"])
         tier_one = self.catalog.client_lists(0x01000000 | (4 << 6) | 1)
         self.assertEqual(
-            ["1001-1", "1002-1", "1003-1", "1004-1"],
+            ["1001-1", "1002-1", "1003-1", "1004-1", "3004-1"],
             sorted(tier_one["huntingHuntingList"]),
         )
         every_tier = self.catalog.client_lists(0x01000000 | (19 << 6) | 1)
-        self.assertEqual(12, len(every_tier["huntingHuntingList"]))
+        self.assertEqual(13, len(every_tier["huntingHuntingList"]))
         for identity in every_tier["huntingHuntingList"]:
             chapter, section = (int(part) for part in identity.split("-"))
             self.assertIn((chapter, section), self.stages)
@@ -197,6 +197,15 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         special = self.stages[(3003, 1)]
         self.assertEqual(("special", 5, 1500), (special.selector, special.stamina, special.max_coins))
 
+    def test_advertises_the_bounded_crystal_road_after_chapter_three(self) -> None:
+        before = self.catalog.client_lists(0x01000000 | (3 << 6) | 1)
+        self.assertNotIn("3004-1", before["huntingHuntingList"])
+        after = self.catalog.client_lists(0x01000000 | (4 << 6) | 1)
+        self.assertIn("3004-1", after["huntingHuntingList"])
+        crystal = self.stages[(3004, 1)]
+        self.assertEqual(("crystal_road", 7, 2), (crystal.family, crystal.stamina, crystal.max_items_total))
+        self.assertEqual(set(range(1, 18)) | {50, 53, 54, 55, 56}, set(crystal.item_maxima))
+
     def test_advertised_metal_rows_have_matching_client_event_flags(self) -> None:
         before = self.catalog.client_event_flags(
             0x01000000 | (3 << 6) | 1
@@ -212,6 +221,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
                 "sp_ch_1200-1": {"name": "sp_ch_1200-1", "value": True},
                 "sp_ch_1201-1": {"name": "sp_ch_1201-1", "value": True},
                 "sp_ch_3003-1": {"name": "sp_ch_3003-1", "value": True},
+                "sp_ch_3004-1": {"name": "sp_ch_3004-1", "value": True},
             },
             first,
         )

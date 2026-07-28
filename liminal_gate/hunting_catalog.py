@@ -113,24 +113,29 @@ class HuntingCatalog:
         return lists
 
     def client_event_flags(self, progress_code: int) -> dict[str, dict[str, Any]]:
-        """Return the exact flags required by advertised Metal and Special rows.
+        """Return the exact flags required by advertised non-1000-series rows.
 
         Hunting chapters 1000--1099 bypass the per-row event gate in the final
-        client. Metal Zone and the two Roads do not: their list entries render
-        only when `sp_ch_<chapter>` is also true. Deriving flags from the same
-        advertised rows prevents a flag from exposing a stage the catalog
-        would still refuse. Exact section flags are intentional: the broad
-        `sp_ch_3000` fallback also opens every Chapter 3000 row in the client's
-        built-in Arena -> Special Quests list.
+        client. Every other advertised row, including Crystal Road in the
+        ordinary Hunting selector, requires `sp_ch_<chapter>-<section>`.
+        Deriving flags from the same advertised rows prevents a flag from
+        exposing a stage the catalog would still refuse. Exact section flags
+        are intentional: the broad `sp_ch_3000` fallback also opens every
+        Chapter 3000 row in the client's built-in Arena -> Special Quests list.
         """
         lists = self.client_lists(progress_code)
-        identities = lists["metalHuntingList"] + lists["specialQuestList"]
+        identities = (
+            lists["metalHuntingList"]
+            + lists["huntingHuntingList"]
+            + lists["specialQuestList"]
+        )
         return {
             f"sp_ch_{identity}": {
                 "name": f"sp_ch_{identity}",
                 "value": True,
             }
             for identity in identities
+            if not 1000 <= int(identity.split("-", 1)[0]) <= 1099
         }
 
 
@@ -301,6 +306,16 @@ def _span(first: int, last: int, maximum: int) -> dict[int, int]:
     return {item_id: maximum for item_id in range(first, last + 1)}
 
 
+# Crystal Road is Chapter 3004-1 in the final client: its BattleData title is
+# `クリスタルロード`, with three battles and a seven-stamina entry.  The source
+# page approved by the operator describes one material drop (the original
+# species/weapon/attribute materials, Items 1--17), then either a Metal Ticket
+# or a power-up item.  The final client exposes the two ratio fields but the
+# retired service never supplied a settlement capture, so this is a bounded
+# local acceptance policy rather than a server-side random-roll implementation.
+_CRYSTAL_ROAD_ITEM_MAXIMA = _span(1, 17, 1) | {METAL_TICKET_ITEM_ID: 1} | _span(53, 56, 1)
+
+
 def build_bundled_hunting_policy() -> HuntingCatalog:
     """Return the guided-path local Hunting policy.
 
@@ -362,6 +377,15 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
         unlock_chapter=4, unlock_section=1,
         max_coins=1500, max_exp=0, max_items_total=0, item_maxima={},
         selector="special",
+    ))
+    stages.append(HuntingStage(
+        family="crystal_road", chapter=3004, section=1, stamina=7, coins=0,
+        entry_item_id=0, entry_item_count=0,
+        # The permanent Huntland placement is reference-backed; the Chapter 3
+        # threshold is the same explicit local availability policy as tier 1.
+        unlock_chapter=4, unlock_section=1,
+        max_coins=0, max_exp=0, max_items_total=2,
+        item_maxima=dict(_CRYSTAL_ROAD_ITEM_MAXIMA), selector="hunting",
     ))
     return HuntingCatalog(tuple(stages), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
 

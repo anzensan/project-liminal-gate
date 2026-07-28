@@ -13,7 +13,7 @@ functional by adding ordinary HTTP responses.
 | 0. Certify account and resource stability | Done. The account lifecycle and the whole Chapter 2--42 story are now certified by the public suite. |
 | 1. Hunting discovery | Static client gates and selector list contract recovered; live historical-service schedule remains unavailable. |
 | 2. Hunting vertical slice | Catalog, selector projection, lifecycle, costs, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py` and `liminal_gate/server_constants.py`). |
-| 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, and eight packaged Counter Descent families with explicit per-stage bounds. |
+| 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, Crystal Road, and eight packaged Counter Descent families with explicit per-stage bounds. |
 | 4. Arena -> Special Quests | Default recovered Chapter 3003-1 is bundled after Chapter 3; additional stages remain gated on reviewed local inputs. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 

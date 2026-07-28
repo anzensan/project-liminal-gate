@@ -30,6 +30,30 @@ Required proof before a client patch:
 4. Rebuild locally and confirm stable rendering plus a successful Hunting
    start; do not add duplicate rows or unlock later tiers as a layout hack.
 
+## 2026-07-28 external-reference quest expansion
+
+Status: Crystal Road completed as the first recovered additional route; other
+stage activation remains gated on its own identity and settlement contract.
+
+Objective: use operator-approved wiki and Terra Battle Stats reference data to
+fill only the remaining bounded Huntland/Arena quest gaps.
+
+Result:
+
+- Existing Coin Creeps and Metal Zone policy values are corroborated by the
+  external sources; no broad reward rewrite was needed.
+- Supplied final APK recovery identifies Crystal Road as 3004-1, title
+  `クリスタルロード`, three battles, and seven stamina. Mode 7 plus the exact
+  `sp_ch_3004-1` flag supplies its visible Hunting route. Client ItemSet names
+  identify its bounded material (1--17), Metal Ticket (50), and power-up
+  (53--56) channels. It is now a permanent Chapter-3 local policy with a
+  two-item maximum; original-service probabilities remain unclaimed.
+- The 20 named Arena Special Quest pages require per-stage client identity,
+  resource, reward/recruit, and lifecycle contracts. They remain unavailable;
+  Tower, co-op, and VS are outside this solo expansion.
+- `docs/external-quest-reference-ledger.md` records source provenance, current
+  reconciliation, and the promotion gate.
+
 ## 2026-07-27 bundled Strikes Back vertical slice
 
 Status: published 2026-07-27 with original-client clear still pending.

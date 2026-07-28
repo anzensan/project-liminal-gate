@@ -20,6 +20,19 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 Crystal Road: supplied final APK analysis recovered Chapter 3004-1
+  (*Crystal Road*), its three battles, seven-stamina entry, mode-7 Huntland
+  selector, and required exact event flag. The bundled policy now enables it
+  after Chapter 3 with a two-item material/Ticket/power-up ceiling from the
+  operator-approved reference table. The permanent availability and the
+  absence of server-side random rolls are explicit local policy; original
+  service probability/settlement capture remains unavailable.
+- 2026-07-28 external-reference reconciliation: operator-approved Terra Battle
+  Wiki and Terra Battle Stats entries now have a durable ledger. They
+  corroborate the bundled Coin Creeps and Metal policy values. Supplied final
+  APK recovery then resolved Crystal Road; the remaining Arena Special Quest
+  pages still remain per-stage work packets. This preserves the distinction
+  between an external reward table and client-compatible behavior.
 - 2026-07-28 default Special Quest support: the guided server now advertises
   recovered Chapter 3003-1 (*Money Money Time*) after Chapter 3, together with
   its exact `sp_ch_3003-1` flag. It uses the existing bounded Hunting start and

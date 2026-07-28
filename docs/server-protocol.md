@@ -47,8 +47,9 @@ nonempty: after Chapter 3 the bundled local Hunting policy supplies recovered
 Chapter 3003-1; a validated user-local event catalog replaces it. Before that
 threshold, a closed recovered entry suppresses the client's fixed 50-entry
 fallback, which would otherwise leak Chapter 3000 rows into Arena -> Special
-Quests. Advertised Metal and Special entries receive exact section flags rather
-than one broad chapter flag. `descentHuntingList` separately folds each progress-unlocked
+Quests. Advertised non-1000-series entries receive exact section flags rather
+than one broad chapter flag: this includes Crystal Road (3004-1) in
+`huntingHuntingList`. `descentHuntingList` separately folds each progress-unlocked
 Counter Descent family to its tier-1 identity; login supplies only the matching
 chapter flags. Detailed static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
@@ -67,6 +68,15 @@ Coin ceiling. Start, clear, refusal, replay, and restart behavior are therefore
 identical to the bounded Hunting lifecycle. Its permanent availability and
 Coin ceiling are local policy; only the stage identity, entry cost, and client
 visibility flag are recovered.
+
+Crystal Road (3004-1) is another bounded Hunting transaction. The supplied
+final APK identifies its three-battle, seven-stamina entry and the mode-7
+selector requires its exact `sp_ch_3004-1` flag. The bundled local policy
+accepts a maximum of two Items from the recovered material IDs 1--17 plus the
+reference-backed Ticket/power-up channels (50 and 53--56); it does not roll or
+claim the retired service's probabilities. Start, clear, refusal, replay, and
+restart follow the same real-HTTP-tested Hunting lifecycle. Original-client
+acceptance of this new row remains unverified.
 
 ## Evidence labels
 

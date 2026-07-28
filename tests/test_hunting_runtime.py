@@ -58,6 +58,13 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "max_items_total": 0, "item_maxima": {},
                 },
                 {
+                    "family": "crystal_road", "chapter": 3004, "section": 1,
+                    "stamina": 7, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
+                    "selector": "hunting",
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 0, "max_exp": 0,
+                    "max_items_total": 2, "item_maxima": {"1": 1, "2": 1, "5": 1, "6": 1},
+                },
+                {
                     "family": "tin", "chapter": LOCKED_STAGE[0], "section": LOCKED_STAGE[1],
                     "stamina": 1, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
                     "unlock_chapter": 30, "unlock_section": 1,
@@ -220,7 +227,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             self.server.state._persist_locked()
         constants = self.server_status("rotated-before-login")["constants"]
         self.assertEqual(
-            ["1001-1", "1003-1", "3000-11"],
+            ["1001-1", "1003-1", "3000-11", "3004-1"],
             sorted(
                 constants["huntingHuntingList"]
                 + constants["metalHuntingList"]
@@ -234,7 +241,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             self.server.state.client_hosts = {"127.0.0.1": self.account_id}
             self.server.state._persist_locked()
         constants = self.server_status("rotated-after-login")["constants"]
-        self.assertEqual(["1001-1", "1003-1"], sorted(constants["huntingHuntingList"]))
+        self.assertEqual(["1001-1", "1003-1", "3004-1"], sorted(constants["huntingHuntingList"]))
         self.assertEqual(["3000-11"], constants["metalHuntingList"])
         self.assertEqual(["3003-1"], constants["specialQuestList"])
         self.assertIsNone(
@@ -254,6 +261,10 @@ class HuntingRuntimeTest(unittest.TestCase):
                 },
                 "sp_ch_3003-1": {
                     "name": "sp_ch_3003-1",
+                    "value": True,
+                },
+                "sp_ch_3004-1": {
+                    "name": "sp_ch_3004-1",
                     "value": True,
                 },
             },
@@ -278,6 +289,29 @@ class HuntingRuntimeTest(unittest.TestCase):
         )
         self.restart()
         self.assertEqual(1600, self.userdata()["coins"])
+
+    def test_crystal_road_settles_only_the_two_documented_item_channels(self) -> None:
+        status, started = self.start("crystal-start", 3004, 1, 7)
+        self.assertEqual((200, True), (status, started["success"]))
+        self.restart()
+        snapshot = copy.deepcopy(self.userdata())
+        # The fixture treats Item 1 as a material and Item 5 as the Metal
+        # Ticket channel.  Two different declared items are the hard maximum.
+        status, cleared = self.clear(
+            "crystal-clear", 3004, 1, items={"1": 1, "5": 1},
+            item_list=[1, 1, 0, 0, 3, 0, 0, 0], snapshot=snapshot,
+        )
+        self.assertEqual((200, True), (status, cleared["success"]))
+        self.assertEqual([1, 1, 0, 0, 3, 0, 0, 0], self.userdata()["itemList"])
+        status, started = self.start("crystal-overflow-start", 3004, 1, 7)
+        self.assertEqual((200, True), (status, started["success"]))
+        self.assertEqual(
+            409,
+            self.clear(
+                "crystal-overflow", 3004, 1, items={"1": 1, "2": 1, "5": 1},
+                item_list=[2, 2, 0, 0, 4, 0, 0, 0],
+            )[0],
+        )
 
     def test_entry_item_is_consumed_and_a_missing_one_refuses_entry(self) -> None:
         self.assertEqual(2, self.userdata()["itemList"][4])

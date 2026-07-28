@@ -1,0 +1,47 @@
+# External quest reference ledger
+
+Status: operator-approved community/reference sources. These sources are
+useful for defining local preservation policy, but are not Mistwalker service
+captures or client-transport proof. A source entry never replaces the need for
+a recovered client chapter/section, selector, and bounded settlement contract.
+
+## Sources
+
+- Terra Battle Wiki, [Hunting Zone](https://terrabattle.fandom.com/wiki/Hunting_Zone):
+  Hunting families, final Huntland placement, and entry stamina.
+- Terra Battle Wiki, [Attack of the Coin Creeps](https://terrabattle.fandom.com/wiki/Attack_of_the_Coin_Creeps):
+  zone and Arena Lv. 35 entry/reward ranges.
+- Terra Battle Wiki, [Metal Zone](https://terrabattle.fandom.com/wiki/Metal_Zone):
+  final Huntland entry forms, stamina, roads, and zero Coin/item behavior.
+- Terra Battle Wiki, [Crystal Road](https://terrabattle.fandom.com/wiki/Crystal_Road):
+  seven-stamina entry and published item/Metal Ticket reward table.
+- Terra Battle Wiki, [Special Quest category](https://terrabattle.fandom.com/wiki/Category:Special_Quests):
+  the named Arena -> Special Quest inventory.
+- [Terra Battle Stats](https://tbs.desile.fr/): external stage/drop/Metal Zone
+  reference application. Its publicly served stage dataset is an older 4.6-era
+  snapshot, so it cannot establish a final-version Crystal Road or Chapter
+  3003 client identity.
+
+## Reconciliation with the bundled policy
+
+| Family | Client identity | Reference-backed facts used now | Status |
+| --- | --- | --- | --- |
+| Pudding Time, Tin Parade, Puppet Show | 1001--1004, sections 1--3 | Huntland placement and 5/8/10 entry stamina | Implemented; item ceilings remain recovered/local policy as labeled in the catalog. |
+| Attack of the Coin Creeps | 1003, sections 1--3 | 10/15/20 stamina and 1,500/5,000/11,000 maximum listed Coin ranges | Implemented; these match the existing bounded Coin policy. |
+| Metal Zone and Roads | 3000 sections 1--7 and 11--17; 1200-1/1201-1 | ticket-or-stamina entry, 5/8/10/13/15/18/20 costs, zero Coins/items, and road costs | Implemented; EXP ceilings remain local anti-inflation bounds because neither source gives a complete client-clear contract. |
+| Money Money Time / Arena Coin Creeps Lv. 35 | 3003-1 | 5 stamina, three battles, and a 1,200--1,500 listed Coin range | Implemented as a bounded default Special Quest; its permanent availability and 1,500 cap are local policy. |
+| Crystal Road | 3004-1 | Final APK BattleData title, three battles, and 7 stamina; reference table's one material item plus 20% Metal Ticket/conditional power-up channel | Implemented as a permanent local Huntland route after Chapter 3. It accepts at most two items: one of client Items 1--17, plus at most one of Item 50 or power-up Items 53--56. The retired service's probabilities are not reimplemented or claimed; original-client acceptance remains the next boundary. |
+| Remaining Arena -> Special Quests | Per-stage unknown | The category identifies 20 named pages, several with branch/recruit conditions | Not enabled: each needs its own client identity, resources, and bounded reward/recruit contract. |
+
+## Promotion rule
+
+Promote a row only after all of the following are present:
+
+1. recovered final-client chapter/section and selector/flag behavior;
+2. resources supplied by the tester-local manifest;
+3. a bounded start/clear contract covering every reported reward channel;
+4. real-HTTP rejection, replay, and restart tests; and
+5. original-client acceptance.
+
+Do not use an external reward table to create a generic success response, to
+infer a missing chapter ID, or to enable a collaborative/PvP path.
