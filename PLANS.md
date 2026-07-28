@@ -1,5 +1,79 @@
 # Execution Plans
 
+## 2026-07-28 clean public-onboarding certification
+
+Status: completed 2026-07-28.
+
+Objective: prove that a first-time operator can start from the exact public
+source plus their own final APK and matching Android resource tree, let guided
+setup generate every required local catalog, install the resulting client, and
+reach a restart-safe compatibility server without relying on this project's
+previously generated IL2CPP or catalog output.
+
+Execution boundaries:
+
+1. Clone the pushed public commit into an ignored clean-candidate directory and
+   create a new isolated Python environment.
+2. Treat the original APK and resource archive as read-only user-supplied
+   inputs. Do not copy or modify anything under the private project's `input/`.
+3. Permit an externally installed Il2CppDumper executable and platform Android,
+   Java, ADB, and AArch64-disassembly tools as documented prerequisites, but do
+   not pass an existing `DummyDll`, `dump.cs`, character catalog, native/scenario
+   encounter map, story-outcome catalog, signing key, or account state.
+4. Run the setup prerequisite check before generation and preserve its result.
+5. Run guided setup through fresh IL2CPP extraction, master-data import,
+   native/scenario encounter recovery, story-outcome generation, manifest
+   hashing, APK patch/sign/install, and server launch.
+6. Use an explicit ADB serial for every device operation. Begin on
+   `emulator-5560`; if that existing AVD cannot render the client, create a
+   disposable fresh AVD and record its explicit serial separately. Preserve the
+   generated APK, catalog provenance, setup output, client log, request log,
+   state before and after restart, commands, versions, and hashes under the
+   ignored candidate.
+7. Require original-client bootstrap/login/userdata plus a hash-approved
+   resource over the real transport path. Restart the isolated server and
+   require the same account to load without regeneration or state loss.
+8. If the clean path fails, fix only the evidenced onboarding defect, add a
+   focused regression, rerun the affected clean stage, then run the
+   warning-strict full suite, compilation, diff checks, and release gates.
+
+Completion boundary:
+
+- This run certifies reproducible onboarding and runtime bootstrap only. It does
+  not replace the existing clean Chapter 2-1 canonical gameplay boundary unless
+  the fresh client is independently played through and recorded to that clear.
+
+Result:
+
+- A clean clone of the public source and a fresh Python 3.14 environment
+  installed the declared `master-import` dependencies successfully. The run
+  supplied only the immutable final APK, matching resource tree, and external
+  platform tools; it did not supply any previous `DummyDll`, `dump.cs`,
+  generated catalog, signing key, or account state.
+- The first real run found a preflight defect: an Il2CppDumper apphost existed
+  but could not locate its .NET runtime, so `--check` passed and setup then
+  failed. Preflight now starts the configured dumper without inputs, recognizes
+  its usage output, and names the `.dll` route when the apphost cannot start.
+- With that documented `.dll` route, setup freshly generated 48 `DummyDll`
+  assemblies, `dump.cs`, the character/native/scenario/story catalogs, 23,594
+  resource mappings, local Pact banners, a local signing key, and a signed APK.
+  Provenance validation matched every generated catalog to the supplied APK and
+  the APK passed zip alignment and v1/v2/v3 signature checks.
+- The existing emulator and a fresh AVD using their default/host graphics
+  backends returned successful resources but rendered black with
+  `GL_FRAMEBUFFER_UNSUPPORTED` / `0x506`. Restarting the fresh AVD as the
+  README directs with the software ANGLE path rendered the title and tutorial.
+- The untouched client performed one signup, three logins, two userdata reads,
+  one tutorial Pact mutation, and 541 other recorded requests: 548 events total,
+  all HTTP 200. It visibly advanced into the Recruit tutorial. After a complete
+  server stop and documented server-only restart, it loaded the same hashed
+  account and the persisted post-Pact tutorial state without regenerating any
+  derived data.
+- The focused preflight suite passed 19 tests. The warning-strict full suite
+  passed 585 tests in 112.308 seconds. This certifies fresh onboarding,
+  extraction, bootstrap, mutation persistence, and restart only; Chapter 2-1
+  remains the deepest canonical gameplay boundary.
+
 ## 2026-07-28 behavior-preserving refactoring pass
 
 Status: completed 2026-07-28.

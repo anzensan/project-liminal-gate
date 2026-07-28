@@ -20,6 +20,23 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 clean public onboarding: a clean public-source clone, fresh Python
+  environment, immutable final APK, matching resource tree, and external
+  platform tools completed the whole documented path without any pre-generated
+  IL2CPP output, catalog, key, or account state. Setup freshly produced 48
+  `DummyDll` assemblies, `dump.cs`, all required generated catalogs, 23,594
+  resource mappings, a signed APK, and durable state. The untouched client then
+  completed signup/login/userdata, loaded hash-approved resources, visibly
+  entered the Recruit tutorial, committed its first Pact mutation, and loaded
+  the same account and tutorial state after a full server restart. All 548
+  captured requests returned HTTP 200. This run also caught and fixed a real
+  first-run defect: `--check` accepted an Il2CppDumper apphost that existed but
+  could not start because its .NET runtime was undiscoverable. Preflight now
+  executes a non-writing readiness probe and directs affected users to the
+  `.dll` route. The focused preflight suite passed 19 tests and the
+  warning-strict full suite passed 585 tests in 112.308 seconds. This is clean
+  onboarding/restart certification, not a new gameplay claim beyond Chapter
+  2-1.
 - 2026-07-28 behavior-preserving refactor: compatibility-profile route and
   transition schemas now have centralized validation; GET content serving is
   separate from profile reads; POST handling is split into bounded transport,

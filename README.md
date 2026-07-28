@@ -716,11 +716,41 @@ first few seconds and names the fix rather than installing a game that quietly
 drops nothing. `--check` reports all of them at once without building anything;
 see [Check everything at once](#check-everything-at-once-before-you-start).
 
+#### What setup generates, and why it keeps each file
+
+Setup works like a compiler: it recovers evidence from your APK, writes
+intermediate descriptions that can be inspected and reproduced, then composes
+the smaller files used by the client and server. An intermediate can be
+required to *build* the complete local game without being required every time
+the server runs.
+
+Everything below stays under the ignored `user-data/` directory:
+
+| Generated output | Why setup creates it | Needed by the running server? |
+| --- | --- | --- |
+| `il2cpp/DummyDll/` and `il2cpp/dump.cs` | Recover the stripped IL2CPP type layout, game enums, method names, and native offsets from your APK. Later importers cannot safely interpret the master data or native battle code without them. | No. They are retained so catalogs can be inspected or regenerated without rerunning Il2CppDumper. |
+| `character-catalog.json` | Records the valid character and job structure recovered from the master data and anchors later catalog provenance to the selected APK. | Not for the standard bundled server. It is also passed at runtime when an optional reviewed event catalog can grant characters. |
+| `derived/native-encounters.json` | Maps the compiled Chapter 8–42 battle programs to the enemies each stage can spawn. Producing it requires the AArch64 disassembler. | No. It is an evidence intermediate used to compose `story-outcomes.json`. |
+| `derived/scenario-encounters.json` | Maps the MoonSharp scenario programs used by Chapters 2–7, which have no equivalent compiled battle program. | No. It is another input to `story-outcomes.json`. |
+| `story-outcomes.json` | Combines the encounter maps, character catalog, master data, and their hashes into bounded per-stage outcome rules. Without it, the server cannot safely persist a story Companion rolled by the client. | **Yes.** The dedicated server loads this final catalog. |
+| `resources.json` | Maps every approved resource URL to a local file and hash. | **Yes.** `server_setup` rebuilds or refreshes it from the matching resource tree when the server starts. |
+| `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
+| `names.json` | Gives the save editor readable character, item, and Companion names. | No. |
+| `input-manifest/` | Records hashes and structural validation for the APK and resource inputs used by this setup. | No. Keep it as provenance evidence. |
+| `local-server-plan.json`, the local signing key, and `liminal-gate-test.apk` | Record the client patch, sign it with a local-only key, and produce the APK installed on your device. | The plan and key are not server inputs. The generated APK belongs on the client device. |
+
+For a dedicated server, retain the matching resource tree, `resources.json`,
+`story-outcomes.json`, optional `public_data/`, and the server's durable
+`bootstrap-state.json`. Keep the remaining generated output on the setup
+workstation: it is the reproducible path from the private APK to the final
+runtime catalogs, not unnecessary clutter and not material to publish.
+
 An advanced event question appears only for people who already have a reviewed
-local event catalog. **DummyDll is not required for normal play, Hunting,
-Special Quests, or Tower.** It is generated analysis metadata from your own APK
-and is used only to derive optional local event/character catalogs. Press Enter
-to accept the recommended choice. The command validates the inputs,
+local event catalog. You do not need to supply `DummyDll` yourself for normal
+guided setup: setup generates and retains it automatically as described above.
+Passing `--dummy-dll-dir` is useful when you already have matching output or
+when an optional local event catalog needs the corresponding character data.
+Press Enter to accept the recommended choice. The command validates the inputs,
 creates the local manifests, creates a local signing key on first use, patches
 and signs the APK, installs it on that one device, then starts the local server
 in the foreground. Press Control-C when you finish testing.
@@ -1251,6 +1281,7 @@ apart. Give those a `--data-dir` and a port each instead.
 | `account state is in use; stop the local server before changing it` | `restore` and `adopt` will not change a save a running server owns. Stop the server and run the command again. |
 | Progress is gone after reinstalling or clearing the app's data | The app generated a new account ID; your save is still there. See [If you reinstall the app and your progress is gone](#if-you-reinstall-the-app-and-your-progress-is-gone). |
 | Black screen after launching the app, no crash, server log shows `200` responses | The emulator's graphics backend cannot complete Unity's framebuffer. Restart the emulator from a terminal with `-gpu swangle`. Confirm with `adb logcat -d \| grep -c 0x506`: thousands of those errors mean graphics, not the server. See [Start the emulator with `-gpu swangle`](#start-the-emulator-with--gpu-swangle-especially-on-macos). |
+| `--check` says Il2CppDumper exists but could not start | A framework-dependent .NET apphost can exist while its runtime is undiscoverable. Point `LIMINAL_GATE_IL2CPPDUMPER` at the adjacent `Il2CppDumper.dll` instead; setup will run it through `dotnet`. |
 | `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [step 3](#3-one-command-setup-install-and-server-start). |
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the optional dependency as above if you want the images. |
 | `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data using the reset commands above. |

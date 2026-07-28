@@ -93,6 +93,7 @@ class PreflightChecksTest(unittest.TestCase):
         stack.enter_context(patch.object(tester_setup, "find_keytools", return_value=(Path("/usr/bin/keytool"),)))
         stack.enter_context(patch.object(tester_setup, "find_missing_master_import", return_value=()))
         stack.enter_context(patch.object(tester_setup, "find_il2cpp_dumper", return_value=("Il2CppDumper",)))
+        stack.enter_context(patch.object(tester_setup, "probe_il2cpp_dumper", return_value="Il2CppDumper"))
         stack.enter_context(patch.object(tester_setup, "find_aarch64_objdump", return_value="llvm-objdump"))
         stack.enter_context(patch.object(tester_setup, "select_device", return_value="emulator-5570"))
         stack.enter_context(patch.object(tester_setup, "port_is_free", return_value=True))
@@ -131,6 +132,45 @@ class PreflightChecksTest(unittest.TestCase):
             checks = self._checks(dummy_dll_dir=dummy)
         self.assertTrue(checks["Il2CppDumper"].ok)
         self.assertIn("not needed", checks["Il2CppDumper"].detail)
+
+    def test_a_dumper_that_cannot_find_dotnet_fails_preflight(self) -> None:
+        with self._stub_environment() as stack:
+            stack.enter_context(patch.object(
+                tester_setup,
+                "probe_il2cpp_dumper",
+                side_effect=TesterSetupError(
+                    "Il2CppDumper could not start: You must install .NET"
+                ),
+            ))
+            checks = self._checks()
+        self.assertFalse(checks["Il2CppDumper"].ok)
+        self.assertIn("could not start", checks["Il2CppDumper"].detail)
+
+    def test_the_dumper_probe_accepts_the_real_usage_shape(self) -> None:
+        completed = tester_setup.subprocess.CompletedProcess(
+            ("Il2CppDumper",),
+            1,
+            "usage: Il2CppDumper <executable-file> <global-metadata> <output-directory>\n",
+            "",
+        )
+        with patch.object(tester_setup.subprocess, "run", return_value=completed) as run:
+            detail = tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
+        self.assertEqual("Il2CppDumper", detail)
+        self.assertEqual(tester_setup.subprocess.DEVNULL, run.call_args.kwargs["stdin"])
+
+    def test_the_dumper_probe_names_the_dll_fix_for_a_missing_runtime(self) -> None:
+        completed = tester_setup.subprocess.CompletedProcess(
+            ("Il2CppDumper",),
+            150,
+            "",
+            "You must install .NET to run this application.\n",
+        )
+        with patch.object(tester_setup.subprocess, "run", return_value=completed):
+            with self.assertRaisesRegex(
+                TesterSetupError,
+                "LIMINAL_GATE_IL2CPPDUMPER.*Il2CppDumper.dll",
+            ):
+                tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
 
     def test_a_missing_apk_and_resource_tree_are_reported_not_raised(self) -> None:
         with self._stub_environment():

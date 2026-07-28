@@ -13,8 +13,13 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
-Latest behavior-preserving refactor validation: 581 warning-strict tests passed
-in 112.991 seconds. This is regression evidence, not a new client boundary.
+Latest clean-onboarding validation: 585 warning-strict tests passed in 112.308
+seconds. A clean public clone with no prior derived output generated IL2CPP and
+master-data catalogs, built and installed the client, completed fresh
+signup/login/userdata and the first tutorial Pact mutation, then loaded the same
+account and persisted tutorial state after a full server restart. All 548
+captured requests returned HTTP 200. This certifies the onboarding and restart
+path; it is not a new client boundary beyond Chapter 2-1.
 
 Publication lane:
 

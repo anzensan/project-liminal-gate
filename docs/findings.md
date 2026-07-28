@@ -3,6 +3,37 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Clean onboarding and generated-data boundary
+
+- **Confirmed by a clean public-source run:** a first-time data directory can
+  start with only the operator's final 5.5.7-170 APK, matching Android resource
+  tree, and documented external tools. Guided setup freshly generated 48
+  `DummyDll` assemblies, `dump.cs`, the character/native/scenario/story
+  catalogs, 23,594 resource mappings, local Pact banners, a signing key, and
+  the patched APK. It did not consume earlier generated output or account
+  state.
+- **Confirmed by generated provenance and package checks:** the character,
+  native encounter, scenario encounter, and story-outcome catalogs all named
+  and hashed the selected APK and their required derived inputs. The output APK
+  passed zip-alignment and v1/v2/v3 signature verification, and its installed
+  bytes matched the generated file.
+- **Confirmed by original-client transport and restart:** a fresh install
+  performed signup, login, and userdata, loaded resources, visibly entered the
+  Recruit tutorial, and committed its first Pact mutation. After the server was
+  stopped and relaunched through `liminal_gate.server_setup`, the client loaded
+  the same privacy-hashed account and persisted tutorial state. The capture
+  contains 548 requests, all HTTP 200.
+- **Confirmed onboarding defect and fix:** file existence did not prove that a
+  framework-dependent Il2CppDumper apphost could locate its .NET runtime.
+  `--check` now executes the dumper without inputs and requires its usage
+  output. A failed apphost points the operator at `Il2CppDumper.dll`, which
+  setup runs through `dotnet`.
+- **Environment boundary:** two emulator graphics configurations served the
+  same successful transport but rendered black with framebuffer `0x506`
+  errors. The already documented software ANGLE launch path rendered the title
+  and tutorial. A responsive server alone therefore does not certify client
+  presentation.
+
 ## Client compatibility constants
 
 - **Confirmed by static client analysis:** the final-major UI gate requires
@@ -112,6 +143,10 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Public-release boundary
 
+- **Confirmed by the 2026-07-28 clean-onboarding run:** the focused preflight
+  suite passed 19 tests and the warning-strict full suite passed 585 tests in
+  112.308 seconds. The clean client/bootstrap/restart evidence above does not
+  expand the canonical gameplay boundary beyond Chapter 2-1.
 - **Confirmed by the 2026-07-28 refactoring run:** the warning-strict baseline
   passed 578 tests and the behavior-preserving result passed 581 tests in
   112.991 seconds. Focused real-HTTP tests covered mutation routing, collision,

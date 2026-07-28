@@ -654,6 +654,44 @@ def find_il2cpp_dumper() -> tuple[str, ...] | None:
     return None
 
 
+def probe_il2cpp_dumper(command: Sequence[str]) -> str:
+    """Prove the configured dumper starts before setup does expensive work.
+
+    Merely finding an executable is insufficient for a framework-dependent
+    .NET apphost: the file can exist and still fail immediately because its
+    runtime is not discoverable. Il2CppDumper prints its three-argument usage
+    line when it starts successfully without inputs, which gives ``--check`` a
+    cheap, non-writing readiness probe.
+    """
+    try:
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise TesterSetupError(f"Il2CppDumper could not start: {error}") from error
+    output = "\n".join(
+        part for part in (completed.stdout, completed.stderr) if part
+    ).strip()
+    if "usage: il2cppdumper" not in output.casefold():
+        detail = next(
+            (line.strip().rstrip(".") for line in output.splitlines() if line.strip()),
+            "",
+        )
+        suffix = (
+            f": {detail}" if detail else f" (exit code {completed.returncode})"
+        )
+        raise TesterSetupError(
+            "Il2CppDumper could not start"
+            f"{suffix}. If this is a .NET executable whose runtime is not found, "
+            f"point {IL2CPP_DUMPER_ENVIRONMENT} at its Il2CppDumper.dll instead"
+        )
+    return " ".join(command)
+
+
 def ensure_il2cpp_dump(apk: Path, data_directory: Path) -> tuple[Path, Path]:
     """Produce `(DummyDll, dump.cs)` from the APK, reusing an earlier run.
 
@@ -1030,7 +1068,7 @@ def preflight_checks(
         command = find_il2cpp_dumper()
         if command is None:
             raise TesterSetupError(IL2CPP_DUMPER_MISSING)
-        return " ".join(command)
+        return probe_il2cpp_dumper(command)
 
     def disassembler() -> str:
         objdump = find_aarch64_objdump()
