@@ -47,7 +47,7 @@ class CompanionDrawTest(unittest.TestCase):
                 # Reusing a spent requestID with a different body is answered on
                 # its own merits: the paid draw has no Energy to spend.
                 status, reused = post(server, "one", "kind=21&count=1&campaignID=0&eventFlag=0&lastUpdate=1")
-                self.assertEqual((200, False, 1), (status, reused["success"], reused["errorCode"]))
+                self.assertEqual((200, True, 1), (status, reused["success"], reused["cmdError"]))
             finally:
                 server.shutdown()
                 thread.join()

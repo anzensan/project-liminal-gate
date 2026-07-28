@@ -292,7 +292,7 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
             account["userdata"]["refillStartTime"] = time.time()
             self.server.state._persist_locked()
         status, refused = self.start("broke", SHINEN_FIRST)
-        self.assertEqual((200, False, 1), (status, refused["success"], refused["errorCode"]))
+        self.assertEqual((200, True, 1), (status, refused["success"], refused["cmdError"]))
         self.assertEqual("free_roam", self.phase())
 
     def test_a_battle_cannot_start_while_another_is_active(self) -> None:

@@ -53,7 +53,7 @@ class CompanionStrengthenTest(unittest.TestCase):
                 # account before a rotated token can mutate it.
                 server.state.bind_login_token("other", "other-account", "127.0.0.1")
                 status, favorite = post(server, "favorite", "baseID=4&matList=[5]", "other")
-                self.assertEqual((200, False, 6), (status, favorite["success"], favorite["errorCode"]))
+                self.assertEqual((200, True, 6), (status, favorite["success"], favorite["cmdError"]))
                 self.assertEqual([4, 5], [row["iid"] for row in server.state.userdata_for("other")["buddyInfo"]["list"]])
             finally:
                 server.shutdown()

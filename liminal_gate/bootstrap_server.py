@@ -3003,7 +3003,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         self._resource(HTTPStatus.OK, resource, include_body=False)
 
     def _signed(self, status: HTTPStatus, token: str, payload: dict[str, Any]) -> None:
-        body = _signed_json(token, payload, self.server.profile.signing)
+        body = _signed_json(token, _endpoint_refusal_envelope(payload), self.server.profile.signing)
         self.server.events.record(self.command, self.path, status, getattr(self, "_event_details", None))
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -4230,6 +4230,29 @@ def _render(value: Any, token: str, account_id: str | None = None) -> Any:
     if isinstance(value, dict):
         return {key: _render(item, token, account_id) for key, item in value.items()}
     return copy.deepcopy(value)
+
+
+def _endpoint_refusal_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    """Carry an endpoint's own refusal code on the field the client reads.
+
+    `errorCode` is the *transport* namespace — `AppServerUtil.ErrorCode` is
+    1, 90 and 100-115 — and the client only reads it when `success` is false,
+    a path that shows the common error dialog and never invokes the endpoint's
+    callback. An endpoint's own code rides `cmdError` on an accepted success,
+    which the client defaults to zero and passes as that callback's first
+    argument. Both are confirmed in `reports/response_verifier.md`.
+
+    Emitting a route code as `errorCode` therefore never reaches the screen
+    that asked: refusing a Trading Post trade with `NotEnoughItems` (3) showed
+    a bare "ErrorCode : 3" server error instead of the counter's own message,
+    because 3 is not a transport code. This server never emits a transport
+    error in a signed body, so any refusal code in one belongs on `cmdError`.
+    """
+    code = payload.get("errorCode")
+    if payload.get("success") is True or type(code) is not int:
+        return payload
+    rest = {key: value for key, value in payload.items() if key not in {"success", "errorCode"}}
+    return {"success": True, "cmdError": code, **rest}
 
 
 def _signed_json(token: str, payload: dict[str, Any], signing: SigningProfile) -> bytes:

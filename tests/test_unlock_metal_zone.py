@@ -65,6 +65,6 @@ class UnlockMetalZoneTest(unittest.TestCase):
                 response = connection.getresponse()
                 poor = json.loads(response.read())
                 connection.close()
-                self.assertEqual((200, False, 2), (response.status, poor["success"], poor["errorCode"]))
+                self.assertEqual((200, True, 2), (response.status, poor["success"], poor["cmdError"]))
             finally:
                 restarted.shutdown(); thread.join(); restarted.server_close()

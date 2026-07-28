@@ -20,6 +20,25 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-27 endpoint refusals reach the screen that asked: every route that
+  refused an action semantically emitted `success:false` with its own code in
+  `errorCode`. That is the *transport* namespace (`AppServerUtil.ErrorCode`:
+  1, 90, 100-115), read only when `success` is false, on a path that shows the
+  common error dialog and never invokes the endpoint callback. Refusing a
+  Trading Post trade with `NotEnoughItems` (3) therefore produced a bare
+  "ErrorCode : 3" server error rather than the counter's own message. A route's
+  code rides `cmdError` on an accepted success, which the client defaults to
+  zero and passes as the callback's first argument; the Add Job route was
+  already corrected, and the wire boundary now applies that shape to all of
+  them. Every field the exchange callback reads is `Contains`-guarded, so a
+  refusal body carries no state refresh.
+- 2026-07-27 the Trading Post names its currency: the bundled rotation prices
+  all 126 offers in Animata Cores but sent `weeklyItem: 0`. The screen counts
+  how many of `weeklyItem` you hold and files every other exchange currency
+  under a parenthesised remainder, so the header read "0 (+249)" for a player
+  holding 249 Cores. The catalog now derives the field from the rotation's own
+  single cost item. `endDate` remains empty: the rotation's real-world phase
+  was never recorded, and the client's expected date format is unconfirmed.
 - 2026-07-27 rotated-token authenticated reads: the client replaces its OTK
   about every three seconds, so an authenticated read almost never arrives on a
   token an earlier mutation bound. `get_current_exchange` resolved its token by

@@ -29,7 +29,7 @@ class ExchangeTest(unittest.TestCase):
     self.assertEqual((status,done),req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=1&lastUpdate=1'))
     # Reusing a spent requestID with a different body is answered on its own
     # merits now: this asks for more than the exchange allows.
-    status,reused=req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=2'); self.assertEqual((200,False,6),(status,reused['success'],reused['errorCode']))
+    status,reused=req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=2'); self.assertEqual((200,True,6),(status,reused['success'],reused['cmdError']))
    finally: s.shutdown();t.join();s.server_close()
    s,t=start()
    try: self.assertEqual((200,done),req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=1&lastUpdate=1'))
@@ -124,7 +124,7 @@ class BundledTradingPostTest(unittest.TestCase):
     def test_stock_is_the_rotation_limit_and_exhausts(self) -> None:
         offer = next(o for o in self.open_offers.values() if o.initial_count == 1)
         payload, _ = self.trade(offer, amount=2)
-        self.assertEqual((False, 6), (payload["success"], payload["errorCode"]))
+        self.assertEqual((True, 6), (payload["success"], payload["cmdError"]))
 
 
 class RotatedTokenReadTest(unittest.TestCase):
@@ -184,3 +184,59 @@ class RotatedTokenReadTest(unittest.TestCase):
         del self.server.state.client_hosts["127.0.0.1"]
         status, payload = self.get("/gd/get_current_exchange?otk=ROTATED0000000D")
         self.assertEqual((401, "unknown_account"), (status, payload["error"]))
+
+
+class RefusalEnvelopeTest(unittest.TestCase):
+    """A refused trade must reach the counter, not the common error dialog.
+
+    `errorCode` is the transport namespace (1, 90, 100-115) and is only read
+    when `success` is false — a path that shows the shared dialog and never
+    invokes the endpoint callback. A route's own code rides `cmdError` on an
+    accepted success. See `reports/response_verifier.md` in the research repo.
+    """
+
+    def setUp(self) -> None:
+        self.catalog = build_bundled_exchange_policy()
+        self.profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        self.offer = next(iter(self.catalog.offers_open_at(
+            active_week_index(time.time(), self.catalog.week_count())).values()))
+
+    def test_a_trade_you_cannot_afford_rides_cmdError(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            # One short of the price: the refusal is correct, only its
+            # delivery was not.
+            items = [0] * 181
+            items[181 - 1] = self.offer.ingredients[181] - 1
+            state.create_account("token", "account", {
+                "coins": 0, "itemList": items, "chrdata": [],
+                "buddyInfo": {"list": [], "record": []},
+            })
+            server = BootstrapServer(("127.0.0.1", 0), self.profile, state, exchange_catalog=self.catalog)
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", "/gd/exchange?otk=token&requestID=refused",
+                                   body=f"exchangeItemID={self.offer.offer_id}&amount=1&lastUpdate=1")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+        self.assertEqual(200, response.status)
+        # NotEnoughItems, on the field the endpoint callback actually reads.
+        self.assertEqual((True, 3), (payload["success"], payload["cmdError"]))
+        self.assertNotIn("errorCode", payload)
+        # Nothing was spent, and the guarded refresh fields stay absent so the
+        # client keeps the state it already has.
+        self.assertNotIn("itemList", payload)
+        self.assertNotIn("buddyInfo", payload)
+
+    def test_the_counter_names_the_currency_it_charges(self) -> None:
+        # `UIExchange.UpdateOwnCount` counts how many of `weeklyItem` you hold
+        # and files every other exchange currency under a "(+n)" remainder.
+        # Sending 0 named no item, so the header read "0 (+n)" at a counter
+        # that only ever charges Animata Cores.
+        self.assertEqual(181, self.catalog.weekly_item)
+        self.assertEqual({181}, {item for o in self.catalog.offers.values() for item in o.ingredients})

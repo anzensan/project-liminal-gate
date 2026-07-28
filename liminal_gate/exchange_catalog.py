@@ -85,10 +85,19 @@ def build_bundled_exchange_policy() -> ExchangeCatalog:
     """Return the guided-path local Trading Post policy."""
     offers: dict[int, ExchangeOffer] = {}
     weeks: list[tuple[int, ...]] = []
+    costs: set[int] = set()
     for week in TRADING_POST_WEEKS:
         for offer_id, target_item, target_buddy, target_count, stock, cost_item, cost_count in week:
             offers[offer_id] = ExchangeOffer(offer_id, target_item, 0, target_count, stock, 0,
                                              {cost_item: cost_count}, target_buddy)
+            costs.add(cost_item)
         weeks.append(tuple(row[0] for row in week))
-    return ExchangeCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, BUNDLED_MAX_COINS, 0, "",
+    # `UIExchange.UpdateOwnCount` labels the screen with how many of
+    # `weeklyItem` you hold, and counts every *other* currency in its static
+    # `ExchangeItemIDs` as a parenthesised remainder. Sending 0 named no item,
+    # so a player holding 249 Animata Cores read "0 (+249)" at a counter that
+    # only ever charges Animata Cores. The recovered rotation prices every one
+    # of its offers in a single item, so name it rather than hard-code it.
+    weekly_item = costs.pop() if len(costs) == 1 else 0
+    return ExchangeCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, BUNDLED_MAX_COINS, weekly_item, "",
                            offers, BUNDLED_MAX_OWNED, tuple(weeks))

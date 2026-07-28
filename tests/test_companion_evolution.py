@@ -46,7 +46,7 @@ class CompanionEvolutionTest(unittest.TestCase):
                 # Reusing a spent requestID with a different body is answered on
                 # its own merits: this companion has no evolution available.
                 status, reused = post(server, "one", "baseID=1")
-                self.assertEqual((200, False, 3), (status, reused["success"], reused["errorCode"]))
+                self.assertEqual((200, True, 3), (status, reused["success"], reused["cmdError"]))
             finally:
                 server.shutdown()
                 thread.join()

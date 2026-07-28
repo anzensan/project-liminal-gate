@@ -1061,7 +1061,7 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         # is answered on its own merits -- here refused by the rename cooldown,
         # which is exactly what proves it reached the handler at all.
         status, other = self.post(shared, urlencode({"name": "Brigid"}))
-        self.assertEqual((200, 1), (status, other["errorCode"]))
+        self.assertEqual((200, 1), (status, other["cmdError"]))
         self.assertEqual("Alcina", self.server.state.accounts[account_id]["username"])
 
         # Settling the second body must not have displaced the first's entry.

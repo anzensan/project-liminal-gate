@@ -261,7 +261,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         # The third entry has no ticket left, and must not charge or start.
         before = self.userdata()
         status, refused = self.start("ticket-three", 1003, 1, 1)
-        self.assertEqual((200, False, 2), (status, refused["success"], refused["errorCode"]))
+        self.assertEqual((200, True, 2), (status, refused["success"], refused["cmdError"]))
         self.assertEqual((before["itemList"], before["energy"], "free_roam"), (self.userdata()["itemList"], self.userdata()["energy"], self.phase()))
 
     def test_a_result_outside_the_declared_bounds_is_refused_without_mutation(self) -> None:

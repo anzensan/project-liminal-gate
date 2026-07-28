@@ -35,7 +35,7 @@ class ChangeUnameTest(unittest.TestCase):
                 # answer it would under a fresh one -- here a second rename,
                 # refused by the cooldown -- rather than a collision.
                 status, reused = post("one", "name=Bob")
-                self.assertEqual((200, 1), (status, reused["errorCode"]))
+                self.assertEqual((200, 1), (status, reused["cmdError"]))
                 self.assertEqual((status, reused), post("two", "name=Bob"))
             finally:
                 server.shutdown(); thread.join(); server.server_close()

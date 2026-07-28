@@ -26,7 +26,7 @@ class RebirthTest(unittest.TestCase):
             try:
                 server.state.create_account("token", "account", {"chrdata": [{"id": 2, "jobLevels": [80.0]}, {"id": 7, "jobLevels": [50.0]}, {"id": 9, "jobLevels": [1.0]}], "itemList": [1], "coins": 2})
                 status, retry = post(server, "first", "rebirthID=1&useJoker=False")
-                self.assertEqual((200, False, 7), (status, retry["success"], retry["errorCode"]))
+                self.assertEqual((200, True, 7), (status, retry["success"], retry["cmdError"]))
                 status, success = post(server, "second", "rebirthID=1&useJoker=True")
                 self.assertEqual((200, True, 0, [0]), (status, success["success"], success["coins"], success["itemList"]))
                 self.assertEqual([3, 7, 9], [row["id"] for row in success["chrdata"]])

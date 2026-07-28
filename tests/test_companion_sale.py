@@ -56,9 +56,9 @@ class CompanionSaleTest(unittest.TestCase):
                 # not own, so it is refused for that reason and leaves the
                 # inventory intact for the locked and batch cases below.
                 status, reused = post(server, "/gd/sell_buddy", "one", "inventoryID=99")
-                self.assertEqual((200, False, 2), (status, reused["success"], reused["errorCode"]))
+                self.assertEqual((200, True, 2), (status, reused["success"], reused["cmdError"]))
                 status, locked = post(server, "/gd/sell_buddy", "two", "inventoryID=3")
-                self.assertEqual((200, False, 2), (status, locked["success"], locked["errorCode"]))
+                self.assertEqual((200, True, 2), (status, locked["success"], locked["cmdError"]))
                 status, batch = post(server, "/gd/sell_buddies", "three", "sellList=[2]")
                 self.assertEqual((200, True, 12, [3]), (status, batch["success"], batch["coins"], [row["iid"] for row in batch["buddyInfo"]["list"]]))
             finally:

@@ -74,9 +74,9 @@ class StatusupItemTest(unittest.TestCase):
                 self.assertEqual(30, next(item for item in luck["chrdata"] if item["id"] == 3)["luck"])
                 self.assertEqual((status, luck), post(server, "level", "targetChrID=3&useItemID=3&useAmount=1"))
                 status, wrong_species = post(server, "species", "targetChrID=3&useItemID=2&useAmount=1")
-                self.assertEqual((200, False, 3), (status, wrong_species["success"], wrong_species["errorCode"]))
+                self.assertEqual((200, True, 3), (status, wrong_species["success"], wrong_species["cmdError"]))
                 status, unknown = post(server, "unknown", "targetChrID=999&useItemID=1&useAmount=1")
-                self.assertEqual((200, False, 4), (status, unknown["success"], unknown["errorCode"]))
+                self.assertEqual((200, True, 4), (status, unknown["success"], unknown["cmdError"]))
                 # A semantically invalid account record must not retain the
                 # speculative level update attempted before its bad scalar is
                 # discovered.
@@ -84,7 +84,7 @@ class StatusupItemTest(unittest.TestCase):
                 server.state.accounts["account"]["userdata"]["chrdata"] = [bad]
                 server.state.accounts["account"]["userdata"]["itemList"] = [2, 0, 0]
                 status, invalid_state = post(server, "bad-state", "targetChrID=3&useItemID=1&useAmount=1")
-                self.assertEqual((200, False, 3), (status, invalid_state["success"], invalid_state["errorCode"]))
+                self.assertEqual((200, True, 3), (status, invalid_state["success"], invalid_state["cmdError"]))
                 self.assertEqual(([89], 2), (bad["jobLevels"], server.state.accounts["account"]["userdata"]["itemList"][0]))
                 server.state.accounts["account"]["userdata"]["chrdata"] = [
                     {"id": 3, "jobLevels": [int((111 << 12) | 90), 0.0], "skillBoost": 990, "luck": 20},
@@ -100,7 +100,7 @@ class StatusupItemTest(unittest.TestCase):
             try:
                 self.assertEqual((200, level), post(restarted, "level", "targetChrID=3&useItemID=1&useAmount=2"))
                 status, unavailable = post(restarted, "missing", "targetChrID=3&useItemID=1&useAmount=1")
-                self.assertEqual((200, False, 3), (status, unavailable["success"], unavailable["errorCode"]))
+                self.assertEqual((200, True, 3), (status, unavailable["success"], unavailable["cmdError"]))
             finally:
                 restarted.shutdown(); restarted_thread.join(); restarted.server_close()
 
