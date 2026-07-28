@@ -24,7 +24,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_companions_only"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict"}
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class ServerConfig:
     drop_eligibility: bool = False
     achievements: bool = False
     summon_skills: bool = False
-    outcome_companions_only: bool = False
+    outcome_strict: bool = False
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
@@ -101,7 +101,7 @@ def load_server_config(path: Path) -> ServerConfig:
     drop_eligibility = document.get("drop_eligibility", False)
     achievements = document.get("achievements", False)
     summon_skills = document.get("summon_skills", False)
-    outcome_companions_only = document.get("outcome_companions_only", False)
+    outcome_strict = document.get("outcome_strict", False)
     if not isinstance(host, str) or not host or "\x00" in host:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
@@ -121,12 +121,12 @@ def load_server_config(path: Path) -> ServerConfig:
         "drop_eligibility": drop_eligibility,
         "achievements": achievements,
         "summon_skills": summon_skills,
-        "outcome_companions_only": outcome_companions_only,
+        "outcome_strict": outcome_strict,
     }
     for field, value in boolean_values.items():
         if type(value) is not bool:
             raise ServerConfigError(f"{field} must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_companions_only=outcome_companions_only, **paths)
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:

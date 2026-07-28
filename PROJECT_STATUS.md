@@ -29,6 +29,38 @@ machine-readable/current capability boundary.
   policy, not a claim about the retired event rotation or reward rule. A
   reviewed user-local event catalog replaces this default Special list. Tower
   and Arena VS remain unsupported.
+- 2026-07-28 story Companion drops settle instead of being silently discarded,
+  and the outcome catalog stops refusing what it merely cannot evidence. A live
+  account cleared the whole story seeing only Metal Zone's Companions: the
+  client rolled the rest correctly, `clear_quest` returned `200`, and the roll
+  was thrown away because minting `buddyInfo` requires a story-outcome catalog
+  and the guided launcher never passed one. Metal Zone was unaffected only
+  because it mints through the bundled Hunting policy on another path.
+  Supplying the catalog was not by itself a fix, because the same option bounded
+  reported items, monsters, roster, and Summons, and an empty ceiling *forbids*
+  — so every stage the encounter join could not reach would have started
+  refusing clears that report an ordinary item drop. Four changes together:
+  (1) the Companion ceiling, the one that is complete for every stage from its
+  own `dropBuddies` allowlist, is now always enforced and always minted, and the
+  item/character ceilings moved behind `--outcome-strict`;
+  (2) evidence is recorded per stage, so "drops nothing" and "nobody could know"
+  stop being the same empty dict — a joined stage keeps forbidding, an unjoined
+  one does not, and a catalog without the field behaves as before;
+  (3) variant enemy symbols resolve by peeling one suffix at a time and
+  re-checking membership instead of stripping the whole run, plus bare trailing
+  digits, which recovered 15 symbols and 10 whole stages across chapters 12--42
+  that had been failing because `CH31_LEAD_S_WITH_PARENT` overshot the real
+  member `CH31_LEAD_S`;
+  (4) `--scenario-encounters` feeds the MoonSharp-derived chapter 2--7
+  encounters, which have no compiled battle program, through the same
+  `EnemyData` join under separately validated provenance.
+  Result: 291 of 393 core story stages can mint a Companion (was 277), item
+  ceilings cover 349 stages (was 289) and character ceilings 166 (was 120), and
+  the only core chapters left without evidence are 38--42, whose enemy rows the
+  client never shipped. The roster subset check is gone even under strict:
+  `_preserved_roster` documents that the durable roster can legitimately lead
+  the client's copy, and charging the player a clear for that lag is a
+  regression, which a test now pins.
 - 2026-07-28 ordinary chapter completion restores stamina as explicit local
   preservation policy: a successful core-story chapter-boundary clear commits
   `refillStartTime: 0.0`, the final client's own full-meter representation.

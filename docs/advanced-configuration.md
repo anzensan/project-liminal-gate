@@ -139,6 +139,10 @@ Use these together when you want stricter generic story settlement:
 - `--settlement-catalog` constrains per-stage Coins and item/summon deltas.
 - `--story-outcome-catalog` constrains reported items, characters, and
   Companion outcomes.
+- `--outcome-strict` extends the option above from the Companion outcome, which
+  it always bounds, to reported items and monsters as well. See [What the
+  catalog enforces, and what it admits it
+  cannot](#what-the-catalog-enforces-and-what-it-admits-it-cannot).
 - `--clear-state-catalog` validates participating character EXP, level, and
   Skill-Boost changes against local rules.
 
@@ -154,8 +158,10 @@ even though the client rolled one. Authoring the catalog by hand means writing a
 per-stage Companion ceiling for every ordinary stage, which is why it can be
 composed instead.
 
-**Read the limits below before using it.** This is opt-in strictness, not a
-strictly better setting.
+Supplying it enables story Companion drops and nothing stricter. Bounding the
+reported items and monsters as well is a separate opt-in, `--outcome-strict`,
+for the reasons in [What the catalog enforces, and what it admits it
+cannot](#what-the-catalog-enforces-and-what-it-admits-it-cannot).
 
 #### 1. Extract the native encounter map
 
@@ -234,10 +240,64 @@ operator-authored catalog as `--baseline` to fill them: its capacities, maxima,
 and Companion drop levels are carried through unchanged and the recovered
 ceilings are unioned on top.
 
-**This catalog is optional strictness.** The guided setup does not pass it, and
-without it the server does not constrain reported outcomes at all -- items and
-monster drops settle from the client's own battle result. Supply it only when
-you want the stricter validation and accept its coverage limits.
+**This catalog is optional strictness.** Without it the server does not
+constrain reported outcomes at all -- items and monster drops settle from the
+client's own battle result. Supply it only when you want the stricter validation
+and accept its coverage limits, or narrow it as described next.
+
+#### What the catalog enforces, and what it admits it cannot
+
+The three ceilings are not equally well evidenced, and that asymmetry decides
+what is enforced by default.
+
+The **Companion ceiling is complete**: every stage carries its own `dropBuddies`
+allowlist inside the client. It is always enforced. A rolled Companion the stage
+does not declare, or more copies than its ceiling allows, is refused with
+`invalid_local_outcome`.
+
+The **item and character ceilings are not complete**. They come from joining an
+encounter map to `EnemyData`, and no encounter map reaches the chapters whose
+enemy rows the client never shipped, or the archived event chapters. Since an
+empty ceiling forbids, enforcing them everywhere would refuse a clear reporting
+an ordinary item drop purely for want of recoverable evidence. So they are
+enforced only under `--outcome-strict`.
+
+That leaves the default doing what a self-hoster wants: story Companion drops
+settle instead of being discarded, and every other reported outcome stays
+exactly as unconstrained as it is with no catalog at all.
+
+##### Evidence is recorded per stage, not assumed
+
+"This stage drops nothing" and "nobody knows what this stage drops" are both an
+empty ceiling. Conflating them is what made the strict reading unusable, so each
+stage records which of its ceilings a source could actually speak to:
+
+```json
+{"chapter": 8, "section": 3, "evidence": ["items", "characters"], ...}
+```
+
+Under `--outcome-strict`, a ceiling is enforced only where its evidence is
+declared. A stage that joined and whose enemies genuinely carry nothing keeps
+forbidding, because that emptiness is a statement. A stage nobody could join
+does not, because its emptiness is an admission. A stage with no `evidence` key
+is treated as fully evidenced, so a catalog authored before this field behaves
+exactly as it did.
+
+`--outcome-strict` requires `--story-outcome-catalog`; on its own it would be a
+no-op and is rejected rather than ignored.
+
+Two checks stay relaxed even under `--outcome-strict`. The submitted roster is
+no longer required to contain every character the server holds: `_preserved_roster`
+documents that the durable roster can legitimately lead the client's copy -- a
+Pact draw whose response never arrived, an event, achievement, or message grant
+-- and that lag says nothing about the outcome being reported. Reported Summons
+are still refused outright, because no recovered source states a per-stage
+Summon outcome and inventing a ceiling for them would be a guess.
+
+The guided `liminal_gate.server_setup` launcher picks up a `story-outcomes.json`
+in its data directory automatically, without `--outcome-strict`, and prints
+whether it found one at startup. `--story-outcome-catalog` overrides the
+location, and a path that does not exist is an error rather than a silent skip.
 
 Three further boundaries, all reported by the commands themselves:
 
@@ -246,8 +306,12 @@ Three further boundaries, all reported by the commands themselves:
   record anywhere in the APK. Those stages keep only their own `dropBuddies`
   allowlist. This is permanent and is not a fault in the import.
 - **Chapters 1--7 are not in the native map.** Their encounters live in the
-  scenario scripts rather than in compiled chapter classes, so they also keep
-  only their `dropBuddies` allowlist.
+  MoonSharp scenario scripts rather than in compiled chapter classes. Pass
+  `--scenario-encounters` with a map derived from those scripts to cover them;
+  without it they keep only their `dropBuddies` allowlist. The stage schema
+  matches the native map's, but its provenance is validated separately, so a
+  scenario-derived row can never claim it came from a disassembled chapter
+  program.
 - **Variant initializers are inferred, not confirmed.** A spawn may name a base
   enemy with a behavioural modifier applied; it resolves to the base enemy's
   record and is marked `exact: false` in the encounter import, and the summary

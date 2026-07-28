@@ -104,6 +104,32 @@ class ServerConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(ProfileError, "cannot be combined"):
                 load_launch_config(parse_args())
 
+    def test_outcome_strict_survives_the_toml_round_trip(self) -> None:
+        configuration_path = self.root / "server.toml"
+        configuration_path.write_text(
+            'schema_version = 1\nprovenance = "user-supplied"\n'
+            'profile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\n'
+            'story_outcome_catalog = "outcomes.json"\noutcome_strict = true\n',
+            encoding="utf-8",
+        )
+        config = load_server_config(configuration_path)
+        self.assertTrue(config.outcome_strict)
+        self.assertEqual(self.root / "outcomes.json", config.story_outcome_catalog)
+        self.assertFalse(load_launch_config(Namespace(
+            config=None, profile=self.root / "profiles" / "bootstrap.json",
+            state_file=self.root / "state.json", host=None, port=None,
+            **{field: None for field in (
+                "event_log", "resource_root", "resource_manifest", "public_data_root",
+                "story_catalog", "story_progression_catalog", "settlement_catalog",
+                "story_outcome_catalog", "clear_state_catalog", "statusup_catalog",
+                "job_catalog", "rebirth_catalog", "summon_skill_catalog", "companion_catalog",
+                "companion_strengthen_catalog", "companion_evolution_catalog",
+                "companion_draw_catalog", "pact_draw_catalog", "event_catalog",
+                "character_catalog", "hunting_catalog", "achievement_catalog",
+                "message_catalog", "exchange_catalog",
+            )},
+        )).outcome_strict)
+
     def test_every_bundled_policy_flag_requires_a_toml_boolean(self) -> None:
         configuration_path = self.root / "server.toml"
         prefix = (
@@ -114,6 +140,7 @@ class ServerConfigTest(unittest.TestCase):
             ("drop_eligibility", '"false"'),
             ("achievements", "1"),
             ("summon_skills", "[true]"),
+            ("outcome_strict", '"yes"'),
         ):
             with self.subTest(field=field):
                 configuration_path.write_text(

@@ -123,14 +123,11 @@ def server_arguments(
     story_outcome_catalog: Path | None = None,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
+    # No `--outcome-strict` here: the catalog's job in the guided setup is to let
+    # story Companion drops settle, and bounding the reported items and monsters
+    # on top of that can only refuse clears, never enable one.
     outcome_flags = (
-        []
-        if story_outcome_catalog is None
-        # Companion-only on purpose. This launcher's job is to make story drops
-        # settle; the same catalog's item and character ceilings are incomplete
-        # for the chapters the encounter import cannot reach, and an empty
-        # ceiling forbids, so enforcing them here would refuse ordinary play.
-        else ["--story-outcome-catalog", str(story_outcome_catalog), "--outcome-companions-only"]
+        [] if story_outcome_catalog is None else ["--story-outcome-catalog", str(story_outcome_catalog)]
     )
     return [
         sys.executable,

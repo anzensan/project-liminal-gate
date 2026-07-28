@@ -127,14 +127,32 @@ _INSTRUCTION_RE = re.compile(r"^\s*([0-9a-f]+):\s+[0-9a-f]+\s+([.\w]+)\s*(.*?)\s
 #: base record's: Strongly inferred, never promoted to exact, because a modifier
 #: could in principle alter them.  Longest alternatives lead so ``_MA1`` is not
 #: read as ``_MA`` plus a stray ``1``.
+#:
+#: This matches ONE suffix, not a run of them.  `resolve_symbol` peels them one
+#: at a time and re-checks membership after each, because the base member can
+#: sit partway through the run: ``CH31_LEAD_S_WITH_PARENT`` reduces to the real
+#: member ``CH31_LEAD_S``, and stripping the whole run at once overshoots it to
+#: ``CH31_LEAD``, which does not exist.  Eight of the ten stages that failed to
+#: join at all failed exactly this way.
+#:
+#: A bare trailing digit is a variant suffix too: numbered clones are written
+#: both ways (``CH33_KING2`` beside ``CH21_PLUS3``).  It is tried only after a
+#: full-symbol membership check, so a numbered enemy that *is* its own member --
+#: ``CH2_BAKUROU2`` -- still resolves to itself, exactly.
 _SUFFIX_RE = re.compile(
     r"(_TANM|_TWNM|_2NM|_NM|_WB|_FNM"
     r"|_APPEAR|_ATTACK|_MOVE|_FIRST"
     r"|_MA1|_MA2|_MA|_AS|_CS|_SL"
     r"|_WITH_PARENT|_PARENT|_CLONE"
     r"|_S|_L|_R|_H|_V"
-    r"|_2|_3|_4|_5|_6)+$"
+    r"|_2|_3|_4|_5|_6"
+    r"|\d)$"
 )
+
+#: How many suffixes may be peeled from one symbol before giving up.  A real
+#: variant name stacks two or three; a longer chain means the guess has stopped
+#: being a reduction and started being a search, so it stops instead.
+_MAX_SUFFIX_PEELS = 4
 
 #: Upper bound on one generator body, used when the next method's RVA is too far
 #: away to trust (the last method in the library has no successor).
@@ -218,12 +236,21 @@ def resolve_symbol(symbol: str, enemies: dict[str, int]) -> tuple[int | None, bo
     ``exact`` is true only for a symbol that is itself an ``Enemies`` member.
     A variant symbol reduced to its base member resolves with ``exact`` false
     and must stay distinguishable downstream.
+
+    Suffixes are peeled one at a time and membership is re-checked after each,
+    so the *most specific* base wins.  Stripping the whole run at once would
+    skip past a real member that carries a suffix of its own.
     """
     if symbol in enemies:
         return enemies[symbol], True
-    base = _SUFFIX_RE.sub("", symbol)
-    if base != symbol and base in enemies:
-        return enemies[base], False
+    base = symbol
+    for _ in range(_MAX_SUFFIX_PEELS):
+        match = _SUFFIX_RE.search(base)
+        if match is None or match.start() == 0:
+            return None, False
+        base = base[: match.start()]
+        if base in enemies:
+            return enemies[base], False
     return None, False
 
 

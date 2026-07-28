@@ -82,6 +82,14 @@ becomes permanent once you pass its chapter. Nothing you can set on the server
 opens a zone earlier — play the story to it. Empty Hunting and Metal screens on
 a new account are expected, not a fault.
 
+**Special Quests are separate from Arena VS.** After Chapter 3, the guided
+server advertises the recovered solo Chapter 3003-1 *Money Money Time* card in
+Arena -> Special Quests. It costs 5 stamina and uses a bounded local Coin
+settlement policy; it is not a claim about the original event rotation or
+rewards. Arena VS, rankings, multiplayer, and Tower are not implemented and
+remain unavailable rather than presenting a menu that cannot complete a
+durable solo quest.
+
 The last row is the exception: the two world-map points after Chapter 34 are the
 client's own gate, not a policy this project chose, and their five battles each
 open one at a time. They award nothing — a clear that reports Companions, EXP,
@@ -660,9 +668,19 @@ unlocks, Rebirth, and status items are all enabled — setup no longer asks you
 to choose between them. To isolate one feature while troubleshooting, run
 `liminal_gate.bootstrap_server` directly with only the flags you want; see
 [docs/advanced-configuration.md](docs/advanced-configuration.md).
-An advanced event question appears only for people who already have the
-required local event catalog and DummyDll files. Press Enter to accept the
-recommended choice. The command validates the inputs,
+Story battles do not award Companions unless you build a story-outcome catalog
+from your own APK — the client rolls the drop and the server has no authority to
+mint it, so it is discarded. Metal Zone keeps dropping its two Companions
+because those come from the bundled Hunting policy instead. If you build one and
+save it as `story-outcomes.json` in the data directory, the launcher picks it up
+and says so at startup. It bounds the Companion drop and nothing else, so it can
+only add drops, never refuse a clear you would otherwise have passed; see [What
+the catalog enforces, and what it admits it cannot](docs/advanced-configuration.md#what-the-catalog-enforces-and-what-it-admits-it-cannot).
+An advanced event question appears only for people who already have a reviewed
+local event catalog. **DummyDll is not required for normal play, Hunting,
+Special Quests, or Tower.** It is generated analysis metadata from your own APK
+and is used only to derive optional local event/character catalogs. Press Enter
+to accept the recommended choice. The command validates the inputs,
 creates the local manifests, creates a local signing key on first use, patches
 and signs the APK, installs it on that one device, then starts the local server
 in the foreground. It asks for the signing-key password only on first setup and
@@ -722,11 +740,12 @@ For a non-interactive repeat of the standard setup, add `--no-configure`.
 
 ### Optional: enable a reviewed local event catalog
 
-Events are not enabled by default. If you have independently prepared a
-reviewed event catalog and the matching local `DummyDll` directory, add
-`--dummy-dll-dir` and `--event-catalog` to the normal setup command. Setup
+Additional archived events are not enabled by default. If you have independently
+prepared a reviewed event catalog and the matching local `DummyDll` directory,
+add `--dummy-dll-dir` and `--event-catalog` to the normal setup command. Setup
 derives the required local character catalog and passes both local files to the
-server. See [Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
+server. This is optional analysis-derived content, not a requirement for the
+bundled Hunting or Special Quest paths. See [Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
 
 ### 4. Manual setup (only if you need to troubleshoot)
 

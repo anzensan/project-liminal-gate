@@ -8,12 +8,14 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 from liminal_gate.server_setup import (
+    DEFAULT_OUTCOME_CATALOG,
     REQUIRED_RESOURCE_CATEGORIES,
     STANDARD_POLICY_FLAGS,
     ServerSetupError,
     main,
     prepare_server,
     resolve_resource_root,
+    resolve_story_outcome_catalog,
     run_server,
     server_arguments,
 )
@@ -65,6 +67,37 @@ class ServerOnlySetupTest(unittest.TestCase):
             self.assertNotIn(android_term, rendered)
         self.assertIn("0.0.0.0", arguments)
         self.assertIn("8696", arguments)
+
+    def test_story_outcome_catalog_is_picked_up_from_the_data_directory(self) -> None:
+        data_directory = self.root / "state"
+        data_directory.mkdir()
+        self.assertIsNone(resolve_story_outcome_catalog(None, data_directory))
+        catalog = data_directory / DEFAULT_OUTCOME_CATALOG
+        catalog.write_text("{}", encoding="utf-8")
+        self.assertEqual(catalog.resolve(), resolve_story_outcome_catalog(None, data_directory))
+
+    def test_a_mistyped_story_outcome_catalog_is_an_error_not_a_silent_skip(self) -> None:
+        # Skipping it quietly would present as the exact failure the catalog is
+        # there to fix: a server that discards every Companion the client rolls.
+        with self.assertRaisesRegex(ServerSetupError, "does not exist"):
+            resolve_story_outcome_catalog(self.root / "absent.json", self.root)
+
+    def test_a_story_outcome_catalog_is_passed_without_strictness(self) -> None:
+        catalog = self.root / "story-outcomes.json"
+        catalog.write_text("{}", encoding="utf-8")
+        without = server_arguments(
+            self.resources.resolve(), (self.root / "state").resolve(), "0.0.0.0", 8696,
+            self.root / "profile.json",
+        )
+        self.assertNotIn("--story-outcome-catalog", without)
+        arguments = server_arguments(
+            self.resources.resolve(), (self.root / "state").resolve(), "0.0.0.0", 8696,
+            self.root / "profile.json", story_outcome_catalog=catalog,
+        )
+        self.assertEqual(str(catalog), arguments[arguments.index("--story-outcome-catalog") + 1])
+        # Bounding the reported items and monsters on top can only refuse a
+        # clear, never enable one, so the guided launcher never asks for it.
+        self.assertNotIn("--outcome-strict", arguments)
 
     def test_prepare_only_never_launches_server(self) -> None:
         data_directory = self.root / "state"

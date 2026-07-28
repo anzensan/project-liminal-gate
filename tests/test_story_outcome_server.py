@@ -27,7 +27,9 @@ class StoryOutcomeServerTest(unittest.TestCase):
             profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
             story, outcomes, clear_state = load_story_catalog(story_path), load_story_outcome_catalog(outcome_path), load_clear_state_catalog(clear_state_path)
             def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), story_catalog=story, story_outcome_catalog=outcomes, clear_state_catalog=clear_state)
+                # Bounding the reported items and monsters is `--outcome-strict`;
+                # the default bounds the Companion outcome alone.
+                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), story_catalog=story, story_outcome_catalog=outcomes, clear_state_catalog=clear_state, outcome_strict=True)
                 thread = threading.Thread(target=server.serve_forever); thread.start(); return server, thread
             def post(server: BootstrapServer, path: str, fields: list[tuple[str, str]]) -> tuple[int, dict[str, object]]:
                 connection = HTTPConnection(*server.server_address); connection.request("POST", path, body=urlencode(fields)); response = connection.getresponse(); payload = json.loads(response.read()); connection.close(); return response.status, payload

@@ -391,14 +391,15 @@ class BuildCatalogTest(unittest.TestCase):
 
 
 class UnevidencedStageReportTest(unittest.TestCase):
-    """A stage with no item or character evidence must be counted, loudly.
+    """A stage nobody could recover evidence for must be counted and marked.
 
-    An empty ceiling forbids rather than permits, so these stages reject
-    ordinary play. Silently emitting them is the trap this report exists to
-    prevent.
+    "This stage drops nothing" and "nobody knows what this stage drops" are both
+    an empty ceiling, and an empty ceiling forbids. Conflating them refuses
+    ordinary play on every stage the encounter join could not reach, so the two
+    are separated here and the second is recorded on the stage itself.
     """
 
-    def test_counts_stages_with_neither_ceiling(self) -> None:
+    def test_counts_only_the_stages_no_source_could_reach(self) -> None:
         characters = {"characters": [{"character_id": 9001}]}
         enemy_data = {"data": [
             _enemy(BOMBORG, COMPANION_A, 20.0, items=((5, 2),), job_id=700, job_ratio=5.0),
@@ -408,16 +409,27 @@ class UnevidencedStageReportTest(unittest.TestCase):
         battledata = {"chapters": [{"chapterNo": 8, "sections": [
             {"dropBuddies": [_code(COMPANION_A, 1)]},
             {"dropBuddies": [_code(COMPANION_B, 1)]},
+            {"dropBuddies": [_code(COMPANION_A, 1)]},
         ]}]}
         encounters = _encounters([
             _stage(8, 1, [("CH8_BMAKER", BOMBORG, True, 1)]),
             _stage(8, 2, [("CH8_TECHSURA", TEKSURA, True, 1)]),
+            # No EnemyData row for this spawn, so the stage cannot be joined and
+            # nothing can be said about its item or character outcome.
+            _stage(8, 3, [("CH8_UNKNOWN", 4242, True, 1)]),
         ])
-        _catalog, report, _notes = build_catalog(
+        catalog, report, _notes = build_catalog(
             encounters, battledata, enemy_data, chr_database, characters,
         )
-        # 8-1 has both ceilings; 8-2's enemy drops neither an item nor a monster.
         self.assertEqual(1, report["stages_without_outcome_evidence"])
         self.assertEqual([8], report["chapters_without_outcome_evidence"])
         self.assertEqual(1, report["stages_with_item_ceiling"])
         self.assertEqual(1, report["stages_with_character_ceiling"])
+        by_section = {stage["section"]: stage for stage in catalog["stages"]}
+        # 8-1 joined and drops both. 8-2 joined and drops neither, which is a
+        # statement, so it stays evidenced and keeps forbidding. 8-3 could not be
+        # joined, which is an admission, so it is marked and stops forbidding.
+        self.assertEqual(["items", "characters"], by_section[1]["evidence"])
+        self.assertEqual(["items", "characters"], by_section[2]["evidence"])
+        self.assertEqual([], by_section[3]["evidence"])
+        self.assertEqual({}, by_section[2]["item_maxima"])

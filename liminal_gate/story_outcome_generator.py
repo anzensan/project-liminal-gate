@@ -149,6 +149,45 @@ def _native_source(source: object) -> dict[str, str]:
     return {field: source[field] for field in sorted(required)}
 
 
+def _scenario_source(source: object) -> dict[str, Any]:
+    """Validate a MoonSharp scenario encounter map's provenance.
+
+    Deliberately not `_native_source` with fields relaxed.  A scenario map is
+    derived from the client's embedded ``Chapter{N}`` MoonSharp binary dumps, so
+    it has no ABI, no ``libil2cpp`` hash, and no vtable calibration to report,
+    and inventing those fields to satisfy one shared validator would make a
+    scenario row indistinguishable from a disassembled one.  What it must
+    account for instead is which chapter assets it read: ``chapter_sha256`` maps
+    each chapter number to the hash of the decoded listing it came from.
+    """
+    required = {"profile", "apk_sha256", "format", "decoder", "chapter_sha256"}
+    if (
+        not isinstance(source, dict)
+        or set(source) != required
+        or source.get("profile") != SOURCE_PROFILE
+        or not _valid_sha256(source.get("apk_sha256"))
+        or source.get("format") != "moonsharp-binary-dump"
+        or not isinstance(source.get("decoder"), str)
+        or not source["decoder"]
+        or not isinstance(source.get("chapter_sha256"), dict)
+        or not source["chapter_sha256"]
+        or not all(
+            isinstance(chapter, str) and chapter.isdecimal() and _valid_sha256(digest)
+            for chapter, digest in source["chapter_sha256"].items()
+        )
+    ):
+        raise StoryOutcomeGeneratorError(
+            "input must be a user-derived MoonSharp scenario encounter map with complete source provenance"
+        )
+    return {
+        "profile": source["profile"],
+        "apk_sha256": source["apk_sha256"],
+        "format": source["format"],
+        "decoder": source["decoder"],
+        "chapter_sha256": {key: source["chapter_sha256"][key] for key in sorted(source["chapter_sha256"])},
+    }
+
+
 def build_derivation_source(
     encounters: dict[str, Any],
     characters: dict[str, Any],
@@ -156,6 +195,8 @@ def build_derivation_source(
     native_encounters_sha256: str,
     character_catalog_sha256: str,
     baseline_sha256: str | None = None,
+    scenario: dict[str, Any] | None = None,
+    scenario_encounters_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Validate that all derived inputs belong to one APK and retain their hashes."""
     native = _native_source(encounters.get("source"))
@@ -193,6 +234,18 @@ def build_derivation_source(
     }
     if baseline_sha256 is not None:
         result["baseline_sha256"] = baseline_sha256
+    if scenario is not None:
+        scenario_source = _scenario_source(scenario.get("source"))
+        if scenario_source["apk_sha256"] != apk_sha256:
+            raise StoryOutcomeGeneratorError(
+                "scenario encounter map was derived from a different APK"
+            )
+        if not _valid_sha256(scenario_encounters_sha256):
+            raise StoryOutcomeGeneratorError(
+                "story-outcome inputs have incomplete or invalid source provenance"
+            )
+        result["scenario_encounters_sha256"] = scenario_encounters_sha256
+        result["scenario_encounters"] = scenario_source
     return result
 
 
@@ -330,13 +383,7 @@ def native_stage_maxima(
     enemy_characters: dict[int, int],
     exact_only: bool,
 ) -> tuple[dict[tuple[int, int], dict[str, dict[int, int]]], dict[str, Any]]:
-    """Join the native encounter map to the per-enemy Companion, item, and character drops.
-
-    A stage contributes only when *every* one of its spawns resolves to an
-    enemy record.  A partly-joined stage would understate its own ceiling, and
-    understating a ceiling refuses a legitimate clear, so it is left to the
-    section allowlist instead.
-    """
+    """Join the native encounter map to the per-enemy Companion, item, and character drops."""
     if (
         encounters.get("schema_version") != 1
         or encounters.get("provenance") != "user-derived"
@@ -345,6 +392,55 @@ def native_stage_maxima(
     ):
         raise StoryOutcomeGeneratorError("input must be a user-derived ARM64 native encounter map")
     _native_source(encounters.get("source"))
+    return _stage_maxima(encounters["stages"], enemy_drops, enemy_items, enemy_characters, exact_only)
+
+
+def scenario_stage_maxima(
+    encounters: dict[str, Any],
+    enemy_drops: dict[int, int],
+    enemy_items: dict[int, dict[int, int]],
+    enemy_characters: dict[int, int],
+    exact_only: bool,
+) -> tuple[dict[tuple[int, int], dict[str, dict[int, int]]], dict[str, Any]]:
+    """Join the MoonSharp scenario encounter map to the same per-enemy drops.
+
+    Chapters 2--7 have no compiled chapter battle program at all: their
+    encounters are placed by the scenario scripts the client runs on its
+    embedded MoonSharp VM, so the native import cannot see them and every one of
+    their stages ends up with an empty item and character ceiling.  This is the
+    same join against a map derived from those scripts instead.
+
+    The stage schema is deliberately identical to the native map's.  What
+    differs is provenance, which is why the two are separate inputs rather than
+    one file an operator concatenates: a scenario-derived row must not be able
+    to claim it came from a disassembled chapter program.
+    """
+    if (
+        encounters.get("schema_version") != 1
+        or encounters.get("provenance") != "user-derived"
+        or not isinstance(encounters.get("stages"), list)
+        or not encounters["stages"]
+    ):
+        raise StoryOutcomeGeneratorError("input must be a user-derived MoonSharp scenario encounter map")
+    _scenario_source(encounters.get("source"))
+    return _stage_maxima(encounters["stages"], enemy_drops, enemy_items, enemy_characters, exact_only)
+
+
+def _stage_maxima(
+    stages_input: list[Any],
+    enemy_drops: dict[int, int],
+    enemy_items: dict[int, dict[int, int]],
+    enemy_characters: dict[int, int],
+    exact_only: bool,
+) -> tuple[dict[tuple[int, int], dict[str, dict[int, int]]], dict[str, Any]]:
+    """Join one encounter map's stages to the per-enemy drop records.
+
+    A stage contributes only when *every* one of its spawns resolves to an
+    enemy record.  A partly-joined stage would understate its own ceiling, and
+    understating a ceiling refuses a legitimate clear, so it is left to the
+    section allowlist instead.
+    """
+    encounters = {"stages": stages_input}
     maxima: dict[tuple[int, int], dict[str, dict[int, int]]] = {}
     inferred_stages: set[tuple[int, int]] = set()
     # Two different failures, kept apart because they mean different things.
@@ -425,6 +521,7 @@ def build_catalog(
     baseline: dict[str, Any] | None = None,
     exact_only: bool = False,
     source: dict[str, Any] | None = None,
+    scenario: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     """Return ``(catalog, join report, notes)`` for the supplied local inputs."""
     character_ids = sorted({
@@ -436,13 +533,38 @@ def build_catalog(
     recovered_companions = {row[0] for row in COMPANION_MASTER_ROWS}
 
     section_maxima = section_companion_maxima(battledata)
+    companion_drops = companion_drops_by_enemy(enemy_data)
+    item_drops = item_drops_by_enemy(enemy_data)
+    character_drops = character_drops_by_enemy(enemy_data, chr_database)
     native_maxima, report = native_stage_maxima(
-        encounters,
-        companion_drops_by_enemy(enemy_data),
-        item_drops_by_enemy(enemy_data),
-        character_drops_by_enemy(enemy_data, chr_database),
-        exact_only,
+        encounters, companion_drops, item_drops, character_drops, exact_only,
     )
+    if scenario is None:
+        report["scenario_stages_joined"] = 0
+        report["scenario_chapters"] = []
+    else:
+        scenario_maxima, scenario_report = scenario_stage_maxima(
+            scenario, companion_drops, item_drops, character_drops, exact_only,
+        )
+        # The scenario map covers chapters the native map does not reach at all,
+        # so the two never disagree about a stage in practice.  Merge by the
+        # larger ceiling anyway, which is the rule every other source pair here
+        # already follows: a ceiling permits, so taking the smaller one would
+        # refuse a clear one of the two sources says is legitimate.
+        for identity, value in scenario_maxima.items():
+            existing = native_maxima.get(identity)
+            if existing is None:
+                native_maxima[identity] = value
+                continue
+            for kind in ("companions", "items", "characters"):
+                merged = dict(existing[kind])
+                for key, cap in value[kind].items():
+                    merged[key] = max(merged.get(key, 0), cap)
+                existing[kind] = merged
+        report["scenario_stages_joined"] = len(scenario_maxima)
+        report["scenario_chapters"] = sorted({chapter for chapter, _ in scenario_maxima})
+        report["stages_with_item_ceiling"] = sum(1 for value in native_maxima.values() if value["items"])
+        report["stages_with_character_ceiling"] = sum(1 for value in native_maxima.values() if value["characters"])
 
     baseline_rules: dict[tuple[int, int], dict[str, Any]] = {}
     baseline_levels: dict[int, int] = {}
@@ -512,13 +634,23 @@ def build_catalog(
             merged_characters[character_id] = max(merged_characters.get(character_id, 0), cap)
         used_characters.update(merged_characters)
 
-        if not merged_items and not merged_characters:
-            # A ceiling permits and an empty one forbids, so this stage will
-            # refuse a clear reporting an item or a recruited monster.
+        # Whether anything could speak to this stage at all, which is a different
+        # question from what it said.  A joined stage whose enemies carry no
+        # items has a *real* empty ceiling; an unjoinable stage has none.  Both
+        # are an empty dict, so the distinction has to be recorded separately or
+        # the second one silently forbids ordinary play.
+        joined = identity in native_maxima
+        item_evidence = joined or bool(_maxima(baseline_rule.get("item_maxima", {})))
+        character_evidence = joined or bool(_maxima(baseline_rule.get("character_maxima", {})))
+        if not item_evidence and not character_evidence:
             unevidenced.add(identity)
+        evidence = [
+            name for name, present in (("items", item_evidence), ("characters", character_evidence)) if present
+        ]
         stages.append({
             "chapter": identity[0],
             "section": identity[1],
+            "evidence": evidence,
             "item_maxima": {str(key): merged_items[key] for key in sorted(merged_items)},
             "character_maxima": {str(key): merged_characters[key] for key in sorted(merged_characters)},
             "companion_maxima": {str(key): merged[key] for key in sorted(merged)},
@@ -604,6 +736,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--apk", required=True, type=Path, help="your own reviewed APK")
     parser.add_argument("--dummy-dll-dir", required=True, type=Path, help="locally generated DummyDll directory")
     parser.add_argument("--native-encounters", required=True, type=Path, help="native_encounter_importer output")
+    parser.add_argument("--scenario-encounters", type=Path, help="MoonSharp scenario encounter map covering the chapters with no compiled battle program")
     parser.add_argument("--character-catalog", required=True, type=Path, help="local character catalog")
     parser.add_argument("--baseline", type=Path, help="operator-authored story-outcome catalog to widen")
     parser.add_argument("--exact-only", action="store_true", help="drop ceilings that rest on an inferred variant")
@@ -621,8 +754,10 @@ def main() -> int:
         native_encounters_path = args.native_encounters.resolve(strict=True)
         character_catalog_path = args.character_catalog.resolve(strict=True)
         baseline_path = None if args.baseline is None else args.baseline.resolve(strict=True)
+        scenario_path = None if args.scenario_encounters is None else args.scenario_encounters.resolve(strict=True)
         encounters = _read(native_encounters_path, "native encounter map")
         characters = _read(character_catalog_path, "character catalog")
+        scenario = None if scenario_path is None else _read(scenario_path, "scenario encounter map")
         source = build_derivation_source(
             encounters,
             characters,
@@ -630,6 +765,8 @@ def main() -> int:
             sha256_file(native_encounters_path),
             sha256_file(character_catalog_path),
             None if baseline_path is None else sha256_file(baseline_path),
+            scenario,
+            None if scenario_path is None else sha256_file(scenario_path),
         )
         trees = load_master_trees(apk, args.dummy_dll_dir, ("BattleData", "EnemyData", "ChrDatabase"))
         catalog, report, notes = build_catalog(
@@ -641,6 +778,7 @@ def main() -> int:
             None if baseline_path is None else _read(baseline_path, "baseline story-outcome catalog"),
             args.exact_only,
             source,
+            scenario,
         )
         write_catalog(args.output, catalog)
         load_story_outcome_catalog(args.output)
@@ -655,6 +793,11 @@ def main() -> int:
         f"  native map: {report['stages_joined']}/{report['stages_in_map']} stages joined,"
         f" {report['stages_with_inferred_ceiling']} of those resting on an inferred variant"
     )
+    if report["scenario_stages_joined"]:
+        print(
+            f"  scenario map: {report['scenario_stages_joined']} stage(s) joined from the MoonSharp"
+            f" chapter scripts (chapters {_chapters(report['scenario_chapters'])})"
+        )
     if report["stages_unjoinable"]:
         print(
             f"  {report['stages_unjoinable']} stage(s) could not be joined and keep only their own"
@@ -676,21 +819,20 @@ def main() -> int:
         f" {report['stages_with_character_ceiling']} a character ceiling, from the per-enemy drop records"
     )
     if report["stages_without_outcome_evidence"]:
-        # Loud on purpose. An empty ceiling forbids, so these stages reject
-        # ordinary play rather than merely checking it less strictly.
         print(
-            f"  WARNING: {report['stages_without_outcome_evidence']} stage(s) have no item or character"
+            f"  {report['stages_without_outcome_evidence']} stage(s) have no item or character"
             f" evidence (chapters {_chapters(report['chapters_without_outcome_evidence'])})."
         )
         print(
-            "    A ceiling permits and an empty one forbids, so this catalog will REFUSE any clear of"
-            " those stages whose battle result reports an item or a recruited monster."
+            "    Each is marked unevidenced rather than left to read as a ceiling of zero, so the"
+            " server leaves their reported items and recruited monsters unconstrained instead of"
+            " refusing them. Pass --baseline with hand-authored maxima to bound them."
         )
-        print(
-            "    Chapters 2-7 are scripted in MoonSharp rather than natively, so the encounter import"
-            " cannot see them. Pass --baseline with hand-authored maxima for those stages, or do not"
-            " supply this catalog at all -- without it the server does not constrain reported outcomes."
-        )
+        if not report["scenario_stages_joined"]:
+            print(
+                "    Chapters 2-7 are scripted in MoonSharp rather than natively, so the native"
+                " encounter import cannot see them. Pass --scenario-encounters to cover them."
+            )
     for note in notes:
         print(f"  note: {note}")
     return 0

@@ -59,6 +59,11 @@ project also includes:
   programs out of a reviewed APK, using the user's Il2CppDumper `dump.cs` and a
   local `objdump`; feeds `liminal-gate-generate-story-outcomes`. See
   [Advanced local configuration](advanced-configuration.md#composing-a-story-outcome-catalog-from-your-own-recovered-drops).
+  Chapters 2--7 have no compiled battle program at all — their encounters are
+  placed by the client's embedded MoonSharp scenario scripts — so
+  `liminal-gate-generate-story-outcomes` also accepts `--scenario-encounters`,
+  a map in the same stage schema with its own separately validated provenance.
+  No reference decoder for those scripts ships here yet.
 
 Run any tool with `--help` for its exact arguments.
 

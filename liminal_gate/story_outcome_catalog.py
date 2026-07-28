@@ -26,6 +26,10 @@ class StoryOutcomeRule:
     item_maxima: dict[int, int]
     character_maxima: dict[int, int]
     companion_maxima: dict[int, int]
+    #: Whether a recovered source could speak to this stage's item and character
+    #: outcome at all.  False means "unknown", not "nothing"; see `_evidence`.
+    item_evidence: bool = True
+    character_evidence: bool = True
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,32 @@ def _valid_sha256(value: object) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
+def _scenario_provenance(scenario: object, value: dict[str, object]) -> None:
+    """Check the MoonSharp scenario map's recorded provenance.
+
+    Held to the same standard as the native map beside it: it must name the same
+    APK, and it must account for every chapter listing it read rather than
+    asserting coverage in the abstract.
+    """
+    required = {"profile", "apk_sha256", "format", "decoder", "chapter_sha256"}
+    if (
+        not isinstance(scenario, dict)
+        or set(scenario) != required
+        or scenario.get("profile") != value["profile"]
+        or scenario.get("apk_sha256") != value["apk_sha256"]
+        or scenario.get("format") != "moonsharp-binary-dump"
+        or not isinstance(scenario.get("decoder"), str)
+        or not scenario["decoder"]
+        or not isinstance(scenario.get("chapter_sha256"), dict)
+        or not scenario["chapter_sha256"]
+        or not all(
+            isinstance(chapter, str) and chapter.isdecimal() and _valid_sha256(digest)
+            for chapter, digest in scenario["chapter_sha256"].items()
+        )
+    ):
+        raise StoryOutcomeCatalogError("story-outcome catalog has invalid scenario source provenance")
+
+
 def _source(value: object) -> None:
     required = {
         "profile",
@@ -82,10 +112,17 @@ def _source(value: object) -> None:
         "character_catalog_sha256",
         "native_encounters",
     }
+    # A scenario encounter map is optional and comes in as a pair: the file's own
+    # hash and the provenance of the chapter listings it was decoded from.  The
+    # two are accepted or refused together, so a catalog cannot name one without
+    # accounting for the other.
+    scenario = {"scenario_encounters_sha256", "scenario_encounters"}
+    optional = {frozenset(), frozenset({"baseline_sha256"})}
+    optional |= {names | scenario for names in frozenset(optional)}
     if (
         not isinstance(value, dict)
         or not required <= set(value)
-        or set(value) - required not in (set(), {"baseline_sha256"})
+        or frozenset(set(value) - required) not in optional
         or value.get("profile") != "terra-battle-android-5.5.7-170"
         or not all(
             _valid_sha256(value.get(field))
@@ -99,8 +136,14 @@ def _source(value: object) -> None:
             "baseline_sha256" in value
             and not _valid_sha256(value["baseline_sha256"])
         )
+        or (
+            "scenario_encounters_sha256" in value
+            and not _valid_sha256(value["scenario_encounters_sha256"])
+        )
     ):
         raise StoryOutcomeCatalogError("story-outcome catalog has invalid source provenance")
+    if "scenario_encounters" in value:
+        _scenario_provenance(value["scenario_encounters"], value)
     native = value["native_encounters"]
     native_required = {
         "profile",
@@ -142,9 +185,33 @@ def _master(value: object) -> CompanionDropMaster:
 
 def _rule(value: object) -> StoryOutcomeRule:
     required = {"chapter", "section", "item_maxima", "character_maxima", "companion_maxima"}
-    if not isinstance(value, dict) or set(value) != required or type(value["chapter"]) is not int or type(value["section"]) is not int or value["chapter"] < 2 or value["section"] < 1:
+    if not isinstance(value, dict) or set(value) - {"evidence"} != required or type(value["chapter"]) is not int or type(value["section"]) is not int or value["chapter"] < 2 or value["section"] < 1:
         raise StoryOutcomeCatalogError("each stage has an invalid identity")
-    return StoryOutcomeRule(value["chapter"], value["section"], _maxima(value["item_maxima"]), _maxima(value["character_maxima"]), _maxima(value["companion_maxima"]))
+    return StoryOutcomeRule(
+        value["chapter"], value["section"],
+        _maxima(value["item_maxima"]), _maxima(value["character_maxima"]), _maxima(value["companion_maxima"]),
+        *_evidence(value.get("evidence")),
+    )
+
+
+def _evidence(value: object) -> tuple[bool, bool]:
+    """Read a stage's optional evidence declaration as ``(items, characters)``.
+
+    A ceiling of zero and a ceiling nobody could recover are both an empty
+    ``maxima`` object, and enforcement must not treat them alike: the first is a
+    statement that the stage drops nothing, the second is an admission that we
+    do not know.  Since an empty ceiling forbids, conflating them refuses
+    ordinary play on every stage whose encounters could not be joined.
+
+    Absent means both are evidenced, which keeps an operator-authored catalog
+    written before this field behaving exactly as it did.  A catalog the
+    generator produces always states the field explicitly.
+    """
+    if value is None:
+        return True, True
+    if not isinstance(value, list) or any(entry not in {"items", "characters"} for entry in value) or len(set(value)) != len(value):
+        raise StoryOutcomeCatalogError("stage evidence must be a unique list of 'items' and/or 'characters'")
+    return "items" in value, "characters" in value
 
 
 def _maxima(value: object) -> dict[int, int]:
