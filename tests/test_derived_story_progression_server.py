@@ -97,9 +97,23 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         status, cleared = self.post(clear_path, clear)
         self.assertEqual(200, status)
         self.assertEqual(7, cleared["coins"])
+        # Completing the ordinary Chapter 2 boundary is an explicit local
+        # preservation policy: the confirmed fill origin returns to the
+        # client's full-meter representation.  It is durable before the clear
+        # reply is cached, so retries cannot grant anything further.
+        with self.server.state.lock:
+            self.assertEqual(
+                0.0,
+                self.server.state.accounts[self.account_id]["userdata"]["refillStartTime"],
+            )
         self.assertEqual(200, self.post(clear_path, clear)[0])
         self.stop_server()
         self.start_server()
+        with self.server.state.lock:
+            self.assertEqual(
+                0.0,
+                self.server.state.accounts[self.account_id]["userdata"]["refillStartTime"],
+            )
         reveal = [("progressCode", str(0x010000C1)), ("worldMapNo", "0"), ("lastUpdate", "1")]
         reveal_path = f"/gd/userdata?otk={self.token}&requestID=reveal-3-1"
         status, revealed = self.post(reveal_path, reveal)
@@ -121,6 +135,9 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         persisted = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.assertEqual(0x010000C1, persisted["accounts"][self.account_id]["userdata"]["progressCode"])
         self.assertEqual(7, persisted["accounts"][self.account_id]["userdata"]["coins"])
+        # Starting Chapter 3 consumes from that restored full meter, proving
+        # that the chapter clear did not merely alter a cached response.
+        self.assertGreater(persisted["accounts"][self.account_id]["userdata"]["refillStartTime"], 0.0)
         # The seeded 50, plus the preservation stage award for clearing 2-5
         # and the one-time award for completing Chapter 2; see `archive_economy`.
         self.assertEqual(102, persisted["accounts"][self.account_id]["userdata"]["freeEnergy"])

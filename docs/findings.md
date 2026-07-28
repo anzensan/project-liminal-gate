@@ -36,6 +36,11 @@ Private inputs, captures, account state, and original assets remain excluded.
   battle resources.
 - **Local policy:** the country roster and large character/Companion box sizes
   are compatibility fixtures, not recovered production-service values.
+- **Local policy with confirmed client meter semantics:** a successful
+  chapter-boundary clear in either ordinary core-story catalog writes
+  `refillStartTime: 0.0`, the client's full-meter representation. The rule is
+  replay- and restart-safe and excludes intermediate story stages, Hunting,
+  events, and World Map Special; it is not a claim about historical rewards.
 
 ## Account and mutation behavior
 

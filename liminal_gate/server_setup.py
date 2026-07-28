@@ -20,6 +20,13 @@ class ServerSetupError(RuntimeError):
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
 DEFAULT_DATA = Path("user-data")
 DEFAULT_PROFILE = Path("profiles/legacy-client-bootstrap.json")
+#: A story-outcome catalog under this name in the data directory is picked up
+#: automatically.  Story Companion drops are discarded without one -- the client
+#: rolls them and `clear_quest` has no authority to mint them -- and composing
+#: one needs the operator's own APK, so it cannot be bundled.  Naming it by
+#: convention beside the state file lets an operator who has built one enable
+#: drops by dropping the file in place, with no launcher or unit-file change.
+DEFAULT_OUTCOME_CATALOG = "story-outcomes.json"
 REQUIRED_RESOURCE_CATEGORIES = (
     "BG",
     "BGM",
@@ -90,14 +97,41 @@ def prepare_server(resource_root: Path, data_directory: Path) -> tuple[Path, Pat
     return resolved_resources, resolved_data, len(manifest["resources"])
 
 
+def resolve_story_outcome_catalog(requested: Path | None, data_directory: Path) -> Path | None:
+    """Choose the story-outcome catalog to run with, if there is one.
+
+    An explicit path must exist -- silently ignoring a mistyped one would look
+    exactly like the failure it is meant to fix, a server that quietly drops
+    every Companion.  With no explicit path the conventional name in the data
+    directory is used when present, and its absence is not an error.
+    """
+    if requested is not None:
+        resolved = requested.resolve()
+        if not resolved.is_file():
+            raise ServerSetupError(f"story-outcome catalog does not exist: {requested}")
+        return resolved
+    candidate = (data_directory / DEFAULT_OUTCOME_CATALOG).resolve()
+    return candidate if candidate.is_file() else None
+
+
 def server_arguments(
     resource_root: Path,
     data_directory: Path,
     host: str,
     port: int,
     profile: Path = DEFAULT_PROFILE,
+    story_outcome_catalog: Path | None = None,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
+    outcome_flags = (
+        []
+        if story_outcome_catalog is None
+        # Companion-only on purpose. This launcher's job is to make story drops
+        # settle; the same catalog's item and character ceilings are incomplete
+        # for the chapters the encounter import cannot reach, and an empty
+        # ceiling forbids, so enforcing them here would refuse ordinary play.
+        else ["--story-outcome-catalog", str(story_outcome_catalog), "--outcome-companions-only"]
+    )
     return [
         sys.executable,
         "-m",
@@ -119,6 +153,7 @@ def server_arguments(
         "--public-data-root",
         str(data_directory / "public_data"),
         *STANDARD_POLICY_FLAGS,
+        *outcome_flags,
     ]
 
 
@@ -147,6 +182,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8002)
     parser.add_argument(
+        "--story-outcome-catalog",
+        type=Path,
+        help=(
+            "story-outcome catalog enabling story Companion drops; defaults to "
+            f"{DEFAULT_OUTCOME_CATALOG} in the data directory when that file exists"
+        ),
+    )
+    parser.add_argument(
         "--prepare-only",
         action="store_true",
         help="validate and hash resources without starting the server",
@@ -166,6 +209,16 @@ def main() -> int:
         )
         print(f"Prepared server resource manifest: {resource_count} mapped entries")
         print(f"Durable account state: {data_directory / 'bootstrap-state.json'}")
+        outcome_catalog = resolve_story_outcome_catalog(
+            args.story_outcome_catalog, data_directory
+        )
+        if outcome_catalog is None:
+            print(
+                "Story Companion drops: OFF (no story-outcome catalog; the client "
+                "rolls them and the server discards them)"
+            )
+        else:
+            print(f"Story Companion drops: ON from {outcome_catalog}")
         if args.prepare_only:
             return 0
         print(
@@ -178,6 +231,7 @@ def main() -> int:
                 data_directory,
                 args.host,
                 args.port,
+                story_outcome_catalog=outcome_catalog,
             )
         )
     except (OSError, ResourceCatalogError, ServerSetupError, subprocess.CalledProcessError) as error:

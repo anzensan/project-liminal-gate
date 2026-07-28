@@ -88,7 +88,11 @@ unchanged.
 The guided setup uses `--core-story`: it carries only the ordered Chapter 2--42
 identities and successor/map-reveal rules. It deliberately accepts each
 ordinary stage's nonnegative client-sent stamina and coin fields and does not
-bundle a cost/reward table.
+bundle a cost/reward table. As explicit local preservation policy, a successful
+clear of the final stage in each ordinary chapter also restores the stamina
+meter. The same rule applies to the stricter derived core-story catalog below;
+Hunting, events, World Map Special, and intermediate story stages do not
+receive that restoration.
 
 For a stricter local installation, derive the reviewed APK's stage metadata
 with optional local Unity/IL2CPP parser dependencies and locally derived dummy

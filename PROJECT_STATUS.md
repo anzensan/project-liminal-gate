@@ -20,6 +20,12 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 ordinary chapter completion restores stamina as explicit local
+  preservation policy: a successful core-story chapter-boundary clear commits
+  `refillStartTime: 0.0`, the final client's own full-meter representation.
+  The same durable clear transaction and cached response protect retry and
+  restart behavior; individual story stages, Hunting, events, and World Map
+  Special remain unchanged. This is not a claim about the historical service.
 - 2026-07-28 a refused write says why: an `unsupported_*` result recorded only
   the field list, which cannot distinguish a supported form from a refused one
   — six live equip writes were refused on a field tuple that the same client
