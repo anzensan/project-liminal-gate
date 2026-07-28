@@ -669,15 +669,16 @@ unlocks, Rebirth, and status items are all enabled — setup no longer asks you
 to choose between them. To isolate one feature while troubleshooting, run
 `liminal_gate.bootstrap_server` directly with only the flags you want; see
 [docs/advanced-configuration.md](docs/advanced-configuration.md).
-Story battles award Companions only when a story-outcome catalog derived from
-your own APK is present — the client rolls the drop and the server otherwise has
-no authority to mint it, so it is discarded. Setup derives that catalog for you
-when you give it `--dummy-dll-dir`, and prints how many stages can drop a
-Companion. Without it, Metal Zone still drops its two Companions, because those
-come from the bundled Hunting policy instead, and story battles drop none. The
-catalog bounds the Companion drop and nothing else, so it can only add drops,
-never refuse a clear you would otherwise have passed; see [What the catalog
-enforces, and what it admits it cannot](docs/advanced-configuration.md#what-the-catalog-enforces-and-what-it-admits-it-cannot).
+Setup derives everything the full game needs from your own APK, including the
+story-outcome catalog that lets a battle award a Companion at all. That
+derivation needs [Il2CppDumper](https://github.com/Perfare/Il2CppDumper) and a
+disassembler that reads AArch64 (LLVM, or `binutils-multiarch` on Linux). Setup
+runs Il2CppDumper itself — both its inputs are already inside your APK — so you
+only need it installed and findable, on `PATH` or via
+`LIMINAL_GATE_IL2CPPDUMPER`. If either tool is missing, setup says so in the
+first few seconds and names the fix rather than installing a game that quietly
+drops nothing.
+
 An advanced event question appears only for people who already have a reviewed
 local event catalog. **DummyDll is not required for normal play, Hunting,
 Special Quests, or Tower.** It is generated analysis metadata from your own APK

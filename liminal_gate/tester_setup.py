@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from typing import Callable, Sequence
@@ -76,12 +77,12 @@ class LocalServerOptions:
     companion_evolution: bool = True
     trading_post: bool = True
     event_catalog: Path | None = None
-    dummy_dll_dir: Path | None = None
 
 
 DEFAULT_APK = Path("local-input/terra-battle-5.5.7-170.apk")
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
 DEFAULT_DATA = Path("user-data")
+DEFAULT_DUMMY_DLL = Path("local-input/il2cpp-output/DummyDll")
 KEY_ALIAS = "liminal-gate-test"
 # Inside an Android emulator this alias reaches the host machine's loopback.
 # A physical phone or tablet must instead be given the host's own LAN address.
@@ -479,16 +480,92 @@ def write_local_names(path: Path, apk: Path, trees: dict[str, dict[str, object]]
 _OBJDUMP_CANDIDATES = ("llvm-objdump", "objdump", "gobjdump")
 
 
-#: Said at setup time rather than discovered as an empty Companion box hours
-#: later.  Every other feature works without a DummyDll directory, so nothing
-#: else in the run hints that one outcome is missing: the catalog that lets a
-#: clear mint a Companion is composed from master data whose field layout exists
-#: only in the compiled code, which is what the DummyDll directory recovers.
-STORY_DROPS_NEED_DUMMY_DLL = (
-    "Story Companion drops: OFF -- deriving them needs --dummy-dll-dir "
-    "(see docs/advanced-configuration.md). Everything else works without it; "
-    "Metal Zone Companions still drop."
+#: The two APK members Il2CppDumper needs.  **arm64-v8a deliberately.**  The APK
+#: also ships `armeabi-v7a`, whose addresses differ from every offset this
+#: project records, and a 32-bit dump would produce type trees that parse but
+#: encounter data that does not line up.
+IL2CPP_LIBRARY_MEMBER = "lib/arm64-v8a/libil2cpp.so"
+IL2CPP_METADATA_MEMBER = "assets/bin/Data/Managed/Metadata/global-metadata.dat"
+
+#: Where setup keeps a dump it produced itself, so a second run reuses it rather
+#: than spending the time again.
+IL2CPP_OUTPUT_DIRECTORY = "il2cpp"
+
+#: How to reach Il2CppDumper.  It is a separate .NET project, not shipped here:
+#: this release is source-only and its output is derived from the operator's own
+#: copyrighted game data, so neither the tool nor its results can be bundled.
+#: An explicit path wins; otherwise a native build on PATH, then a managed
+#: assembly run through `dotnet`.
+IL2CPP_DUMPER_ENVIRONMENT = "LIMINAL_GATE_IL2CPPDUMPER"
+IL2CPP_DUMPER_NAMES = ("Il2CppDumper", "Il2CppDumper.exe")
+
+IL2CPP_DUMPER_MISSING = (
+    "complete guided setup requires Il2CppDumper, which recovers the master-data field layout "
+    "an IL2CPP build strips. Install it (https://github.com/Perfare/Il2CppDumper), then either "
+    f"put it on PATH or set {IL2CPP_DUMPER_ENVIRONMENT} to the executable or its .dll, and re-run "
+    "setup. Pass --dummy-dll-dir instead if you already have its output."
 )
+
+
+def find_il2cpp_dumper() -> tuple[str, ...] | None:
+    """Return the command that runs Il2CppDumper, or `None` if it is absent."""
+    configured = os.environ.get(IL2CPP_DUMPER_ENVIRONMENT, "").strip()
+    if configured:
+        path = Path(configured)
+        if path.is_file():
+            if path.suffix.lower() == ".dll":
+                dotnet = shutil.which("dotnet")
+                return (dotnet, str(path)) if dotnet else None
+            return (str(path),)
+        return None
+    for name in IL2CPP_DUMPER_NAMES:
+        located = shutil.which(name)
+        if located is not None:
+            return (located,)
+    return None
+
+
+def ensure_il2cpp_dump(apk: Path, data_directory: Path) -> tuple[Path, Path]:
+    """Produce `(DummyDll, dump.cs)` from the APK, reusing an earlier run.
+
+    Both inputs live inside the APK, so nothing here asks the operator for a
+    file they would have to extract themselves.  A shortfall stops setup before
+    the APK is patched and installed: the guided path is the complete supported
+    local game, and an install that silently loses every story Companion the
+    client rolls is not that.
+    """
+    output = data_directory / IL2CPP_OUTPUT_DIRECTORY
+    dummy_dll, dump_cs = output / "DummyDll", output / "dump.cs"
+    if dummy_dll.is_dir() and any(dummy_dll.glob("*.dll")) and dump_cs.is_file():
+        print(f"Reusing the local IL2CPP dump in {output}.")
+        return dummy_dll, dump_cs
+    command = find_il2cpp_dumper()
+    if command is None:
+        raise TesterSetupError(IL2CPP_DUMPER_MISSING)
+    print("Recovering the master-data layout from your APK with Il2CppDumper...")
+    try:
+        output.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as directory:
+            staged = Path(directory)
+            with zipfile.ZipFile(apk) as archive:
+                for member, name in (
+                    (IL2CPP_LIBRARY_MEMBER, "libil2cpp.so"),
+                    (IL2CPP_METADATA_MEMBER, "global-metadata.dat"),
+                ):
+                    (staged / name).write_bytes(archive.read(member))
+            completed = subprocess.run(
+                (*command, str(staged / "libil2cpp.so"), str(staged / "global-metadata.dat"), str(output)),
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=1800,
+            )
+    except (OSError, KeyError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
+        raise TesterSetupError(f"complete guided setup could not run Il2CppDumper: {error}") from error
+    if completed.returncode or not dummy_dll.is_dir() or not dump_cs.is_file():
+        detail = (completed.stderr or completed.stdout or "").strip().splitlines()
+        raise TesterSetupError(
+            "complete guided setup needs Il2CppDumper to produce a DummyDll directory and dump.cs"
+            + (f", but it reported: {detail[-1]}" if detail else "")
+        )
+    return dummy_dll, dump_cs
 
 
 def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> str | None:
@@ -518,8 +595,8 @@ def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> s
 
 def derive_story_outcome_catalog(
     apk: Path, dummy_dll_dir: Path, data_directory: Path, dump_cs: Path | None = None,
-) -> Path | None:
-    """Compose the story-outcome catalog the drop path needs, if it can.
+) -> Path:
+    """Compose the required story-outcome catalog for the guided local game.
 
     Without this file a clear mints no Companion at all: the client rolls the
     drop and `clear_quest` has no authority to write it, so the whole story can
@@ -527,29 +604,26 @@ def derive_story_outcome_catalog(
     the operator's own APK -- so the guided setup derives it, leaving it under
     the name `server_setup` already looks for.
 
-    Returns the catalog path, or `None` when a prerequisite is missing.  A
-    missing disassembler must not fail an install that is otherwise fine, so the
-    shortfall is reported and setup continues; every other feature works, and
-    only story Companion drops stay off.
+    The guided setup is the complete supported local path, not a reduced
+    fallback. Missing inputs or tools therefore stop before the APK is patched
+    and installed rather than presenting a game that silently loses every
+    story Companion the client rolls.
     """
     resolved_dump_cs = dump_cs if dump_cs is not None else dummy_dll_dir.parent / "dump.cs"
     if not resolved_dump_cs.is_file():
-        print(
-            "Story Companion drops: skipped -- no dump.cs beside the DummyDll directory "
-            f"(looked for {resolved_dump_cs}). It is written by the same Il2CppDumper run."
+        raise TesterSetupError(
+            "complete guided setup requires dump.cs beside the DummyDll directory "
+            f"(looked for {resolved_dump_cs}); it is written by the same Il2CppDumper run"
         )
-        return None
     objdump = find_aarch64_objdump()
     if objdump is None:
-        print(
-            "Story Companion drops: skipped -- no disassembler on PATH that reads AArch64. "
-            "Install LLVM (llvm-objdump) or binutils-multiarch, then re-run setup."
+        raise TesterSetupError(
+            "complete guided setup requires an AArch64 disassembler; install LLVM "
+            "(llvm-objdump) or binutils-multiarch, then re-run setup"
         )
-        return None
     character_catalog = data_directory / "character-catalog.json"
     if not character_catalog.is_file():
-        print("Story Companion drops: skipped -- the local character catalog was not derived.")
-        return None
+        raise TesterSetupError("complete guided setup could not derive the local character catalog")
     derived = data_directory / "derived"
     derived.mkdir(parents=True, exist_ok=True)
     catalog_path = data_directory / DEFAULT_OUTCOME_CATALOG
@@ -580,8 +654,7 @@ def derive_story_outcome_catalog(
         NativeEncounterImportError, ScenarioEncounterImportError, StoryOutcomeGeneratorError,
         StoryOutcomeCatalogError, CharacterCatalogImportError, OSError,
     ) as error:
-        print(f"Story Companion drops: skipped -- {error}")
-        return None
+        raise TesterSetupError(f"complete guided setup could not derive story Companion drops: {error}") from error
     print(
         f"Story Companion drops: ON -- {report['core_stages_with_companion_ceiling']} story stage(s) "
         f"can mint a Companion, {report['distinct_companions']} distinct Companion(s)."
@@ -599,7 +672,7 @@ def prepare_local_tester(
     apk: Path, resource_root: Path, data_directory: Path, port: int, build_tools: Path | None,
     dummy_dll_dir: Path | None = None, event_catalog: Path | None = None,
     device_host: str = EMULATOR_LOOPBACK_HOST,
-    derive_drops: bool = True, dump_cs: Path | None = None,
+    dump_cs: Path | None = None,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
     if not 1 <= port <= 65535:
@@ -619,18 +692,33 @@ def prepare_local_tester(
     keystore, password_file = data_directory / "liminal-gate-test.keystore", data_directory / "keystore-password.txt"
     ensure_keystore(keystore, password_file)
     zipalign, apksigner = find_build_tools(build_tools)
+    # Checked alongside the SDK tools and the signing password, so an incomplete
+    # toolchain costs seconds rather than surfacing after the whole resource tree
+    # has been inventoried. Either route to the master-data layout will do; only
+    # having neither stops setup.
+    if (dummy_dll_dir is None or not dummy_dll_dir.is_dir()) and find_il2cpp_dumper() is None:
+        raise TesterSetupError(
+            "complete guided setup needs the master-data layout an IL2CPP build strips, without "
+            "which story clears mint no Companion. Either point --dummy-dll-dir at an Il2CppDumper "
+            f"DummyDll directory (default {DEFAULT_DUMMY_DLL}), or install Il2CppDumper "
+            "(https://github.com/Perfare/Il2CppDumper) and put it on PATH or in "
+            f"{IL2CPP_DUMPER_ENVIRONMENT} so setup can produce one from your APK."
+        )
     try:
         imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True)
         write_import_manifest(data_directory / "input-manifest", imported)
-        if dummy_dll_dir is not None:
-            trees = load_master_trees(apk, dummy_dll_dir, ("ChrDatabase", "ItemSet", "BuddyDatabase"))
-            character_catalog = build_character_catalog(trees["ChrDatabase"], sha256_file(apk))
-            write_character_catalog(data_directory / "character-catalog.json", character_catalog)
-            write_local_names(data_directory / "names.json", apk, trees)
-            if derive_drops:
-                derive_story_outcome_catalog(apk, dummy_dll_dir, data_directory, dump_cs)
-        elif derive_drops:
-            print(STORY_DROPS_NEED_DUMMY_DLL)
+        if dummy_dll_dir is None or not dummy_dll_dir.is_dir():
+            # The default location is a hint, not a requirement. When nothing is
+            # there, setup produces the dump itself: both Il2CppDumper inputs
+            # live inside the APK it was already given, so this asks the
+            # operator for nothing beyond having the tool installed.
+            dummy_dll_dir, discovered = ensure_il2cpp_dump(apk, data_directory)
+            dump_cs = dump_cs if dump_cs is not None else discovered
+        trees = load_master_trees(apk, dummy_dll_dir, ("ChrDatabase", "ItemSet", "BuddyDatabase"))
+        character_catalog = build_character_catalog(trees["ChrDatabase"], sha256_file(apk))
+        write_character_catalog(data_directory / "character-catalog.json", character_catalog)
+        write_local_names(data_directory / "names.json", apk, trees)
+        derive_story_outcome_catalog(apk, dummy_dll_dir, data_directory, dump_cs)
         manifest = build_resource_manifest(resource_root)
         resource_manifest = data_directory / "resources.json"
         write_resource_manifest(resource_manifest, manifest)
@@ -698,6 +786,9 @@ def server_arguments(
         arguments.append("--achievements")
     if summon_skills:
         arguments.append("--summon-skills")
+    arguments.extend((
+        "--story-outcome-catalog", str((data_directory / DEFAULT_OUTCOME_CATALOG).resolve()),
+    ))
     if event_catalog is not None:
         arguments.extend((
             "--event-catalog", str(event_catalog.resolve()),
@@ -720,7 +811,7 @@ def _ask_yes_no(prompt: str, default: bool, ask: Callable[[str], str] = input) -
 
 
 def choose_local_server_options(
-    event_catalog: Path | None, dummy_dll_dir: Path | None, ask: Callable[[str], str] = input,
+    event_catalog: Path | None, ask: Callable[[str], str] = input,
 ) -> LocalServerOptions:
     """Prompt only for what an operator must actually supply.
 
@@ -735,7 +826,7 @@ def choose_local_server_options(
     print("Story, Hunting zones, Pacts, and Companions are all enabled.")
     print("Custom drop-rate controls are not available yet.")
     enable_events = _ask_yes_no(
-        "Do you already have an advanced local event catalog and DummyDll files", event_catalog is not None, ask,
+        "Do you already have an advanced local event catalog", event_catalog is not None, ask,
     )
     if not enable_events:
         return LocalServerOptions()
@@ -744,12 +835,7 @@ def choose_local_server_options(
         if not raw:
             raise TesterSetupError("an event catalog path is required when local events are enabled")
         event_catalog = Path(raw)
-    if dummy_dll_dir is None:
-        raw = ask("Path to your local Il2CppDumper DummyDll directory: ").strip()
-        if not raw:
-            raise TesterSetupError("a DummyDll directory is required when local events are enabled")
-        dummy_dll_dir = Path(raw)
-    return LocalServerOptions(event_catalog=event_catalog, dummy_dll_dir=dummy_dll_dir)
+    return LocalServerOptions(event_catalog=event_catalog)
 
 
 def run_server(arguments: Sequence[str]) -> None:
@@ -776,13 +862,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--build-tools", type=Path, help="Android SDK Build Tools version directory")
-    parser.add_argument("--dummy-dll-dir", type=Path, help="optional local Il2CppDumper DummyDll directory; derives user-data/character-catalog.json and the story Companion drop catalog")
+    parser.add_argument(
+        "--dummy-dll-dir", type=Path, default=DEFAULT_DUMMY_DLL,
+        help=(
+            "local Il2CppDumper DummyDll directory; required for the complete guided "
+            f"setup (default: {DEFAULT_DUMMY_DLL})"
+        ),
+    )
     parser.add_argument("--event-catalog", type=Path, help="optional user-local event-stage catalog; requires --dummy-dll-dir")
     parser.add_argument("--dump-cs", type=Path, help="Il2CppDumper dump.cs; defaults to the file beside --dummy-dll-dir")
-    parser.add_argument(
-        "--no-story-drops", dest="derive_drops", action="store_false",
-        help="skip deriving the story Companion drop catalog; story clears then mint no Companion",
-    )
     parser.add_argument("--no-configure", dest="configure", action="store_false", help="skip interactive local-server options and use the standard defaults")
     parser.set_defaults(configure=True)
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
@@ -863,9 +951,9 @@ def main() -> int:
     args = parse_args()
     try:
         options = (
-            choose_local_server_options(args.event_catalog, args.dummy_dll_dir)
+            choose_local_server_options(args.event_catalog)
             if args.configure and sys.stdin.isatty()
-            else LocalServerOptions(event_catalog=args.event_catalog, dummy_dll_dir=args.dummy_dll_dir)
+            else LocalServerOptions(event_catalog=args.event_catalog)
         )
         # Chosen before the APK is built so an ambiguous target, or an address
         # the target cannot reach, is reported in seconds rather than after the
@@ -877,8 +965,8 @@ def main() -> int:
             check_device_host_suits_device(device, args.device_host)
         signed = prepare_local_tester(
             args.apk, args.resource_root, args.data_dir, args.port, args.build_tools,
-            options.dummy_dll_dir, options.event_catalog, args.device_host,
-            derive_drops=args.derive_drops, dump_cs=args.dump_cs,
+            args.dummy_dll_dir, options.event_catalog, args.device_host,
+            dump_cs=args.dump_cs,
         )
         if device is None:
             return 0

@@ -30,7 +30,7 @@ class GuidedServerPolicyTest(unittest.TestCase):
 
     def choose(self):
         """Answer the only remaining prompt: decline the event catalog."""
-        return choose_local_server_options(None, None, ask=lambda _: "n")
+        return choose_local_server_options(None, ask=lambda _: "n")
 
     def test_setup_enables_every_built_in_policy(self) -> None:
         # The mode prompt was removed: it only ever subtracted content from a
@@ -51,7 +51,7 @@ class GuidedServerPolicyTest(unittest.TestCase):
 
 class TesterSetupTest(unittest.TestCase):
 
-    def test_optional_dummy_dll_directory_derives_local_character_catalog(self) -> None:
+    def test_required_dummy_dll_directory_derives_local_character_catalog(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); apk = root / "game.apk"; resources = root / "resources"; data = root / "user-data"; dummy = root / "DummyDll"
             apk.write_bytes(b"apk"); dummy.mkdir()
@@ -60,7 +60,7 @@ class TesterSetupTest(unittest.TestCase):
             with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.load_master_trees", return_value={
                 "ChrDatabase": {"infos": [{"ID": 3, "chrType": 1, "isLambda": 0, "rebirthFromID": 0, "rarity": 4, "Jobs": [30]}]},
                 "ItemSet": {"itemSet": []}, "BuddyDatabase": {"data": []},
-            }), patch("liminal_gate.tester_setup.write_local_names"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
+            }), patch("liminal_gate.tester_setup.write_local_names"), patch("liminal_gate.tester_setup.derive_story_outcome_catalog", return_value=data / "story-outcomes.json"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
                 prepare_local_tester(apk, resources, data, 8696, None, dummy)
             self.assertTrue((data / "character-catalog.json").is_file())
     def test_requires_explicit_choice_when_multiple_devices_are_ready(self) -> None:
@@ -174,6 +174,10 @@ class TesterSetupTest(unittest.TestCase):
         self.assertIn("user-data/resources.json", arguments)
         self.assertIn("user-data/public_data", arguments)
         self.assertIn("0.0.0.0", arguments)
+        self.assertEqual(
+            ["--story-outcome-catalog", str((Path("user-data") / "story-outcomes.json").resolve())],
+            arguments[-2:],
+        )
 
     def test_event_catalog_is_started_with_the_matching_local_character_catalog(self) -> None:
         data = Path("user-data")
@@ -194,15 +198,13 @@ class TesterSetupTest(unittest.TestCase):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
 
     def test_interactive_setup_asks_only_about_the_event_catalog(self) -> None:
-        options = choose_local_server_options(None, None, lambda _: "n")
+        options = choose_local_server_options(None, lambda _: "n")
         self.assertIsNone(options.event_catalog)
-        self.assertIsNone(options.dummy_dll_dir)
 
-    def test_interactive_options_require_local_event_inputs(self) -> None:
-        answers = iter(("y", "local/events.json", "local/DummyDll"))
-        options = choose_local_server_options(None, None, lambda _: next(answers))
+    def test_interactive_options_require_a_local_event_catalog(self) -> None:
+        answers = iter(("y", "local/events.json"))
+        options = choose_local_server_options(None, lambda _: next(answers))
         self.assertEqual(Path("local/events.json"), options.event_catalog)
-        self.assertEqual(Path("local/DummyDll"), options.dummy_dll_dir)
 
     def test_runs_server_with_argument_sequence(self) -> None:
         arguments = ["python", "-m", "liminal_gate.bootstrap_server", "--resource-root", r"C:\\Local Files\\android"]
@@ -302,7 +304,17 @@ class LocalSigningToolTest(unittest.TestCase):
             apk.write_bytes(b"apk")
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (resources / category).mkdir(parents=True, exist_ok=True)
-            with patch("liminal_gate.tester_setup.ensure_keystore", side_effect=lambda *_: order.append("keystore")), \
+            # Setup now requires the master-data layout, so one is supplied and
+            # the derivations that consume it are stubbed; this is about the
+            # order of the checks, not about what they produce.
+            dummy_dll = root / "DummyDll"
+            dummy_dll.mkdir()
+            with patch("liminal_gate.tester_setup.load_master_trees", return_value={"ChrDatabase": {}}), \
+                 patch("liminal_gate.tester_setup.build_character_catalog", return_value={}), \
+                 patch("liminal_gate.tester_setup.write_character_catalog"), \
+                 patch("liminal_gate.tester_setup.write_local_names"), \
+                 patch("liminal_gate.tester_setup.derive_story_outcome_catalog"), \
+                 patch("liminal_gate.tester_setup.ensure_keystore", side_effect=lambda *_: order.append("keystore")), \
                  patch("liminal_gate.tester_setup.find_build_tools", side_effect=lambda *_: order.append("build-tools") or (root / "zipalign", root / "apksigner")), \
                  patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: order.append("inventory") or {}), \
                  patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), \
@@ -310,7 +322,7 @@ class LocalSigningToolTest(unittest.TestCase):
                  patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), \
                  patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), \
                  patch("liminal_gate.tester_setup.sign_apk"):
-                prepare_local_tester(apk, resources, root / "user-data", 8696, None)
+                prepare_local_tester(apk, resources, root / "user-data", 8696, None, dummy_dll_dir=dummy_dll)
         self.assertEqual(["keystore", "build-tools", "inventory"], order)
 
 

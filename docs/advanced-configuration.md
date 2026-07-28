@@ -77,19 +77,30 @@ python3 -m liminal_gate.tester_setup \
   --dummy-dll-dir /path/to/il2cpp-output/DummyDll
 ```
 
-With it, setup additionally writes `user-data/character-catalog.json`,
-`user-data/names.json` (character, item, and Companion names decoded from your
-own metadata, for the save editor), and `user-data/story-outcomes.json`, the
-catalog that lets a story clear mint a Companion at all. All stay in the ignored
-data directory. Without it, setup skips them and says so; everything else works
-unchanged, but story battles award no Companions.
+Setup writes `user-data/character-catalog.json`, `user-data/names.json`
+(character, item, and Companion names decoded from your own metadata, for the
+save editor), and `user-data/story-outcomes.json`, the catalog without which a
+story clear mints no Companion at all. All stay in the ignored data directory.
 
-Deriving the drop catalog also needs `dump.cs` — the sibling of `DummyDll` in
-the Il2CppDumper output, found automatically or set with `--dump-cs` — and a
-disassembler on `PATH` that reads AArch64. Setup confirms that rather than
-assuming it, because a stock GNU `objdump` is often single-target; install LLVM
-or `binutils-multiarch` if it reports none. A missing prerequisite is reported
-and skipped, never fatal. `--no-story-drops` skips the step outright.
+**You do not have to run Il2CppDumper yourself.** If `--dummy-dll-dir` names no
+existing directory, setup runs it for you: both its inputs — `libil2cpp.so` and
+`global-metadata.dat` — are already inside the APK you gave it, so nothing is
+asked of you beyond having the tool installed. The result is kept under
+`user-data/il2cpp/` and reused on later runs. Point `--dummy-dll-dir` at output
+you already have to skip that step.
+
+Setup needs to find Il2CppDumper on `PATH` or via the
+`LIMINAL_GATE_IL2CPPDUMPER` environment variable, which may name either a native
+executable or its `.dll` (run through `dotnet`). It also needs a disassembler
+that reads AArch64. Support is confirmed rather than assumed, because a stock
+GNU `objdump` is often single-target; install LLVM or `binutils-multiarch` if
+setup reports none.
+
+Both are checked alongside the SDK tools and the signing password, so an
+incomplete toolchain costs seconds rather than surfacing after the whole
+resource tree has been inventoried. Neither is optional: the guided path is the
+complete supported local game, and an install that silently loses every story
+Companion the client rolls is not that.
 
 ## Core-story progression
 
