@@ -750,6 +750,7 @@ Everything below stays under the ignored `user-data/` directory:
 | `derived/native-encounters.json` | Maps the compiled Chapter 8–42 battle programs to the enemies each stage can spawn. Producing it requires the AArch64 disassembler. | No. It is an evidence intermediate used to compose `story-outcomes.json`. |
 | `derived/scenario-encounters.json` | Maps the MoonSharp scenario programs used by Chapters 2–7, which have no equivalent compiled battle program. | No. It is another input to `story-outcomes.json`. |
 | `story-outcomes.json` | Combines the encounter maps, character catalog, master data, and their hashes into bounded per-stage outcome rules. Without it, the server cannot safely persist a story Companion rolled by the client. | **Yes.** The dedicated server loads this final catalog. |
+| `companion-equipment.json` | Projects character ancestry, per-job species, and Companion character/species restrictions from the matching APK. It contains no names, skills, descriptions, or assets. `RequiredLevel` is deliberately absent because the final client uses it to activate an equipped Companion's effects, not to prohibit equipping it. | **Yes.** The server needs it to authorize a newly equipped or retargeted Companion; without it, those new links are refused. |
 | `resources.json` | Maps every approved resource URL to a local file and hash. | **Yes.** `server_setup` rebuilds or refreshes it from the matching resource tree when the server starts. |
 | `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
 | `names.json` | Gives the save editor readable character, item, and Companion names. | No. |
@@ -757,10 +758,13 @@ Everything below stays under the ignored `user-data/` directory:
 | `local-server-plan.json`, the local signing key, and `liminal-gate-test.apk` | Record the client patch, sign it with a local-only key, and produce the APK installed on your device. | The plan and key are not server inputs. The generated APK belongs on the client device. |
 
 For a dedicated server, retain the matching resource tree, `resources.json`,
-`story-outcomes.json`, optional `public_data/`, and the server's durable
-`bootstrap-state.json`. Keep the remaining generated output on the setup
-workstation: it is the reproducible path from the private APK to the final
-runtime catalogs, not unnecessary clutter and not material to publish.
+`story-outcomes.json`, `companion-equipment.json`, optional `public_data/`, and
+the server's durable `bootstrap-state.json`. Keep the remaining generated
+output on the setup workstation: it is the reproducible path from the private
+APK to the final runtime catalogs, not unnecessary clutter and not material to
+publish. If the dedicated host predates `companion-equipment.json`, rerun guided
+setup on the APK workstation and copy that one generated file into the
+dedicated server's `user-data/` directory before updating the server.
 
 An advanced event question appears only for people who already have a reviewed
 local event catalog. You do not need to supply `DummyDll` yourself for normal

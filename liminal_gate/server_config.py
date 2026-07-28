@@ -16,6 +16,7 @@ _PATH_FIELDS = (
     "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "statusup_catalog",
     "clear_state_catalog",
     "job_catalog", "rebirth_catalog", "summon_skill_catalog", "companion_catalog",
+    "companion_equipment_catalog",
     "companion_strengthen_catalog", "companion_evolution_catalog", "companion_draw_catalog",
     "pact_draw_catalog",
     "event_catalog", "character_catalog", "hunting_catalog",
@@ -62,6 +63,7 @@ class ServerConfig:
     rebirth_catalog: Path | None = None
     summon_skill_catalog: Path | None = None
     companion_catalog: Path | None = None
+    companion_equipment_catalog: Path | None = None
     companion_strengthen_catalog: Path | None = None
     companion_evolution_catalog: Path | None = None
     companion_draw_catalog: Path | None = None

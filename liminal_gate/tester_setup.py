@@ -46,6 +46,12 @@ from liminal_gate.setup_progress import (
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
 from liminal_gate import account_state
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
+from liminal_gate.companion_equipment_catalog import (
+    DEFAULT_COMPANION_EQUIPMENT_CATALOG,
+    CompanionEquipmentCatalogError,
+    build_companion_equipment_catalog,
+    write_companion_equipment_catalog,
+)
 from liminal_gate.native_encounter_importer import (
     NativeEncounterImportError,
     import_encounters as import_native_encounters,
@@ -882,8 +888,16 @@ def prepare_local_tester(
             dummy_dll_dir, discovered = ensure_il2cpp_dump(apk, data_directory)
             dump_cs = dump_cs if dump_cs is not None else discovered
         trees = load_master_trees(apk, dummy_dll_dir, ("ChrDatabase", "ItemSet", "BuddyDatabase"))
-        character_catalog = build_character_catalog(trees["ChrDatabase"], sha256_file(apk))
+        apk_sha256 = sha256_file(apk)
+        character_catalog = build_character_catalog(trees["ChrDatabase"], apk_sha256)
         write_character_catalog(data_directory / "character-catalog.json", character_catalog)
+        equipment_catalog = build_companion_equipment_catalog(
+            trees["ChrDatabase"], trees["BuddyDatabase"], apk_sha256,
+        )
+        write_companion_equipment_catalog(
+            data_directory / DEFAULT_COMPANION_EQUIPMENT_CATALOG,
+            equipment_catalog,
+        )
         write_local_names(data_directory / "names.json", apk, trees)
         derive_story_outcome_catalog(apk, dummy_dll_dir, data_directory, dump_cs)
         manifest = build_resource_manifest(resource_root, digests=digests)
@@ -904,7 +918,7 @@ def prepare_local_tester(
         apply_patch_plan(apk, unsigned, load_patch_plan(plan_path))
         signed = data_directory / "liminal-gate-test.apk"
         sign_apk(unsigned, signed, zipalign, apksigner, keystore, KEY_ALIAS, password_file, password_file)
-    except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, CharacterCatalogImportError, ValueError) as error:
+    except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, CharacterCatalogImportError, CompanionEquipmentCatalogError, ValueError) as error:
         raise TesterSetupError(str(error)) from error
     print(f"Prepared local test APK: {signed}")
     print(f"This build reaches the server at {server_origin} and only that address.")
@@ -926,6 +940,8 @@ def server_arguments(
         "--resource-root", str(resource_root),
         "--resource-manifest", str(data_directory / "resources.json"),
         "--public-data-root", str(data_directory / "public_data"),
+        "--companion-equipment-catalog",
+        str((data_directory / DEFAULT_COMPANION_EQUIPMENT_CATALOG).resolve()),
     ]
     if core_story:
         arguments.append("--core-story")

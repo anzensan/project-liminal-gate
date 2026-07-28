@@ -1,5 +1,66 @@
 # Execution Plans
 
+## 2026-07-28 remaining solo systems: master-backed Companion equip restrictions
+
+Status: completed 2026-07-28; original-client combined-write certification
+remains pending.
+
+Objective: make a newly equipped or retargeted Companion obey the final
+client's character-family and species restrictions while preserving the
+already-atomic bidirectional equipment transaction.
+
+Evidence boundary:
+
+- Final-client `Buddy.CanEquip` reads `exclusiveChrID` and
+  `exclusiveSpeciesID`. It accepts a character restriction when it matches
+  either the target character ID or that character master's nonzero ancestor,
+  and it compares a species restriction with the target's active-job species.
+- `RequiredLevel` is not read by `Buddy.CanEquip`; it controls whether an
+  equipped Companion's effects activate. Low-level characters may equip the
+  Companion, so the server must not turn that activation threshold into an
+  invented selection refusal.
+- Final `ChrDatabase` and `BuddyDatabase` contain every required structural
+  field. Guided setup can project a source-free catalog from the operator's
+  own APK without publishing names, skills, descriptions, assets, or
+  acquisition data.
+- Only newly equipped or retargeted links are checked. Existing links are not
+  globally invalidated by an unrelated character or party save.
+
+Required proof:
+
+1. Generate and strictly load an APK-hashed local catalog containing character
+   ancestors, per-job species, and Companion character/species restrictions.
+2. Refuse a restricted-character mismatch, restricted-species mismatch,
+   unknown master, and missing-catalog equip without changing either half.
+3. Accept direct-character, ancestor-family, species-matched, unrestricted,
+   and below-RequiredLevel equipment through real HTTP.
+4. Preserve exact replay and restart behavior and the existing standalone
+   preference/party write paths.
+5. Make guided tester setup generate and pass the catalog; make server-only
+   setup discover the conventional file when it is deployed alongside state.
+6. Run focused catalog/setup/transport tests, the warning-strict full suite,
+   compilation, diff checks, YAML validation, and clean-candidate publication
+   gates.
+
+Result:
+
+- Guided setup now generates and passes `companion-equipment.json`; server-only
+  setup discovers the same file beside durable state and reports when it is
+  absent.
+- The strict APK-hashed projection includes only character ancestry, per-job
+  species, and Companion character/species restrictions. `RequiredLevel` is
+  deliberately excluded from selection authorization.
+- New and retargeted links fail closed on missing or unknown master authority,
+  character-family mismatch, species mismatch, or a one-sided relationship.
+  Existing links and unequip remain available without the catalog.
+- Real-HTTP tests accept direct, ancestor-family, species-matched,
+  unrestricted level-one, exact replay, and restart cases, while every
+  rejection leaves both arrays unchanged.
+- Thirty-five focused catalog, setup, configuration, and transport tests
+  passed. The warning-strict full suite passed all 596 tests in 115.659
+  seconds; compilation, diff, YAML, and clean-candidate publication results
+  are recorded in the status files.
+
 ## 2026-07-28 remaining solo systems: final-version Eidolon classification
 
 Status: completed 2026-07-28; converted solo quest settlement remains

@@ -8,12 +8,14 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 from liminal_gate.server_setup import (
+    DEFAULT_COMPANION_EQUIPMENT_CATALOG,
     DEFAULT_OUTCOME_CATALOG,
     REQUIRED_RESOURCE_CATEGORIES,
     STANDARD_POLICY_FLAGS,
     ServerSetupError,
     main,
     prepare_server,
+    resolve_companion_equipment_catalog,
     resolve_resource_root,
     resolve_story_outcome_catalog,
     run_server,
@@ -98,6 +100,39 @@ class ServerOnlySetupTest(unittest.TestCase):
         # Bounding the reported items and monsters on top can only refuse a
         # clear, never enable one, so the guided launcher never asks for it.
         self.assertNotIn("--outcome-strict", arguments)
+
+    def test_companion_equipment_catalog_is_discovered_and_passed(self) -> None:
+        data_directory = self.root / "state"
+        data_directory.mkdir()
+        self.assertIsNone(
+            resolve_companion_equipment_catalog(None, data_directory)
+        )
+        catalog = data_directory / DEFAULT_COMPANION_EQUIPMENT_CATALOG
+        catalog.write_text("{}", encoding="utf-8")
+        self.assertEqual(
+            catalog.resolve(),
+            resolve_companion_equipment_catalog(None, data_directory),
+        )
+        arguments = server_arguments(
+            self.resources.resolve(),
+            data_directory.resolve(),
+            "0.0.0.0",
+            8696,
+            self.root / "profile.json",
+            companion_equipment_catalog=catalog,
+        )
+        self.assertEqual(
+            str(catalog),
+            arguments[
+                arguments.index("--companion-equipment-catalog") + 1
+            ],
+        )
+
+    def test_mistyped_companion_equipment_catalog_is_an_error(self) -> None:
+        with self.assertRaisesRegex(ServerSetupError, "does not exist"):
+            resolve_companion_equipment_catalog(
+                self.root / "absent.json", self.root,
+            )
 
     def test_prepare_only_never_launches_server(self) -> None:
         data_directory = self.root / "state"

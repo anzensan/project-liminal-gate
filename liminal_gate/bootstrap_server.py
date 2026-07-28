@@ -39,6 +39,11 @@ from liminal_gate.archive_economy import award_chapter_energy, award_stage_energ
 from liminal_gate.resource_catalog import ResourceCatalog, ResourceCatalogError, load_resource_catalog
 from liminal_gate.stamina_meter import chapter_for_progress, current_stamina, max_stamina_for_chapter, spend_stamina
 from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogError, build_bundled_companion_policy, load_companion_catalog
+from liminal_gate.companion_equipment_catalog import (
+    CompanionEquipmentCatalog,
+    CompanionEquipmentCatalogError,
+    load_companion_equipment_catalog,
+)
 from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog, CompanionStrengthenCatalogError, build_bundled_companion_strengthen_policy, load_companion_strengthen_catalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, build_bundled_companion_evolution_policy, load_companion_evolution_catalog
@@ -1845,6 +1850,7 @@ class BootstrapState:
     def update_character_userdata(
         self, token: str, request_id: str, body: bytes, characters: list[dict[str, Any]] | None,
         party: dict[str, Any] | None = None, companions: list[dict[str, Any]] | None = None,
+        companion_equipment_catalog: CompanionEquipmentCatalog | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Persist a client-authored free-roam roster or party layout locally."""
         with self.lock:
@@ -1904,13 +1910,23 @@ class BootstrapState:
             # equip write cannot leave a one-sided character/Companion link.
             candidate_companions = None
             if companions is not None:
+                current_buddy_info = userdata.get("buddyInfo")
+                current_companions = (
+                    current_buddy_info.get("list")
+                    if isinstance(current_buddy_info, dict)
+                    else None
+                )
                 candidate_companions = _project_companion_delta(
                     userdata, companions, allow_equipment=True,
                 )
                 if (
-                    candidate_companions is None
+                    not isinstance(current_companions, list)
+                    or candidate_companions is None
                     or not _valid_companion_equipment(
-                        candidate_rows, candidate_companions,
+                        candidate_rows,
+                        candidate_companions,
+                        current_companions,
+                        companion_equipment_catalog,
                     )
                 ):
                     return "unsupported_companion_userdata", None
@@ -2700,6 +2716,7 @@ class BootstrapServer(ThreadingHTTPServer):
         world_map_special_catalog: WorldMapSpecialCatalog | None = None,
         public_data_root: Path | None = None,
         outcome_strict: bool = False,
+        companion_equipment_catalog: CompanionEquipmentCatalog | None = None,
     ) -> None:
         self.profile = profile
         self.state = state
@@ -2718,6 +2735,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.rebirth_catalog = rebirth_catalog
         self.summon_skill_catalog = summon_skill_catalog
         self.companion_catalog = companion_catalog
+        self.companion_equipment_catalog = companion_equipment_catalog
         self.companion_strengthen_catalog = companion_strengthen_catalog
         self.companion_evolution_catalog = companion_evolution_catalog
         self.companion_draw_catalog = companion_draw_catalog
@@ -3114,12 +3132,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             characters, party, companions = party_companion_write
             dispatch.result, dispatch.payload = state.update_character_userdata(
                 token, request_id, body, characters, party, companions,
+                self.server.companion_equipment_catalog,
             )
             dispatch.kind, dispatch.transitions = "party_userdata", ()
         elif equip_write is not None:
             characters, companions = equip_write
             dispatch.result, dispatch.payload = state.update_character_userdata(
                 token, request_id, body, characters, None, companions,
+                self.server.companion_equipment_catalog,
             )
             dispatch.kind, dispatch.transitions = "companion_userdata", ()
         elif party_write is not None:
@@ -3908,9 +3928,12 @@ def _apply_companion_delta(userdata: dict[str, Any], submitted: list[dict[str, A
 
 
 def _valid_companion_equipment(
-    characters: list[dict[str, Any]], companions: list[dict[str, Any]],
+    characters: list[dict[str, Any]],
+    companions: list[dict[str, Any]],
+    previous_companions: list[dict[str, Any]],
+    catalog: CompanionEquipmentCatalog | None,
 ) -> bool:
-    """Require one owned bidirectional link for every equipped Companion."""
+    """Require coherent links and master authorization for every new target."""
     by_character: dict[int, dict[str, Any]] = {}
     for character in characters:
         character_id = character.get("id") if isinstance(character, dict) else None
@@ -3934,6 +3957,17 @@ def _valid_companion_equipment(
         ):
             return False
         by_inventory[inventory_id] = companion
+    previous_links = {
+        companion.get("iid"): companion.get("chrID")
+        for companion in previous_companions
+        if (
+            isinstance(companion, dict)
+            and type(companion.get("iid")) is int
+            and type(companion.get("chrID")) is int
+        )
+    }
+    if len(previous_links) != len(previous_companions):
+        return False
     equipped = [
         character.get("buddy", 0)
         for character in characters
@@ -3948,7 +3982,7 @@ def _valid_companion_equipment(
             or by_inventory[buddy].get("chrID") != character_id
         ):
             return False
-    return all(
+    if not all(
         type(companion.get("chrID")) is int
         and companion["chrID"] >= 0
         and (
@@ -3960,6 +3994,60 @@ def _valid_companion_equipment(
             )
         )
         for companion in companions
+    ):
+        return False
+    return all(
+        companion["chrID"] == 0
+        or companion["chrID"] == previous_links.get(companion["iid"])
+        or _companion_target_allowed(
+            by_character[companion["chrID"]],
+            companion,
+            catalog,
+        )
+        for companion in companions
+    )
+
+
+def _companion_target_allowed(
+    character: dict[str, Any],
+    companion: dict[str, Any],
+    catalog: CompanionEquipmentCatalog | None,
+) -> bool:
+    """Mirror ``Buddy.CanEquip`` character-family and species checks.
+
+    ``RequiredLevel`` is intentionally absent: the final client uses it to
+    activate an equipped Companion's effects, not to prohibit selection.
+    """
+    if catalog is None:
+        return False
+    character_id = character.get("id")
+    companion_id = companion.get("bid")
+    job_index = character.get("jobID")
+    if (
+        type(character_id) is not int
+        or type(companion_id) is not int
+        or type(job_index) is not int
+    ):
+        return False
+    character_master = catalog.characters.get(character_id)
+    companion_master = catalog.companions.get(companion_id)
+    if (
+        character_master is None
+        or companion_master is None
+        or not 0 <= job_index < len(character_master.job_species)
+    ):
+        return False
+    family_id = character_master.ancestor_character_id or character_id
+    if (
+        companion_master.exclusive_character_id
+        and companion_master.exclusive_character_id
+        not in {character_id, family_id}
+    ):
+        return False
+    return (
+        companion_master.exclusive_species_id == 0
+        or companion_master.exclusive_species_id
+        == character_master.job_species[job_index]
     )
 
 
@@ -4743,6 +4831,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rebirth-catalog", type=Path, help="user-local Rebirth recipe and Joker policy")
     parser.add_argument("--summon-skill-catalog", type=Path, help="user-local archival Eidolon skill costs for the retired enhancement route")
     parser.add_argument("--companion-catalog", type=Path, help="user-local Companion master values for ownership mutations")
+    parser.add_argument("--companion-equipment-catalog", type=Path, help="user-derived character-family and species restrictions for Companion equipment")
     parser.add_argument("--companion-strengthen-catalog", type=Path, help="user-local Companion progression values and bonus policy")
     parser.add_argument("--companion-evolution-catalog", type=Path, help="user-local Companion evolution rows and costs")
     parser.add_argument("--companion-draw-catalog", type=Path, help="user-local Companion draw pool and costs")
@@ -4773,7 +4862,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     value_fields = (
         "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
-        "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_strengthen_catalog",
+        "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_equipment_catalog", "companion_strengthen_catalog",
         "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "event_catalog", "character_catalog", "hunting_catalog",
         "achievement_catalog", "message_catalog", "exchange_catalog",
     )
@@ -4806,6 +4895,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         clear_state_catalog=args.clear_state_catalog, statusup_catalog=args.statusup_catalog,
         job_catalog=args.job_catalog, rebirth_catalog=args.rebirth_catalog,
         summon_skill_catalog=args.summon_skill_catalog, companion_catalog=args.companion_catalog,
+        companion_equipment_catalog=getattr(args, "companion_equipment_catalog", None),
         companion_strengthen_catalog=args.companion_strengthen_catalog,
         companion_evolution_catalog=args.companion_evolution_catalog,
         companion_draw_catalog=args.companion_draw_catalog, pact_draw_catalog=args.pact_draw_catalog, pacts=getattr(args, "pacts", False),
@@ -4860,6 +4950,11 @@ def main() -> int:
         if args.companion_sale and args.companion_catalog is not None:
             raise ProfileError("--companion-sale cannot be combined with --companion-catalog")
         companions = build_bundled_companion_policy() if args.companion_sale else (None if args.companion_catalog is None else load_companion_catalog(args.companion_catalog))
+        companion_equipment = (
+            None
+            if args.companion_equipment_catalog is None
+            else load_companion_equipment_catalog(args.companion_equipment_catalog)
+        )
         if args.companion_strengthen and args.companion_strengthen_catalog is not None:
             raise ProfileError("--companion-strengthen cannot be combined with --companion-strengthen-catalog")
         companion_strengthen = build_bundled_companion_strengthen_policy() if args.companion_strengthen else (None if args.companion_strengthen_catalog is None else load_companion_strengthen_catalog(args.companion_strengthen_catalog))
@@ -4918,8 +5013,9 @@ def main() -> int:
             hunting_catalog=hunts,
             public_data_root=args.public_data_root,
             outcome_strict=getattr(args, "outcome_strict", False),
+            companion_equipment_catalog=companion_equipment,
         )
-    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
+    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error
     print(f"bootstrap compatibility server listening on http://{args.host}:{args.port}")
     try:

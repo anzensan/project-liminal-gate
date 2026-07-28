@@ -26,11 +26,12 @@ account and persisted tutorial state after a full server restart. All 548
 captured requests returned HTTP 200. This certifies the onboarding and restart
 path; it is not a new client boundary beyond Chapter 2-1.
 
-Latest source validation: 589 warning-strict tests passed in 116.973 seconds
-after the Fellowship Ticket, combined-equip integrity, and final-version
-Eidolon-classification slices. Focused real-HTTP Pact/equipment coverage,
-focused setup and archival-route checks, compilation, diff checks, YAML
-validation, and clean-candidate publication gates also passed.
+Latest source validation: 596 warning-strict tests passed in 115.659 seconds
+after the Fellowship Ticket, combined-equip integrity, final-version
+Eidolon-classification, and master-backed Companion restriction slices.
+Focused real-HTTP Pact/equipment coverage and focused catalog, setup,
+configuration, and archival-route checks also passed, together with
+compilation, diff, YAML, and clean-candidate publication gates.
 
 Publication lane:
 
@@ -66,9 +67,12 @@ form. The statically recovered one-draw Item 81 Fellowship Ticket form now
 settles ordinary and Fellowship-side Fate draws through real HTTP with durable
 replay/restart coverage; original-client acceptance is pending. Combined
 Companion equip writes now require an atomic owned bidirectional link across
-their character and Companion dirty arrays, with real-HTTP restart proof;
-master-backed level/character/species eligibility and original-client
-acceptance remain pending. A
+their character and Companion dirty arrays. Newly equipped or retargeted links
+also require an APK-hashed generated catalog and enforce the recovered direct
+character, ancestor-family, and active-job species restrictions, with real-HTTP
+rejection, replay, and restart proof. `RequiredLevel` controls effect activation
+in the final client and is not an equip restriction. Original-client acceptance
+of this combined transport remains pending. A
 ticket-backed Metal Zone 1 result also settles live: the client repeats its
 pre-entry Item 50 count, the server retains the already-committed spend, and
 the bounded Companion drop persists. Strikes Back now shows its first two
@@ -91,7 +95,10 @@ reconciliation cannot restore the ticket or apply to stamina fallback.
 
 Derived-catalog boundary: story-outcome generation rejects native encounter or
 character catalogs whose recorded APK hash differs from the selected APK.
-Generated catalogs retain their input hashes and native calibration label.
+Generated catalogs retain their input hashes and native calibration label. The
+Companion equipment catalog is likewise bound to the selected APK and projects
+only character ancestry, per-job species, and equip restrictions; it contains
+no names, skills, descriptions, or assets.
 
 Next unknown boundaries: original-client acceptance of the Item 81
 Fellowship/Fate ticket draw, default Special Quest 3003-1, and Crystal Road

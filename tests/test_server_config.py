@@ -58,11 +58,15 @@ class ServerConfigTest(unittest.TestCase):
     def test_story_progression_catalog_path_is_resolved(self) -> None:
         configuration_path = self.root / "server.toml"
         configuration_path.write_text(
-            'schema_version = 1\nprovenance = "user-supplied"\nprofile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\nstory_progression_catalog = "catalogs/progression.json"\n',
+            'schema_version = 1\nprovenance = "user-supplied"\nprofile = "profiles/bootstrap.json"\nstate_file = "state/bootstrap.json"\nstory_progression_catalog = "catalogs/progression.json"\ncompanion_equipment_catalog = "catalogs/companion-equipment.json"\n',
             encoding="utf-8",
         )
         config = load_server_config(configuration_path)
         self.assertEqual(self.root / "catalogs" / "progression.json", config.story_progression_catalog)
+        self.assertEqual(
+            self.root / "catalogs" / "companion-equipment.json",
+            config.companion_equipment_catalog,
+        )
 
     def test_core_story_policy_flag_is_loaded_strictly(self) -> None:
         configuration_path = self.root / "server.toml"
@@ -123,6 +127,7 @@ class ServerConfigTest(unittest.TestCase):
                 "story_catalog", "story_progression_catalog", "settlement_catalog",
                 "story_outcome_catalog", "clear_state_catalog", "statusup_catalog",
                 "job_catalog", "rebirth_catalog", "summon_skill_catalog", "companion_catalog",
+                "companion_equipment_catalog",
                 "companion_strengthen_catalog", "companion_evolution_catalog",
                 "companion_draw_catalog", "pact_draw_catalog", "event_catalog",
                 "character_catalog", "hunting_catalog", "achievement_catalog",
@@ -166,6 +171,6 @@ class ServerConfigTest(unittest.TestCase):
             load_server_config(configuration_path)
 
     def test_launcher_rejects_ambiguous_config_and_flag_mix(self) -> None:
-        args = Namespace(config=self.root / "server.toml", profile=self.root / "profile.json", state_file=None, host=None, port=None, event_log=None, resource_root=None, resource_manifest=None, story_catalog=None, story_progression_catalog=None, settlement_catalog=None, story_outcome_catalog=None, clear_state_catalog=None, statusup_catalog=None, job_catalog=None, rebirth_catalog=None, summon_skill_catalog=None, companion_catalog=None, companion_strengthen_catalog=None, companion_evolution_catalog=None, companion_draw_catalog=None, pact_draw_catalog=None, achievement_catalog=None, message_catalog=None, exchange_catalog=None)
+        args = Namespace(config=self.root / "server.toml", profile=self.root / "profile.json", state_file=None, host=None, port=None, event_log=None, resource_root=None, resource_manifest=None, story_catalog=None, story_progression_catalog=None, settlement_catalog=None, story_outcome_catalog=None, clear_state_catalog=None, statusup_catalog=None, job_catalog=None, rebirth_catalog=None, summon_skill_catalog=None, companion_catalog=None, companion_equipment_catalog=None, companion_strengthen_catalog=None, companion_evolution_catalog=None, companion_draw_catalog=None, pact_draw_catalog=None, achievement_catalog=None, message_catalog=None, exchange_catalog=None)
         with self.assertRaises(ProfileError):
             load_launch_config(args)

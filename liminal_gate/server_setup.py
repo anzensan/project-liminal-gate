@@ -9,6 +9,9 @@ import subprocess
 import sys
 from typing import Sequence
 
+from liminal_gate.companion_equipment_catalog import (
+    DEFAULT_COMPANION_EQUIPMENT_CATALOG,
+)
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
 
@@ -114,6 +117,23 @@ def resolve_story_outcome_catalog(requested: Path | None, data_directory: Path) 
     return candidate if candidate.is_file() else None
 
 
+def resolve_companion_equipment_catalog(
+    requested: Path | None, data_directory: Path,
+) -> Path | None:
+    """Choose the generated Companion equipment catalog, if deployed."""
+    if requested is not None:
+        resolved = requested.resolve()
+        if not resolved.is_file():
+            raise ServerSetupError(
+                f"Companion equipment catalog does not exist: {requested}"
+            )
+        return resolved
+    candidate = (
+        data_directory / DEFAULT_COMPANION_EQUIPMENT_CATALOG
+    ).resolve()
+    return candidate if candidate.is_file() else None
+
+
 def server_arguments(
     resource_root: Path,
     data_directory: Path,
@@ -121,6 +141,7 @@ def server_arguments(
     port: int,
     profile: Path = DEFAULT_PROFILE,
     story_outcome_catalog: Path | None = None,
+    companion_equipment_catalog: Path | None = None,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
@@ -128,6 +149,14 @@ def server_arguments(
     # on top of that can only refuse clears, never enable one.
     outcome_flags = (
         [] if story_outcome_catalog is None else ["--story-outcome-catalog", str(story_outcome_catalog)]
+    )
+    equipment_flags = (
+        []
+        if companion_equipment_catalog is None
+        else [
+            "--companion-equipment-catalog",
+            str(companion_equipment_catalog),
+        ]
     )
     return [
         sys.executable,
@@ -151,6 +180,7 @@ def server_arguments(
         str(data_directory / "public_data"),
         *STANDARD_POLICY_FLAGS,
         *outcome_flags,
+        *equipment_flags,
     ]
 
 
@@ -187,6 +217,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--companion-equipment-catalog",
+        type=Path,
+        help=(
+            "generated Companion character/species restrictions; defaults to "
+            f"{DEFAULT_COMPANION_EQUIPMENT_CATALOG} in the data directory when present"
+        ),
+    )
+    parser.add_argument(
         "--prepare-only",
         action="store_true",
         help="validate and hash resources without starting the server",
@@ -216,6 +254,16 @@ def main() -> int:
             )
         else:
             print(f"Story Companion drops: ON from {outcome_catalog}")
+        equipment_catalog = resolve_companion_equipment_catalog(
+            args.companion_equipment_catalog, data_directory,
+        )
+        if equipment_catalog is None:
+            print(
+                "Companion master restrictions: OFF (new equip targets are "
+                f"refused without {DEFAULT_COMPANION_EQUIPMENT_CATALOG})"
+            )
+        else:
+            print(f"Companion master restrictions: ON from {equipment_catalog}")
         if args.prepare_only:
             return 0
         print(
@@ -229,6 +277,7 @@ def main() -> int:
                 args.host,
                 args.port,
                 story_outcome_catalog=outcome_catalog,
+                companion_equipment_catalog=equipment_catalog,
             )
         )
     except (OSError, ResourceCatalogError, ServerSetupError, subprocess.CalledProcessError) as error:

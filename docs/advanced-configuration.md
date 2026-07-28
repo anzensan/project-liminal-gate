@@ -77,10 +77,13 @@ python3 -m liminal_gate.tester_setup \
   --dummy-dll-dir /path/to/il2cpp-output/DummyDll
 ```
 
-Setup writes `user-data/character-catalog.json`, `user-data/names.json`
-(character, item, and Companion names decoded from your own metadata, for the
-save editor), and `user-data/story-outcomes.json`, the catalog without which a
-story clear mints no Companion at all. All stay in the ignored data directory.
+Setup writes `user-data/character-catalog.json`,
+`user-data/companion-equipment.json`, `user-data/names.json` (character, item,
+and Companion names decoded from your own metadata, for the save editor), and
+`user-data/story-outcomes.json`, the catalog without which a story clear mints
+no Companion at all. The equipment catalog is the source-free character
+ancestry, active-job species, and Companion restriction authority used for new
+equip links. All stay in the ignored data directory.
 
 **You do not have to run Il2CppDumper yourself.** If `--dummy-dll-dir` names no
 existing directory, setup runs it for you: both its inputs — `libil2cpp.so` and
@@ -359,6 +362,10 @@ The guided `liminal_gate.server_setup` launcher picks up a `story-outcomes.json`
 in its data directory automatically, without `--outcome-strict`, and prints
 whether it found one at startup. `--story-outcome-catalog` overrides the
 location, and a path that does not exist is an error rather than a silent skip.
+It likewise picks up `companion-equipment.json`; without that file it preserves
+existing links and permits unequip, but refuses a newly equipped or retargeted
+Companion because it cannot verify the target against the matching APK master.
+`--companion-equipment-catalog` overrides the conventional location.
 
 Three further boundaries, all reported by the commands themselves:
 
@@ -399,6 +406,7 @@ catalog is passed at launch:
 | `--rebirth-catalog` | Rebirth recipes and material rules |
 | `--summon-skill-catalog` | archival Eidolon skill costs (see `--summon-skills` for the bundled policy) |
 | `--companion-catalog` | Companion sale/master values |
+| `--companion-equipment-catalog` | user-derived character-family and active-job species restrictions for new Companion equip links |
 | `--companion-strengthen-catalog` | Companion EXP and bonus policy |
 | `--companion-evolution-catalog` | Companion evolution recipes |
 | `--companion-draw-catalog` | local Companion draw pool and costs |
@@ -798,6 +806,7 @@ state_file = "state/bootstrap-state.json"
 event_log = "logs/events.jsonl"
 story_progression_catalog = "derived/core-story-progression.json"
 story_outcome_catalog = "catalogs/story-outcomes.toml"
+companion_equipment_catalog = "catalogs/companion-equipment.json"
 clear_state_catalog = "catalogs/clear-state.toml"
 ```
 

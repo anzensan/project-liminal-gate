@@ -150,14 +150,26 @@ Private inputs, captures, account state, and original assets remain excluded.
 - **Confirmed by guided-setup regression:** a fresh active account no longer
   hides an older played account; the reversible switch preserves the displaced
   fresh save.
+- **Confirmed by final 5.5.7 ARM64 `Buddy.CanEquip` control flow at
+  `0xD01AE0`--`0xD01BB4`:** a nonzero `exclusiveChrID` accepts either the
+  direct target character or its nonzero `ancestorChrID`; a nonzero
+  `exclusiveSpeciesID` must match the active job's `Species`. The method does
+  not read `RequiredLevel`; that field gates the effects of an already equipped
+  Companion, so turning it into an equip refusal would invent behavior.
+  The final master projection contains 346 characters, 1,111 jobs, and 497
+  Companions; all 65 nonzero ancestors and all 132 character restrictions
+  resolve, and the two species-restricted Companions use a species present in
+  the job masters.
 - **Strongly inferred from dual-ABI serializer/equip paths and proven by
   real-HTTP replay/restart regression:** the combined
   `chrdata`, `buddyInfo`, `lastUpdate` form is one atomic Companion equip
   mutation. The public server now requires owned, one-to-one bidirectional
   `character.buddy`/`companion.chrID` links and refuses one-sided retargets
-  without changing either array. Required-level, exclusive-character/ancestor,
-  and species eligibility remain open because the public runtime does not yet
-  carry the authorizing master fields.
+  without changing either array. Newly equipped or retargeted links also
+  require the APK-hashed generated catalog and obey the recovered direct
+  character, ancestor-family, and active-job species rules. Direct, ancestor,
+  species-matched, unrestricted level-one, rejection, missing-catalog, exact
+  replay, and restart cases pass over the real HTTP route.
 - **Operator-observed, trace certification pending:** the maintainer played
   through Chapter 8-4 on a physical device without a client-visible failure.
   The preserved trace-based canonical checkpoint remains Chapter 2-1.

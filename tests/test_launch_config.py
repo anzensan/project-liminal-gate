@@ -52,6 +52,10 @@ class LaunchConfigTest(unittest.TestCase):
             command = server_arguments(Path("resources"), Path(directory), 8696)[3:]
             with patch.object(sys, "argv", ["bootstrap_server", *command]):
                 config = load_launch_config(parse_args())
+            self.assertEqual(
+                Path(directory).resolve() / "companion-equipment.json",
+                config.companion_equipment_catalog,
+            )
         for name in ("core_story", "pacts", "hunting", "jobs", "rebirth", "status_items",
                      "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution",
                      "trading_post"):

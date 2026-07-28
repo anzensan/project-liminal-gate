@@ -38,9 +38,15 @@ machine-readable/current capability boundary.
   mutation and require every nonzero character `buddy` link to match the owned
   Companion inventory record's `chrID` in both directions. One-sided
   Companion-only retargets and mismatched combined moves are refused without
-  changing either half. Real-HTTP replay and restart coverage passes.
-  Required-level, exclusive-character/ancestor, and species eligibility still
-  need public master-data authority and original-client acceptance.
+  changing either half. Guided setup now derives an APK-hashed, source-free
+  catalog containing the exact character ancestry, per-job species, and
+  Companion restriction fields used by final-client `Buddy.CanEquip`. New or
+  retargeted links enforce direct-character/ancestor-family and active-job
+  species restrictions; unknown or missing authority fails closed. Existing
+  links and unequip remain usable. `RequiredLevel` is deliberately not an
+  equip prohibition because the final client uses it for effect activation
+  after selection. Real-HTTP acceptance, rejection, exact replay, and restart
+  coverage passes; original-client combined-write certification remains open.
 - 2026-07-28 remaining solo Pact payment slice: the strict permanent
   `kind=20,count=1` form now spends one Item 81 Fellowship Ticket through the
   existing bounded Fellowship pool. Ordinary draws retain Skill Boost
@@ -289,6 +295,13 @@ machine-readable/current capability boundary.
   setup/configuration/legacy-route tests and the full 589-test warning-strict
   suite passed in 116.973 seconds; compilation, diff checks, YAML validation,
   and clean-candidate publication gates passed.
+- 2026-07-28 master-backed Companion equipment validation: 35 focused catalog,
+  setup, configuration, and real-HTTP transport tests passed. The full
+  warning-strict suite passed all 596 tests in 115.659 seconds. Direct,
+  ancestor-family, species-matched, unrestricted level-one, rejection,
+  missing-catalog, exact replay, and restart behavior are covered.
+  Compilation, diff checks, YAML validation, and exact clean-candidate material
+  preflight and independent-history audit passed.
 
 ## Blockers and unresolved fidelity
 
@@ -306,9 +319,10 @@ machine-readable/current capability boundary.
 - Final-version solo Eidolon quest visibility and collectible reward settlement
   for Chapters 4100--4111. Eidolon battle summoning and enhancement are not
   gaps: Version 5.5.0 retired them with multiplayer.
-- Companion equip required-level, exclusive-character/ancestor, and species
-  eligibility backed by public generated masters, plus end-to-end
-  original-client equipment/party certification.
+- End-to-end original-client certification of the combined Companion
+  equipment/party transport. Master-backed selection restrictions are covered
+  statically and over real HTTP; `RequiredLevel` is client-side effect
+  activation, not an equip restriction.
 - Original-client acceptance of the permanent Item 81 Fellowship/Fate ticket
   draw; current proof is static client evidence plus real-HTTP regression.
 - Historical event schedules, campaign behavior, and live-service families.

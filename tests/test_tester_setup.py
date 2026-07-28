@@ -28,6 +28,10 @@ class GuidedServerPolicyTest(unittest.TestCase):
         for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth", "--status-items", "--companion-draw", "--companion-sale",
                      "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements"):
             self.assertIn(flag, arguments)
+        self.assertEqual(
+            str((Path("data") / "companion-equipment.json").resolve()),
+            arguments[arguments.index("--companion-equipment-catalog") + 1],
+        )
         self.assertNotIn("--summon-skills", arguments)
 
     def choose(self):
@@ -61,11 +65,16 @@ class TesterSetupTest(unittest.TestCase):
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (resources / category).mkdir(parents=True, exist_ok=True)
             with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.load_master_trees", return_value={
-                "ChrDatabase": {"infos": [{"ID": 3, "chrType": 1, "isLambda": 0, "rebirthFromID": 0, "rarity": 4, "Jobs": [30]}]},
-                "ItemSet": {"itemSet": []}, "BuddyDatabase": {"data": []},
+                "ChrDatabase": {
+                    "infos": [{"ID": 3, "chrType": 1, "isLambda": 0, "rebirthFromID": 0, "rarity": 4, "ancestorChrID": 0, "Jobs": [30]}],
+                    "data": [{"ID": 30, "Species": 1}],
+                },
+                "ItemSet": {"itemSet": []},
+                "BuddyDatabase": {"data": [{"ID": 1, "exclusiveChrID": 0, "exclusiveSpeciesID": 0}]},
             }), patch("liminal_gate.tester_setup.write_local_names"), patch("liminal_gate.tester_setup.derive_story_outcome_catalog", return_value=data / "story-outcomes.json"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.check_derivation_prerequisites"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
                 prepare_local_tester(apk, resources, data, 8696, None, dummy)
             self.assertTrue((data / "character-catalog.json").is_file())
+            self.assertTrue((data / "companion-equipment.json").is_file())
     def test_requires_explicit_choice_when_multiple_devices_are_ready(self) -> None:
         with patch("liminal_gate.tester_setup._adb_devices", return_value=("emulator-5554", "emulator-5570")):
             with self.assertRaisesRegex(TesterSetupError, "--device"):
@@ -390,9 +399,11 @@ class LocalSigningToolTest(unittest.TestCase):
             # order of the checks, not about what they produce.
             dummy_dll = root / "DummyDll"
             dummy_dll.mkdir()
-            with patch("liminal_gate.tester_setup.load_master_trees", return_value={"ChrDatabase": {}}), \
+            with patch("liminal_gate.tester_setup.load_master_trees", return_value={"ChrDatabase": {}, "BuddyDatabase": {}}), \
                  patch("liminal_gate.tester_setup.build_character_catalog", return_value={}), \
                  patch("liminal_gate.tester_setup.write_character_catalog"), \
+                 patch("liminal_gate.tester_setup.build_companion_equipment_catalog", return_value={}), \
+                 patch("liminal_gate.tester_setup.write_companion_equipment_catalog"), \
                  patch("liminal_gate.tester_setup.write_local_names"), \
                  patch("liminal_gate.tester_setup.derive_story_outcome_catalog"), \
                  patch("liminal_gate.tester_setup.ensure_keystore", side_effect=lambda *_: order.append("keystore")), \

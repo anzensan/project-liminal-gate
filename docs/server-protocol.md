@@ -50,9 +50,15 @@ Every nonzero character `buddy` inventory ID must point to an owned Companion
 whose `chrID` points back to that character, and one Companion cannot be linked
 to multiple characters. A mismatched or one-sided move changes neither half.
 Standalone `buddyInfo`, `lastUpdate` writes may change the recovered
-seen/favorite flags but cannot retarget `chrID`. Required-level,
-exclusive-character/ancestor, and species eligibility remain unsupported until
-the public runtime has generated master fields that can authorize them.
+seen/favorite flags but cannot retarget `chrID`. A newly equipped or retargeted
+link also requires the generated, APK-hashed Companion equipment catalog. An
+`exclusiveChrID` accepts the direct character or its recovered nonzero
+ancestor; `exclusiveSpeciesID` must match the active job's species. Unknown
+masters and a missing catalog are refused without changing either half.
+Existing links and unequip remain available without the catalog. The server
+does not apply `RequiredLevel` as an equip restriction: final-client
+`Buddy.CanEquip` does not read it, and the client instead uses that field to
+activate the effects of a Companion that is already equipped.
 
 `summon_skill_unlock` is a recovered archival transport with a bounded local
 material-cost policy. It does not imply a required or reachable final-version
