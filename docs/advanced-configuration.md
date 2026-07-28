@@ -189,13 +189,43 @@ vtable stride differ; the two ABIs are compiled from one program, so reading the
 32-bit library would add a second instruction decoder for no additional
 information. Every offset in this project's documentation refers to arm64.
 
-#### 2. Compose the catalog
+#### 2. Extract the scenario encounter map
+
+Chapters 2--7 have no compiled battle program. Their encounters are placed by
+Lua the client runs on an embedded MoonSharp VM, shipped as `Chapter{N}`
+`TextAsset` objects, so the native import above sees nothing for them at all.
+This reads those assets straight out of the same APK and decodes them:
+
+```sh
+python3 -m liminal_gate.scenario_encounter_importer \
+  --apk local-input/terra-battle-5.5.7-170.apk \
+  --dump-cs /path/to/il2cpp-output/dump.cs \
+  --output user-data/derived/scenario-encounters.json
+```
+
+It needs UnityPy but no type trees; `dump.cs` is read only for the `Enemies`
+enum. `Meta` instructions delimit every function, so the program's structure --
+which `Section{N}` names which `Battle{N}_{M}` waves, and which `Init_*` each
+wave calls -- is recoverable without executing it.
+
+Only deterministic placement counts. A call made inside a nested closure or
+behind a conditional jump has no knowable per-clear count, and understating a
+ceiling refuses a legitimate clear, so any section carrying one is dropped whole
+and reported. Every emitted spawn stays `exact: false`: the enemy identity is
+exact, but its placement is read from a static decode rather than observed at
+runtime.
+
+Skipping this step is supported; those chapters then keep only their
+`dropBuddies` allowlist.
+
+#### 3. Compose the catalog
 
 ```sh
 python3 -m liminal_gate.story_outcome_generator \
   --apk local-input/terra-battle-5.5.7-170.apk \
   --dummy-dll-dir /path/to/il2cpp-output/DummyDll \
   --native-encounters user-data/derived/native-encounters.json \
+  --scenario-encounters user-data/derived/scenario-encounters.json \
   --character-catalog user-data/character-catalog.json \
   --output user-data/derived/story-outcomes.json
 ```
@@ -306,9 +336,10 @@ Three further boundaries, all reported by the commands themselves:
   record anywhere in the APK. Those stages keep only their own `dropBuddies`
   allowlist. This is permanent and is not a fault in the import.
 - **Chapters 1--7 are not in the native map.** Their encounters live in the
-  MoonSharp scenario scripts rather than in compiled chapter classes. Pass
-  `--scenario-encounters` with a map derived from those scripts to cover them;
-  without it they keep only their `dropBuddies` allowlist. The stage schema
+  MoonSharp scenario scripts rather than in compiled chapter classes. Run the
+  scenario import below and pass `--scenario-encounters` to cover them; without
+  it they keep only their `dropBuddies` allowlist, which costs seven stages in
+  chapters 6 and 7 whose Companions only their enemies name. The stage schema
   matches the native map's, but its provenance is validated separately, so a
   scenario-derived row can never claim it came from a disassembled chapter
   program.
@@ -587,7 +618,8 @@ declared bounds, so a stage carries identity, entry cost, unlock policy, and
 result ceilings — and no enemy, encounter, reward, or resource data.
 
 The quickest path is the bundled policy, which covers Pudding Time, Tin Parade,
-Attack of the Coin Creeps, and Puppet Show at all three zones:
+Attack of the Coin Creeps, Puppet Show, Metal Zone, Dragon Road, Machine Road,
+and the default Chapter 3003-1 Special Quest:
 
 ```sh
 python3 -m liminal_gate.bootstrap_server \
@@ -603,9 +635,14 @@ becomes permanent after story chapters 3, 9, and 18, because the retired
 rotations were never captured — and Puppet Show's aggregate of 60 items, whose
 real-time board has no cumulative spawn counter to recover a true cap from.
 
-**Metal Zone is deliberately absent.** Its results carry EXP and Companion
-drops, which this catalog cannot bound, and a settlement carrying Companions is
-refused rather than accepted generously.
+**Metal Zone is bounded, not unrestricted.** Its ticket-or-stamina entries,
+EXP ceilings, and Companion manifests are declared by the bundled policy; an
+undeclared result is refused. Dragon and Machine Road currently settle zero
+base rewards because no complete reward contract was recovered. The default
+Special Quest is also bounded: Chapter 3003-1 accepts up to 1,500 Coins and no
+EXP, items, or Companions. See
+[the external quest reference ledger](external-quest-reference-ledger.md) for
+the approved-source facts and the stages that remain deliberately unavailable.
 
 To declare your own stages instead, supply a catalog. `--hunting` and
 `--hunting-catalog` are mutually exclusive, and with neither, Hunting is

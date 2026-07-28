@@ -59,11 +59,14 @@ project also includes:
   programs out of a reviewed APK, using the user's Il2CppDumper `dump.cs` and a
   local `objdump`; feeds `liminal-gate-generate-story-outcomes`. See
   [Advanced local configuration](advanced-configuration.md#composing-a-story-outcome-catalog-from-your-own-recovered-drops).
-  Chapters 2--7 have no compiled battle program at all — their encounters are
-  placed by the client's embedded MoonSharp scenario scripts — so
-  `liminal-gate-generate-story-outcomes` also accepts `--scenario-encounters`,
-  a map in the same stage schema with its own separately validated provenance.
-  No reference decoder for those scripts ships here yet.
+- `liminal-gate-import-scenario-encounters` — covers the chapters the native
+  import cannot: 2--7 have no compiled battle program, and their encounters are
+  placed by Lua the client runs on an embedded MoonSharp VM. Reads the
+  `Chapter{N}` `TextAsset` objects out of a reviewed APK, decodes the MoonSharp
+  binary dump, and emits the same stage schema under separately validated
+  provenance. Feeds `liminal-gate-generate-story-outcomes --scenario-encounters`.
+  Needs UnityPy but no `dump.cs` type trees; it does need `dump.cs` itself for
+  the `Enemies` enum.
 
 Run any tool with `--help` for its exact arguments.
 
