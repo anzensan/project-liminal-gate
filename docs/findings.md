@@ -112,6 +112,14 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Public-release boundary
 
+- **Confirmed by the 2026-07-28 refactoring run:** the warning-strict baseline
+  passed 578 tests and the behavior-preserving result passed 581 tests in
+  112.991 seconds. Focused real-HTTP tests covered mutation routing, collision,
+  retry, restart, persistence, GET/resource serving, and refusal diagnostics.
+  This establishes behavioral regression coverage for the structural changes;
+  it does not expand the original-client certification boundary. An exact
+  clean source candidate also passed material preflight and the independent
+  repository-history audit.
 - **Confirmed by the 2026-07-27 follow-up run:** 417 tests passed with
   `ResourceWarning` promoted to error, including the generated-outcome
   real-HTTP settlement path and account-state reload checks.

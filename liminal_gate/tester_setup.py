@@ -8,20 +8,26 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import importlib.metadata
+import importlib.util
 import json
 import os
 from pathlib import Path
+import secrets
 import shutil
+import socket
 import stat
 import subprocess
 import sys
 import tempfile
+import textwrap
 import zipfile
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
 from liminal_gate.apk_patcher import PatchPlanError, apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import ApkSigningError, sign_apk
+from liminal_gate.file_digests import DigestCache, count_files
 from liminal_gate.input_importer import ImportError, build_import_manifest, write_import_manifest
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError
 from liminal_gate.legacy_client_apk_plan import METADATA_MEMBER, generate_legacy_client_plan, normalize_server_origin
@@ -31,6 +37,12 @@ from liminal_gate.master_strings import (
 )
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
+from liminal_gate.setup_progress import (
+    DEFAULT_PROGRESS_INTERVAL_SECONDS,
+    ProgressLine,
+    format_bytes as _format_bytes,
+    run_with_heartbeat as _run_with_heartbeat,
+)
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
 from liminal_gate import account_state
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
@@ -83,6 +95,10 @@ DEFAULT_APK = Path("local-input/terra-battle-5.5.7-170.apk")
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
 DEFAULT_DATA = Path("user-data")
 DEFAULT_DUMMY_DLL = Path("local-input/il2cpp-output/DummyDll")
+#: Matches every worked example in the README. The value only has to be a free
+#: local port of at most four digits, but setup and the documentation disagreeing
+#: about it is a needless way to end up with a client pointed somewhere else.
+DEFAULT_PORT = 8696
 KEY_ALIAS = "liminal-gate-test"
 # Inside an Android emulator this alias reaches the host machine's loopback.
 # A physical phone or tablet must instead be given the host's own LAN address.
@@ -98,7 +114,28 @@ ADB_NAMES = ("adb", "adb.exe")
 # keytool refuses a shorter store or key password, and it only says so after the
 # prompt has been answered, so setup states and checks the rule itself.
 MINIMUM_KEY_PASSWORD_LENGTH = 6
+#: Entropy for a generated local key password. The key signs one throwaway test
+#: build and its password is stored beside it, so this is about not inventing a
+#: guessable value rather than about protecting anything.
+GENERATED_KEY_PASSWORD_BYTES = 24
 REQUIRED_RESOURCE_CATEGORIES = ("BG", "BGM", "Banner", "BuddyImages", "BuddyThumbs", "Illust", "Pieces", "SE", "Scenario")
+
+# Compatibility-facing override retained here because callers and tests have
+# historically tuned the heartbeat interval through `tester_setup`.
+PROGRESS_INTERVAL_SECONDS = DEFAULT_PROGRESS_INTERVAL_SECONDS
+
+
+def run_with_heartbeat(
+    command: Sequence[str], label: str, timeout: float,
+) -> subprocess.CompletedProcess:
+    """Run a long child with the shared progress renderer.
+
+    The wrapper preserves the original public surface and its tunable interval
+    while keeping process supervision independent of Android setup.
+    """
+    return _run_with_heartbeat(
+        command, label, timeout, interval=PROGRESS_INTERVAL_SECONDS,
+    )
 
 
 def _adb_devices(adb: str) -> tuple[str, ...]:
@@ -405,12 +442,31 @@ def prompt_key_password(confirm: bool, ask: Callable[[str], str] = getpass.getpa
             ) from error
 
 
-def ensure_keystore(keystore: Path, password_file: Path) -> None:
+def generate_key_password() -> str:
+    """Invent the password for a key whose password protects nothing.
+
+    The key signs one local test build, and `keytool` needs *a* password, which
+    setup then has to store beside the keystore so later runs can sign without
+    asking again. Choosing it by hand therefore buys no security and costs the
+    first run two prompts, so it is only asked for on request.
+    """
+    return secrets.token_urlsafe(GENERATED_KEY_PASSWORD_BYTES)
+
+
+def ensure_keystore(keystore: Path, password_file: Path, prompt: bool = False) -> None:
     if keystore.is_file() and password_file.is_file():
         return
     keytools = find_keytools()
     keystore.parent.mkdir(parents=True, exist_ok=True)
-    password = prompt_key_password(confirm=not keystore.exists())
+    if keystore.exists():
+        # The key is already here and only its saved password is missing, so
+        # this one cannot be generated: it has to match what the key was made
+        # with, and only the operator knows that.
+        password = prompt_key_password(confirm=False)
+    elif prompt:
+        password = prompt_key_password(confirm=True)
+    else:
+        password = generate_key_password()
     if not keystore.exists():
         attempts: list[str] = []
         for index, keytool in enumerate(keytools):
@@ -447,6 +503,11 @@ def ensure_keystore(keystore: Path, password_file: Path) -> None:
                 "Studio, gives setup a working one."
             )
         print(f"Created the local test signing key: {keystore}")
+        if not prompt:
+            print(
+                f"  Its password was generated and saved to {password_file} (owner-only). "
+                "Pass --prompt-key-password to choose one yourself instead."
+            )
     write_password_file(password_file, password)
 
 
@@ -506,6 +567,74 @@ IL2CPP_DUMPER_MISSING = (
     "setup. Pass --dummy-dll-dir instead if you already have its output."
 )
 
+#: How long Il2CppDumper may run before setup gives up on it.
+IL2CPP_DUMPER_TIMEOUT_SECONDS = 1800
+
+#: The distributions `pyproject.toml` installs under the `master-import` extra.
+#: Reading master data out of the APK needs both, so the guided path needs both.
+MASTER_IMPORT_DISTRIBUTIONS = ("UnityPy", "TypeTreeGeneratorAPI")
+
+AARCH64_DISASSEMBLER_MISSING = (
+    "complete guided setup requires an AArch64 disassembler; install LLVM "
+    "(llvm-objdump) or binutils-multiarch, then re-run setup"
+)
+
+
+def _installed(distribution: str) -> bool:
+    """Report whether one master-import dependency is importable here.
+
+    Distribution metadata is asked first because that is what `pip install
+    ".[master-import]"` records and its name is the one worth printing. A vendored
+    copy carries no metadata, so an importable module of the same name counts too.
+    """
+    try:
+        importlib.metadata.version(distribution)
+        return True
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    try:
+        return importlib.util.find_spec(distribution) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def find_missing_master_import() -> tuple[str, ...]:
+    """Return the master-import distributions that are not installed."""
+    return tuple(name for name in MASTER_IMPORT_DISTRIBUTIONS if not _installed(name))
+
+
+def describe_missing_master_import(missing: Sequence[str]) -> str:
+    return (
+        f"complete guided setup reads master data out of your own APK with {', '.join(missing)}, "
+        'which is not installed. Install it with: python3 -m pip install ".[master-import]" '
+        "(on Windows, py -3 -m pip install \".[master-import]\")"
+    )
+
+
+def check_derivation_prerequisites(dummy_dll_dir: Path | None) -> None:
+    """Confirm every tool the master-data derivations need, before any hashing.
+
+    All three are checked together, beside the SDK tools and the signing
+    password, because each of them is fatal to the guided path and each used to
+    surface at a different, later point: the disassembler only after the resource
+    tree had been inventoried and an IL2CPP dump produced, and UnityPy later
+    still. An incomplete toolchain should cost seconds and name every missing
+    piece it can, not one piece per attempt.
+    """
+    if (dummy_dll_dir is None or not dummy_dll_dir.is_dir()) and find_il2cpp_dumper() is None:
+        raise TesterSetupError(
+            "complete guided setup needs the master-data layout an IL2CPP build strips, without "
+            "which story clears mint no Companion. Either point --dummy-dll-dir at an Il2CppDumper "
+            f"DummyDll directory (default {DEFAULT_DUMMY_DLL}), or install Il2CppDumper "
+            "(https://github.com/Perfare/Il2CppDumper) and put it on PATH or in "
+            f"{IL2CPP_DUMPER_ENVIRONMENT} so setup can produce one from your APK."
+        )
+    missing = find_missing_master_import()
+    if missing:
+        raise TesterSetupError(describe_missing_master_import(missing))
+    if find_aarch64_objdump() is None:
+        raise TesterSetupError(AARCH64_DISASSEMBLER_MISSING)
+
 
 def find_il2cpp_dumper() -> tuple[str, ...] | None:
     """Return the command that runs Il2CppDumper, or `None` if it is absent."""
@@ -542,7 +671,7 @@ def ensure_il2cpp_dump(apk: Path, data_directory: Path) -> tuple[Path, Path]:
     command = find_il2cpp_dumper()
     if command is None:
         raise TesterSetupError(IL2CPP_DUMPER_MISSING)
-    print("Recovering the master-data layout from your APK with Il2CppDumper...")
+    print("Recovering the master-data layout from your APK with Il2CppDumper (this can take several minutes)...")
     try:
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as directory:
@@ -553,9 +682,9 @@ def ensure_il2cpp_dump(apk: Path, data_directory: Path) -> tuple[Path, Path]:
                     (IL2CPP_METADATA_MEMBER, "global-metadata.dat"),
                 ):
                     (staged / name).write_bytes(archive.read(member))
-            completed = subprocess.run(
+            completed = run_with_heartbeat(
                 (*command, str(staged / "libil2cpp.so"), str(staged / "global-metadata.dat"), str(output)),
-                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=1800,
+                "Il2CppDumper", IL2CPP_DUMPER_TIMEOUT_SECONDS,
             )
     except (OSError, KeyError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         raise TesterSetupError(f"complete guided setup could not run Il2CppDumper: {error}") from error
@@ -617,10 +746,7 @@ def derive_story_outcome_catalog(
         )
     objdump = find_aarch64_objdump()
     if objdump is None:
-        raise TesterSetupError(
-            "complete guided setup requires an AArch64 disassembler; install LLVM "
-            "(llvm-objdump) or binutils-multiarch, then re-run setup"
-        )
+        raise TesterSetupError(AARCH64_DISASSEMBLER_MISSING)
     character_catalog = data_directory / "character-catalog.json"
     if not character_catalog.is_file():
         raise TesterSetupError("complete guided setup could not derive the local character catalog")
@@ -630,7 +756,11 @@ def derive_story_outcome_catalog(
     try:
         print(f"Deriving story Companion drops (disassembling chapter programs with {objdump})...")
         native_path = derived / "native-encounters.json"
-        write_native_document(native_path, import_native_encounters(apk, resolved_dump_cs, objdump))
+        disassembly = ProgressLine("chapter generators")
+        write_native_document(native_path, import_native_encounters(
+            apk, resolved_dump_cs, objdump, progress=disassembly.advance,
+        ))
+        disassembly.done("all read")
         # Chapters 2-7 have no compiled battle program; their encounters come
         # from the client's MoonSharp scripts instead.
         scenario_path = derived / "scenario-encounters.json"
@@ -672,7 +802,7 @@ def prepare_local_tester(
     apk: Path, resource_root: Path, data_directory: Path, port: int, build_tools: Path | None,
     dummy_dll_dir: Path | None = None, event_catalog: Path | None = None,
     device_host: str = EMULATOR_LOOPBACK_HOST,
-    dump_cs: Path | None = None,
+    dump_cs: Path | None = None, prompt_for_key_password: bool = False,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
     if not 1 <= port <= 65535:
@@ -690,22 +820,21 @@ def prepare_local_tester(
     # SDK tool, a missing JDK, or a mistyped password should cost seconds rather
     # than surface after the whole resource tree has been inventoried.
     keystore, password_file = data_directory / "liminal-gate-test.keystore", data_directory / "keystore-password.txt"
-    ensure_keystore(keystore, password_file)
+    ensure_keystore(keystore, password_file, prompt_for_key_password)
     zipalign, apksigner = find_build_tools(build_tools)
     # Checked alongside the SDK tools and the signing password, so an incomplete
     # toolchain costs seconds rather than surfacing after the whole resource tree
     # has been inventoried. Either route to the master-data layout will do; only
     # having neither stops setup.
-    if (dummy_dll_dir is None or not dummy_dll_dir.is_dir()) and find_il2cpp_dumper() is None:
-        raise TesterSetupError(
-            "complete guided setup needs the master-data layout an IL2CPP build strips, without "
-            "which story clears mint no Companion. Either point --dummy-dll-dir at an Il2CppDumper "
-            f"DummyDll directory (default {DEFAULT_DUMMY_DLL}), or install Il2CppDumper "
-            "(https://github.com/Perfare/Il2CppDumper) and put it on PATH or in "
-            f"{IL2CPP_DUMPER_ENVIRONMENT} so setup can produce one from your APK."
-        )
+    check_derivation_prerequisites(dummy_dll_dir)
     try:
-        imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True)
+        # One shared cache, so the two inventories below read the tree once
+        # between them instead of once each. Deliberately scoped to the APK and
+        # the resource tree: both are immutable for the length of a run, which
+        # nothing setup writes afterwards is.
+        hashing = ProgressLine("hashing local inputs", count_files(resource_root) + 1)
+        digests = DigestCache(on_hash=lambda files, read: hashing.update(files, _format_bytes(read)))
+        imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True, digests=digests)
         write_import_manifest(data_directory / "input-manifest", imported)
         if dummy_dll_dir is None or not dummy_dll_dir.is_dir():
             # The default location is a hint, not a requirement. When nothing is
@@ -719,9 +848,13 @@ def prepare_local_tester(
         write_character_catalog(data_directory / "character-catalog.json", character_catalog)
         write_local_names(data_directory / "names.json", apk, trees)
         derive_story_outcome_catalog(apk, dummy_dll_dir, data_directory, dump_cs)
-        manifest = build_resource_manifest(resource_root)
+        manifest = build_resource_manifest(resource_root, digests=digests)
         resource_manifest = data_directory / "resources.json"
         write_resource_manifest(resource_manifest, manifest)
+        hashing.done(
+            f"{digests.hashed_files} file(s), {_format_bytes(digests.hashed_bytes)} read once "
+            f"and reused {digests.reused} time(s)"
+        )
         try:
             prepare_pact_banners(apk, resource_root, data_directory / "public_data")
         except PactBannerImportError as error:
@@ -838,6 +971,137 @@ def choose_local_server_options(
     return LocalServerOptions(event_catalog=event_catalog)
 
 
+@dataclass(frozen=True)
+class Check:
+    """One preflight result, in the terms the operator has to act on."""
+
+    name: str
+    ok: bool
+    detail: str
+    required: bool = True
+
+    @property
+    def marker(self) -> str:
+        return "ok  " if self.ok else ("FAIL" if self.required else "warn")
+
+
+def _probe(name: str, resolve: Callable[[], str], required: bool = True) -> Check:
+    """Run one check, turning its own refusal message into the reported detail."""
+    try:
+        return Check(name, True, resolve(), required)
+    except (TesterSetupError, OSError) as error:
+        return Check(name, False, str(error), required)
+
+
+def port_is_free(port: int) -> bool:
+    """Report whether the guided server could bind the port it was given.
+
+    Checked on the same interface the server actually listens on, because a port
+    free on loopback and taken on 0.0.0.0 would pass a narrower test and then
+    fail at launch.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("0.0.0.0", port))
+        except OSError:
+            return False
+    return True
+
+
+def preflight_checks(
+    apk: Path, resource_root: Path, dummy_dll_dir: Path | None, port: int,
+    adb: str, device: str | None, build_tools: Path | None,
+) -> list[Check]:
+    """Answer every question setup would otherwise ask one failure at a time."""
+    def build_tool_paths() -> str:
+        zipalign, apksigner = find_build_tools(build_tools)
+        return str(zipalign.parent)
+
+    def master_import() -> str:
+        missing = find_missing_master_import()
+        if missing:
+            raise TesterSetupError(describe_missing_master_import(missing))
+        return ", ".join(MASTER_IMPORT_DISTRIBUTIONS)
+
+    def il2cpp_dumper() -> str:
+        if dummy_dll_dir is not None and dummy_dll_dir.is_dir():
+            return f"not needed; using {dummy_dll_dir}"
+        command = find_il2cpp_dumper()
+        if command is None:
+            raise TesterSetupError(IL2CPP_DUMPER_MISSING)
+        return " ".join(command)
+
+    def disassembler() -> str:
+        objdump = find_aarch64_objdump()
+        if objdump is None:
+            raise TesterSetupError(AARCH64_DISASSEMBLER_MISSING)
+        return f"{objdump} (reads AArch64)"
+
+    def local_apk() -> str:
+        if not apk.is_file():
+            raise TesterSetupError(f"no APK at {apk}; pass --apk with the path to your own copy")
+        return f"{apk} ({_format_bytes(apk.stat().st_size)})"
+
+    def resources() -> str:
+        return str(resolve_resource_root(resource_root))
+
+    def free_port() -> str:
+        if not port_is_free(port):
+            raise TesterSetupError(f"port {port} is already in use; choose another with --port")
+        return f"{port} is free"
+
+    def ready_device() -> str:
+        return select_device(resolve_adb(adb), device)
+
+    return [
+        Check("python", True, f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"),
+        _probe("adb", lambda: resolve_adb(adb)),
+        _probe("build tools", build_tool_paths),
+        _probe("keytool", lambda: str(find_keytools()[0])),
+        _probe("UnityPy", master_import),
+        _probe("Il2CppDumper", il2cpp_dumper),
+        _probe("disassembler", disassembler),
+        _probe("APK", local_apk),
+        _probe("resources", resources),
+        _probe("port", free_port),
+        # Not required: --prepare-only builds the APK with nothing attached, and
+        # a tester who has not started the emulator yet still wants the rest of
+        # this list rather than one line about adb.
+        _probe("device", ready_device, required=False),
+    ]
+
+
+def report_preflight(checks: Sequence[Check], width: int = 78) -> int:
+    """Print the checklist and return the exit status it implies.
+
+    A failing check's detail is the whole instruction for fixing it, which is a
+    sentence or three rather than a value, so it is wrapped under its own row
+    instead of running off the edge of the terminal.
+    """
+    print("Checking the local tester environment; nothing is modified.\n")
+    label = max(len(check.name) for check in checks)
+    for check in checks:
+        row = f"  {check.marker}  {check.name.ljust(label)}  "
+        if check.ok:
+            print(f"{row}{check.detail}")
+            continue
+        wrapped = textwrap.wrap(check.detail, width=max(20, width - len(row))) or [""]
+        print(f"{row}{wrapped[0]}")
+        for line in wrapped[1:]:
+            print(f"{' ' * len(row)}{line}")
+    failed = [check for check in checks if not check.ok and check.required]
+    warned = [check for check in checks if not check.ok and not check.required]
+    if failed:
+        print(f"\n{len(failed)} required check(s) failed. Fix the lines marked FAIL, then run this again.")
+        return 1
+    if warned:
+        print("\nEverything required is ready. The warn line(s) above only matter when you install.")
+    else:
+        print("\nEverything is ready. Run the same command without --check to build and install.")
+    return 0
+
+
 def run_server(arguments: Sequence[str]) -> None:
     """Run the local server in the foreground with platform-safe argument quoting."""
     subprocess.run(arguments, check=True)
@@ -848,7 +1112,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--apk", type=Path, default=DEFAULT_APK)
     parser.add_argument("--resource-root", type=Path, default=DEFAULT_RESOURCES)
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA)
-    parser.add_argument("--port", type=int, default=8002)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
         "--device", "--emulator", dest="device",
         help="adb serial of the emulator, phone, or tablet; required only when more than one device is ready",
@@ -873,6 +1137,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dump-cs", type=Path, help="Il2CppDumper dump.cs; defaults to the file beside --dummy-dll-dir")
     parser.add_argument("--no-configure", dest="configure", action="store_false", help="skip interactive local-server options and use the standard defaults")
     parser.set_defaults(configure=True)
+    parser.add_argument(
+        "--check", action="store_true",
+        help="report whether this machine has everything setup needs, then exit without changing anything",
+    )
+    parser.add_argument(
+        "--prompt-key-password", dest="prompt_key_password", action="store_true",
+        help="choose the local test-key password yourself instead of having one generated",
+    )
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
     parser.add_argument(
         "--replace-existing", action="store_true",
@@ -949,6 +1221,14 @@ def _progress_label(progress: object) -> str:
 
 def main() -> int:
     args = parse_args()
+    if args.check:
+        # Deliberately ahead of every prompt and every check that can raise: the
+        # point of this mode is to answer "is this machine ready" without asking
+        # the operator for anything or writing a single file.
+        return report_preflight(preflight_checks(
+            args.apk, args.resource_root, args.dummy_dll_dir, args.port,
+            args.adb, args.device, args.build_tools,
+        ))
     try:
         options = (
             choose_local_server_options(args.event_catalog)
@@ -966,7 +1246,7 @@ def main() -> int:
         signed = prepare_local_tester(
             args.apk, args.resource_root, args.data_dir, args.port, args.build_tools,
             args.dummy_dll_dir, options.event_catalog, args.device_host,
-            dump_cs=args.dump_cs,
+            dump_cs=args.dump_cs, prompt_for_key_password=args.prompt_key_password,
         )
         if device is None:
             return 0

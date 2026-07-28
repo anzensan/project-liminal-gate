@@ -19,6 +19,7 @@ drop, or scripted scene has been historically reproduced.
 - [Current tester status](#current-tester-status)
   - [Local-network safety](#local-network-safety)
 - [What you need](#what-you-need)
+  - [Check everything at once before you start](#check-everything-at-once-before-you-start)
   - [Install and check the tools first](#install-and-check-the-tools-first)
 - [Quick start: emulator tester path](#quick-start-emulator-tester-path)
   - [0. Open a Terminal in the project folder](#0-open-a-terminal-in-the-project-folder)
@@ -125,10 +126,45 @@ devices that can reach the port, so use a trusted local network.
 - A JDK, which provides Java's `keytool` command for creating a local test
   signing key. Android Studio's bundled JDK is sufficient if its `bin`
   directory is on your `PATH`.
+- [Il2CppDumper](https://github.com/Perfare/Il2CppDumper), on your `PATH` or
+  named by `LIMINAL_GATE_IL2CPPDUMPER`. Setup runs it for you against your own
+  APK; it recovers the master-data layout an IL2CPP build strips, without which
+  a story clear cannot award a Companion.
+- A disassembler that reads AArch64: **LLVM** (`llvm-objdump`) on macOS and
+  Windows, or `binutils-multiarch` on Linux. The Chapter 8-42 encounter map only
+  exists as compiled code inside your APK, so reading it needs one.
+- The `master-import` Python packages, installed from this directory with
+  `python3 -m pip install ".[master-import]"` (see
+  [Install the Python dependencies](#3-one-command-setup-install-and-server-start)).
 - A local Terra Battle Android 5.5.7-170 APK and matching Android resources.
 
 The APK and resources stay on your machine; this repository does not include
 them. Keep all local inputs and generated files outside Git.
+
+On macOS, Homebrew provides two of the above:
+
+```sh
+brew install llvm
+```
+
+Il2CppDumper is a .NET program with no Homebrew formula: download a release from
+its own page, then either put the executable on your `PATH` or point
+`LIMINAL_GATE_IL2CPPDUMPER` at it (or at its `.dll`, which setup runs through
+`dotnet`).
+
+### Check everything at once before you start
+
+You do not have to discover missing pieces one failed run at a time. This
+reports on every requirement above and changes nothing:
+
+```sh
+python3 -m liminal_gate.tester_setup --check
+```
+
+Each line is either `ok`, `warn`, or `FAIL` with the command that fixes it. The
+`device` line is only a warning, because you do not need an emulator running
+until you install. Add the same `--apk`, `--resource-root`, and `--port` options
+you intend to use for real, so it checks the paths you will actually pass.
 
 ### Install and check the tools first
 
@@ -677,7 +713,8 @@ runs Il2CppDumper itself — both its inputs are already inside your APK — so 
 only need it installed and findable, on `PATH` or via
 `LIMINAL_GATE_IL2CPPDUMPER`. If either tool is missing, setup says so in the
 first few seconds and names the fix rather than installing a game that quietly
-drops nothing.
+drops nothing. `--check` reports all of them at once without building anything;
+see [Check everything at once](#check-everything-at-once-before-you-start).
 
 An advanced event question appears only for people who already have a reviewed
 local event catalog. **DummyDll is not required for normal play, Hunting,
@@ -686,9 +723,13 @@ and is used only to derive optional local event/character catalogs. Press Enter
 to accept the recommended choice. The command validates the inputs,
 creates the local manifests, creates a local signing key on first use, patches
 and signs the APK, installs it on that one device, then starts the local server
-in the foreground. It asks for the signing-key password only on first setup and
-saves it locally in `user-data/keystore-password.txt` with owner-only
-permissions. Press Control-C when you finish testing.
+in the foreground. Press Control-C when you finish testing.
+
+The local test signing key is created on the first run only. Its password is
+generated for you and saved to `user-data/keystore-password.txt` with owner-only
+permissions, because that key signs one local test build and its password has to
+be stored beside it anyway — choosing one by hand protects nothing. Add
+`--prompt-key-password` if you would rather choose it yourself.
 
 `--device` takes an emulator serial or a physical phone or tablet serial;
 `--emulator` still works as an older name for the same option. Installing on a

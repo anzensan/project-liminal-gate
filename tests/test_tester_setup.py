@@ -8,6 +8,7 @@ import json
 from liminal_gate import tester_setup
 
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 import unittest
@@ -60,7 +61,7 @@ class TesterSetupTest(unittest.TestCase):
             with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.load_master_trees", return_value={
                 "ChrDatabase": {"infos": [{"ID": 3, "chrType": 1, "isLambda": 0, "rebirthFromID": 0, "rarity": 4, "Jobs": [30]}]},
                 "ItemSet": {"itemSet": []}, "BuddyDatabase": {"data": []},
-            }), patch("liminal_gate.tester_setup.write_local_names"), patch("liminal_gate.tester_setup.derive_story_outcome_catalog", return_value=data / "story-outcomes.json"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
+            }), patch("liminal_gate.tester_setup.write_local_names"), patch("liminal_gate.tester_setup.derive_story_outcome_catalog", return_value=data / "story-outcomes.json"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.check_derivation_prerequisites"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
                 prepare_local_tester(apk, resources, data, 8696, None, dummy)
             self.assertTrue((data / "character-catalog.json").is_file())
     def test_requires_explicit_choice_when_multiple_devices_are_ready(self) -> None:
@@ -213,6 +214,78 @@ class TesterSetupTest(unittest.TestCase):
         run.assert_called_once_with(arguments, check=True)
 
 
+class ProgressReportingTest(unittest.TestCase):
+    """Long phases must show they are alive without spoiling a redirected log.
+
+    Hashing a multi-gigabyte tree and running a disassembler thousands of times
+    both used to print one line and then go silent for minutes, which reads as a
+    hang; a tester who interrupts it pays for the whole phase again.
+    """
+
+    class _Terminal(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    def test_a_terminal_sees_the_counter_move(self) -> None:
+        stream = self._Terminal()
+        line = tester_setup.ProgressLine("hashing", total=2, stream=stream)
+        line.update(1, "1.0 GiB")
+        line.update(2, "2.0 GiB")
+        written = stream.getvalue()
+        self.assertIn("2/2", written)
+        self.assertIn("2.0 GiB", written)
+        self.assertIn("\r", written, "the line is repainted rather than scrolled")
+
+    def test_a_redirected_log_gets_the_summary_and_nothing_else(self) -> None:
+        stream = io.StringIO()
+        line = tester_setup.ProgressLine("hashing", total=2, stream=stream)
+        line.update(1, "1.0 GiB")
+        line.update(2, "2.0 GiB")
+        self.assertEqual("", stream.getvalue())
+        line.done("2 files")
+        self.assertEqual("  hashing: 2 files\n", stream.getvalue())
+
+    def test_intermediate_updates_are_throttled_but_the_last_always_lands(self) -> None:
+        stream = self._Terminal()
+        line = tester_setup.ProgressLine("hashing", total=3, stream=stream)
+        for done in (1, 2, 3):
+            line.update(done)
+        painted = stream.getvalue()
+        self.assertIn("3/3", painted, "reaching the total is never throttled away")
+        self.assertNotIn("2/3", painted, "intermediate repaints are rate limited")
+
+    def test_a_total_learned_while_running_is_adopted(self) -> None:
+        stream = self._Terminal()
+        line = tester_setup.ProgressLine("generators", stream=stream)
+        line.advance(4, 4)
+        self.assertIn("4/4", stream.getvalue())
+
+    def test_byte_counts_read_the_way_an_operator_says_them(self) -> None:
+        self.assertEqual("512 B", tester_setup._format_bytes(512))
+        self.assertEqual("1.0 KiB", tester_setup._format_bytes(1024))
+        self.assertEqual("4.5 GiB", tester_setup._format_bytes(int(4.5 * 1024 ** 3)))
+
+
+class HeartbeatTest(unittest.TestCase):
+    """Il2CppDumper captures all its own output and can run for minutes."""
+
+    def test_output_and_status_survive_the_heartbeat_wrapper(self) -> None:
+        completed = tester_setup.run_with_heartbeat(
+            (sys.executable, "-c", "import sys; print('out'); print('err', file=sys.stderr); sys.exit(3)"),
+            "stub", timeout=60,
+        )
+        self.assertEqual(3, completed.returncode)
+        self.assertIn("out", completed.stdout)
+        self.assertIn("err", completed.stderr)
+
+    def test_a_child_that_overruns_its_budget_is_killed(self) -> None:
+        with patch.object(tester_setup, "PROGRESS_INTERVAL_SECONDS", 0.05):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                tester_setup.run_with_heartbeat(
+                    (sys.executable, "-c", "import time; time.sleep(30)"), "stub", timeout=0.1,
+                )
+
+
 class LocalSigningToolTest(unittest.TestCase):
     """keytool and adb must be found where Android Studio actually puts them.
 
@@ -296,8 +369,14 @@ class LocalSigningToolTest(unittest.TestCase):
                 with self.assertRaisesRegex(TesterSetupError, "password too short"):
                     ensure_keystore(data / "test.keystore", data / "password.txt")
 
-    def test_the_password_is_chosen_before_the_resource_tree_is_inventoried(self) -> None:
-        """A mistyped password must not cost a completed resource inventory."""
+    def test_every_prerequisite_is_checked_before_the_resource_tree_is_inventoried(self) -> None:
+        """An incomplete toolchain must not cost a completed resource inventory.
+
+        Each of these used to surface at a different, later point -- the
+        disassembler only after the tree had been hashed and an IL2CPP dump
+        produced -- so the order is pinned rather than left to how the body
+        happens to read.
+        """
         order: list[str] = []
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); apk = root / "game.apk"; resources = root / "resources"
@@ -316,6 +395,7 @@ class LocalSigningToolTest(unittest.TestCase):
                  patch("liminal_gate.tester_setup.derive_story_outcome_catalog"), \
                  patch("liminal_gate.tester_setup.ensure_keystore", side_effect=lambda *_: order.append("keystore")), \
                  patch("liminal_gate.tester_setup.find_build_tools", side_effect=lambda *_: order.append("build-tools") or (root / "zipalign", root / "apksigner")), \
+                 patch("liminal_gate.tester_setup.check_derivation_prerequisites", side_effect=lambda *_: order.append("prerequisites")), \
                  patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: order.append("inventory") or {}), \
                  patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), \
                  patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), \
@@ -323,7 +403,7 @@ class LocalSigningToolTest(unittest.TestCase):
                  patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), \
                  patch("liminal_gate.tester_setup.sign_apk"):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, dummy_dll_dir=dummy_dll)
-        self.assertEqual(["keystore", "build-tools", "inventory"], order)
+        self.assertEqual(["keystore", "build-tools", "prerequisites", "inventory"], order)
 
 
 class AccountReportTest(unittest.TestCase):

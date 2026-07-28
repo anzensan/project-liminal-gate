@@ -1,5 +1,47 @@
 # Execution Plans
 
+## 2026-07-28 behavior-preserving refactoring pass
+
+Status: completed 2026-07-28.
+
+Objective: reduce structural duplication and oversized responsibilities across
+the public compatibility server and guided setup without changing protocol
+shapes, preservation-policy boundaries, durable state, replay behavior, or
+client-visible results.
+
+Execution boundaries:
+
+1. Establish a warning-strict full-suite baseline over the current dirty
+   worktree and inventory the largest/most coupled modules.
+2. Prefer small extractions with existing public behavior pinned by focused
+   tests; do not combine this pass with new endpoint or gameplay coverage.
+3. Preserve transaction, request-body replay, restart, interruption, and
+   privacy behavior on every touched mutation or transport path.
+4. Exercise affected functionality through real HTTP where the refactor reaches
+   the server; exercise the guided setup CLI without writing local inputs where
+   the refactor reaches setup.
+5. Run compilation, the warning-strict full suite, diff checks, and applicable
+   release gates before declaring the pass complete.
+6. Record remaining architectural risks instead of disguising unsupported or
+   unverified behavior behind generic abstractions.
+
+Result:
+
+- The compatibility-profile operation registry, template requirements, body
+  transitions, and structural transitions now have one validation authority.
+- GET content/resource serving is isolated from profile-backed reads. POST
+  transport now separates route admission, bounded body reads, authentication,
+  operation selection, tutorial/catalog arbitration, and result emission.
+- Guided setup delegates generic progress rendering and quiet-child supervision
+  to `liminal_gate.setup_progress` while preserving its existing callable API.
+- No state mutation method, response envelope, endpoint matrix status, policy
+  value, or canonical client claim changed.
+- The pre-refactor warning-strict baseline passed 578 tests. After the pass,
+  581 tests passed in 112.991 seconds; focused transport/replay/restart,
+  setup/import, profile/config, and GET/resource suites also passed.
+- Compilation and `git diff --check` passed. An exact clean source candidate
+  passed both publication-lane material preflight and repository-history audit.
+
 ## 2026-07-27 Hunting selector runtime stability
 
 Status: discovery in progress.

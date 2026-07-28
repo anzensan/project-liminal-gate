@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import tempfile
-from typing import Any
+from typing import Any, Callable
 import zipfile
 
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError, generate_plan
@@ -46,16 +46,23 @@ def sha256_file(path: Path) -> str:
 
 def build_import_manifest(
     apk: Path, resource_root: Path | None = None, *, reviewed_android_5_5_7: bool = False,
+    digests: Callable[[Path], str] | None = None,
 ) -> dict[str, Any]:
-    """Inventory local input metadata without extracting or copying content."""
+    """Inventory local input metadata without extracting or copying content.
+
+    `digests` accepts a shared hashing function so a caller that also builds the
+    resource manifest reads the tree once instead of twice. Omitting it hashes
+    directly, which is what every standalone caller wants.
+    """
+    hash_file = digests if digests is not None else sha256_file
     apk = apk.resolve(strict=True)
     archive = _inspect_apk(apk)
-    resources = _inspect_resources(resource_root.resolve(strict=True)) if resource_root else None
+    resources = _inspect_resources(resource_root.resolve(strict=True), hash_file) if resource_root else None
     manifest: dict[str, Any] = {
         "schema_version": IMPORT_SCHEMA_VERSION,
         "provenance": "user-supplied",
         "apk": {
-            "sha256": sha256_file(apk),
+            "sha256": hash_file(apk),
             "size": apk.stat().st_size,
             **archive,
         },
@@ -109,7 +116,9 @@ def _inspect_apk(apk: Path) -> dict[str, Any]:
     return {"member_count": len(records), "member_manifest_sha256": digest}
 
 
-def _inspect_resources(resource_root: Path) -> dict[str, Any]:
+def _inspect_resources(
+    resource_root: Path, hash_file: Callable[[Path], str] = sha256_file,
+) -> dict[str, Any]:
     if not resource_root.is_dir():
         raise ImportError("resource root must be a directory")
     records: list[dict[str, int | str]] = []
@@ -119,7 +128,7 @@ def _inspect_resources(resource_root: Path) -> dict[str, Any]:
         if path.is_file():
             records.append({
                 "path": path.relative_to(resource_root).as_posix(),
-                "sha256": sha256_file(path),
+                "sha256": hash_file(path),
                 "size": path.stat().st_size,
             })
     digest = hashlib.sha256(

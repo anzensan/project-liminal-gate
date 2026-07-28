@@ -22,7 +22,6 @@ from liminal_gate.tester_setup import (
     IL2CPP_METADATA_MEMBER,
     TesterSetupError,
     ensure_il2cpp_dump,
-    TesterSetupError,
     derive_story_outcome_catalog,
     find_aarch64_objdump,
     prepare_local_tester,
@@ -140,7 +139,11 @@ class DeriveStoryOutcomeCatalogTest(unittest.TestCase):
     def test_an_absent_dummy_dll_is_produced_when_il2cppdumper_is_installed(self) -> None:
         # The default location is a hint, not a requirement; having the tool is
         # enough, because both its inputs are inside the APK setup already has.
+        # The other two prerequisites are pinned so this passes or fails on the
+        # branch it is about rather than on what this machine has installed.
         with patch("liminal_gate.tester_setup.find_il2cpp_dumper", return_value=("Il2CppDumper",)), \
+             patch("liminal_gate.tester_setup.find_missing_master_import", return_value=()), \
+             patch("liminal_gate.tester_setup.find_aarch64_objdump", return_value="llvm-objdump"), \
              patch("liminal_gate.tester_setup.ensure_il2cpp_dump", side_effect=_StopSetup) as produced, \
              patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), \
              patch("liminal_gate.tester_setup.write_import_manifest"), \
@@ -148,6 +151,33 @@ class DeriveStoryOutcomeCatalogTest(unittest.TestCase):
             with self.assertRaises(_StopSetup):
                 _prepare_after_inputs(self.apk, self.data, dummy_dll_dir=None)
         produced.assert_called_once()
+
+    def test_a_missing_disassembler_stops_before_anything_expensive(self) -> None:
+        """The check used to sit after the hashing and the IL2CPP dump.
+
+        Both of those cost minutes on a real pack, and neither is any use to a
+        machine that cannot disassemble AArch64, so the toolchain is settled
+        first.
+        """
+        inventoried = []
+        with patch("liminal_gate.tester_setup.find_missing_master_import", return_value=()), \
+             patch("liminal_gate.tester_setup.find_aarch64_objdump", return_value=None), \
+             patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: inventoried.append(1) or {}), \
+             patch("liminal_gate.tester_setup.ensure_il2cpp_dump", side_effect=_StopSetup):
+            with self.assertRaisesRegex(TesterSetupError, "AArch64"):
+                _prepare_after_inputs(self.apk, self.data, dummy_dll_dir=self.dummy_dll)
+        self.assertEqual([], inventoried, "must not hash the tree before naming the missing tool")
+
+    def test_missing_master_import_packages_stop_before_anything_expensive(self) -> None:
+        # This one used to surface from inside UnityPy, after a completed
+        # inventory and a completed dump, as an import error about a package.
+        inventoried = []
+        with patch("liminal_gate.tester_setup.find_missing_master_import", return_value=("UnityPy",)), \
+             patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: inventoried.append(1) or {}), \
+             patch("liminal_gate.tester_setup.ensure_il2cpp_dump", side_effect=_StopSetup):
+            with self.assertRaisesRegex(TesterSetupError, "master-import"):
+                _prepare_after_inputs(self.apk, self.data, dummy_dll_dir=self.dummy_dll)
+        self.assertEqual([], inventoried)
 
     def test_the_catalog_lands_where_the_server_launcher_looks_for_it(self) -> None:
         # server_setup picks the file up by this name with no further wiring, so

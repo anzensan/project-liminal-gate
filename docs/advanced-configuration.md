@@ -96,11 +96,21 @@ that reads AArch64. Support is confirmed rather than assumed, because a stock
 GNU `objdump` is often single-target; install LLVM or `binutils-multiarch` if
 setup reports none.
 
-Both are checked alongside the SDK tools and the signing password, so an
-incomplete toolchain costs seconds rather than surfacing after the whole
-resource tree has been inventoried. Neither is optional: the guided path is the
-complete supported local game, and an install that silently loses every story
-Companion the client rolls is not that.
+Both are checked alongside the SDK tools and the signing password, together with
+the `master-import` packages that read the master data itself, so an incomplete
+toolchain costs seconds rather than surfacing after the whole resource tree has
+been inventoried and an IL2CPP dump produced. None of the three is optional: the
+guided path is the complete supported local game, and an install that silently
+loses every story Companion the client rolls is not that.
+
+To see the state of all of them at once without building anything:
+
+```sh
+python3 -m liminal_gate.tester_setup --check
+```
+
+That reports every requirement as `ok`, `warn`, or `FAIL` with the command that
+fixes it, and writes nothing.
 
 ## Core-story progression
 

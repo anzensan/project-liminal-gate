@@ -23,7 +23,7 @@ from pathlib import Path
 import tempfile
 from threading import Lock
 import time
-from typing import Any
+from typing import Any, Callable
 
 try:  # POSIX advisory locking
     import fcntl
@@ -96,6 +96,134 @@ PACT_BANNER_FILES = {
     "/public_data/banners/sl_luck_01_en.png": "sl_truth_01_en.png",
 }
 
+# Profile route names accepted by the mutation transport. Keeping this list in
+# one place makes an added route explicit: it must be admitted here, dispatched
+# below, and assigned a result status rather than accidentally falling through.
+MUTATION_ROUTE_NAMES = frozenset({
+    "do_slot",
+    "userdata",
+    "start_quest",
+    "clear_quest",
+    "continue",
+    "change_uname",
+    "refill_stamina",
+    "unlock_metal_zone",
+    "achived",
+    "read_messages",
+    "delete_messages",
+    "exchange",
+    "add_exchange_count",
+    "statusup_item",
+    "add_job",
+    "rebirth",
+    "summon_skill_unlock",
+    "sell_buddy",
+    "sell_buddies",
+    "buddy_strengthen",
+    "buddy_evolve",
+    "do_buddy_slot",
+})
+
+READ_ROUTE_NAMES = frozenset({
+    "time",
+    "status",
+    "signup",
+    "login",
+    "userdata",
+    "userdata_after_close",
+    "multiplay_enable",
+    "special_event",
+    "get_current_exchange",
+})
+
+SUPPORTED_PROFILE_OPERATIONS = READ_ROUTE_NAMES | MUTATION_ROUTE_NAMES
+TEMPLATED_RESPONSE_OPERATIONS = frozenset({
+    "signup",
+    "login",
+    "status",
+    "multiplay_enable",
+    "special_event",
+})
+
+# These mutation kinds have already called their state operation during initial
+# route dispatch. The remaining kinds still need profile/catalog arbitration.
+RESOLVED_MUTATION_KINDS = frozenset({
+    "continue",
+    "change_uname",
+    "refill_stamina",
+    "unlock_metal_zone",
+    "achievement",
+    "read_messages",
+    "delete_messages",
+    "exchange",
+    "exchange_count",
+    "statusup_item",
+    "add_job",
+    "rebirth",
+    "summon_skill_unlock",
+    "sell_buddy",
+    "sell_buddies",
+    "buddy_strengthen",
+    "buddy_evolve",
+    "do_buddy_slot",
+    "companion_userdata",
+    "character_userdata",
+    "party_userdata",
+    "ordinary_pact",
+    "event_start",
+})
+
+MUTATION_RESULT_STATUSES = {
+    "unknown_account": HTTPStatus.UNAUTHORIZED,
+    "request_collision": HTTPStatus.CONFLICT,
+    "tutorial_state_conflict": HTTPStatus.CONFLICT,
+    "event_clear_phase_conflict": HTTPStatus.CONFLICT,
+    "event_clear_active_stage_conflict": HTTPStatus.CONFLICT,
+    "event_clear_progress_conflict": HTTPStatus.CONFLICT,
+    "event_clear_world_map_conflict": HTTPStatus.CONFLICT,
+    "event_clear_wallet_conflict": HTTPStatus.CONFLICT,
+    "event_clear_battle_coins_conflict": HTTPStatus.CONFLICT,
+    "unsupported_summon": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_userdata_write": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_story_progression_reveal": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_start_quest": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_hunting_start": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_hunting_clear": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_clear_quest": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_continue": HTTPStatus.NOT_IMPLEMENTED,
+    "continue_unavailable": HTTPStatus.CONFLICT,
+    "unsupported_change_uname": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_refill_stamina": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_unlock_metal_zone": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_achievement": HTTPStatus.NOT_IMPLEMENTED,
+    "invalid_local_achievement": HTTPStatus.CONFLICT,
+    "unsupported_message_read": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_message_delete": HTTPStatus.NOT_IMPLEMENTED,
+    "invalid_local_message": HTTPStatus.CONFLICT,
+    "unsupported_exchange": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_exchange_count": HTTPStatus.NOT_IMPLEMENTED,
+    "invalid_local_exchange": HTTPStatus.CONFLICT,
+    "unsupported_statusup_item": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_add_job": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_rebirth": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_summon_skill_unlock": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_companion_sale": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_companion_strengthen": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_companion_evolution": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_companion_draw": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_companion_userdata": HTTPStatus.NOT_IMPLEMENTED,
+    "unsupported_ordinary_pact": HTTPStatus.NOT_IMPLEMENTED,
+    "event_stage_locked": HTTPStatus.CONFLICT,
+    "invalid_local_event_result": HTTPStatus.CONFLICT,
+    "hunting_stage_locked": HTTPStatus.CONFLICT,
+    "invalid_local_hunting_result": HTTPStatus.CONFLICT,
+    "world_map_special_locked": HTTPStatus.CONFLICT,
+    "invalid_local_world_map_special_result": HTTPStatus.CONFLICT,
+    "invalid_local_settlement": HTTPStatus.CONFLICT,
+    "invalid_local_clear_state": HTTPStatus.CONFLICT,
+    "invalid_local_outcome": HTTPStatus.CONFLICT,
+}
+
 
 class ProfileError(ValueError):
     """A user-local compatibility profile is malformed."""
@@ -123,6 +251,70 @@ class BootstrapProfile:
     continue_policy: dict[str, int]
 
 
+@dataclass
+class MutationDispatch:
+    """The operation selected for one authenticated mutation request.
+
+    Profile-backed tutorial routes begin unresolved and are arbitrated against
+    the more specific catalog handlers afterwards. Dedicated state operations
+    carry their result immediately.
+    """
+
+    kind: str
+    transitions: tuple[dict[str, Any], ...] = ()
+    result: str | None = None
+    payload: dict[str, Any] | None = None
+
+
+MutationOperation = Callable[[], tuple[str, dict[str, Any] | None]]
+BODY_TRANSITION_FIELDS = frozenset({"body", "phase", "next_phase", "response"})
+STRUCTURAL_TRANSITION_FIELDS = frozenset({
+    "field_names",
+    "fixed_fields",
+    "json_fields",
+    "phase",
+    "next_phase",
+    "response",
+    "userdata_update",
+})
+VALID_JSON_FIELD_KINDS = frozenset({"object", "array"})
+
+
+def _valid_body_transition(item: object) -> bool:
+    return (
+        isinstance(item, dict)
+        and item.keys() == BODY_TRANSITION_FIELDS
+        and isinstance(item["body"], str)
+        and isinstance(item["phase"], str)
+        and isinstance(item["next_phase"], str)
+        and isinstance(item["response"], dict)
+    )
+
+
+def _valid_structural_transition(item: object) -> bool:
+    return (
+        isinstance(item, dict)
+        and item.keys() == STRUCTURAL_TRANSITION_FIELDS
+        and isinstance(item["field_names"], list)
+        and bool(item["field_names"])
+        and all(isinstance(name, str) and name for name in item["field_names"])
+        and isinstance(item["fixed_fields"], dict)
+        and all(
+            isinstance(name, str) and isinstance(value, str)
+            for name, value in item["fixed_fields"].items()
+        )
+        and isinstance(item["json_fields"], dict)
+        and all(
+            isinstance(name, str) and kind in VALID_JSON_FIELD_KINDS
+            for name, kind in item["json_fields"].items()
+        )
+        and isinstance(item["phase"], str)
+        and isinstance(item["next_phase"], str)
+        and isinstance(item["response"], dict)
+        and isinstance(item["userdata_update"], dict)
+    )
+
+
 def load_profile(path: Path) -> BootstrapProfile:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
@@ -131,12 +323,11 @@ def load_profile(path: Path) -> BootstrapProfile:
     if not isinstance(document, dict) or document.get("schema_version") != PROFILE_SCHEMA_VERSION:
         raise ProfileError(f"schema_version must be {PROFILE_SCHEMA_VERSION}")
     routes = document.get("routes")
-    supported_operations = {
-        "time", "status", "signup", "login", "userdata", "userdata_after_close",
-        "multiplay_enable", "special_event", "do_slot", "start_quest", "clear_quest",
-        "continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achived", "read_messages", "delete_messages", "get_current_exchange", "exchange", "add_exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot",
-    }
-    if not isinstance(routes, dict) or not routes or not set(routes) <= supported_operations:
+    if (
+        not isinstance(routes, dict)
+        or not routes
+        or not set(routes) <= SUPPORTED_PROFILE_OPERATIONS
+    ):
         raise ProfileError("routes must define a nonempty subset of supported bootstrap operations")
     if not all(isinstance(path, str) and path.startswith("/") for path in routes.values()):
         raise ProfileError("every route must be an absolute path")
@@ -161,7 +352,7 @@ def load_profile(path: Path) -> BootstrapProfile:
     if not all(isinstance(value, str) and value for value in account_binding.values()):
         raise ProfileError("account_binding values must be nonempty strings")
     responses = document.get("responses")
-    required_responses = {operation for operation in ("signup", "login", "status", "multiplay_enable", "special_event") if operation in routes}
+    required_responses = TEMPLATED_RESPONSE_OPERATIONS & routes.keys()
     if not isinstance(responses, dict) or set(responses) != required_responses:
         raise ProfileError("responses must define exactly the enabled signup, login, and status operations")
     if not all(isinstance(value, dict) for value in responses.values()):
@@ -175,16 +366,12 @@ def load_profile(path: Path) -> BootstrapProfile:
     if "do_slot" in routes:
         if not isinstance(tutorial_summons, list) or not tutorial_summons:
             raise ProfileError("tutorial_summons must be a nonempty list when do_slot is enabled")
-        required_summon_fields = {"body", "phase", "next_phase", "response"}
-        if not all(isinstance(item, dict) and set(item) == required_summon_fields for item in tutorial_summons):
-            raise ProfileError("every tutorial summon must define body, phase, next_phase, and response")
         if not all(
-            isinstance(item["body"], str)
-            and isinstance(item["phase"], str)
-            and isinstance(item["next_phase"], str)
-            and isinstance(item["response"], dict)
+            isinstance(item, dict) and item.keys() == BODY_TRANSITION_FIELDS
             for item in tutorial_summons
         ):
+            raise ProfileError("every tutorial summon must define body, phase, next_phase, and response")
+        if not all(_valid_body_transition(item) for item in tutorial_summons):
             raise ProfileError("tutorial summon values have invalid types")
         if len({item["body"] for item in tutorial_summons}) != len(tutorial_summons):
             raise ProfileError("tutorial summon bodies must be unique")
@@ -211,16 +398,12 @@ def load_profile(path: Path) -> BootstrapProfile:
     if "start_quest" in routes:
         if not isinstance(story_starts, list) or not story_starts:
             raise ProfileError("story_starts must be a nonempty list when start_quest is enabled")
-        required_start_fields = {"body", "phase", "next_phase", "response"}
-        if not all(isinstance(item, dict) and set(item) == required_start_fields for item in story_starts):
-            raise ProfileError("every story start must define body, phase, next_phase, and response")
         if not all(
-            isinstance(item["body"], str)
-            and isinstance(item["phase"], str)
-            and isinstance(item["next_phase"], str)
-            and isinstance(item["response"], dict)
+            isinstance(item, dict) and item.keys() == BODY_TRANSITION_FIELDS
             for item in story_starts
         ):
+            raise ProfileError("every story start must define body, phase, next_phase, and response")
+        if not all(_valid_body_transition(item) for item in story_starts):
             raise ProfileError("story start values have invalid types")
         if len({item["body"] for item in story_starts}) != len(story_starts):
             raise ProfileError("story start bodies must be unique")
@@ -230,24 +413,12 @@ def load_profile(path: Path) -> BootstrapProfile:
     if "clear_quest" in routes:
         if not isinstance(story_clears, list) or not story_clears:
             raise ProfileError("story_clears must be a nonempty list when clear_quest is enabled")
-        required_clear_fields = {"field_names", "fixed_fields", "json_fields", "phase", "next_phase", "response", "userdata_update"}
-        if not all(isinstance(item, dict) and set(item) == required_clear_fields for item in story_clears):
-            raise ProfileError("every story clear has invalid fields")
-        valid_json_kinds = {"object", "array"}
         if not all(
-            isinstance(item["field_names"], list)
-            and item["field_names"]
-            and all(isinstance(name, str) and name for name in item["field_names"])
-            and isinstance(item["fixed_fields"], dict)
-            and all(isinstance(name, str) and isinstance(value, str) for name, value in item["fixed_fields"].items())
-            and isinstance(item["json_fields"], dict)
-            and all(isinstance(name, str) and kind in valid_json_kinds for name, kind in item["json_fields"].items())
-            and isinstance(item["phase"], str)
-            and isinstance(item["next_phase"], str)
-            and isinstance(item["response"], dict)
-            and isinstance(item["userdata_update"], dict)
+            isinstance(item, dict) and item.keys() == STRUCTURAL_TRANSITION_FIELDS
             for item in story_clears
         ):
+            raise ProfileError("every story clear has invalid fields")
+        if not all(_valid_structural_transition(item) for item in story_clears):
             raise ProfileError("story clear values have invalid types")
         if len({(tuple(item["field_names"]), item["phase"]) for item in story_clears}) != len(story_clears):
             raise ProfileError("story clear field/phase combinations must be unique")
@@ -256,21 +427,12 @@ def load_profile(path: Path) -> BootstrapProfile:
     structural_writes = document.get("structural_writes", [])
     if not isinstance(structural_writes, list):
         raise ProfileError("structural_writes must be a list")
-    required_structural_fields = {"field_names", "fixed_fields", "json_fields", "phase", "next_phase", "response", "userdata_update"}
-    if not all(isinstance(item, dict) and set(item) == required_structural_fields for item in structural_writes):
-        raise ProfileError("every structural write has invalid fields")
-    valid_json_kinds = {"object", "array"}
     if not all(
-        isinstance(item["field_names"], list) and item["field_names"]
-        and all(isinstance(name, str) and name for name in item["field_names"])
-        and isinstance(item["fixed_fields"], dict)
-        and all(isinstance(name, str) and isinstance(value, str) for name, value in item["fixed_fields"].items())
-        and isinstance(item["json_fields"], dict)
-        and all(isinstance(name, str) and kind in valid_json_kinds for name, kind in item["json_fields"].items())
-        and isinstance(item["phase"], str) and isinstance(item["next_phase"], str)
-        and isinstance(item["response"], dict) and isinstance(item["userdata_update"], dict)
+        isinstance(item, dict) and item.keys() == STRUCTURAL_TRANSITION_FIELDS
         for item in structural_writes
     ):
+        raise ProfileError("every structural write has invalid fields")
+    if not all(_valid_structural_transition(item) for item in structural_writes):
         raise ProfileError("structural write values have invalid types")
     continue_policy = document.get("continue_policy", {})
     if "continue" in routes:
@@ -2549,39 +2711,62 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         host = address[0] if isinstance(address, tuple) and address else None
         return host if isinstance(host, str) and host else None
 
-    def do_GET(self) -> None:
-        target = urlsplit(self.path)
-        if target.path == "/en/news/app":
+    def _serve_local_content(self, path: str) -> bool:
+        """Serve operator UI, derived banners, or manifested local resources."""
+        if path == "/en/news/app":
             self._html(
                 HTTPStatus.OK,
                 "<!doctype html><html><head><meta charset=\"utf-8\"><title>Project Liminal Gate</title></head>"
                 "<body><h1>Project Liminal Gate</h1><p>Your local preservation server is running.</p>"
                 "<p>Check the project README for local setup and support details.</p></body></html>",
             )
-            return
-        if target.path == "/favicon.ico":
+            return True
+        if path == "/favicon.ico":
             self._empty(HTTPStatus.NO_CONTENT)
-            return
-        banner_name = PACT_BANNER_FILES.get(target.path)
+            return True
+        banner_name = PACT_BANNER_FILES.get(path)
         if banner_name is not None and self.server.public_data_root is not None:
             banner = self.server.public_data_root / "banners" / banner_name
             if banner.is_file() and banner.resolve().is_relative_to(self.server.public_data_root):
                 self._file(HTTPStatus.OK, banner, "image/png")
             else:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "local_banner_not_found"})
-            return
-        resource = self.server.resource_catalog.resolve(target.path) if self.server.resource_catalog else None
+            return True
+        resource = (
+            self.server.resource_catalog.resolve(path)
+            if self.server.resource_catalog else None
+        )
         # Some client resource URLs use the CDN root directly (for example,
         # `/Profile/...`) instead of the patched `/resources/` prefix.  The
         # resource manifest remains the authority: this is only an alias for
         # an already hash-validated user-local entry, never filesystem lookup.
-        if resource is None and self.server.resource_catalog is not None and target.path.startswith("/"):
-            resource = self.server.resource_catalog.resolve("/resources" + target.path)
+        if (
+            resource is None
+            and self.server.resource_catalog is not None
+            and path.startswith("/")
+        ):
+            resource = self.server.resource_catalog.resolve("/resources" + path)
         if resource is not None:
             self._resource(HTTPStatus.OK, resource)
-            return
-        if target.path.startswith("/resources/"):
+            return True
+        if path.startswith("/resources/"):
             self._json(HTTPStatus.NOT_FOUND, {"error": "resource_not_found"})
+            return True
+        return False
+
+    def _required_account_token(self, query: dict[str, str]) -> str | None:
+        token = query.get("otk")
+        if token:
+            return token
+        self._json(
+            HTTPStatus.BAD_REQUEST,
+            {"error": "missing_local_account_token"},
+        )
+        return None
+
+    def do_GET(self) -> None:
+        target = urlsplit(self.path)
+        if self._serve_local_content(target.path):
             return
         query = dict(parse_qsl(target.query, keep_blank_values=True))
         profile = self.server.profile
@@ -2601,14 +2786,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return
         token = query.get("otk")
         if target.path == profile.routes.get("time"):
-            if not token:
-                self._json(HTTPStatus.BAD_REQUEST, {"error": "missing_local_account_token"})
+            token = self._required_account_token(query)
+            if token is None:
                 return
             self._signed(HTTPStatus.OK, token, {"success": True, "timestamp": float(int(time.time()))})
             return
         if target.path == profile.routes.get("status"):
-            if not token:
-                self._json(HTTPStatus.BAD_REQUEST, {"error": "missing_local_account_token"})
+            token = self._required_account_token(query)
+            if token is None:
                 return
             payload = _render(profile.responses["status"], token)
             payload["constants"] = self._server_constants(token)
@@ -2648,23 +2833,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 payload["chrBuddyData"] = login_chr_buddy_data()
             self._signed(HTTPStatus.OK, token, payload)
             return
-        if target.path == profile.routes.get("userdata"):
+        if target.path in {
+            profile.routes.get("userdata"),
+            profile.routes.get("userdata_after_close"),
+        }:
             # The surviving client may rotate its OTK immediately after a
             # successful login, before its first read-only userdata request.
             # Bind before reading so an older emulator token cannot select an
             # abandoned local account after the active save has been resumed.
-            if self.server.state.bind_rotated_token(token, self._client_host()):
-                userdata = self.server.state.userdata_for(token)
-            else:
-                userdata = None
-            if userdata is None:
-                self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_local_account"})
-                return
-            self._signed(HTTPStatus.OK, token, {"success": True, **userdata})
-            return
-        if target.path == profile.routes.get("userdata_after_close"):
-            # Same rotated-OTK reasoning as the read above: a resume can carry
-            # a token the server has never seen.
             userdata = (
                 self.server.state.userdata_for(token)
                 if token and self.server.state.bind_rotated_token(token, self._client_host())
@@ -2675,18 +2851,17 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 return
             self._signed(HTTPStatus.OK, token, {"success": True, **userdata})
             return
-        if target.path == profile.routes.get("multiplay_enable"):
-            if not token:
-                self._json(HTTPStatus.BAD_REQUEST, {"error": "missing_local_account_token"})
+        for operation in ("multiplay_enable", "special_event"):
+            if target.path == profile.routes.get(operation):
+                token = self._required_account_token(query)
+                if token is None:
+                    return
+                self._signed(
+                    HTTPStatus.OK,
+                    token,
+                    _render(profile.responses[operation], token),
+                )
                 return
-            self._signed(HTTPStatus.OK, token, _render(profile.responses["multiplay_enable"], token))
-            return
-        if target.path == profile.routes.get("special_event"):
-            if not token:
-                self._json(HTTPStatus.BAD_REQUEST, {"error": "missing_local_account_token"})
-                return
-            self._signed(HTTPStatus.OK, token, _render(profile.responses["special_event"], token))
-            return
         if target.path == profile.routes.get("get_current_exchange"):
             # The OTK rotates every three seconds, so the token that opens the
             # trading post is almost never the one the last mutation bound.
@@ -2702,46 +2877,391 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return
         self._json(HTTPStatus.NOT_IMPLEMENTED, {"error": "route_not_implemented"})
 
-    def do_POST(self) -> None:
-        target = urlsplit(self.path)
-        profile = self.server.profile
-        if target.path not in {
-            profile.routes.get("do_slot"),
-            profile.routes.get("userdata"),
-            profile.routes.get("start_quest"),
-            profile.routes.get("clear_quest"),
-            profile.routes.get("continue"),
-            profile.routes.get("change_uname"),
-            profile.routes.get("refill_stamina"),
-            profile.routes.get("unlock_metal_zone"), profile.routes.get("achived"),
-            profile.routes.get("read_messages"), profile.routes.get("delete_messages"),
-            profile.routes.get("exchange"), profile.routes.get("add_exchange_count"),
-            profile.routes.get("statusup_item"),
-            profile.routes.get("add_job"),
-            profile.routes.get("rebirth"),
-            profile.routes.get("summon_skill_unlock"),
-            profile.routes.get("sell_buddy"),
-            profile.routes.get("sell_buddies"),
-            profile.routes.get("buddy_strengthen"),
-            profile.routes.get("buddy_evolve"),
-            profile.routes.get("do_buddy_slot"),
-        }:
-            self._json(HTTPStatus.NOT_IMPLEMENTED, {"error": "route_not_implemented"})
-            return
+    def _read_mutation_body(self) -> bytes | None:
+        """Read one bounded request body, emitting its transport error in place."""
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
             self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid_content_length"})
-            return
+            return None
         if length < 0:
             self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid_content_length"})
-            return
+            return None
         if length > MAX_REQUEST_BODY_BYTES:
             self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "request_body_too_large"})
-            return
+            return None
         body = self.rfile.read(length)
         if len(body) != length:
             self._json(HTTPStatus.BAD_REQUEST, {"error": "incomplete_request_body"})
+            return None
+        return body
+
+    def _select_mutation(
+        self, path: str, token: str, request_id: str, body: bytes,
+    ) -> MutationDispatch:
+        """Select the most specific first-pass handler for one mutation route."""
+        profile = self.server.profile
+        state = self.server.state
+        if path == profile.routes.get("do_slot"):
+            result, payload = state.draw_ordinary_pact(
+                token, request_id, body, self.server.pact_draw_catalog,
+            )
+            if result == "unsupported_ordinary_pact":
+                return MutationDispatch("summon", profile.tutorial_summons, result, payload)
+            return MutationDispatch("ordinary_pact", result=result, payload=payload)
+        if path == profile.routes.get("do_buddy_slot"):
+            result, payload = state.draw_companions(
+                token, request_id, body, self.server.companion_draw_catalog,
+            )
+            return MutationDispatch("do_buddy_slot", result=result, payload=payload)
+        if path == profile.routes.get("userdata"):
+            return self._select_userdata_mutation(token, request_id, body)
+        if path == profile.routes.get("start_quest"):
+            dispatch = MutationDispatch("start", profile.story_starts)
+            parsed = _parse_generic_story_start(body)
+            if (
+                self.server.event_catalog is not None
+                and parsed is not None
+                and (parsed["chapter"], parsed["section"])
+                in self.server.event_catalog.by_identity()
+            ):
+                dispatch.result, dispatch.payload = state.apply_generic_story_start(
+                    token, request_id, body, self.server.event_catalog,
+                )
+                dispatch.kind, dispatch.transitions = "event_start", ()
+            return dispatch
+
+        direct: dict[str, tuple[str, MutationOperation]] = {
+            "continue": (
+                "continue",
+                lambda: state.apply_generic_story_continue(
+                    token, request_id, body, profile.continue_policy,
+                ),
+            ),
+            "change_uname": (
+                "change_uname",
+                lambda: state.change_uname(token, request_id, body),
+            ),
+            "refill_stamina": (
+                "refill_stamina",
+                lambda: state.refill_stamina(token, request_id, body),
+            ),
+            "unlock_metal_zone": (
+                "unlock_metal_zone",
+                lambda: state.unlock_metal_zone(token, request_id, body),
+            ),
+            "achived": (
+                "achievement",
+                lambda: state.claim_achievement(
+                    token, request_id, body, self.server.achievement_catalog,
+                ),
+            ),
+            "read_messages": (
+                "read_messages",
+                lambda: state.read_messages(
+                    token, request_id, body, self.server.message_catalog,
+                ),
+            ),
+            "delete_messages": (
+                "delete_messages",
+                lambda: state.delete_messages(
+                    token, request_id, body, self.server.message_catalog,
+                ),
+            ),
+            "exchange": (
+                "exchange",
+                lambda: state.exchange(
+                    token, request_id, body, self.server.exchange_catalog,
+                ),
+            ),
+            "statusup_item": (
+                "statusup_item",
+                lambda: state.use_statusup_item(
+                    token, request_id, body, self.server.statusup_catalog,
+                ),
+            ),
+            "add_job": (
+                "add_job",
+                lambda: state.add_job(token, request_id, body, self.server.job_catalog),
+            ),
+            "rebirth": (
+                "rebirth",
+                lambda: state.rebirth(token, request_id, body, self.server.rebirth_catalog),
+            ),
+            "summon_skill_unlock": (
+                "summon_skill_unlock",
+                lambda: state.summon_skill_unlock(
+                    token, request_id, body, self.server.summon_skill_catalog,
+                ),
+            ),
+            "sell_buddy": (
+                "sell_buddy",
+                lambda: state.sell_companions(
+                    token, request_id, body, self.server.companion_catalog, multiple=False,
+                ),
+            ),
+            "sell_buddies": (
+                "sell_buddies",
+                lambda: state.sell_companions(
+                    token, request_id, body, self.server.companion_catalog, multiple=True,
+                ),
+            ),
+            "buddy_strengthen": (
+                "buddy_strengthen",
+                lambda: state.strengthen_companion(
+                    token, request_id, body, self.server.companion_strengthen_catalog,
+                ),
+            ),
+            "buddy_evolve": (
+                "buddy_evolve",
+                lambda: state.evolve_companion(
+                    token, request_id, body, self.server.companion_evolution_catalog,
+                ),
+            ),
+        }
+        for route_name, (kind, operation) in direct.items():
+            if path == profile.routes.get(route_name):
+                result, payload = operation()
+                return MutationDispatch(kind, result=result, payload=payload)
+        if path == profile.routes.get("add_exchange_count"):
+            return MutationDispatch(
+                "exchange_count", result="unsupported_exchange_count",
+            )
+        return MutationDispatch("clear", profile.story_clears)
+
+    def _select_userdata_mutation(
+        self, token: str, request_id: str, body: bytes,
+    ) -> MutationDispatch:
+        """Separate overlapping tutorial, roster, party, and Companion writes."""
+        profile = self.server.profile
+        state = self.server.state
+        dispatch = MutationDispatch("write", profile.tutorial_writes)
+        ordinary_write = state.allows_ordinary_userdata_write(token)
+        party_write = _parse_free_roam_party_userdata_write(body)
+        party_layout_write = (
+            _parse_free_roam_party_layout_userdata_write(body)
+            if party_write is None else None
+        )
+        character_write = (
+            _parse_free_roam_character_userdata_write(body)
+            if ordinary_write and party_write is None else None
+        )
+        # Equip moves and party swaps can carry both roster and Companion
+        # deltas. Try those combined forms before either single-half form.
+        party_companion_write = (
+            _parse_party_companion_userdata_write(body)
+            if party_write is None else None
+        )
+        equip_write = (
+            _parse_companion_equip_userdata_write(body)
+            if party_write is None and party_companion_write is None else None
+        )
+        companion_write = (
+            _parse_companion_userdata_write(body)
+            if (
+                party_write is None
+                and character_write is None
+                and party_companion_write is None
+                and equip_write is None
+            )
+            else None
+        )
+        if party_companion_write is not None:
+            characters, party, companions = party_companion_write
+            dispatch.result, dispatch.payload = state.update_character_userdata(
+                token, request_id, body, characters, party, companions,
+            )
+            dispatch.kind, dispatch.transitions = "party_userdata", ()
+        elif equip_write is not None:
+            characters, companions = equip_write
+            dispatch.result, dispatch.payload = state.update_character_userdata(
+                token, request_id, body, characters, None, companions,
+            )
+            dispatch.kind, dispatch.transitions = "companion_userdata", ()
+        elif party_write is not None:
+            characters, party = party_write
+            dispatch.result, dispatch.payload = state.update_character_userdata(
+                token, request_id, body, characters, party,
+            )
+            dispatch.kind, dispatch.transitions = "party_userdata", ()
+        elif party_layout_write is not None:
+            dispatch.result, dispatch.payload = state.update_character_userdata(
+                token, request_id, body, None, party_layout_write,
+            )
+            dispatch.kind, dispatch.transitions = "party_userdata", ()
+        elif character_write is not None:
+            dispatch.result, dispatch.payload = state.update_character_userdata(
+                token, request_id, body, character_write,
+            )
+            dispatch.kind, dispatch.transitions = "character_userdata", ()
+        elif companion_write is not None:
+            dispatch.result, dispatch.payload = state.update_companion_userdata(
+                token, request_id, body, companion_write,
+            )
+            dispatch.kind, dispatch.transitions = "companion_userdata", ()
+
+        # Tutorial structural writes deliberately override a matching free-roam
+        # parser until the account reaches the ordinary userdata boundary.
+        if profile.structural_writes and not ordinary_write:
+            try:
+                candidate_fields = tuple(parse_qsl(
+                    body.decode("ascii"), keep_blank_values=True, strict_parsing=True,
+                ))
+            except (UnicodeDecodeError, ValueError):
+                candidate_fields = ()
+            if any(
+                tuple(name for name, _ in candidate_fields)
+                == tuple(item["field_names"])
+                for item in profile.structural_writes
+            ):
+                dispatch.kind = "structural"
+                dispatch.transitions = profile.structural_writes
+        return dispatch
+
+    def _resolve_mutation(
+        self, dispatch: MutationDispatch, token: str, request_id: str, body: bytes,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Arbitrate tutorial fallbacks against specific catalog operations."""
+        state = self.server.state
+        kind, transitions = dispatch.kind, dispatch.transitions
+        if kind in RESOLVED_MUTATION_KINDS:
+            if dispatch.result is None:
+                raise RuntimeError(f"resolved mutation {kind!r} has no result")
+            return dispatch.result, dispatch.payload
+        if (
+            kind == "write"
+            and self.server.story_progression_catalog is not None
+            and state.allows_story_progression(token)
+            and _parse_story_progression_reveal(body) is not None
+        ):
+            return state.apply_story_progression_reveal(
+                token, request_id, body, self.server.story_progression_catalog,
+            )
+        if kind == "start" and _identity_chapter(
+            _started_identity(body)
+        ) == WORLD_MAP_SPECIAL_CHAPTER:
+            return state.apply_world_map_special_start(
+                token, request_id, body, self.server.world_map_special_catalog,
+            )
+        if kind == "clear" and _identity_chapter(
+            _cleared_identity(body)
+        ) == WORLD_MAP_SPECIAL_CHAPTER:
+            return state.apply_world_map_special_clear(
+                token, request_id, body, self.server.world_map_special_catalog,
+            )
+        if (
+            kind == "start"
+            and self.server.hunting_catalog is not None
+            and _started_hunting_identity(body) in self.server.hunting_catalog.by_identity()
+        ):
+            return state.apply_hunting_start(
+                token, request_id, body, self.server.hunting_catalog,
+            )
+        if kind == "start" and (
+            self.server.event_catalog is not None
+            or self.server.story_catalog is not None
+            or self.server.story_progression_catalog is not None
+        ) and (
+            not any(item["body"].encode("utf-8") == body for item in transitions)
+            or state.replays_cleared_stage(
+                token, _started_identity(body), self.server.story_progression_catalog,
+            )
+        ):
+            parsed = _parse_generic_story_start(body)
+            event_identity = (
+                None if parsed is None else (parsed["chapter"], parsed["section"])
+            )
+            event = (
+                self.server.event_catalog
+                if (
+                    self.server.event_catalog is not None
+                    and event_identity in self.server.event_catalog.by_identity()
+                )
+                else None
+            )
+            catalog = event or self.server.story_catalog or self.server.story_progression_catalog
+            return (
+                state.apply_generic_story_start(token, request_id, body, catalog)
+                if catalog is not None
+                else ("unsupported_start_quest", None)
+            )
+        if (
+            kind == "clear"
+            and self.server.hunting_catalog is not None
+            and _cleared_identity(body) in self.server.hunting_catalog.by_identity()
+        ):
+            return state.apply_hunting_clear(
+                token, request_id, body, self.server.hunting_catalog,
+            )
+        if kind == "clear" and (
+            self.server.event_catalog is not None
+            or self.server.story_catalog is not None
+            or self.server.story_progression_catalog is not None
+        ):
+            clear = _parse_generic_story_clear(body)
+            identity = (
+                None
+                if clear is None
+                else (
+                    clear["battle_result"]["chapter"],
+                    clear["battle_result"]["section"],
+                )
+            )
+            event = (
+                self.server.event_catalog
+                if (
+                    self.server.event_catalog is not None
+                    and identity in self.server.event_catalog.by_identity()
+                )
+                else None
+            )
+            replaying = state.replays_cleared_stage(
+                token, identity, self.server.story_progression_catalog,
+            )
+            if event is not None or replaying or not _profile_clear_matches(body, transitions):
+                catalog = event or self.server.story_catalog or self.server.story_progression_catalog
+                return (
+                    state.apply_generic_story_clear(
+                        token,
+                        request_id,
+                        body,
+                        catalog,
+                        self.server.settlement_catalog,
+                        self.server.story_outcome_catalog,
+                        self.server.clear_state_catalog,
+                        self.server.outcome_strict,
+                    )
+                    if catalog is not None
+                    else ("unsupported_clear_quest", None)
+                )
+        return state.apply_tutorial_transition(
+            token, request_id, body, transitions, kind=kind,
+        )
+
+    def _write_mutation_result(
+        self, token: str, body: bytes, result: str, payload: dict[str, Any] | None,
+    ) -> None:
+        """Emit one mutation result and attach bounded refusal diagnostics."""
+        if result in {"success", "replay"}:
+            self._signed(HTTPStatus.OK, token, payload or {})
+            return
+        if result.startswith("unsupported_"):
+            shapes = refused_write_shapes(body)
+            if shapes:
+                details = dict(getattr(self, "_event_details", None) or {})
+                details["request_shapes"] = shapes
+                self._event_details = details
+        self._json(MUTATION_RESULT_STATUSES[result], {"error": result})
+
+    def do_POST(self) -> None:
+        target = urlsplit(self.path)
+        profile = self.server.profile
+        mutation_routes = {profile.routes.get(name) for name in MUTATION_ROUTE_NAMES}
+        if target.path not in mutation_routes:
+            self._json(HTTPStatus.NOT_IMPLEMENTED, {"error": "route_not_implemented"})
+            return
+        body = self._read_mutation_body()
+        if body is None:
             return
         self._event_details = safe_form_diagnostics(body)
         query = dict(parse_qsl(target.query, keep_blank_values=True))
@@ -2754,263 +3274,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_account"})
             return
         self._event_details.update(self.server.state.safe_account_context(token))
-        if target.path == profile.routes.get("do_slot"):
-            result, payload = self.server.state.draw_ordinary_pact(token, request_id, body, self.server.pact_draw_catalog)
-            transitions, kind = (profile.tutorial_summons, "summon") if result == "unsupported_ordinary_pact" else ((), "ordinary_pact")
-        elif target.path == profile.routes.get("do_buddy_slot"):
-            result, payload = self.server.state.draw_companions(token, request_id, body, self.server.companion_draw_catalog)
-            transitions, kind = (), "do_buddy_slot"
-        elif target.path == profile.routes.get("userdata"):
-            transitions, kind = profile.tutorial_writes, "write"
-            free_roam = self.server.state.allows_story_progression(token)
-            ordinary_userdata_write = self.server.state.allows_ordinary_userdata_write(token)
-            party_write = _parse_free_roam_party_userdata_write(body)
-            party_layout_write = _parse_free_roam_party_layout_userdata_write(body) if party_write is None else None
-            character_write = _parse_free_roam_character_userdata_write(body) if ordinary_userdata_write and party_write is None else None
-            # Companion flags are an independent persisted delta.  Unlike a
-            # roster/party layout it has no free-roam-only shape, and the
-            # client can submit it before that milestone.
-            # Equip moves dirty the roster and the Companion list together, and
-            # a party swap can carry a Companion delta as well. Both are tried
-            # before the single-half forms, which would otherwise refuse them.
-            party_companion_write = _parse_party_companion_userdata_write(body) if party_write is None else None
-            equip_write = (
-                _parse_companion_equip_userdata_write(body)
-                if party_write is None and party_companion_write is None else None
-            )
-            companion_write = (
-                _parse_companion_userdata_write(body)
-                if party_write is None and character_write is None
-                and party_companion_write is None and equip_write is None else None
-            )
-            if party_companion_write is not None:
-                characters, party, companions = party_companion_write
-                result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, party, companions)
-                transitions, kind = (), "party_userdata"
-            elif equip_write is not None:
-                characters, companions = equip_write
-                result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, None, companions)
-                transitions, kind = (), "companion_userdata"
-            elif party_write is not None:
-                characters, party = party_write
-                result, payload = self.server.state.update_character_userdata(token, request_id, body, characters, party)
-                transitions, kind = (), "party_userdata"
-            elif party_layout_write is not None:
-                result, payload = self.server.state.update_character_userdata(token, request_id, body, None, party_layout_write)
-                transitions, kind = (), "party_userdata"
-            elif character_write is not None:
-                result, payload = self.server.state.update_character_userdata(token, request_id, body, character_write)
-                transitions, kind = (), "character_userdata"
-            elif companion_write is not None:
-                result, payload = self.server.state.update_companion_userdata(token, request_id, body, companion_write)
-                transitions, kind = (), "companion_userdata"
-            # The scripted structural writes settle the tutorial phases, whose
-            # party/roster forms share a wire shape with the free-roam saves
-            # above.  After free roam the dedicated handlers own that shape and
-            # are the only ones that validate party membership and actually
-            # store `teamMembers`; letting a profile transition run as well
-            # would answer a *rejected* save with a scripted `success` and
-            # silently discard the player's party.
-            if profile.structural_writes and not ordinary_userdata_write:
-                try:
-                    candidate_fields = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
-                except (UnicodeDecodeError, ValueError):
-                    candidate_fields = ()
-                if any(tuple(name for name, _ in candidate_fields) == tuple(item["field_names"]) for item in profile.structural_writes):
-                    transitions, kind = profile.structural_writes, "structural"
-        elif target.path == profile.routes.get("start_quest"):
-            transitions, kind = profile.story_starts, "start"
-            parsed_start = _parse_generic_story_start(body)
-            if (
-                self.server.event_catalog is not None
-                and parsed_start is not None
-                and (parsed_start["chapter"], parsed_start["section"])
-                in self.server.event_catalog.by_identity()
-            ):
-                result, payload = self.server.state.apply_generic_story_start(
-                    token, request_id, body, self.server.event_catalog
-                )
-                transitions, kind = (), "event_start"
-        elif target.path == profile.routes.get("continue"):
-            result, payload = self.server.state.apply_generic_story_continue(
-                token, request_id, body, profile.continue_policy
-            )
-            transitions, kind = (), "continue"
-        elif target.path == profile.routes.get("change_uname"):
-            result, payload = self.server.state.change_uname(token, request_id, body)
-            transitions, kind = (), "change_uname"
-        elif target.path == profile.routes.get("refill_stamina"):
-            result, payload = self.server.state.refill_stamina(token, request_id, body)
-            transitions, kind = (), "refill_stamina"
-        elif target.path == profile.routes.get("unlock_metal_zone"):
-            result, payload = self.server.state.unlock_metal_zone(token, request_id, body)
-            transitions, kind = (), "unlock_metal_zone"
-        elif target.path == profile.routes.get("achived"):
-            result, payload = self.server.state.claim_achievement(token, request_id, body, self.server.achievement_catalog)
-            transitions, kind = (), "achievement"
-        elif target.path == profile.routes.get("read_messages"):
-            result, payload = self.server.state.read_messages(token, request_id, body, self.server.message_catalog)
-            transitions, kind = (), "read_messages"
-        elif target.path == profile.routes.get("delete_messages"):
-            result, payload = self.server.state.delete_messages(token, request_id, body, self.server.message_catalog)
-            transitions, kind = (), "delete_messages"
-        elif target.path == profile.routes.get("exchange"):
-            result, payload = self.server.state.exchange(token, request_id, body, self.server.exchange_catalog)
-            transitions, kind = (), "exchange"
-        elif target.path == profile.routes.get("add_exchange_count"):
-            result, payload, transitions, kind = "unsupported_exchange_count", None, (), "exchange_count"
-        elif target.path == profile.routes.get("statusup_item"):
-            result, payload = self.server.state.use_statusup_item(token, request_id, body, self.server.statusup_catalog)
-            transitions, kind = (), "statusup_item"
-        elif target.path == profile.routes.get("add_job"):
-            result, payload = self.server.state.add_job(token, request_id, body, self.server.job_catalog)
-            transitions, kind = (), "add_job"
-        elif target.path == profile.routes.get("rebirth"):
-            result, payload = self.server.state.rebirth(token, request_id, body, self.server.rebirth_catalog)
-            transitions, kind = (), "rebirth"
-        elif target.path == profile.routes.get("summon_skill_unlock"):
-            result, payload = self.server.state.summon_skill_unlock(token, request_id, body, self.server.summon_skill_catalog)
-            transitions, kind = (), "summon_skill_unlock"
-        elif target.path == profile.routes.get("sell_buddy"):
-            result, payload = self.server.state.sell_companions(token, request_id, body, self.server.companion_catalog, multiple=False)
-            transitions, kind = (), "sell_buddy"
-        elif target.path == profile.routes.get("sell_buddies"):
-            result, payload = self.server.state.sell_companions(token, request_id, body, self.server.companion_catalog, multiple=True)
-            transitions, kind = (), "sell_buddies"
-        elif target.path == profile.routes.get("buddy_strengthen"):
-            result, payload = self.server.state.strengthen_companion(token, request_id, body, self.server.companion_strengthen_catalog)
-            transitions, kind = (), "buddy_strengthen"
-        elif target.path == profile.routes.get("buddy_evolve"):
-            result, payload = self.server.state.evolve_companion(token, request_id, body, self.server.companion_evolution_catalog)
-            transitions, kind = (), "buddy_evolve"
-        else:
-            transitions, kind = profile.story_clears, "clear"
-        result: str
-        payload: dict[str, Any] | None
-        if kind in {"continue", "change_uname", "refill_stamina", "unlock_metal_zone", "achievement", "read_messages", "delete_messages", "exchange", "exchange_count", "statusup_item", "add_job", "rebirth", "summon_skill_unlock", "sell_buddy", "sell_buddies", "buddy_strengthen", "buddy_evolve", "do_buddy_slot", "companion_userdata", "character_userdata", "party_userdata", "ordinary_pact", "event_start", "hunting_start", "hunting_clear", "world_map_special_start", "world_map_special_clear"}:
-            pass
-        elif (
-            kind == "write"
-            and self.server.story_progression_catalog is not None
-            and self.server.state.allows_story_progression(token)
-            and _parse_story_progression_reveal(body) is not None
-        ):
-            result, payload = self.server.state.apply_story_progression_reveal(token, request_id, body, self.server.story_progression_catalog)
-        elif kind == "start" and _identity_chapter(_started_identity(body)) == WORLD_MAP_SPECIAL_CHAPTER:
-            result, payload = self.server.state.apply_world_map_special_start(token, request_id, body, self.server.world_map_special_catalog)
-            transitions, kind = (), "world_map_special_start"
-        elif kind == "clear" and _identity_chapter(_cleared_identity(body)) == WORLD_MAP_SPECIAL_CHAPTER:
-            result, payload = self.server.state.apply_world_map_special_clear(token, request_id, body, self.server.world_map_special_catalog)
-            transitions, kind = (), "world_map_special_clear"
-        elif kind == "start" and self.server.hunting_catalog is not None and _started_hunting_identity(body) in self.server.hunting_catalog.by_identity():
-            result, payload = self.server.state.apply_hunting_start(token, request_id, body, self.server.hunting_catalog)
-            transitions, kind = (), "hunting_start"
-        elif kind == "start" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None) and (
-            not any(item["body"].encode("utf-8") == body for item in transitions)
-            # A scripted stage the account has already cleared is a replay, and
-            # belongs to the catalog that owns every other stage.  Re-firing the
-            # script would move the account into a tutorial phase it can never
-            # leave, because the matching scripted clear no longer applies.
-            or self.server.state.replays_cleared_stage(token, _started_identity(body), self.server.story_progression_catalog)
-        ):
-            catalog = self.server.event_catalog if self.server.event_catalog is not None and _parse_generic_story_start(body) is not None and tuple(_parse_generic_story_start(body)[key] for key in ("chapter", "section")) in self.server.event_catalog.by_identity() else self.server.story_catalog or self.server.story_progression_catalog
-            result, payload = self.server.state.apply_generic_story_start(token, request_id, body, catalog) if catalog is not None else ("unsupported_start_quest", None)
-        elif kind == "clear" and self.server.hunting_catalog is not None and _cleared_identity(body) in self.server.hunting_catalog.by_identity():
-            result, payload = self.server.state.apply_hunting_clear(token, request_id, body, self.server.hunting_catalog)
-            transitions, kind = (), "hunting_clear"
-        elif kind == "clear" and (self.server.event_catalog is not None or self.server.story_catalog is not None or self.server.story_progression_catalog is not None):
-            clear = _parse_generic_story_clear(body)
-            identity = None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
-            event = self.server.event_catalog if self.server.event_catalog is not None and identity in self.server.event_catalog.by_identity() else None
-            # An event clear can share the exact generic wire grammar and even
-            # a progress value with an earlier profile stage.  Its configured
-            # chapter/section identity is the more specific contract.
-            replaying = self.server.state.replays_cleared_stage(token, identity, self.server.story_progression_catalog)
-            # As above: a scripted stage being replayed must settle through the
-            # catalog, or the script would re-apply its own wallet and party
-            # over whatever the player has since earned and chosen.
-            if event is not None or replaying or not _profile_clear_matches(body, transitions):
-                catalog = event or self.server.story_catalog or self.server.story_progression_catalog
-                result, payload = self.server.state.apply_generic_story_clear(token, request_id, body, catalog, self.server.settlement_catalog, self.server.story_outcome_catalog, self.server.clear_state_catalog, self.server.outcome_strict) if catalog is not None else ("unsupported_clear_quest", None)
-            else:
-                result, payload = self.server.state.apply_tutorial_transition(
-                    token,
-                    request_id,
-                    body,
-                    transitions,
-                    kind=kind,
-                )
-        else:
-            result, payload = self.server.state.apply_tutorial_transition(
-                token,
-                request_id,
-                body,
-                transitions,
-                kind=kind,
-            )
-        if result in {"success", "replay"}:
-            self._signed(HTTPStatus.OK, token, payload or {})
-            return
-        statuses = {
-            "unknown_account": HTTPStatus.UNAUTHORIZED,
-            "request_collision": HTTPStatus.CONFLICT,
-            "tutorial_state_conflict": HTTPStatus.CONFLICT,
-            "event_clear_phase_conflict": HTTPStatus.CONFLICT,
-            "event_clear_active_stage_conflict": HTTPStatus.CONFLICT,
-            "event_clear_progress_conflict": HTTPStatus.CONFLICT,
-            "event_clear_world_map_conflict": HTTPStatus.CONFLICT,
-            "event_clear_wallet_conflict": HTTPStatus.CONFLICT,
-            "event_clear_battle_coins_conflict": HTTPStatus.CONFLICT,
-            "unsupported_summon": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_userdata_write": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_story_progression_reveal": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_start_quest": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_hunting_start": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_hunting_clear": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_clear_quest": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_continue": HTTPStatus.NOT_IMPLEMENTED,
-            "continue_unavailable": HTTPStatus.CONFLICT,
-            "unsupported_change_uname": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_refill_stamina": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_unlock_metal_zone": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_achievement": HTTPStatus.NOT_IMPLEMENTED,
-            "invalid_local_achievement": HTTPStatus.CONFLICT,
-            "unsupported_message_read": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_message_delete": HTTPStatus.NOT_IMPLEMENTED,
-            "invalid_local_message": HTTPStatus.CONFLICT,
-            "unsupported_exchange": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_exchange_count": HTTPStatus.NOT_IMPLEMENTED,
-            "invalid_local_exchange": HTTPStatus.CONFLICT,
-            "unsupported_statusup_item": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_add_job": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_rebirth": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_summon_skill_unlock": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_companion_sale": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_companion_strengthen": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_companion_evolution": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_companion_draw": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_companion_userdata": HTTPStatus.NOT_IMPLEMENTED,
-            "unsupported_ordinary_pact": HTTPStatus.NOT_IMPLEMENTED,
-            "event_stage_locked": HTTPStatus.CONFLICT,
-            "invalid_local_event_result": HTTPStatus.CONFLICT,
-            "hunting_stage_locked": HTTPStatus.CONFLICT,
-            "invalid_local_hunting_result": HTTPStatus.CONFLICT,
-            "world_map_special_locked": HTTPStatus.CONFLICT,
-            "invalid_local_world_map_special_result": HTTPStatus.CONFLICT,
-            "invalid_local_settlement": HTTPStatus.CONFLICT,
-            "invalid_local_clear_state": HTTPStatus.CONFLICT,
-            "invalid_local_outcome": HTTPStatus.CONFLICT,
-        }
-        if result.startswith("unsupported_"):
-            # Every one of these means "this body did not parse", and the field
-            # list alone cannot say why: the supported equip write and the six
-            # refused ones carried the identical tuple. Record the shape.
-            shapes = refused_write_shapes(body)
-            if shapes:
-                details = dict(getattr(self, "_event_details", None) or {})
-                details["request_shapes"] = shapes
-                self._event_details = details
-        self._json(statuses[result], {"error": result})
+        dispatch = self._select_mutation(target.path, token, request_id, body)
+        result, payload = self._resolve_mutation(dispatch, token, request_id, body)
+        self._write_mutation_result(token, body, result, payload)
 
     def do_HEAD(self) -> None:
         target = urlsplit(self.path)

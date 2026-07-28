@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-07-27
+Date: 2026-07-28
 
 Mode: public-release implementation hardening.
 
@@ -12,6 +12,9 @@ Fast validation lane:
 PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
+
+Latest behavior-preserving refactor validation: 581 warning-strict tests passed
+in 112.991 seconds. This is regression evidence, not a new client boundary.
 
 Publication lane:
 

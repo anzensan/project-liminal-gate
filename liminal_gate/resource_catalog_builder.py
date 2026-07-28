@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+from typing import Callable
 
 from liminal_gate.resource_catalog import RESOURCE_MANIFEST_SCHEMA_VERSION, ResourceCatalogError, _sha256_file
 
@@ -25,8 +26,15 @@ def _logical_relative_path(relative: str) -> str:
     return path.with_name(match.group("name")).as_posix()
 
 
-def build_resource_manifest(resource_root: Path) -> dict[str, object]:
-    """Map every regular user-local file beneath root to its client resource URL."""
+def build_resource_manifest(
+    resource_root: Path, digests: Callable[[Path], str] | None = None,
+) -> dict[str, object]:
+    """Map every regular user-local file beneath root to its client resource URL.
+
+    `digests` accepts a shared hashing function so a caller that already
+    inventoried this tree does not read every byte of it a second time.
+    """
+    hash_file = digests if digests is not None else _sha256_file
     try:
         root = resource_root.resolve(strict=True)
     except OSError as error:
@@ -44,7 +52,7 @@ def build_resource_manifest(resource_root: Path) -> dict[str, object]:
         if not relative or ".." in Path(relative).parts:
             raise ResourceCatalogError("resource root contains an unsafe file path")
         content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
-        digest = _sha256_file(candidate)
+        digest = hash_file(candidate)
         aliases = (relative, _logical_relative_path(relative))
         for alias in dict.fromkeys(aliases):
             path = "/resources/" + alias

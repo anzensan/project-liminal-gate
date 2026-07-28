@@ -75,7 +75,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from typing import Iterable, NamedTuple
+from typing import Callable, Iterable, NamedTuple
 import zipfile
 
 
@@ -407,8 +407,17 @@ def verify_calibration(methods: Iterable[Method], objdump: str, library: Path) -
             )
 
 
-def collect_spawns(methods: list[Method], objdump: str, library: Path) -> dict[tuple[int, int], list[str]]:
-    """Disassemble every Chapter 8-42 generator and gather its spawn callees."""
+def collect_spawns(
+    methods: list[Method], objdump: str, library: Path,
+    progress: Callable[[int, int], None] | None = None,
+) -> dict[tuple[int, int], list[str]]:
+    """Disassemble every Chapter 8-42 generator and gather its spawn callees.
+
+    `progress` is called with (done, total) after each generator. There are
+    thousands of them and each is a separate disassembler invocation, so a
+    caller with a terminal has something to show rather than going silent for
+    minutes.
+    """
     boundaries = sorted({method.rva for method in methods})
     successor = dict(zip(boundaries, boundaries[1:]))
     inherited = {method.slot: method for method in methods if method.type_name == "ChapterBase" and method.slot is not None}
@@ -420,16 +429,20 @@ def collect_spawns(methods: list[Method], objdump: str, library: Path) -> dict[t
         }
         for chapter in CHAPTERS
     }
+    generators = [
+        (method, identity)
+        for method in methods
+        if method.member_name == "MoveNext"
+        for identity in (stage_identity(method.type_name),)
+        if identity is not None
+    ]
     spawns: dict[tuple[int, int], list[str]] = {}
-    for method in methods:
-        if method.member_name != "MoveNext":
-            continue
-        identity = stage_identity(method.type_name)
-        if identity is None:
-            continue
+    for done, (method, identity) in enumerate(generators, start=1):
         stop = min(successor.get(method.rva, method.rva + _MAX_BODY_BYTES), method.rva + _MAX_BODY_BYTES)
         text = disassemble(objdump, library, method.rva, stop)
         spawns.setdefault(identity, []).extend(arm64_spawn_targets(text, slot_maps[identity[0]]))
+        if progress is not None:
+            progress(done, len(generators))
     return spawns
 
 
@@ -447,7 +460,10 @@ def write_document(path: Path, document: dict[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def import_encounters(apk: Path, dump_cs: Path, objdump: str) -> dict[str, object]:
+def import_encounters(
+    apk: Path, dump_cs: Path, objdump: str,
+    progress: Callable[[int, int], None] | None = None,
+) -> dict[str, object]:
     """Read one reviewed APK and dump into a local encounter document."""
     try:
         text = dump_cs.read_text(encoding="utf-8", errors="replace")
@@ -462,7 +478,7 @@ def import_encounters(apk: Path, dump_cs: Path, objdump: str) -> dict[str, objec
         calibrated = library_sha256 == REVIEWED_ARM64_LIBRARY_SHA256
         if calibrated:
             verify_calibration(methods, objdump, library)
-        spawns = collect_spawns(methods, objdump, library)
+        spawns = collect_spawns(methods, objdump, library, progress)
     return build_document(spawns, enemies, {
         "profile": SOURCE_PROFILE,
         "abi": ABI,
