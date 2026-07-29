@@ -23,6 +23,18 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 a failed dump says what the dumper said: the report was the last
+  line of its output, which for an unhandled .NET exception is the innermost
+  stack frame -- a Windows tester was told only that something happened at a
+  line number in Il2CppDumper's own source. Stack frames are now dropped, the
+  line stating the fault is preferred over the progress notes around it, and
+  the whole output and exact command are written to
+  `user-data/il2cpp/il2cppdumper-last-run.log`. Both APK members are also
+  checked against the magic the dumper recognises them by (ELF, and metadata's
+  `0xFAB11BAF`) before it is started, so a wrong or split APK names itself
+  instead of surfacing as a crash inside someone else's source. The output
+  directory is passed with a trailing separator, which releases predating the
+  `Path.GetFullPath` normalization concatenate rather than join.
 - 2026-07-28 the readiness probe no longer asks Il2CppDumper to prompt: it ran
   the tool with no arguments to read the usage line a console build answers
   with, which is how the Windows release is asked to open a file picker. The
@@ -31,12 +43,15 @@ machine-readable/current capability boundary.
   probe now passes three arguments naming paths inside a discarded temporary
   directory, so there is nothing to prompt for and nothing is written, and
   readiness is that the process ran rather than what it printed -- a complaint
-  about absent inputs proves as much about the runtime as a usage line. A probe
-  that outlives its timeout is also accepted, since a process cannot block
-  without having started, and it is killed either way. The missing-.NET case it
-  exists to catch is still failed, now recognised by the apphost's own text.
-  Confirmed against a stub that hangs without arguments exactly as the dialog
-  does. Still macOS-only verification.
+  about inputs it cannot parse proves as much about the runtime as a usage line.
+  A probe that outlives its timeout is also accepted, since a process cannot
+  block without having started, and it is killed either way. The missing-.NET
+  case it exists to catch is still failed, now recognised by the apphost's own
+  text. Those three arguments name *staged files that exist*: the tool skips an
+  argument whose path is absent rather than refusing it, so the first attempt at
+  this fix -- absent paths -- left the same nothing behind as no arguments at
+  all, and the tester met both dialogs again. Confirmed against stubs
+  reproducing each rule. Still macOS-only verification.
 - 2026-07-28 the dumper variable says why it did not work: a Windows tester
   passed every other `--check` line and could not pass this one with the tool
   installed, because `LIMINAL_GATE_IL2CPPDUMPER` naming the extracted release

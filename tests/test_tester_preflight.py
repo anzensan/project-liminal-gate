@@ -146,29 +146,54 @@ class PreflightChecksTest(unittest.TestCase):
         self.assertFalse(checks["Il2CppDumper"].ok)
         self.assertIn("could not start", checks["Il2CppDumper"].detail)
 
-    def test_the_dumper_probe_never_runs_the_tool_without_arguments(self) -> None:
-        """The Windows release answers an empty argument list with a file picker.
+    def _observed_invocation(self, **outcome) -> dict:
+        """Run the probe and record what the tool would actually have seen."""
+        seen: dict = {}
 
-        A tester's `--check` opened two dialogs, failed whatever was chosen, and
-        reported that a correctly installed Il2CppDumper could not start.
+        def record(command, **kwargs):
+            seen["command"] = tuple(command)
+            seen["inputs_exist"] = [Path(argument).exists() for argument in command[1:]]
+            seen["stdin"] = kwargs.get("stdin")
+            if "error" in outcome:
+                raise outcome["error"]
+            return tester_setup.subprocess.CompletedProcess(
+                command, outcome.get("code", 1), outcome.get("stdout", ""), outcome.get("stderr", ""),
+            )
+
+        with patch.object(tester_setup.subprocess, "run", side_effect=record):
+            seen["detail"] = tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
+        return seen
+
+    def test_the_dumper_probe_names_inputs_that_exist(self) -> None:
+        """Il2CppDumper skips an argument whose path is absent, then prompts.
+
+        Two testers met its file pickers: the first because the probe passed no
+        arguments, the second because it passed three that named nothing. Only
+        an argument the tool can actually see keeps the dialog shut.
         """
-        completed = tester_setup.subprocess.CompletedProcess(
-            ("Il2CppDumper",), 1, "", "ERROR: il2cpp file not found\n",
-        )
-        with patch.object(tester_setup.subprocess, "run", return_value=completed) as run:
-            detail = tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
-        self.assertEqual("Il2CppDumper", detail, "complaining about absent inputs proves it ran")
-        invoked = run.call_args.args[0]
-        self.assertEqual(4, len(invoked), "the tool is given its three arguments, so it cannot prompt")
-        self.assertEqual(tester_setup.subprocess.DEVNULL, run.call_args.kwargs["stdin"])
+        seen = self._observed_invocation(stderr="ERROR: unsupported file format\n")
+        self.assertEqual(4, len(seen["command"]), "three arguments, so nothing is prompted for")
+        self.assertEqual([True, True, True], seen["inputs_exist"], "and every one of them exists")
+        self.assertEqual("Il2CppDumper", seen["detail"], "rejecting the inputs still proves it ran")
+        self.assertEqual(tester_setup.subprocess.DEVNULL, seen["stdin"])
+
+    def test_the_staged_metadata_is_recognisable_as_metadata(self) -> None:
+        """The tool sorts its arguments by content, so the staging must too."""
+        recorded: dict = {}
+
+        def record(command, **_kwargs):
+            recorded["magic"] = Path(command[2]).read_bytes()[:4]
+            return tester_setup.subprocess.CompletedProcess(command, 1, "", "")
+
+        with patch.object(tester_setup.subprocess, "run", side_effect=record):
+            tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
+        self.assertEqual(tester_setup._METADATA_MAGIC, recorded["magic"])
 
     def test_the_dumper_probe_writes_nothing_that_outlives_it(self) -> None:
-        """Its three arguments name paths inside a directory that is discarded."""
+        """Its inputs and output directory are staged, then discarded."""
         before = sorted(path.name for path in self.root.iterdir())
-        completed = tester_setup.subprocess.CompletedProcess(("Il2CppDumper",), 1, "", "")
-        with patch.object(tester_setup.subprocess, "run", return_value=completed) as run:
-            tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
-        staged = Path(run.call_args.args[0][-1])
+        seen = self._observed_invocation()
+        staged = Path(seen["command"][-1])
         self.assertFalse(staged.exists(), "the staging directory is removed with the probe")
         self.assertEqual(before, sorted(path.name for path in self.root.iterdir()))
 

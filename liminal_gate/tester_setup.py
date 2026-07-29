@@ -744,6 +744,17 @@ def describe_missing_il2cpp_dumper(unset: str = IL2CPP_DUMPER_MISSING) -> str:
 #: inputs", which is what the probe deliberately hands it.
 _DOTNET_RUNTIME_ABSENT = ("must install .net", "framework-dependent", "hostfxr", "you must install")
 
+#: The first four bytes of `global-metadata.dat`, little-endian `0xFAB11BAF`.
+#: Il2CppDumper classifies its arguments by content and existence rather than by
+#: position, and on Windows opens a file picker when nothing named an il2cpp
+#: binary.  An argument whose path does not exist is *skipped*, not reported, so
+#: probing with absent files leaves the same nothing behind as probing with no
+#: arguments at all -- which is how a second tester still met both dialogs after
+#: the empty argument list was fixed.  The probe therefore stages two real
+#: files: one carrying this magic, so it is taken for metadata, and one that is
+#: not, so it is taken for the binary and the picker has no reason to open.
+_METADATA_MAGIC = b"\xaf\x1b\xb1\xfa"
+
 
 def probe_il2cpp_dumper(command: Sequence[str], timeout: int = 30) -> str:
     """Prove the configured dumper starts before setup does expensive work.
@@ -752,23 +763,28 @@ def probe_il2cpp_dumper(command: Sequence[str], timeout: int = 30) -> str:
     apphost: the file can exist and still fail immediately because its runtime
     is not discoverable.
 
-    The probe passes three arguments naming paths inside an empty temporary
-    directory.  It used to pass none and read the usage line that answers, which
-    is true of a console build and actively wrong on Windows: the release there
-    responds to an empty argument list by opening a file picker, so `--check`
-    put two dialogs in front of a tester, failed whatever was chosen, and
-    reported that a correctly installed tool could not start.  With arguments
-    there is nothing to prompt for, and nothing is written because no input the
-    tool is given exists.
+    The probe hands the tool two staged files it will reject and a discarded
+    directory to write into.  It used to pass no arguments and read the usage
+    line that answers, which is true of a console build and actively wrong on
+    Windows, where an empty argument list is how the release is asked to prompt
+    for its inputs; passing paths that did not exist changed nothing, because
+    those are skipped rather than refused.  Both left a tester clicking through
+    file pickers.  Staged files that exist name the inputs outright, so there is
+    nothing to prompt for, and the staging directory is removed with the probe.
 
-    What counts as ready is therefore that the process *ran*, not what it said:
-    the tool's complaint about a missing input proves as much about its runtime
-    as a usage line does.  A probe that outlives its timeout also counts, since
-    a process cannot block without having started; it is killed either way.
+    What counts as ready is that the process *ran*, not what it said: the tool's
+    complaint about inputs it cannot parse proves as much about its runtime as a
+    usage line does.  A probe that outlives its timeout also counts, since a
+    process cannot block without having started; it is killed either way.
     """
     with tempfile.TemporaryDirectory() as directory:
         staged = Path(directory)
-        arguments = (str(staged / "absent-libil2cpp.so"), str(staged / "absent-metadata.dat"), str(staged))
+        library, metadata = staged / "libil2cpp.so", staged / "global-metadata.dat"
+        # Neither is a valid input: the tool identifies them, reads them, and
+        # gives up.  That is the whole of what the probe needs it to do.
+        library.write_bytes(b"\x00" * 64)
+        metadata.write_bytes(_METADATA_MAGIC + b"\x00" * 60)
+        arguments = (str(library), str(metadata), str(staged))
         try:
             completed = subprocess.run(
                 (*command, *arguments),
@@ -825,19 +841,95 @@ def ensure_il2cpp_dump(apk: Path, data_directory: Path) -> tuple[Path, Path]:
                     (IL2CPP_METADATA_MEMBER, "global-metadata.dat"),
                 ):
                     (staged / name).write_bytes(archive.read(member))
-            completed = run_with_heartbeat(
-                (*command, str(staged / "libil2cpp.so"), str(staged / "global-metadata.dat"), str(output)),
-                "Il2CppDumper", IL2CPP_DUMPER_TIMEOUT_SECONDS,
+            check_dumper_inputs(staged, apk)
+            invocation = (
+                *command,
+                str(staged / "libil2cpp.so"),
+                str(staged / "global-metadata.dat"),
+                # Trailing separator deliberately.  Releases before the output
+                # path was passed through `Path.GetFullPath` concatenate this
+                # argument with `DummyDll`, so a directory named without one is
+                # written to a sibling of itself.
+                os.path.join(str(output), ""),
             )
+            completed = run_with_heartbeat(invocation, "Il2CppDumper", IL2CPP_DUMPER_TIMEOUT_SECONDS)
     except (OSError, KeyError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         raise TesterSetupError(f"complete guided setup could not run Il2CppDumper: {error}") from error
     if completed.returncode or not dummy_dll.is_dir() or not dump_cs.is_file():
-        detail = (completed.stderr or completed.stdout or "").strip().splitlines()
         raise TesterSetupError(
             "complete guided setup needs Il2CppDumper to produce a DummyDll directory and dump.cs"
-            + (f", but it reported: {detail[-1]}" if detail else "")
+            + describe_dumper_failure(completed, output)
         )
     return dummy_dll, dump_cs
+
+
+#: The first four bytes of a 64-bit ELF, which is what an Android IL2CPP build
+#: ships as `libil2cpp.so`.
+_ELF_MAGIC = b"\x7fELF"
+
+
+def check_dumper_inputs(staged: Path, apk: Path) -> None:
+    """Refuse inputs the dumper would only reject after it had started.
+
+    Il2CppDumper reads the first four bytes of each input to decide what it has,
+    and an unrecognised binary leaves it throwing from `Main` -- a stack trace
+    naming a line in someone else's source, which says nothing about which of
+    the two APK members was wrong or what was found there instead.  Both magics
+    are known here and cost two reads to check, so the APK is what gets named.
+    """
+    for name, magic, member in (
+        ("libil2cpp.so", _ELF_MAGIC, IL2CPP_LIBRARY_MEMBER),
+        ("global-metadata.dat", _METADATA_MAGIC, IL2CPP_METADATA_MEMBER),
+    ):
+        found = (staged / name).read_bytes()[:4]
+        if found != magic:
+            raise TesterSetupError(
+                f"{member} in {apk} does not look like {name}: it starts with {found.hex()} rather "
+                f"than {magic.hex()}. Il2CppDumper reads exactly those bytes to recognise it, so it "
+                "would fail on this input. Check that --apk names the whole Android 5.5.7-170 APK "
+                "rather than a split, a re-zipped extraction, or another architecture's copy."
+            )
+
+
+def describe_dumper_failure(completed: subprocess.CompletedProcess, output: Path) -> str:
+    """Report what the dumper said, and keep the rest where it can be read.
+
+    The last line used to be the whole report, which is the least informative
+    line there is: an unhandled .NET exception ends with its innermost stack
+    frame, so a tester was told only that something happened in `Program.Main`.
+    Stack frames are dropped and the line that states the fault is preferred,
+    since the lines before it are progress notes and the lines after it are the
+    call path that arrived at it.
+
+    Everything, including the exact command, is written beside the output the
+    run failed to produce, because a report from someone else's machine is worth
+    more than a paraphrase of it.
+    """
+    text = "\n".join(part for part in (completed.stdout, completed.stderr) if part).strip()
+    spoken = [
+        line.strip() for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("at ")
+    ]
+    faults = [
+        line for line in spoken
+        if "exception" in line.casefold() or "error" in line.casefold()
+    ]
+    # Failing that, the last thing it managed to say: with only progress notes
+    # to go on, how far it got is the whole of the evidence.
+    said = faults or spoken[-1:]
+    log = output / "il2cppdumper-last-run.log"
+    try:
+        output.mkdir(parents=True, exist_ok=True)
+        log.write_text(
+            "$ " + " ".join(completed.args) + f"\nexit code: {completed.returncode}\n\n{text}\n",
+            encoding="utf-8",
+        )
+        kept = f" The whole of its output, and the command, are in {log}."
+    except OSError:
+        kept = ""
+    if not said:
+        return f" (exit code {completed.returncode}).{kept}"
+    return ", but it reported: " + " ".join(said[:3]).rstrip(".") + f".{kept}"
 
 
 def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> str | None:

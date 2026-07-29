@@ -10,6 +10,7 @@ install that would otherwise look complete.
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -21,6 +22,9 @@ from liminal_gate.tester_setup import (
     IL2CPP_LIBRARY_MEMBER,
     IL2CPP_METADATA_MEMBER,
     TesterSetupError,
+    _ELF_MAGIC,
+    _METADATA_MAGIC,
+    describe_dumper_failure,
     ensure_il2cpp_dump,
     derive_story_outcome_catalog,
     find_aarch64_objdump,
@@ -199,15 +203,19 @@ class EnsureIl2cppDumpTest(unittest.TestCase):
         self.data = self.root / "user-data"
         self.data.mkdir()
         self.apk = self.root / "game.apk"
+        # Both members carry the magic the dumper recognises them by, because
+        # setup now checks that before handing them over.
+        self.library_bytes = _ELF_MAGIC + b"library"
+        self.metadata_bytes = _METADATA_MAGIC + b"metadata"
         with zipfile.ZipFile(self.apk, "w") as archive:
-            archive.writestr(IL2CPP_LIBRARY_MEMBER, b"library")
-            archive.writestr(IL2CPP_METADATA_MEMBER, b"metadata")
+            archive.writestr(IL2CPP_LIBRARY_MEMBER, self.library_bytes)
+            archive.writestr(IL2CPP_METADATA_MEMBER, self.metadata_bytes)
         self.stub = self.root / "stub_dumper.py"
         self.stub.write_text(
             "import pathlib, sys\n"
             "library, metadata, output = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])\n"
-            "assert pathlib.Path(library).read_bytes() == b'library'\n"
-            "assert pathlib.Path(metadata).read_bytes() == b'metadata'\n"
+            f"assert pathlib.Path(library).read_bytes() == {self.library_bytes!r}\n"
+            f"assert pathlib.Path(metadata).read_bytes() == {self.metadata_bytes!r}\n"
             "(output / 'DummyDll').mkdir(parents=True, exist_ok=True)\n"
             "(output / 'DummyDll' / 'Assembly-CSharp.dll').write_bytes(b'')\n"
             "(output / 'dump.cs').write_text('')\n",
@@ -249,6 +257,76 @@ class EnsureIl2cppDumpTest(unittest.TestCase):
         with patch("liminal_gate.tester_setup.find_il2cpp_dumper", return_value=None):
             with self.assertRaisesRegex(TesterSetupError, "Il2CppDumper"):
                 ensure_il2cpp_dump(self.apk, self.data)
+
+    def test_the_output_directory_is_passed_with_a_trailing_separator(self) -> None:
+        """Releases that concatenate it would otherwise write beside it."""
+        silent = subprocess.CompletedProcess(("Il2CppDumper",), 0, "", "")
+        with patch("liminal_gate.tester_setup.find_il2cpp_dumper", return_value=self._command()), \
+             patch("liminal_gate.tester_setup.run_with_heartbeat", return_value=silent) as ran, \
+             patch("builtins.print"):
+            with self.assertRaises(TesterSetupError):  # nothing ran, so nothing was produced
+                ensure_il2cpp_dump(self.apk, self.data)
+        self.assertTrue(ran.call_args.args[0][-1].endswith(("/", "\\")))
+
+    def test_an_apk_member_the_dumper_could_not_read_is_refused_by_name(self) -> None:
+        """Its own failure is a stack trace naming a line in someone else's source."""
+        wrong = self.root / "wrong.apk"
+        with zipfile.ZipFile(wrong, "w") as archive:
+            archive.writestr(IL2CPP_LIBRARY_MEMBER, b"PK\x03\x04not a shared object")
+            archive.writestr(IL2CPP_METADATA_MEMBER, self.metadata_bytes)
+        with patch("liminal_gate.tester_setup.find_il2cpp_dumper", return_value=self._command()), \
+             patch("liminal_gate.tester_setup.run_with_heartbeat") as ran, \
+             patch("builtins.print"):
+            with self.assertRaisesRegex(TesterSetupError, IL2CPP_LIBRARY_MEMBER):
+                ensure_il2cpp_dump(wrong, self.data)
+        ran.assert_not_called()
+
+    def test_a_bad_metadata_member_is_refused_too(self) -> None:
+        wrong = self.root / "wrong-metadata.apk"
+        with zipfile.ZipFile(wrong, "w") as archive:
+            archive.writestr(IL2CPP_LIBRARY_MEMBER, self.library_bytes)
+            archive.writestr(IL2CPP_METADATA_MEMBER, b"\x00\x00\x00\x00metadata")
+        with patch("liminal_gate.tester_setup.find_il2cpp_dumper", return_value=self._command()), \
+             patch("builtins.print"):
+            with self.assertRaisesRegex(TesterSetupError, "global-metadata.dat"):
+                ensure_il2cpp_dump(wrong, self.data)
+
+
+class DumperFailureReportTest(unittest.TestCase):
+    """What the dumper said, not the last line of where it said it from."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.output = Path(self.temporary_directory.name) / "il2cpp"
+
+    def _describe(self, stderr: str, code: int = 1) -> str:
+        completed = subprocess.CompletedProcess(("Il2CppDumper.exe", "a", "b", "c"), code, "", stderr)
+        return describe_dumper_failure(completed, self.output)
+
+    def test_the_exception_is_reported_and_the_stack_frames_are_not(self) -> None:
+        detail = self._describe(
+            "Initializing metadata...\n"
+            "Metadata Version: 24.1\n"
+            "Unhandled Exception: System.NotSupportedException: ERROR: il2cpp file not supported.\n"
+            "   at Il2CppDumper.Program.Main(String[] args) in C:\\projects\\il2cppdumper\\Program.cs:line 109\n"
+        )
+        self.assertIn("il2cpp file not supported", detail)
+        self.assertNotIn("line 109", detail, "a stack frame names our tester's confusion, not the fault")
+
+    def test_the_whole_output_and_the_command_are_kept_for_reading(self) -> None:
+        self._describe("Unhandled Exception: System.Exception: something\n   at Il2CppDumper.Program.Main()\n")
+        log = (self.output / "il2cppdumper-last-run.log").read_text(encoding="utf-8")
+        self.assertIn("Il2CppDumper.exe a b c", log)
+        self.assertIn("at Il2CppDumper.Program.Main()", log, "the frames are kept where they can be read")
+
+    def test_a_silent_failure_still_reports_its_exit_code(self) -> None:
+        self.assertIn("exit code 134", self._describe("", code=134))
+
+    def test_progress_notes_fall_back_to_how_far_it_got(self) -> None:
+        self.assertIn("Initializing il2cpp file", self._describe(
+            "Initializing metadata...\nMetadata Version: 24.1\nInitializing il2cpp file...\n"
+        ))
 
 
 if __name__ == "__main__":
