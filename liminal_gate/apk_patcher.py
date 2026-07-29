@@ -84,12 +84,10 @@ def apply_patch_plan(
 ) -> None:
     """Create an unsigned patched APK from local source material and a plan.
 
-    `drop_abis` removes whole `lib/<abi>/` trees.  Android then runs the app
-    against whichever ABI remains, which is the only way to choose the process
-    bitness from outside the app: dropping `arm64-v8a` from a dual-ABI archive
-    leaves a 32-bit process, whose 4 GB address space cannot reach the
-    addresses this Unity 2017 build faults on when a device has enough RAM to
-    hand it something larger.
+    `drop_abis` removes whole `lib/<abi>/` trees. Android then runs the app
+    against whichever ABI remains. Dropping `arm64-v8a` from a dual-ABI archive
+    therefore leaves a 32-bit process, but that package cannot run on modern
+    64-bit-app-only devices such as Pixel 7 and later.
 
     Patches aimed at a dropped tree are discarded with it, which is safe here
     and checked below: the routing literals live in the ABI-independent
@@ -196,7 +194,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-apk", required=True, type=Path)
     parser.add_argument(
         "--drop-abi", action="append", default=[], metavar="ABI",
-        help="remove a lib/<ABI>/ tree; drop arm64-v8a to run the app as a 32-bit process",
+        help="remove a lib/<ABI>/ tree; the target device must support an ABI that remains",
     )
     return parser.parse_args()
 

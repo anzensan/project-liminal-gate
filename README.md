@@ -979,6 +979,12 @@ python3 -m liminal_gate.apk_patcher \
   --output-apk user-data/liminal-gate-unsigned.apk
 ```
 
+For the exact final client, this plan also includes the Android 11+ ARM64
+allocator compatibility edit. It is guarded by the selected Unity member's
+SHA-256 and exact original bytes. Do not add `--drop-abi arm64-v8a` on a
+64-bit-app-only device such as Pixel 7 or Pixel 7 Pro; that device cannot
+install or run an armeabi-v7a-only package.
+
 Then find the Android SDK Build Tools directory. On macOS, Android Studio uses
 this location by default:
 
@@ -1322,6 +1328,8 @@ apart. Give those a `--data-dir` and a port each instead.
 | What you see | What to do |
 | --- | --- |
 | `No module named liminal_gate` | Run the command from the repository root: the folder containing `README.md` and `liminal_gate/`. |
+| The app closes at the title screen and logcat says `Using memoryadresses from more that 16GB of memory` followed by signal 11 | Fixed for the exact final client by the generated ARM64 plan. Run `git pull --ff-only`, rerun the complete setup command, and reinstall its new APK. `pip install ".[master-import]"` installs the current checkout; it does not pull newer source. Do not drop ARM64 on Pixel 7/7 Pro because those devices run 64-bit apps only. |
+| `legacy client plan generation failed: could not read the selected metadata member` | `--source-apk` must name the actual `.apk` file, not `local-input` or another directory. Guided setup selects the imported APK for you. |
 | `local account state is already in use by another server` | Another server already has that save open. Stop it, or start this one with its own `--data-dir`. See [Look after your save](#look-after-your-save). |
 | `account state is in use; stop the local server before changing it` | `restore` and `adopt` will not change a save a running server owns. Stop the server and run the command again. |
 | Progress is gone after reinstalling or clearing the app's data | The app generated a new account ID; your save is still there. See [If you reinstall the app and your progress is gone](#if-you-reinstall-the-app-and-your-progress-is-gone). |

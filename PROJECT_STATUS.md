@@ -23,6 +23,24 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-29 Issue 15 ARM64 title crash: the reporter's Pixel 7 Pro log is a
+  Unity 2017 allocator failure, not a network or firewall failure. Matching
+  official 2017.4.37f1 symbols identify the five-region
+  `UnityDefaultAllocator` page tracker, while Unity's fixed 2018.4.30 path
+  switches Android to `DynamicHeapAllocator`. The exact final 2017 player
+  already carries and constructs that allocator elsewhere, and its 176-byte
+  object fits the existing 192-byte slots. Generated plans now hash-gate the
+  Unity member and replace only its ARM64 default constructor with the
+  in-binary DynamicHeap layout. Signed builds survived title startup and real
+  HTTP on ARM64-only Android 12/14; the 12 GB Android 12 process reached a
+  66,027,632 kB virtual-memory peak without the old message or signal 11. That
+  AVD did not reproduce the old crash in its unpatched control, so Pixel 7 Pro
+  acceptance remains pending. The earlier 32-bit suggestion was inapplicable:
+  Pixel 7/7 Pro accept 64-bit apps only. The reporter's later command also
+  named a directory instead of the APK and did not update the checkout.
+  Seventy focused setup/patcher tests and all 619 warning-strict tests passed;
+  compilation, profile JSON, endpoint YAML, diff checks, and both clean
+  candidate publication gates passed.
 - 2026-07-29 Issue 22 post-restart Recruit recovery: a current-server event
   log showed the final client repeatedly receiving HTTP 409
   `tutorial_state_conflict` from `/gd/userdata` after Chapter 1-1, while the

@@ -518,33 +518,37 @@ to keep.
 
 ### If the game crashes at the title screen on a high-memory device
 
-A Unity 2017 IL2CPP build can fault on modern phones with a lot of RAM. The
-symptom is the app closing itself a few seconds after launch, and the device log
-shows Unity's own message just before a `signal 11 (Segmentation fault)`:
+Unity 2017's old ARM64 default allocator can fault under Android 11+'s Scudo
+allocator. The symptom is the app closing itself a few seconds after launch,
+and the device log shows Unity's own message just before a `signal 11
+(Segmentation fault)`:
 
 ```
 E Unity : Using memoryadresses from more that 16GB of memory
 ```
 
-The game is not mis-signed or mis-patched when this happens; its 64-bit process
-is simply being handed an address the 2017 runtime cannot represent.
+Current guided setup and `legacy_client_apk_plan` handle this automatically for
+the exact final client. The generated plan verifies the selected
+`lib/arm64-v8a/libunity.so` SHA-256 and original constructor bytes, then changes
+only that constructor to build the `DynamicHeapAllocator` already shipped and
+used elsewhere in the same Unity player. The patch does not suppress the
+allocator's safety check, replace the Unity library, or modify ARMv7.
 
-A 32-bit process has a 4 GB address space and never produces one, and the APK
-ships both ABIs, so dropping the 64-bit tree sidesteps it:
+Update the checkout with `git pull --ff-only`, rerun the complete setup command,
+and reinstall the newly generated APK. Installing the Python extras again is
+not a source update.
 
-```sh
-python3 -m liminal_gate.apk_patcher \
-    --source-apk <your.apk> --patch-plan <plan.json> \
-    --output-apk patched.apk --drop-abi arm64-v8a
-```
+Do **not** use `--drop-abi arm64-v8a` for a Pixel 7, Pixel 7 Pro, or another
+64-bit-app-only device: an armeabi-v7a-only APK cannot run there. The generic
+`--drop-abi` operation remains available for deliberate tests on older devices
+that actually support the ABI left in the archive.
 
-Nothing is lost by doing this. The server address lives in the ABI-independent
-metadata, and the other local edits are applied to both libraries, so the 32-bit
-build keeps every one of them. The archive is about 20 MB smaller. Align and
-sign the result as usual.
-
-The patcher refuses to drop an ABI the archive does not carry, and refuses to
-drop them all.
+The replacement has run through title startup and real HTTP requests on
+ARM64-only Android 12 and 14 test environments, including a 12 GB API 31 AVD.
+That AVD did not reproduce the old crash before patching, so this remains a
+strong static/runtime result rather than Pixel 7 Pro acceptance. If the exact
+message still appears after rebuilding, attach a fresh log and the setup line
+that identifies the generated APK; do not attach the APK itself.
 
 ### Drop rates: no campaign doubling, deliberately
 

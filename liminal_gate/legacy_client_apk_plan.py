@@ -8,9 +8,11 @@ or generated plan; those stay on the user's local machine.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from urllib.parse import urlsplit
+import zipfile
 
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError, generate_plan
 
@@ -36,6 +38,53 @@ TERMS_CONFIRMATION_PATCHES = (
     ("lib/arm64-v8a/libil2cpp.so", 0xD2E324, "e1010054", "1f2003d5"),
     ("lib/armeabi-v7a/libil2cpp.so", 0x7CADDC, "0c00001a", "0000a0e1"),
 )
+
+# Android 11 replaced jemalloc with Scudo. Unity 2017's ARM64
+# UnityDefaultAllocator can track only five distinct 4 GB address regions and
+# crashes once Scudo places live allocations in a sixth. The same player
+# already carries and constructs DynamicHeapAllocator<LowLevelAllocator> for
+# its fallback allocator. This exact-build patch replaces only the default
+# allocator constructor with that in-binary 176-byte layout; the caller has
+# already reserved 192 bytes for each object.
+#
+# The replacement is 39 AArch64 instructions and exactly fills the original
+# constructor. Its salient targets are:
+#   0x00d930c8  DynamicHeapAllocator vtable
+#   0x00d719d0  BaseAllocator instance counter
+#   0x00510e90  in-binary mutex constructor
+ARM64_UNITY_MEMBER = "lib/arm64-v8a/libunity.so"
+FINAL_ARM64_UNITY_SHA256 = "9980ea0174528f97c6f9d42a51cfc5f3bff31b1c62652028fbb22b01111c7090"
+ARM64_SCUDO_ALLOCATOR_PATCHES = (
+    (
+        ARM64_UNITY_MEMBER,
+        0x157420,
+        "c86100f008e13c91084100911f3400b91fc002f81f4002f81fc001f81f4001f8"
+        "080400a9c86000d00841279109fd5f882905001109fd0a88aaffff35f44fbea9"
+        "fd7b01a9fd430091e861009008e10e9113e0009108410091091000b9080000f9"
+        "08200291e90313aa3f0100b93f0500f9294100913f0108eb81ffff5400200291"
+        "7ce60e94fd7b41a9e1031f2a020a8052e00313aaf44fc2a840c6fc17",
+        "f44fbea9fd7b01a9fd430091f30300aaf40301aae861009008e1029108410091"
+        "685200a9c86000d00841279109fd5f882905001109fd0a88aaffff35691200b9"
+        "7f1600b97ffe01a97ffe02a97f1e00f97f2200f96922019169a604a96a620191"
+        "6aaa05a960a2019182e60e9428008052685202390802a05268fe09a9e00313aa"
+        "fd7b41a9f44fc2a8c0035fd61f2003d51f2003d51f2003d51f2003d5",
+    ),
+)
+
+
+def _sha256_member(source_apk: Path, member: str) -> str:
+    digest = hashlib.sha256()
+    with zipfile.ZipFile(source_apk) as archive:
+        try:
+            with archive.open(member) as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except KeyError as error:
+            raise PlanGenerationError(
+                f"selected APK is missing required ARM64 Unity member {member}"
+            ) from error
+    return digest.hexdigest()
+
 
 def max_server_origin_length() -> int:
     """The longest origin the guarded literal replacements can still express.
@@ -82,13 +131,31 @@ def normalize_server_origin(value: str) -> str:
 def generate_legacy_client_plan(source_apk: Path, server_origin: str) -> dict[str, object]:
     """Generate only local routing edits for a selected APK."""
     origin = normalize_server_origin(server_origin)
+    unity_sha256 = _sha256_member(source_apk, ARM64_UNITY_MEMBER)
+    if unity_sha256 != FINAL_ARM64_UNITY_SHA256:
+        raise PlanGenerationError(
+            "selected APK's ARM64 Unity player does not match the supported "
+            f"final client (member SHA-256 {unity_sha256})"
+        )
     replacements = (
         (API_BASE_LITERAL, (origin + "/").encode("ascii")),
         (RESOURCE_BASE_LITERAL, (origin + "/resources/").encode("ascii")),
         (WEBSITE_BASE_LITERAL, origin.encode("ascii")),
     )
     plan = generate_plan(source_apk, METADATA_MEMBER, replacements)
-    plan["patches"].extend({"member": member, "offset": offset, "expected_hex": old, "replacement_hex": new} for member, offset, old, new in (*IAP_MODAL_PATCHES, *TERMS_CONFIRMATION_PATCHES))
+    plan["patches"].extend(
+        {
+            "member": member,
+            "offset": offset,
+            "expected_hex": old,
+            "replacement_hex": new,
+        }
+        for member, offset, old, new in (
+            *IAP_MODAL_PATCHES,
+            *TERMS_CONFIRMATION_PATCHES,
+            *ARM64_SCUDO_ALLOCATOR_PATCHES,
+        )
+    )
     return plan
 
 

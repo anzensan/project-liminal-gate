@@ -46,6 +46,35 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Client compatibility constants
 
+- **Confirmed root cause from the Issue 15 device log and matching official
+  Unity symbols:** the Pixel 7 Pro run loads the final client's ARM64 Unity
+  2017.4.37f1 player, logs
+  `Using memoryadresses from more that 16GB of memory`, and terminates with
+  signal 11 before server transport. The failing
+  `UnityDefaultAllocator<LowLevelAllocator>::AllocationPage` stores only five
+  distinct high 32-bit address-region keys. Reaching a sixth region logs the
+  message; bypassing that branch would index outside the five-entry table.
+- **Strongly inferred fix with ARM64 runtime validation:** the same exact
+  player contains `DynamicHeapAllocator<LowLevelAllocator>` and constructs a
+  176-byte instance for its fallback allocator. Each default allocator already
+  reserves 192 bytes. The hash- and source-byte-guarded plan now replaces only
+  the default constructor with that existing layout and vtable. A signed build
+  remained live through Unity title startup and real HTTP on ARM64-only Android
+  12 with 11,940 MB reported RAM and Android 14; the Android 12 process reached
+  a 66,027,632 kB virtual-memory peak without the old message or signal 11.
+  The 12 GB AVD also ran the unpatched control, however, so it did not reproduce
+  the reporter's device-specific allocation pattern. Pixel 7 Pro acceptance
+  remains pending.
+- **Confirmed compatibility correction:** Pixel 7 and Pixel 7 Pro support only
+  64-bit apps. The earlier suggestion to drop `arm64-v8a` cannot produce a
+  runnable package for that reporter. Their later plan-generation error was
+  separate: `--source-apk` named the `local-input` directory rather than the
+  APK, and reinstalling Python extras did not update the Git checkout.
+  Upstream source trail:
+  [Android's 64-bit-only Pixel 7 announcement](https://android-developers.googleblog.com/2022/10/64-bit-only-devices.html),
+  [Unity issue 1284525](https://issuetracker.unity3d.com/issues/android-il2cpp-empty-project-crashes-on-launch-with-using-memoryadresses-from-more-than-16gb-of-memory-messages),
+  and the
+  [Unity 2018.4.30f1 fix note](https://unity.com/releases/editor/whats-new/2018.4.30f1).
 - **Confirmed by final-version service notes and final-client static
   analysis:** Version 5.5.0 discontinued Co-op/VS, in-battle Eidolon use, and
   Tavern Eidolon enhancement. The final 5.5.7 client still carries

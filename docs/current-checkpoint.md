@@ -26,11 +26,19 @@ account and persisted tutorial state after a full server restart. All 548
 captured requests returned HTTP 200. This certifies the onboarding and restart
 path; it is not a new client boundary beyond Chapter 2-1.
 
-Latest source validation: 617 warning-strict tests passed in 118.867 seconds.
-That run includes the Issue 22 real-HTTP tutorial recovery regression: clear
-Chapter 1-1, restart, accept the phase-preserving Tutorial03 party save, replay
-it after another restart without changing roster or phase, and then settle the
-still-required `kind=12` Pact.
+Latest source validation: 619 warning-strict tests passed in 120.005 seconds.
+That run includes the Issue 22 real-HTTP tutorial recovery regression and the
+exact hash/byte-guarded Issue 15 ARM64 constructor replacement. Compilation,
+profile JSON, endpoint YAML, and diff checks pass.
+
+Latest ARM64 portability validation: the Issue 15 plan replaces the exact final
+Unity 2017 default-allocator constructor with the `DynamicHeapAllocator`
+already present in that player. A signed APK remained live through title
+startup and real HTTP on ARM64-only Android 12 with 11,940 MB reported RAM and
+Android 14. The Android 12 process peaked at 66,027,632 kB virtual memory with
+no old allocator message or signal 11. Its unpatched control also stayed live,
+so the AVD did not reproduce the Pixel 7 Pro allocation pattern;
+original-device acceptance remains the next boundary.
 
 Latest live deployment: Beelink implementation commit `3fe4336` runs without
 the retired `--summon-skills` default. The child command still loads

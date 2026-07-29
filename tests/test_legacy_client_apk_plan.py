@@ -5,12 +5,16 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 from liminal_gate.apk_patcher import apply_patch_plan, load_patch_plan
 from liminal_gate.il2cpp_plan_generator import IL2CPP_METADATA_MAGIC, PlanGenerationError
 from liminal_gate.legacy_client_apk_plan import (
     API_BASE_LITERAL,
+    ARM64_SCUDO_ALLOCATOR_PATCHES,
+    ARM64_UNITY_MEMBER,
+    FINAL_ARM64_UNITY_SHA256,
     METADATA_MEMBER,
     RESOURCE_BASE_LITERAL,
     WEBSITE_BASE_LITERAL,
@@ -39,20 +43,30 @@ class LegacyClientApkPlanTest(unittest.TestCase):
         with zipfile.ZipFile(self.source, "w") as archive:
             archive.writestr(METADATA_MEMBER, metadata)
             libraries = {}
-            for member, offset, old, _new in (*IAP_MODAL_PATCHES, *TERMS_CONFIRMATION_PATCHES):
+            for member, offset, old, _new in (
+                *IAP_MODAL_PATCHES,
+                *TERMS_CONFIRMATION_PATCHES,
+                *ARM64_SCUDO_ALLOCATOR_PATCHES,
+            ):
                 payload = libraries.setdefault(member, bytearray())
                 if len(payload) < offset + len(bytes.fromhex(old)):
                     payload.extend(b"\0" * (offset + len(bytes.fromhex(old)) - len(payload)))
                 payload[offset:offset + len(bytes.fromhex(old))] = bytes.fromhex(old)
             for member, payload in libraries.items():
                 archive.writestr(member, payload)
+        self.unity_hash = patch(
+            "liminal_gate.legacy_client_apk_plan._sha256_member",
+            return_value=FINAL_ARM64_UNITY_SHA256,
+        )
+        self.unity_hash.start()
 
     def tearDown(self) -> None:
+        self.unity_hash.stop()
         self.temporary_directory.cleanup()
 
     def test_generates_and_applies_three_literal_local_routing_plan(self) -> None:
         plan = generate_legacy_client_plan(self.source, "http://192.168.1.10:8642/")
-        self.assertEqual(11, len(plan["patches"]))
+        self.assertEqual(12, len(plan["patches"]))
         plan_path = self.root / "plan.json"
         plan_path.write_text(json.dumps(plan), encoding="utf-8")
         output = self.root / "patched.apk"
@@ -85,7 +99,47 @@ class LegacyClientApkPlanTest(unittest.TestCase):
 
     def test_plan_contains_routing_and_exact_local_startup_patches(self) -> None:
         plan = generate_legacy_client_plan(self.source, "http://192.168.1.10:8642")
-        self.assertEqual(11, len(plan["patches"]))
+        self.assertEqual(12, len(plan["patches"]))
         binary = plan["patches"][6:]
-        self.assertEqual([(member, offset, old, new) for member, offset, old, new in (*IAP_MODAL_PATCHES, *TERMS_CONFIRMATION_PATCHES)], [(patch["member"], patch["offset"], patch["expected_hex"], patch["replacement_hex"]) for patch in binary])
+        expected = (
+            *IAP_MODAL_PATCHES,
+            *TERMS_CONFIRMATION_PATCHES,
+            *ARM64_SCUDO_ALLOCATOR_PATCHES,
+        )
+        self.assertEqual(
+            [(member, offset, old, new) for member, offset, old, new in expected],
+            [
+                (
+                    item["member"],
+                    item["offset"],
+                    item["expected_hex"],
+                    item["replacement_hex"],
+                )
+                for item in binary
+            ],
+        )
         self.assertNotIn("source_apk", plan)
+
+    def test_rejects_a_different_arm64_unity_player(self) -> None:
+        self.unity_hash.stop()
+        try:
+            with self.assertRaisesRegex(
+                PlanGenerationError,
+                "ARM64 Unity player does not match the supported final client",
+            ):
+                generate_legacy_client_plan(self.source, "http://192.168.1.10:8642")
+        finally:
+            self.unity_hash.start()
+
+    def test_scudo_patch_replaces_the_exact_constructor_and_only_arm64(self) -> None:
+        plan = generate_legacy_client_plan(self.source, "http://192.168.1.10:8642")
+        plan_path = self.root / "plan.json"
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        output = self.root / "patched.apk"
+        apply_patch_plan(self.source, output, load_patch_plan(plan_path))
+        member, offset, expected, replacement = ARM64_SCUDO_ALLOCATOR_PATCHES[0]
+        self.assertEqual(ARM64_UNITY_MEMBER, member)
+        with zipfile.ZipFile(output) as archive:
+            patched = archive.read(member)
+        self.assertEqual(bytes.fromhex(replacement), patched[offset:offset + len(bytes.fromhex(replacement))])
+        self.assertNotEqual(bytes.fromhex(expected), patched[offset:offset + len(bytes.fromhex(expected))])

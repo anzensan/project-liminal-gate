@@ -59,12 +59,10 @@ class ApkPatcherTest(unittest.TestCase):
 
 
 class DropAbiTest(unittest.TestCase):
-    """Dropping an ABI is how the process bitness gets chosen from outside.
+    """An ABI tree can be removed without touching ABI-independent patches.
 
-    A Unity 2017 IL2CPP build faults on devices with enough RAM to hand it an
-    address it cannot represent; a 32-bit process has a 4 GB address space and
-    never produces one. Removing `lib/arm64-v8a/` leaves Android running the
-    remaining ABI.
+    The operation remains useful for explicitly compatible older targets, but
+    a package with only armeabi-v7a cannot run on a 64-bit-app-only device.
     """
 
     def _archive(self, path: Path, members: dict[str, bytes]) -> None:

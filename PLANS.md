@@ -1,5 +1,67 @@
 # Execution Plans
 
+## 2026-07-29 GitHub Issue 15 Android 11+ ARM64 allocator crash
+
+Status: implementation and release validation completed 2026-07-29; original
+Pixel 7 Pro acceptance pending.
+
+Objective: prevent the final Android client's Unity 2017 ARM64 player from
+crashing at the title screen when Android's Scudo allocator returns addresses
+outside the five regions tracked by `UnityDefaultAllocator`.
+
+Evidence boundary:
+
+- The reporter's attached Pixel 7 Pro log reaches Unity 2017.4.37f1 ARM64
+  IL2CPP, logs `Using memoryadresses from more that 16GB of memory`, and then
+  terminates with signal 11 before the client reaches the server.
+- Pixel 7 and Pixel 7 Pro are 64-bit-app-only devices. Removing
+  `arm64-v8a` cannot run on the reported device, regardless of the separate
+  path error in the reporter's attempted manual command.
+- Unity issue 1284525 identifies this allocator/Scudo crash and fixed it in
+  2018.4.30f1 by switching the internal Unity allocator to
+  `DynamicHeapAllocator`; Unity 2017 did not receive that upstream fix.
+- Matching official 2017.4.37f1 symbols identify the failing
+  `UnityDefaultAllocator<LowLevelAllocator>::AllocationPage` implementation.
+  The shipped player also contains and constructs
+  `DynamicHeapAllocator<LowLevelAllocator>` elsewhere: its 176-byte object fits
+  in each existing 192-byte default-allocator slot.
+
+Required proof:
+
+1. Gate any native change on the exact final-client APK member hash, Unity
+   build marker, patch offset, and expected bytes.
+2. Replace only the ARM64 default-allocator constructor with the engine's own
+   compatible DynamicHeap layout; do not suppress the five-region error branch
+   or alter ARMv7.
+3. Confirm the replacement's disassembly, vtable, field bounds, and calls
+   against the matching official symbol build and the already-used in-binary
+   constructor sequence.
+4. Build, align, sign, install, and exercise the title/login path on an
+   Android 11+ ARM64 runtime; retain the reporter's Pixel 7 Pro retest as the
+   original-device acceptance boundary.
+5. Run focused patch/setup coverage, the warning-strict full suite,
+   compilation, diff/YAML checks, and clean-candidate publication gates before
+   commit/push and an Issue 15 update.
+
+Result:
+
+- The generated plan now verifies the exact final ARM64 Unity member hash and
+  constructor bytes, then builds the player's existing
+  `DynamicHeapAllocator<LowLevelAllocator>` layout in the original 192-byte
+  slots. ARMv7 and all other Unity code remain unchanged.
+- Seventy focused setup/patcher tests passed. The warning-strict full suite
+  passed all 619 tests in 120.005 seconds; compilation, profile JSON, endpoint
+  YAML, and diff checks passed. An isolated clean candidate passed the
+  prohibited-material preflight and independent-history audit.
+- An aligned and v1/v2/v3-verified signed APK stayed live through title startup
+  and 40 real server requests on ARM64-only Android 12 and Android 14. The
+  12 GB Android 12 process reached a 66,027,632 kB virtual-memory peak without
+  the allocator message or signal 11.
+- The unpatched Android 12 control also stayed live, so these AVDs did not
+  reproduce the Pixel allocation pattern. The reporter's fresh Pixel 7 Pro
+  result remains the client-acceptance boundary; the issue must remain open
+  until that result is available.
+
 ## 2026-07-29 GitHub Issue 22 post-restart Tutorial03 userdata save
 
 Status: completed 2026-07-29.
