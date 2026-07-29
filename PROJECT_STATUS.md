@@ -23,6 +23,20 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 the dumper variable says why it did not work: a Windows tester
+  passed every other `--check` line and could not pass this one with the tool
+  installed, because `LIMINAL_GATE_IL2CPPDUMPER` naming the extracted release
+  directory, and naming a path that does not exist, both printed the text for a
+  variable that was never set. The variable now also accepts that directory
+  (`Il2CppDumper.exe`, `Il2CppDumper`, then `Il2CppDumper.dll`, so a release
+  shipping both needs no .NET runtime), and each failure names its own cause:
+  unset, nonexistent path, directory holding no release, or an assembly with no
+  `dotnet`. Only the unset case still advises installing the tool. Surrounding
+  double quotes are stripped, since a value set with `setx` keeps them.
+  Discovery remains `PATH` and that variable; the current directory is not
+  searched, which the README now says. 10 focused tests added; the full
+  warning-strict suite passed all 606 tests in 116.807 seconds; compilation
+  passed. Not yet confirmed by the reporting tester on Windows.
 - 2026-07-28 final-version Eidolon classification: Version 5.5.0 retired
   Eidolon battle summoning, its multiplayer charging-gauge use, and Tavern
   enhancement. Those are not missing solo systems for the final 5.5.7 client.

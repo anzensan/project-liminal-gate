@@ -93,8 +93,14 @@ asked of you beyond having the tool installed. The result is kept under
 you already have to skip that step.
 
 Setup needs to find Il2CppDumper on `PATH` or via the
-`LIMINAL_GATE_IL2CPPDUMPER` environment variable, which may name either a native
-executable or its `.dll` (run through `dotnet`). It also needs a disassembler
+`LIMINAL_GATE_IL2CPPDUMPER` environment variable, which may name a native
+executable, its `.dll` (run through `dotnet`), or the directory a release was
+extracted to — searched for `Il2CppDumper.exe`, `Il2CppDumper`, then
+`Il2CppDumper.dll`, so a release shipping both runs without needing a .NET
+runtime. When that variable is set but unusable, the failure says which way:
+the path does not exist, the directory holds no release, or the assembly has no
+`dotnet`. Only an unset variable is reported as the tool being uninstalled.
+It also needs a disassembler
 that reads AArch64. Support is confirmed rather than assumed, because a stock
 GNU `objdump` is often single-target; install LLVM or `binutils-multiarch` if
 setup reports none.

@@ -257,5 +257,99 @@ class GeneratedKeyPasswordTest(unittest.TestCase):
         self.assertEqual("chosen-by-hand", saved)
 
 
+class ConfiguredDumperTest(unittest.TestCase):
+    """`LIMINAL_GATE_IL2CPPDUMPER` says what it wants and why it was not met.
+
+    A tester on Windows completed every other check and could not get this one
+    past "install Il2CppDumper" -- with the tool installed -- because a variable
+    naming the extracted folder, and a variable naming a path that does not
+    exist, both produced the text for a variable that was never set.
+    """
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.root = Path(self.temporary_directory.name)
+
+    @contextlib.contextmanager
+    def _configured(self, value: str | None):
+        environment = {} if value is None else {tester_setup.IL2CPP_DUMPER_ENVIRONMENT: value}
+        with patch.dict(tester_setup.os.environ, environment, clear=True):
+            yield
+
+    def _release(self, member: str) -> Path:
+        directory = self.root / "Il2CppDumper-win"
+        directory.mkdir(exist_ok=True)
+        (directory / member).write_text("", encoding="utf-8")
+        return directory
+
+    def test_a_directory_holding_a_release_is_accepted(self) -> None:
+        directory = self._release("Il2CppDumper.exe")
+        with self._configured(str(directory)):
+            self.assertEqual(
+                (str(directory / "Il2CppDumper.exe"),), tester_setup.find_il2cpp_dumper()
+            )
+
+    def test_a_native_build_is_preferred_to_the_assembly_beside_it(self) -> None:
+        directory = self._release("Il2CppDumper.dll")
+        (directory / "Il2CppDumper.exe").write_text("", encoding="utf-8")
+        with self._configured(str(directory)):
+            command = tester_setup.find_il2cpp_dumper()
+        self.assertEqual((str(directory / "Il2CppDumper.exe"),), command)
+
+    def test_a_directory_holding_only_the_assembly_runs_through_dotnet(self) -> None:
+        directory = self._release("Il2CppDumper.dll")
+        with self._configured(str(directory)), \
+                patch.object(tester_setup.shutil, "which", return_value="/usr/bin/dotnet"):
+            command = tester_setup.find_il2cpp_dumper()
+        self.assertEqual(("/usr/bin/dotnet", str(directory / "Il2CppDumper.dll")), command)
+
+    def test_surrounding_quotes_are_not_part_of_the_path(self) -> None:
+        directory = self._release("Il2CppDumper.exe")
+        with self._configured(f'"{directory}"'):
+            self.assertIsNotNone(tester_setup.find_il2cpp_dumper())
+
+    def test_an_empty_directory_names_itself_and_what_it_lacks(self) -> None:
+        empty = self.root / "empty"
+        empty.mkdir()
+        with self._configured(str(empty)):
+            detail = tester_setup.describe_missing_il2cpp_dumper()
+        self.assertIn(str(empty), detail)
+        self.assertIn("Il2CppDumper.exe", detail)
+        self.assertNotIn("Pass --dummy-dll-dir", detail, "this operator has installed it")
+
+    def test_a_path_that_does_not_exist_says_so(self) -> None:
+        absent = self.root / "typo" / "Il2CppDumper.exe"
+        with self._configured(str(absent)):
+            detail = tester_setup.describe_missing_il2cpp_dumper()
+        self.assertIn(str(absent), detail)
+        self.assertIn("does not exist", detail)
+        self.assertIn("same window", detail, "the variable is per-terminal, which is the usual cause")
+
+    def test_an_assembly_with_no_dotnet_names_the_runtime(self) -> None:
+        directory = self._release("Il2CppDumper.dll")
+        with self._configured(str(directory)), \
+                patch.object(tester_setup.shutil, "which", return_value=None):
+            detail = tester_setup.describe_missing_il2cpp_dumper()
+        self.assertIn("dotnet", detail)
+        self.assertIn(str(directory / "Il2CppDumper.dll"), detail)
+
+    def test_an_unset_variable_still_says_how_to_install(self) -> None:
+        with self._configured(None):
+            detail = tester_setup.describe_missing_il2cpp_dumper()
+        self.assertEqual(tester_setup.IL2CPP_DUMPER_MISSING, detail)
+        self.assertIn("github.com/Perfare/Il2CppDumper", detail)
+
+    def test_the_caller_chooses_the_text_for_a_variable_that_was_never_set(self) -> None:
+        with self._configured(None):
+            self.assertEqual("its own advice", tester_setup.describe_missing_il2cpp_dumper("its own advice"))
+
+    def test_a_misconfigured_variable_overrides_the_caller_s_install_text(self) -> None:
+        """The specific reason wins: "install it" cannot help someone who did."""
+        absent = self.root / "typo"
+        with self._configured(str(absent)):
+            self.assertIn(str(absent), tester_setup.describe_missing_il2cpp_dumper("install it"))
+
+
 if __name__ == "__main__":
     unittest.main()

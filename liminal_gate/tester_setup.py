@@ -566,11 +566,19 @@ IL2CPP_OUTPUT_DIRECTORY = "il2cpp"
 IL2CPP_DUMPER_ENVIRONMENT = "LIMINAL_GATE_IL2CPPDUMPER"
 IL2CPP_DUMPER_NAMES = ("Il2CppDumper", "Il2CppDumper.exe")
 
+#: What a release is called inside the directory it was extracted to.  The
+#: variable accepts that directory as well as the file, because naming the
+#: folder is what an operator reaches for first and refusing it reported only
+#: that the tool was absent.  A native build leads: a release shipping both runs
+#: without a .NET runtime to find.
+IL2CPP_DUMPER_MEMBERS = ("Il2CppDumper.exe", "Il2CppDumper", "Il2CppDumper.dll")
+
 IL2CPP_DUMPER_MISSING = (
     "complete guided setup requires Il2CppDumper, which recovers the master-data field layout "
     "an IL2CPP build strips. Install it (https://github.com/Perfare/Il2CppDumper), then either "
-    f"put it on PATH or set {IL2CPP_DUMPER_ENVIRONMENT} to the executable or its .dll, and re-run "
-    "setup. Pass --dummy-dll-dir instead if you already have its output."
+    f"put it on PATH or set {IL2CPP_DUMPER_ENVIRONMENT} to the executable, its .dll, or the "
+    "directory you extracted it to, and re-run setup. Pass --dummy-dll-dir instead if you "
+    "already have its output."
 )
 
 #: How long Il2CppDumper may run before setup gives up on it.
@@ -628,13 +636,13 @@ def check_derivation_prerequisites(dummy_dll_dir: Path | None) -> None:
     piece it can, not one piece per attempt.
     """
     if (dummy_dll_dir is None or not dummy_dll_dir.is_dir()) and find_il2cpp_dumper() is None:
-        raise TesterSetupError(
+        raise TesterSetupError(describe_missing_il2cpp_dumper(
             "complete guided setup needs the master-data layout an IL2CPP build strips, without "
             "which story clears mint no Companion. Either point --dummy-dll-dir at an Il2CppDumper "
             f"DummyDll directory (default {DEFAULT_DUMMY_DLL}), or install Il2CppDumper "
             "(https://github.com/Perfare/Il2CppDumper) and put it on PATH or in "
             f"{IL2CPP_DUMPER_ENVIRONMENT} so setup can produce one from your APK."
-        )
+        ))
     missing = find_missing_master_import()
     if missing:
         raise TesterSetupError(describe_missing_master_import(missing))
@@ -642,22 +650,92 @@ def check_derivation_prerequisites(dummy_dll_dir: Path | None) -> None:
         raise TesterSetupError(AARCH64_DISASSEMBLER_MISSING)
 
 
+def _configured_dumper_path() -> Path | None:
+    """Return the path the environment names, or `None` if it names nothing.
+
+    Surrounding double quotes are stripped because a value set with `setx` keeps
+    the quotes the shell would otherwise have removed, and no Windows path can
+    contain one.
+    """
+    configured = os.environ.get(IL2CPP_DUMPER_ENVIRONMENT, "").strip().strip('"')
+    return Path(configured) if configured else None
+
+
+def _dumper_within(directory: Path) -> Path | None:
+    """Return the runnable Il2CppDumper inside an extracted release, if any."""
+    for name in IL2CPP_DUMPER_MEMBERS:
+        candidate = directory / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _resolve_configured_dumper(configured: Path) -> Path | None:
+    """Return the file the configured path names, directly or as a directory."""
+    if configured.is_dir():
+        return _dumper_within(configured)
+    return configured if configured.is_file() else None
+
+
+def _dumper_command(target: Path) -> tuple[str, ...] | None:
+    """Return how to run one dumper file, or `None` if its runtime is absent."""
+    if target.suffix.lower() == ".dll":
+        dotnet = shutil.which("dotnet")
+        return (dotnet, str(target)) if dotnet else None
+    return (str(target),)
+
+
 def find_il2cpp_dumper() -> tuple[str, ...] | None:
     """Return the command that runs Il2CppDumper, or `None` if it is absent."""
-    configured = os.environ.get(IL2CPP_DUMPER_ENVIRONMENT, "").strip()
-    if configured:
-        path = Path(configured)
-        if path.is_file():
-            if path.suffix.lower() == ".dll":
-                dotnet = shutil.which("dotnet")
-                return (dotnet, str(path)) if dotnet else None
-            return (str(path),)
-        return None
+    configured = _configured_dumper_path()
+    if configured is not None:
+        target = _resolve_configured_dumper(configured)
+        return _dumper_command(target) if target is not None else None
     for name in IL2CPP_DUMPER_NAMES:
         located = shutil.which(name)
         if located is not None:
             return (located,)
     return None
+
+
+def describe_missing_il2cpp_dumper(unset: str = IL2CPP_DUMPER_MISSING) -> str:
+    """Say *why* the dumper could not be reached, not merely that it was not.
+
+    Every one of these failures used to print the install-it text, so a variable
+    set to a directory, to a path with a typo in it, or to a managed assembly
+    with no .NET runtime all read as "you have not installed the tool" -- advice
+    that cannot work for an operator who has.  The reason is derived here rather
+    than returned from `find_il2cpp_dumper` so that its contract, which several
+    call sites and tests already stand on, stays a command or `None`.
+    """
+    configured = _configured_dumper_path()
+    if configured is None:
+        return unset
+    if configured.is_dir():
+        target = _dumper_within(configured)
+        if target is None:
+            return (
+                f"{IL2CPP_DUMPER_ENVIRONMENT} names the directory {configured}, which contains none "
+                f"of {', '.join(IL2CPP_DUMPER_MEMBERS)}. Extract an Il2CppDumper release there "
+                "(https://github.com/Perfare/Il2CppDumper), or point the variable at the "
+                "executable itself."
+            )
+    elif configured.is_file():
+        target = configured
+    else:
+        return (
+            f"{IL2CPP_DUMPER_ENVIRONMENT} is set to {configured}, which does not exist. It must name "
+            "the Il2CppDumper executable, its .dll, or the directory you extracted the release to. "
+            "The variable is read from the environment of the terminal setup runs in, so set it in "
+            "that same window."
+        )
+    # A resolved file only fails to yield a command in one way: it is a managed
+    # assembly and there is no `dotnet` to run it with.
+    return (
+        f"{IL2CPP_DUMPER_ENVIRONMENT} resolves to {target}, which is a .NET assembly, and `dotnet` "
+        "is not on PATH to run it. Install the .NET runtime, or point the variable at a native "
+        "Il2CppDumper build instead."
+    )
 
 
 def probe_il2cpp_dumper(command: Sequence[str]) -> str:
@@ -714,7 +792,7 @@ def ensure_il2cpp_dump(apk: Path, data_directory: Path) -> tuple[Path, Path]:
         return dummy_dll, dump_cs
     command = find_il2cpp_dumper()
     if command is None:
-        raise TesterSetupError(IL2CPP_DUMPER_MISSING)
+        raise TesterSetupError(describe_missing_il2cpp_dumper())
     print("Recovering the master-data layout from your APK with Il2CppDumper (this can take several minutes)...")
     try:
         output.mkdir(parents=True, exist_ok=True)
@@ -1083,7 +1161,7 @@ def preflight_checks(
             return f"not needed; using {dummy_dll_dir}"
         command = find_il2cpp_dumper()
         if command is None:
-            raise TesterSetupError(IL2CPP_DUMPER_MISSING)
+            raise TesterSetupError(describe_missing_il2cpp_dumper())
         return probe_il2cpp_dumper(command)
 
     def disassembler() -> str:

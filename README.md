@@ -146,9 +146,10 @@ devices that can reach the port, so use a trusted local network.
   signing key. Android Studio's bundled JDK is sufficient if its `bin`
   directory is on your `PATH`.
 - [Il2CppDumper](https://github.com/Perfare/Il2CppDumper), on your `PATH` or
-  named by `LIMINAL_GATE_IL2CPPDUMPER`. Setup runs it for you against your own
-  APK; it recovers the master-data layout an IL2CPP build strips, without which
-  a story clear cannot award a Companion.
+  named by `LIMINAL_GATE_IL2CPPDUMPER` — which accepts the executable, its
+  `.dll`, or the directory you extracted the release to. Setup runs it for you
+  against your own APK; it recovers the master-data layout an IL2CPP build
+  strips, without which a story clear cannot award a Companion.
 - A disassembler that reads AArch64: **LLVM** (`llvm-objdump`) on macOS and
   Windows, or `binutils-multiarch` on Linux. The Chapter 8-42 encounter map only
   exists as compiled code inside your APK, so reading it needs one.
@@ -168,8 +169,27 @@ brew install llvm
 
 Il2CppDumper is a .NET program with no Homebrew formula: download a release from
 its own page, then either put the executable on your `PATH` or point
-`LIMINAL_GATE_IL2CPPDUMPER` at it (or at its `.dll`, which setup runs through
-`dotnet`).
+`LIMINAL_GATE_IL2CPPDUMPER` at it. That variable also accepts the directory you
+extracted the release to, or the `.dll` a cross-platform build ships instead of
+an executable, which setup runs through `dotnet`.
+
+On Windows the release is native, so there is an `Il2CppDumper.exe` to name. In
+PowerShell:
+
+```powershell
+$env:LIMINAL_GATE_IL2CPPDUMPER = "C:\Tools\Il2CppDumper"
+Test-Path $env:LIMINAL_GATE_IL2CPPDUMPER   # must print True
+```
+
+That variable lives only in the window you set it in, so run setup from that
+same window. To keep it for future windows, set it once and open a new one:
+
+```powershell
+[Environment]::SetEnvironmentVariable("LIMINAL_GATE_IL2CPPDUMPER","C:\Tools\Il2CppDumper","User")
+```
+
+Copying Il2CppDumper into this repository does not help: it is looked for on
+`PATH` and in that variable, never in the current directory.
 
 ### Check everything at once before you start
 
@@ -1307,6 +1327,7 @@ apart. Give those a `--data-dir` and a port each instead.
 | Progress is gone after reinstalling or clearing the app's data | The app generated a new account ID; your save is still there. See [If you reinstall the app and your progress is gone](#if-you-reinstall-the-app-and-your-progress-is-gone). |
 | Black screen after launching the app, no crash, server log shows `200` responses | The emulator's graphics backend cannot complete Unity's framebuffer. Restart the emulator from a terminal with `-gpu swangle`. Confirm with `adb logcat -d \| grep -c 0x506`: thousands of those errors mean graphics, not the server. See [Start the emulator with `-gpu swangle`](#start-the-emulator-with--gpu-swangle-especially-on-macos). |
 | `--check` says Il2CppDumper exists but could not start | A framework-dependent .NET apphost can exist while its runtime is undiscoverable. Point `LIMINAL_GATE_IL2CPPDUMPER` at the adjacent `Il2CppDumper.dll` instead; setup will run it through `dotnet`. |
+| `--check` still cannot find Il2CppDumper after you installed it | Read the rest of that line: it distinguishes a variable that was never set from one naming a path that does not exist, a directory holding no release, or a `.dll` with no `dotnet` to run it. The two usual causes are a variable set in a different terminal window than the one running setup, and a path with a typo. Confirm with `Test-Path $env:LIMINAL_GATE_IL2CPPDUMPER` (PowerShell) or `ls "$LIMINAL_GATE_IL2CPPDUMPER"`. Copying the tool into this repository has no effect. |
 | `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [step 3](#3-one-command-setup-install-and-server-start). |
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the optional dependency as above if you want the images. |
 | `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data using the reset commands above. |
