@@ -122,27 +122,29 @@ def _load_trees(apk: Path, dummy_dll_dir: Path, path_ids: dict[str, int]) -> dic
     except (OSError, KeyError, zipfile.BadZipFile) as error:
         raise CharacterCatalogImportError("APK does not contain the reviewed data.unity3d member") from error
     try:
-        with tempfile.TemporaryDirectory() as directory:
-            data_file = Path(directory) / "data.unity3d"
-            data_file.write_bytes(payload)
-            environment = UnityPy.load(str(data_file))
-            generator = TypeTreeGenerator("2017.4.37f1")
-            for dll in dlls:
-                generator.load_dll(dll.read_bytes())
-            environment.typetree_generator = generator
-            trees: dict[str, Any] = {}
-            for label, path_id in path_ids.items():
-                matches = [
-                    obj for obj in environment.objects
-                    if obj.assets_file.name == SERIALIZED_FILE and obj.path_id == path_id
-                ]
-                if len(matches) != 1:
-                    raise CharacterCatalogImportError(f"expected one {label} object, found {len(matches)}")
-                trees[label] = matches[0].parse_as_dict(check_read=True)
+        # From memory, not from a staged file: a temporary file the reader
+        # still holds cannot be removed on Windows, which fails the import at
+        # cleanup after the work has succeeded.
+        environment = UnityPy.load(payload)
+        generator = TypeTreeGenerator("2017.4.37f1")
+        for dll in dlls:
+            generator.load_dll(dll.read_bytes())
+        environment.typetree_generator = generator
+        trees: dict[str, Any] = {}
+        for label, path_id in path_ids.items():
+            matches = [
+                obj for obj in environment.objects
+                if obj.assets_file.name == SERIALIZED_FILE and obj.path_id == path_id
+            ]
+            if len(matches) != 1:
+                raise CharacterCatalogImportError(f"expected one {label} object, found {len(matches)}")
+            trees[label] = matches[0].parse_as_dict(check_read=True)
     except CharacterCatalogImportError:
         raise
     except Exception as error:
-        raise CharacterCatalogImportError("could not parse master data with local type trees") from error
+        raise CharacterCatalogImportError(
+            f"could not parse master data with local type trees: {type(error).__name__}: {error}"
+        ) from error
     for label, tree in trees.items():
         if not isinstance(tree, dict):
             raise CharacterCatalogImportError(f"{label} did not decode to an object")

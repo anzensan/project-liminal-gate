@@ -23,6 +23,21 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 the master-data readers no longer stage the APK member on disk:
+  `character_catalog_importer`, `battledata_importer`, and
+  `scenario_encounter_importer` each wrote `data.unity3d` into a temporary
+  directory and handed UnityPy its path. A temporary file the reader still
+  holds cannot be removed on Windows, so the cleanup that ends the `with` block
+  raises *after* the work has succeeded and inside the try that reports the
+  work as failed -- which is where a tester's run stopped, with `could not read
+  chapter TextAssets from the APK` and no cause. UnityPy accepts the bytes
+  directly; loading the reviewed member both ways yields identical serialized
+  files and the same 13,726 `resources.assets` objects, and the scenario import
+  still recovers all 50 chapter 2-7 stages and 182 placements. All three
+  reports now carry the underlying exception type and message, and one
+  unreadable TextAsset among thousands is skipped rather than ending the import:
+  a chapter lost that way is already named by the missing-asset check.
+  Unverified on Windows.
 - 2026-07-28 a failed dump says what the dumper said: the report was the last
   line of its output, which for an unhandled .NET exception is the innermost
   stack frame -- a Windows tester was told only that something happened at a

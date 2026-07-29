@@ -439,28 +439,37 @@ def read_chapter_assets(apk: Path) -> dict[int, bytes]:
     wanted = {f"Chapter{number}": number for number in ORDINARY_CHAPTERS}
     assets: dict[int, bytes] = {}
     try:
-        with tempfile.TemporaryDirectory() as directory:
-            data_file = Path(directory) / "data.unity3d"
-            data_file.write_bytes(payload)
-            for obj in UnityPy.load(str(data_file)).objects:
-                if obj.type.name != "TextAsset":
-                    continue
+        # The member is loaded from memory rather than staged on disk.  A
+        # temporary file the reader still holds cannot be removed on Windows,
+        # which failed the whole import at cleanup, after the work had
+        # succeeded, in the name of the work.
+        for obj in UnityPy.load(payload).objects:
+            if obj.type.name != "TextAsset":
+                continue
+            try:
                 data = obj.read()
-                name = getattr(data, "m_Name", "") or ""
-                if name not in wanted:
-                    continue
-                raw = getattr(data, "m_Script", None)
-                if raw is None:
-                    raw = getattr(data, "script", b"")
-                if isinstance(raw, str):
-                    # UnityPy surfaces the payload as latin-1-ish text when it
-                    # is not valid UTF-8; these assets are binary either way.
-                    raw = raw.encode("utf-8", "surrogateescape")
-                assets[wanted[name]] = bytes(raw)
+            except Exception:
+                # One unreadable asset among thousands is not this import's
+                # business.  A chapter that goes missing this way is named by
+                # the check below, which is the report worth having.
+                continue
+            name = getattr(data, "m_Name", "") or ""
+            if name not in wanted:
+                continue
+            raw = getattr(data, "m_Script", None)
+            if raw is None:
+                raw = getattr(data, "script", b"")
+            if isinstance(raw, str):
+                # UnityPy surfaces the payload as latin-1-ish text when it
+                # is not valid UTF-8; these assets are binary either way.
+                raw = raw.encode("utf-8", "surrogateescape")
+            assets[wanted[name]] = bytes(raw)
     except ScenarioEncounterImportError:
         raise
     except Exception as error:
-        raise ScenarioEncounterImportError("could not read chapter TextAssets from the APK") from error
+        raise ScenarioEncounterImportError(
+            f"could not read chapter TextAssets from the APK: {type(error).__name__}: {error}"
+        ) from error
     missing = [number for number in ORDINARY_CHAPTERS if number not in assets]
     if missing:
         raise ScenarioEncounterImportError(
