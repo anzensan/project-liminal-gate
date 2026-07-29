@@ -146,17 +146,45 @@ class PreflightChecksTest(unittest.TestCase):
         self.assertFalse(checks["Il2CppDumper"].ok)
         self.assertIn("could not start", checks["Il2CppDumper"].detail)
 
-    def test_the_dumper_probe_accepts_the_real_usage_shape(self) -> None:
+    def test_the_dumper_probe_never_runs_the_tool_without_arguments(self) -> None:
+        """The Windows release answers an empty argument list with a file picker.
+
+        A tester's `--check` opened two dialogs, failed whatever was chosen, and
+        reported that a correctly installed Il2CppDumper could not start.
+        """
         completed = tester_setup.subprocess.CompletedProcess(
-            ("Il2CppDumper",),
-            1,
-            "usage: Il2CppDumper <executable-file> <global-metadata> <output-directory>\n",
-            "",
+            ("Il2CppDumper",), 1, "", "ERROR: il2cpp file not found\n",
         )
         with patch.object(tester_setup.subprocess, "run", return_value=completed) as run:
             detail = tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
-        self.assertEqual("Il2CppDumper", detail)
+        self.assertEqual("Il2CppDumper", detail, "complaining about absent inputs proves it ran")
+        invoked = run.call_args.args[0]
+        self.assertEqual(4, len(invoked), "the tool is given its three arguments, so it cannot prompt")
         self.assertEqual(tester_setup.subprocess.DEVNULL, run.call_args.kwargs["stdin"])
+
+    def test_the_dumper_probe_writes_nothing_that_outlives_it(self) -> None:
+        """Its three arguments name paths inside a directory that is discarded."""
+        before = sorted(path.name for path in self.root.iterdir())
+        completed = tester_setup.subprocess.CompletedProcess(("Il2CppDumper",), 1, "", "")
+        with patch.object(tester_setup.subprocess, "run", return_value=completed) as run:
+            tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
+        staged = Path(run.call_args.args[0][-1])
+        self.assertFalse(staged.exists(), "the staging directory is removed with the probe")
+        self.assertEqual(before, sorted(path.name for path in self.root.iterdir()))
+
+    def test_a_dumper_that_blocks_has_still_proved_it_starts(self) -> None:
+        """A process cannot hang without having launched, which is the question."""
+        with patch.object(
+            tester_setup.subprocess, "run",
+            side_effect=tester_setup.subprocess.TimeoutExpired(("Il2CppDumper",), 30),
+        ):
+            detail = tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
+        self.assertIn("started", detail)
+
+    def test_a_dumper_that_cannot_be_executed_at_all_still_fails(self) -> None:
+        with patch.object(tester_setup.subprocess, "run", side_effect=OSError("Exec format error")):
+            with self.assertRaisesRegex(TesterSetupError, "could not start"):
+                tester_setup.probe_il2cpp_dumper(("Il2CppDumper",))
 
     def test_the_dumper_probe_names_the_dll_fix_for_a_missing_runtime(self) -> None:
         completed = tester_setup.subprocess.CompletedProcess(

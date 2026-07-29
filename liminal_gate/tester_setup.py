@@ -738,40 +738,61 @@ def describe_missing_il2cpp_dumper(unset: str = IL2CPP_DUMPER_MISSING) -> str:
     )
 
 
-def probe_il2cpp_dumper(command: Sequence[str]) -> str:
+#: What a .NET apphost prints when its runtime is not installed.  This is the
+#: one failure the probe exists to catch, and it is recognised by text because
+#: an exit code cannot separate "no runtime" from "the tool ran and disliked its
+#: inputs", which is what the probe deliberately hands it.
+_DOTNET_RUNTIME_ABSENT = ("must install .net", "framework-dependent", "hostfxr", "you must install")
+
+
+def probe_il2cpp_dumper(command: Sequence[str], timeout: int = 30) -> str:
     """Prove the configured dumper starts before setup does expensive work.
 
-    Merely finding an executable is insufficient for a framework-dependent
-    .NET apphost: the file can exist and still fail immediately because its
-    runtime is not discoverable. Il2CppDumper prints its three-argument usage
-    line when it starts successfully without inputs, which gives ``--check`` a
-    cheap, non-writing readiness probe.
+    Merely finding an executable is insufficient for a framework-dependent .NET
+    apphost: the file can exist and still fail immediately because its runtime
+    is not discoverable.
+
+    The probe passes three arguments naming paths inside an empty temporary
+    directory.  It used to pass none and read the usage line that answers, which
+    is true of a console build and actively wrong on Windows: the release there
+    responds to an empty argument list by opening a file picker, so `--check`
+    put two dialogs in front of a tester, failed whatever was chosen, and
+    reported that a correctly installed tool could not start.  With arguments
+    there is nothing to prompt for, and nothing is written because no input the
+    tool is given exists.
+
+    What counts as ready is therefore that the process *ran*, not what it said:
+    the tool's complaint about a missing input proves as much about its runtime
+    as a usage line does.  A probe that outlives its timeout also counts, since
+    a process cannot block without having started; it is killed either way.
     """
-    try:
-        completed = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        raise TesterSetupError(f"Il2CppDumper could not start: {error}") from error
-    output = "\n".join(
-        part for part in (completed.stdout, completed.stderr) if part
-    ).strip()
-    if "usage: il2cppdumper" not in output.casefold():
+    with tempfile.TemporaryDirectory() as directory:
+        staged = Path(directory)
+        arguments = (str(staged / "absent-libil2cpp.so"), str(staged / "absent-metadata.dat"), str(staged))
+        try:
+            completed = subprocess.run(
+                (*command, *arguments),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return f"{' '.join(command)} (started; did not exit within {timeout}s)"
+        except (OSError, subprocess.SubprocessError) as error:
+            raise TesterSetupError(
+                f"Il2CppDumper could not start: {error}. Check that "
+                f"{IL2CPP_DUMPER_ENVIRONMENT} or PATH names a runnable Il2CppDumper"
+            ) from error
+    output = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+    if any(signature in output.casefold() for signature in _DOTNET_RUNTIME_ABSENT):
         detail = next(
-            (line.strip().rstrip(".") for line in output.splitlines() if line.strip()),
-            "",
-        )
-        suffix = (
-            f": {detail}" if detail else f" (exit code {completed.returncode})"
+            (line.strip().rstrip(".") for line in output.splitlines() if line.strip()), "",
         )
         raise TesterSetupError(
-            "Il2CppDumper could not start"
-            f"{suffix}. If this is a .NET executable whose runtime is not found, "
-            f"point {IL2CPP_DUMPER_ENVIRONMENT} at its Il2CppDumper.dll instead"
+            f"Il2CppDumper could not start: {detail}. Install the .NET runtime, or point "
+            f"{IL2CPP_DUMPER_ENVIRONMENT} at its Il2CppDumper.dll instead, which setup runs "
+            "through `dotnet`"
         )
     return " ".join(command)
 

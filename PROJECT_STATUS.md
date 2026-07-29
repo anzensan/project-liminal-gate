@@ -23,6 +23,20 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-28 the readiness probe no longer asks Il2CppDumper to prompt: it ran
+  the tool with no arguments to read the usage line a console build answers
+  with, which is how the Windows release is asked to open a file picker. The
+  reporting tester's `--check` put two dialogs on screen, failed whatever was
+  chosen, and reported that a correctly installed tool could not start. The
+  probe now passes three arguments naming paths inside a discarded temporary
+  directory, so there is nothing to prompt for and nothing is written, and
+  readiness is that the process ran rather than what it printed -- a complaint
+  about absent inputs proves as much about the runtime as a usage line. A probe
+  that outlives its timeout is also accepted, since a process cannot block
+  without having started, and it is killed either way. The missing-.NET case it
+  exists to catch is still failed, now recognised by the apphost's own text.
+  Confirmed against a stub that hangs without arguments exactly as the dialog
+  does. Still macOS-only verification.
 - 2026-07-28 the dumper variable says why it did not work: a Windows tester
   passed every other `--check` line and could not pass this one with the tool
   installed, because `LIMINAL_GATE_IL2CPPDUMPER` naming the extracted release
