@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-07-28
+Date: 2026-07-29
 
 Mode: public-release implementation hardening.
 
@@ -26,13 +26,11 @@ account and persisted tutorial state after a full server restart. All 548
 captured requests returned HTTP 200. This certifies the onboarding and restart
 path; it is not a new client boundary beyond Chapter 2-1.
 
-Latest source validation: 596 warning-strict tests passed in 116.003 seconds
-after the Fellowship Ticket, combined-equip integrity, final-version
-Eidolon-classification, master-backed Companion restriction, and server-only
-final-version default slices.
-Focused real-HTTP Pact/equipment coverage and focused catalog, setup,
-configuration, and archival-route checks also passed, together with
-compilation, diff, YAML, and clean-candidate publication gates.
+Latest source validation: 617 warning-strict tests passed in 118.867 seconds.
+That run includes the Issue 22 real-HTTP tutorial recovery regression: clear
+Chapter 1-1, restart, accept the phase-preserving Tutorial03 party save, replay
+it after another restart without changing roster or phase, and then settle the
+still-required `kind=12` Pact.
 
 Latest live deployment: Beelink implementation commit `3fe4336` runs without
 the retired `--summon-skills` default. The child command still loads
@@ -99,6 +97,11 @@ and exchange response caches together. Account-state safety copies use
 exclusive creation and cannot overwrite another same-second copy.
 Ticket-backed Metal starts retain the payment choice so clear-time stale-client
 reconciliation cannot restore the ticket or apply to stamina fallback.
+After a Chapter 1-1 restart, the final client may emit its already modeled
+tutorial party-save structure while still in `chapter1_1_cleared`; that write
+is acknowledged without applying client roster data or advancing the tutorial.
+The next Pact remains the forward transition. This fix is transport/restart
+confirmed and awaits the Issue 22 reporter's client retest.
 
 Derived-catalog boundary: story-outcome generation rejects native encounter or
 character catalogs whose recorded APK hash differs from the selected APK.

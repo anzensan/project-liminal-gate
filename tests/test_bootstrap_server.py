@@ -631,6 +631,38 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(16777282, final_userdata["progressCode"])
         self.assertEqual(30, final_userdata["coins"])
+        restart_restore_body = urlencode([
+            ("chrdata", json.dumps(final_userdata["chrdata"])),
+            ("teamMembers", json.dumps([3, 25, 0, 0, 0, 0])),
+            ("teamMembers_VS", json.dumps([0] * 18)),
+            ("teamBuddies_VS", json.dumps([0] * 18)),
+            ("teamNo", "1"),
+            ("teamNo_VS", "1"),
+            ("summonId", "1"),
+            ("lastUpdate", "1"),
+        ])
+        status, restart_restore = self.post(
+            f"/gd/userdata?otk={login_token}&digest2=client-value&requestID=restart-restore",
+            restart_restore_body,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(1.0, restart_restore["lastupdate"])
+        persisted_before_restore_replay = json.loads(
+            self.state_path.read_text(encoding="utf-8")
+        )["accounts"][account_id]
+        self.assertEqual("chapter1_1_cleared", persisted_before_restore_replay["tutorial_phase"])
+        self.assertEqual(final_userdata["chrdata"], persisted_before_restore_replay["userdata"]["chrdata"])
+        self.restart()
+        status, restart_restore_replay = self.post(
+            f"/gd/userdata?otk={login_token}&digest2=retry-value&requestID=restart-restore",
+            restart_restore_body,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(restart_restore["lastupdate"], restart_restore_replay["lastupdate"])
+        self.assertEqual(
+            "chapter1_1_cleared",
+            json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][account_id]["tutorial_phase"],
+        )
         knight_body = "kind=12&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1"
         status, knight_payload = self.post(
             f"/gd/do_slot?otk={login_token}&digest2=client-value&requestID=knight-grant", knight_body

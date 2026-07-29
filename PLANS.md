@@ -1,5 +1,54 @@
 # Execution Plans
 
+## 2026-07-29 GitHub Issue 22 post-restart Tutorial03 userdata save
+
+Status: completed 2026-07-29.
+
+Objective: let a final Android client that is closed after Chapter 1-1 resume
+the Recruit tutorial and reach its next Pact without weakening the tutorial
+phase conveyor.
+
+Evidence boundary:
+
+- The reporter's current-server event log records repeated HTTP 409
+  `tutorial_state_conflict` results for `/gd/userdata` while the durable phase
+  is `chapter1_1_cleared`.
+- Those requests use the existing tutorial party-save field order:
+  `chrdata`, `teamMembers`, `teamMembers_VS`, `teamBuddies_VS`, `teamNo`,
+  `teamNo_VS`, `summonId`, and trailing `lastUpdate`.
+- The attached Android log independently shows the restarted final 5.5.7
+  client entering `Tutorial03_start`.
+- The submitted field values other than `lastUpdate=1` were not included in
+  the privacy-bounded event log. No exact raw request capture is claimed.
+
+Required proof:
+
+1. Add only a phase-preserving structural acknowledgment at
+   `chapter1_1_cleared`, reusing the already modeled party-save field and JSON
+   constraints.
+2. Exercise clear 1-1, a full server restart, the restore write, its replay
+   after another restart, and the following `kind=12` Pact over real HTTP.
+3. Confirm the restore write does not move the phase or mint/mutate roster
+   state.
+4. Run the warning-strict full suite, compilation, profile/YAML validation,
+   and clean-candidate publication gates.
+5. Commit and push the bounded fix, then resolve Issue 22 with the evidence and
+   remaining original-device retest boundary stated explicitly.
+
+Result:
+
+- The profile now owns the observed party-save structure in
+  `chapter1_1_cleared` as a same-phase structural acknowledgment. Its stable
+  selectors and JSON field types remain constrained; submitted roster and team
+  arrays are not applied.
+- The real-HTTP tutorial path passed Chapter 1-1 clear, restart, restore,
+  phase/roster preservation, restart replay, and the following `kind=12` Pact.
+- The warning-strict full suite passed all 617 tests in 118.867 seconds.
+  Compilation, JSON/YAML parsing, and `git diff --check` passed.
+- An isolated clean source candidate passed material preflight and independent
+  repository-history audit. Original-client acceptance of the post-fix response
+  remains with the Issue 22 reporter.
+
 ## 2026-07-28 dedicated-server final-version Eidolon default
 
 Status: completed 2026-07-28.

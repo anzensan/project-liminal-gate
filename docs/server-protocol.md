@@ -32,6 +32,14 @@ committed together. Replay identity includes operation, request ID, and body,
 so the same ID with a different body is not mistaken for the earlier request.
 Caches are bounded and survive restart.
 
+The tutorial uses phase-bound structural `userdata` writes, not ordinary
+free-roam roster authority. After Chapter 1-1, a restarted final client can
+send the established ordered party-save structure while it resumes
+`Tutorial03_start`. At `chapter1_1_cleared` the server acknowledges that write
+as a same-phase no-op: client roster arrays are not applied, and only the
+following `kind=12` Pact advances to `knight_granted`. The acknowledgment and
+its body-scoped replay survive restart.
+
 The permanent Fellowship Ticket form is
 `kind=20&count=1&luckType=<false|true>&campaignChrID=0&eventFlag=0&lastUpdate=1`.
 Item 81 pays for the existing Fellowship pool: ordinary draws use the local

@@ -390,6 +390,15 @@
   ],
   "structural_writes": [
     {
+      "field_names": ["chrdata", "teamMembers", "teamMembers_VS", "teamBuddies_VS", "teamNo", "teamNo_VS", "summonId", "lastUpdate"],
+      "fixed_fields": {"teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1"},
+      "json_fields": {"chrdata": "array", "teamMembers": "array", "teamMembers_VS": "array", "teamBuddies_VS": "array"},
+      "phase": "chapter1_1_cleared",
+      "next_phase": "chapter1_1_cleared",
+      "response": {"success": true, "lastupdate": 1.0},
+      "userdata_update": {"lastupdate": 1.0}
+    },
+    {
       "field_names": ["chrdata", "lastUpdate"],
       "fixed_fields": {"lastUpdate": "1"},
       "json_fields": {"chrdata": "array"},

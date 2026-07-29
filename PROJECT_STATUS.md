@@ -23,6 +23,18 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-29 Issue 22 post-restart Recruit recovery: a current-server event
+  log showed the final client repeatedly receiving HTTP 409
+  `tutorial_state_conflict` from `/gd/userdata` after Chapter 1-1, while the
+  attached Android log showed `Tutorial03_start`. The request used the same
+  ordered party-save shape already modeled later in the tutorial, but no
+  structural acknowledgment existed at `chapter1_1_cleared`. The profile now
+  accepts that exact structural family as a phase-preserving no-op: it neither
+  mutates the roster nor advances past the still-required `kind=12` Pact. The
+  real-HTTP regression covers clear, restart, restore, replay after another
+  restart, preserved roster/phase, and the following Pact. The warning-strict
+  suite passed all 617 tests in 118.867 seconds. Reporter retest remains
+  pending.
 - 2026-07-28 the master-data readers no longer stage the APK member on disk:
   `character_catalog_importer`, `battledata_importer`, and
   `scenario_encounter_importer` each wrote `data.unity3d` into a temporary

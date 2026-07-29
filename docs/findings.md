@@ -33,6 +33,16 @@ Private inputs, captures, account state, and original assets remain excluded.
   errors. The already documented software ANGLE launch path rendered the title
   and tutorial. A responsive server alone therefore does not certify client
   presentation.
+- **Strongly inferred from original-client failure evidence and confirmed by
+  real-HTTP restart regression:** after Chapter 1-1, a relaunched final 5.5.7
+  client enters `Tutorial03_start` and posts the established tutorial
+  party-save field structure before its next Pact. The server had no structural
+  acknowledgment in `chapter1_1_cleared` and returned HTTP 409
+  `tutorial_state_conflict`. That phase now acknowledges the write without
+  applying its roster arrays or moving forward; restart replay is stable and
+  the following `kind=12` Pact remains required. The reporter's event log
+  exposed field names and `lastUpdate=1`, not the other body values, and a
+  post-fix original-client retest is still pending.
 
 ## Client compatibility constants
 
