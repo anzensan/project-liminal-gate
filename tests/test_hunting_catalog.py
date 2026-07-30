@@ -195,7 +195,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         after = self.catalog.client_lists(0x01000000 | (4 << 6) | 1)
         self.assertEqual(["3003-1"], after["specialQuestList"])
         special = self.stages[(3003, 1)]
-        self.assertEqual(("special", 5, 1500), (special.selector, special.stamina, special.max_coins))
+        self.assertEqual(("special", 5, 1800), (special.selector, special.stamina, special.max_coins))
 
     def test_advertises_the_bounded_crystal_road_after_chapter_three(self) -> None:
         before = self.catalog.client_lists(0x01000000 | (3 << 6) | 1)

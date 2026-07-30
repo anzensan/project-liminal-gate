@@ -3,6 +3,28 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Quest settlement compatibility
+
+- **Confirmed by Issue 25 final-client/server evidence:** a Pixel 7 Pro running
+  the final client reported 1,800 Coins after Chapter 3003-1. The
+  privacy-filtered attachment has SHA-256
+  `c8f338759172437f93cedf89623550354c2919ad6ca2db0f5373cb3d3689518d`;
+  its 53 rejoined JSON records contain 34 HTTP 409
+  `invalid_local_hunting_result` responses for that exact result and 19 later
+  HTTP 409 `tutorial_state_conflict` responses, all in `hunting_active`.
+- **Confirmed implementation cause and recovery:** the bundled local ceiling
+  was 1,500, so the clear was rejected without mutation and the active
+  operation correctly survived restart. That durability made every unrelated
+  stage start fail until the original result could settle. The bounded policy
+  now accepts the observed 1,800 and refuses 1,801. A real-HTTP regression
+  restarts before refusal and recovery, then proves exact replay and another
+  restart grant Coins only once and leave the account in `free_roam`.
+- **Remaining evidence boundary:** this establishes one client-produced result,
+  not the retired service's full reward distribution or validation rule. The
+  external 1,200--1,500 table is incomplete for this final-client path, and the
+  permanent Chapter 3 availability remains local policy. Reporter acceptance
+  of the fixed reward-screen retry is pending.
+
 ## Clean onboarding and generated-data boundary
 
 - **Confirmed by a clean public-source run:** a first-time data directory can
@@ -240,6 +262,13 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Public-release boundary
 
+- **Confirmed by the 2026-07-30 Issue 25 run:** 35 focused Hunting
+  catalog/real-HTTP tests passed. The warning-strict full suite passed 619
+  tests in 118.143 seconds; compilation, profile JSON, endpoint YAML, and diff
+  checks passed. An exact clean source candidate passed both publication gates.
+  The new test reproduces rejected settlement, restart persistence, accepted
+  recovery, exact replay, and one durable Coin grant. Reporter client
+  acceptance remains pending.
 - **Confirmed by the 2026-07-28 clean-onboarding run:** the focused preflight
   suite passed 19 tests and the warning-strict full suite passed 585 tests in
   112.308 seconds. The clean client/bootstrap/restart evidence above does not

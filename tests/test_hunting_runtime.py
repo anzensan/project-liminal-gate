@@ -54,7 +54,7 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "family": "money_money_time", "chapter": 3003, "section": 1,
                     "stamina": 5, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
                     "selector": "special",
-                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 1500, "max_exp": 0,
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 1800, "max_exp": 0,
                     "max_items_total": 0, "item_maxima": {},
                 },
                 {
@@ -279,16 +279,29 @@ class HuntingRuntimeTest(unittest.TestCase):
 
         self.restart()
         snapshot = copy.deepcopy(self.userdata())
-        status, cleared = self.clear("special-clear", 3003, 1, coins=1500, snapshot=snapshot)
+        status, refused = self.clear("special-over", 3003, 1, coins=1801, snapshot=snapshot)
+        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual(snapshot, self.userdata())
+        self.assertEqual("hunting_active", self.phase())
+
+        # Issue 25 captured this exact final-client result. The old 1,500
+        # ceiling rejected it durably and left every later stage blocked.
+        self.restart()
+        status, cleared = self.clear("special-clear", 3003, 1, coins=1800, snapshot=snapshot)
         self.assertEqual((200, True), (status, cleared["success"]))
-        self.assertEqual(1600, self.userdata()["coins"])
+        self.assertEqual(1900, self.userdata()["coins"])
         self.assertEqual("free_roam", self.phase())
         self.assertEqual(
             (status, cleared),
-            self.clear("special-clear", 3003, 1, coins=1500, snapshot=snapshot),
+            self.clear("special-clear", 3003, 1, coins=1800, snapshot=snapshot),
         )
         self.restart()
-        self.assertEqual(1600, self.userdata()["coins"])
+        self.assertEqual((1900, "free_roam"), (self.userdata()["coins"], self.phase()))
+        self.assertEqual(
+            (status, cleared),
+            self.clear("special-clear", 3003, 1, coins=1800, snapshot=snapshot),
+        )
+        self.assertEqual(1900, self.userdata()["coins"])
 
     def test_crystal_road_settles_only_the_two_documented_item_channels(self) -> None:
         status, started = self.start("crystal-start", 3004, 1, 7)

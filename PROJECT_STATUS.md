@@ -23,6 +23,20 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-30 Issue 25 Chapter 3003-1 settlement deadlock: the reporter's
+  privacy-filtered event log contains 34 rejected clears for the same
+  final-client 1,800-Coin result, followed by 19 rejected unrelated actions;
+  all 53 records retain the durable `hunting_active` phase. The bundled Special
+  Quest ceiling was 1,500, so the correct non-mutating refusal also preserved
+  the active operation across client/server restart and blocked every later
+  stage start. The ceiling now accepts the observed 1,800 while refusing 1,801.
+  A real-HTTP regression restarts before both the rejected and accepted clear,
+  then verifies exact replay, a further restart, one Coin grant, and
+  `free_roam`. Thirty-five focused tests and all 619 warning-strict tests
+  passed; compilation, JSON/YAML, diff checks, and both clean-candidate
+  publication gates passed. This is compatibility evidence for one observed
+  result, not a recovered historical reward distribution. Reporter retest
+  remains pending.
 - 2026-07-29 Issue 15 ARM64 title crash: the reporter's Pixel 7 Pro log is a
   Unity 2017 allocator failure, not a network or firewall failure. Matching
   official 2017.4.37f1 symbols identify the five-region
@@ -203,11 +217,12 @@ machine-readable/current capability boundary.
   recovered Chapter 3003-1 (*Money Money Time*) after Chapter 3, together with
   its exact `sp_ch_3003-1` flag. It uses the existing bounded Hunting start and
   clear transaction, so its five-stamina entry, rejected-result behavior,
-  body-scoped replay, and restart handling are covered by real HTTP tests. The
-  permanent unlock and 1,500 Coin ceiling are explicit local preservation
-  policy, not a claim about the retired event rotation or reward rule. A
-  reviewed user-local event catalog replaces this default Special list. Tower
-  and Arena VS remain unsupported.
+  body-scoped replay, and restart handling are covered by real HTTP tests. Its
+  1,800-Coin ceiling is now bounded by Issue 25 final-client evidence; the
+  permanent unlock remains explicit local preservation policy, not a claim
+  about the retired event rotation or complete reward rule. A reviewed
+  user-local event catalog replaces this default Special list. Tower and Arena
+  VS remain unsupported.
 - 2026-07-28 story Companion drops settle instead of being silently discarded,
   and the outcome catalog stops refusing what it merely cannot evidence. A live
   account cleared the whole story seeing only Metal Zone's Companions: the

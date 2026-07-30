@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-07-29
+Date: 2026-07-30
 
 Mode: public-release implementation hardening.
 
@@ -26,10 +26,18 @@ account and persisted tutorial state after a full server restart. All 548
 captured requests returned HTTP 200. This certifies the onboarding and restart
 path; it is not a new client boundary beyond Chapter 2-1.
 
-Latest source validation: 619 warning-strict tests passed in 120.005 seconds.
-That run includes the Issue 22 real-HTTP tutorial recovery regression and the
-exact hash/byte-guarded Issue 15 ARM64 constructor replacement. Compilation,
-profile JSON, endpoint YAML, and diff checks pass.
+Latest source validation: 619 warning-strict tests passed in 118.143 seconds.
+That run includes the Issue 25 real-HTTP Special Quest settlement recovery,
+Issue 22 tutorial recovery, and the exact hash/byte-guarded Issue 15 ARM64
+constructor replacement. Compilation, profile JSON, endpoint YAML, and diff
+checks pass. An exact clean source candidate passed both publication gates.
+
+Latest client blocker: Issue 25 captured a final-client Chapter 3003-1 clear
+reporting 1,800 Coins. The old local 1,500 ceiling rejected settlement and
+durably retained `hunting_active`, which correctly survived restart but blocked
+all unrelated stage starts. The bounded policy now accepts the observed 1,800
+and refuses 1,801; real-HTTP rejection, recovery, replay, and restart validation
+passed. Reporter retest remains the client-visible completion boundary.
 
 Latest ARM64 portability validation: the Issue 15 plan replaces the exact final
 Unity 2017 default-allocator constructor with the `DynamicHeapAllocator`
@@ -119,8 +127,9 @@ only character ancestry, per-job species, and equip restrictions; it contains
 no names, skills, descriptions, or assets.
 
 Next unknown boundaries: original-client acceptance of the Item 81
-Fellowship/Fate ticket draw, default Special Quest 3003-1, and Crystal Road
-3004-1; the first reproducible original-client failure after Chapter 8-4; the
+Fellowship/Fate ticket draw and Crystal Road 3004-1; Issue 25 reporter
+acceptance after the observed 1,800-Coin Special Quest settlement; the first
+reproducible original-client failure after Chapter 8-4; the
 Strikes Back Chapter 8000-1 clear callback; and the Hunting selector flash
 after its rows render. An optional later boundary is one converted solo
 Eidolon quest result with before/after collectible state. The Hunting flash

@@ -1,5 +1,57 @@
 # Execution Plans
 
+## 2026-07-30 GitHub Issue 25 Chapter 3003-1 settlement deadlock
+
+Status: implementation and release validation completed 2026-07-30; reporter
+retest pending.
+
+Objective: let the final Android client settle its observed 1,800-Coin
+Chapter 3003-1 result and leave the durable `hunting_active` phase, so later
+story and Hunting stages can start normally.
+
+Evidence boundary:
+
+- The Issue 25 attachment has SHA-256
+  `c8f338759172437f93cedf89623550354c2919ad6ca2db0f5373cb3d3689518d`.
+  Rejoining PowerShell-wrapped records yields 53 server events: 34 HTTP 409
+  `invalid_local_hunting_result` responses for Chapter 3003-1 with exactly
+  1,800 Coins and 19 later HTTP 409 `tutorial_state_conflict` responses. Every
+  record names the durable phase `hunting_active`.
+- The bundled local policy capped Chapter 3003-1 at 1,500 Coins. The rejected
+  clear intentionally did not mutate or settle the active operation, so the
+  durable phase survived both client and server restart and blocked every
+  unrelated stage start.
+- This final-client result confirms that 1,800 must be accepted for
+  compatibility. It does not recover the retired service's complete reward
+  distribution or validation rule.
+
+Required proof:
+
+1. Raise only the bundled Chapter 3003-1 Coin ceiling to the observed 1,800.
+2. Reproduce the active settlement over real HTTP, restart before clear,
+   refuse 1,801 without mutation, restart again, then accept 1,800.
+3. Verify exact replay and another restart do not grant the Coins twice and
+   leave the account in `free_roam`.
+4. Run focused Hunting tests, the warning-strict full suite, compilation,
+   JSON/YAML and diff checks, and clean-candidate publication gates.
+5. Commit and push the bounded fix, then ask the Issue 25 reporter to update
+   and let the existing reward-screen retry complete.
+
+Result:
+
+- The bundled Chapter 3003-1 ceiling is now 1,800 Coins. No other stage,
+  reward channel, start cost, or mutation path changed.
+- Thirty-five focused Hunting catalog/real-HTTP tests passed. The regression
+  restarts with the operation active, refuses 1,801 without mutation, restarts
+  again, settles the captured 1,800, replays the response, and verifies after
+  another restart that Coins were granted once and the phase is `free_roam`.
+- The warning-strict full suite passed all 619 tests in 118.143 seconds.
+  Compilation, profile JSON, endpoint YAML, and diff checks passed. An exact
+  clean source candidate passed the prohibited-material preflight and
+  independent-history audit.
+- Original-client acceptance remains with the reporter; the issue stays open
+  until the existing reward-screen retry completes on the updated server.
+
 ## 2026-07-29 GitHub Issue 15 Android 11+ ARM64 allocator crash
 
 Status: implementation and release validation completed 2026-07-29; original

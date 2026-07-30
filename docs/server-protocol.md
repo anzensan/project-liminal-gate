@@ -111,11 +111,13 @@ server-authored reward was recovered. This is preservation policy, not a claim
 about historical event schedules or rewards.
 
 The bundled Special Quest uses that same Hunting transaction: Chapter 3003-1
-charges 5 stamina, accepts no EXP, items, or Companions, and has a local 1,500
-Coin ceiling. Start, clear, refusal, replay, and restart behavior are therefore
-identical to the bounded Hunting lifecycle. Its permanent availability and
-Coin ceiling are local policy; only the stage identity, entry cost, and client
-visibility flag are recovered.
+charges 5 stamina, accepts no EXP, items, or Companions, and has a local 1,800
+Coin ceiling. That ceiling is compatibility-bounded by an Issue 25 final-client
+clear, not by a recovered historical reward table. Start, clear, refusal,
+replay, and restart behavior are otherwise identical to the bounded Hunting
+lifecycle. Permanent availability remains local policy; only the stage
+identity, entry cost, visibility flag, and observed 1,800-Coin result are
+client-backed.
 
 Crystal Road (3004-1) is another bounded Hunting transaction. The supplied
 final APK identifies its three-battle, seven-stamina entry and the mode-7

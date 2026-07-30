@@ -338,8 +338,10 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
 
     The recovered Chapter 3003-1 Special Quest is also included. Its identity,
     five-stamina entry, and exact client visibility flag are recovered; the
-    1,500 Coin result ceiling and permanent Chapter 3 availability are local
-    preservation policy, not a recovered event schedule or reward rule.
+    1,800 Coin result ceiling is the highest result observed from the final
+    client, while permanent Chapter 3 availability remains local preservation
+    policy. Neither recovers the retired event schedule or complete reward
+    rule.
     """
     stamina = {1: 5, 2: 8, 3: 10}
     pudding_items = _span(13, 17, 21) | {46: 21} | _span(26, 29, 20) | {122: 19, 123: 19, 164: 19, 165: 19}
@@ -375,7 +377,7 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
         family="money_money_time", chapter=3003, section=1, stamina=5, coins=0,
         entry_item_id=0, entry_item_count=0,
         unlock_chapter=4, unlock_section=1,
-        max_coins=1500, max_exp=0, max_items_total=0, item_maxima={},
+        max_coins=1800, max_exp=0, max_items_total=0, item_maxima={},
         selector="special",
     ))
     stages.append(HuntingStage(
