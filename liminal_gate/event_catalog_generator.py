@@ -1,11 +1,12 @@
 """Compose a local event catalog from the user's own BattleData import.
 
-`--event-catalog` is operator supplied because event character grants are
-checked against the user's own recovered character catalog rather than asserted
-by this repository.  That boundary is deliberate and this generator keeps it:
-it reads the user's BattleData import for section economics and their character
+Guided setup runs this composition automatically because event character grants
+are checked against the user's own recovered character catalog rather than
+asserted by this repository.  That boundary remains deliberate: the generator
+reads the user's BattleData import for section economics and their character
 catalog for grant validation, and contributes only the recovered manifest
-identities from :mod:`liminal_gate.event_manifest_data`.
+identities from :mod:`liminal_gate.event_manifest_data`.  The command-line form
+remains available for inspection and explicit catalog overrides.
 
 Nothing here needs native disassembly.  The event chapters sit in BattleData
 alongside the main story, and `battledata_importer` already reads every chapter,
@@ -29,7 +30,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+import tempfile
 from typing import Any
 
 from liminal_gate.event_flag_data import event_flags_for
@@ -64,7 +67,7 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
 
     notes: list[str] = []
     rows: list[dict[str, Any]] = []
-    for event_id, flag, chapter, _unlock_after, character_ids in EVENT_MANIFEST_ROWS:
+    for event_id, flag, chapter, unlock_after, character_ids in EVENT_MANIFEST_ROWS:
         sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
         if not sections:
             notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
@@ -93,6 +96,9 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
                 "stamina": int(section.get("stamina", 0)),
                 "coins": int(section.get("coins", 0)),
                 "clear_coins": EVENT_CLEAR_COINS,
+                # This is the permanent archive cadence declared beside the
+                # recovered identities, not a recovered historical schedule.
+                "unlock_after_chapter": unlock_after,
                 # Grants ride the first section only; repeating them per section
                 # would grant the character once per stage rather than once.
                 "character_ids": granted if number == sections[0]["section"] else [],
@@ -107,6 +113,21 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
         "character_catalog_sha256": hashlib.sha256(character_catalog_path.read_bytes()).hexdigest(),
         "stages": rows,
     }, notes
+
+
+def write_catalog(path: Path, document: dict[str, Any]) -> None:
+    """Atomically write a generated catalog beside the other local projections."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8")
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write(encoded)
+        stream.flush()
+        os.fsync(stream.fileno())
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -128,8 +149,7 @@ def main() -> int:
     except EventCatalogGeneratorError as error:
         raise SystemExit(f"event catalog generation failed: {error}") from error
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(catalog, indent=1, sort_keys=True), encoding="utf-8")
+    write_catalog(args.output, catalog)
     events = len({row["event_id"] for row in catalog["stages"]})
     print(f"wrote {len(catalog['stages'])} stages across {events} event(s) -> {args.output}")
     for note in notes:

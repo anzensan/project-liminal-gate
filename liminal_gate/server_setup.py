@@ -12,6 +12,7 @@ from typing import Sequence
 from liminal_gate.companion_equipment_catalog import (
     DEFAULT_COMPANION_EQUIPMENT_CATALOG,
 )
+from liminal_gate.event_catalog import DEFAULT_EVENT_CATALOG
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
 
@@ -133,6 +134,28 @@ def resolve_companion_equipment_catalog(
     return candidate if candidate.is_file() else None
 
 
+def resolve_event_catalog(
+    requested: Path | None, data_directory: Path,
+) -> Path | None:
+    """Choose a generated archive-event catalog and require its hash authority."""
+    candidate = (
+        requested.resolve()
+        if requested is not None
+        else (data_directory / DEFAULT_EVENT_CATALOG).resolve()
+    )
+    if requested is not None and not candidate.is_file():
+        raise ServerSetupError(f"event catalog does not exist: {requested}")
+    if not candidate.is_file():
+        return None
+    character_catalog = (data_directory / "character-catalog.json").resolve()
+    if not character_catalog.is_file():
+        raise ServerSetupError(
+            f"event catalog {candidate} requires its matching local character "
+            f"catalog at {character_catalog}"
+        )
+    return candidate
+
+
 def server_arguments(
     resource_root: Path,
     data_directory: Path,
@@ -141,6 +164,7 @@ def server_arguments(
     profile: Path = DEFAULT_PROFILE,
     story_outcome_catalog: Path | None = None,
     companion_equipment_catalog: Path | None = None,
+    event_catalog: Path | None = None,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
@@ -155,6 +179,16 @@ def server_arguments(
         else [
             "--companion-equipment-catalog",
             str(companion_equipment_catalog),
+        ]
+    )
+    event_flags = (
+        []
+        if event_catalog is None
+        else [
+            "--event-catalog",
+            str(event_catalog),
+            "--character-catalog",
+            str((data_directory / "character-catalog.json").resolve()),
         ]
     )
     return [
@@ -180,6 +214,7 @@ def server_arguments(
         *STANDARD_POLICY_FLAGS,
         *outcome_flags,
         *equipment_flags,
+        *event_flags,
     ]
 
 
@@ -224,6 +259,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--event-catalog",
+        type=Path,
+        help=(
+            "reviewed archive-event catalog; defaults to "
+            f"{DEFAULT_EVENT_CATALOG} in the data directory when present"
+        ),
+    )
+    parser.add_argument(
         "--prepare-only",
         action="store_true",
         help="validate and hash resources without starting the server",
@@ -263,6 +306,16 @@ def main() -> int:
             )
         else:
             print(f"Companion master restrictions: ON from {equipment_catalog}")
+        event_catalog = resolve_event_catalog(
+            args.event_catalog, data_directory,
+        )
+        if event_catalog is None:
+            print(
+                "Archive Special Quests: OFF (no generated event catalog; "
+                "bundled Strikes Back remains enabled)"
+            )
+        else:
+            print(f"Archive Special Quests: ON from {event_catalog}")
         if args.prepare_only:
             return 0
         print(
@@ -277,6 +330,7 @@ def main() -> int:
                 args.port,
                 story_outcome_catalog=outcome_catalog,
                 companion_equipment_catalog=equipment_catalog,
+                event_catalog=event_catalog,
             )
         )
     except (OSError, ResourceCatalogError, ServerSetupError, subprocess.CalledProcessError) as error:

@@ -32,14 +32,21 @@ Issue 22 tutorial recovery, and the exact hash/byte-guarded Issue 15 ARM64
 constructor replacement. Compilation, profile JSON, endpoint YAML, and diff
 checks pass. An exact clean source candidate passed both publication gates.
 
-Latest guided-setup validation: preflight and the real build resolve the same
-explicit or generated `(DummyDll, dump.cs)` pair, validate port and device-host
-routing before expensive work, and leave advanced events behind the explicit
-`--event-catalog` option. The focused warning-strict setup suite passed 123
-tests; the complete warning-strict suite passed all 625 tests in 118.332
-seconds, and compilation and diff checks passed. This is command-line and
-fixture proof; Windows and physical-device operator confirmation remain open,
-and no client gameplay boundary changed.
+Latest guided archive-event validation: setup derives `event-catalog.json`
+from matching local BattleData and character inputs and starts it by default.
+Archive Chapters 2000, 2001, 2002, 2004, and 2006 merge with Chapter 3003-1;
+bundled Counter Descent remains authoritative for Strikes Back Chapters
+8000--8007. Archive gates, zero clear Coins, and first-section associated
+character grants are labeled local policy. Focused real-HTTP tests cover
+selector projection, start, body-scoped same-ID/different-body handling,
+bounded clear, replay, and restart. Physical-client Bahamut and Strikes Back
+clears remain open.
+
+Prior guided-setup validation: preflight and the real build resolve the same
+explicit or generated `(DummyDll, dump.cs)` pair and validate port and
+device-host routing before expensive work. The focused warning-strict setup
+suite passed 123 tests; the complete warning-strict suite passed all 625 tests
+in 118.332 seconds, and compilation and diff checks passed.
 
 Latest client blocker: Issue 25 captured a final-client Chapter 3003-1 clear
 reporting 1,800 Coins. The old local 1,500 ceiling rejected settlement and
@@ -105,11 +112,13 @@ in the final client and is not an equip restriction. Original-client acceptance
 of this combined transport remains pending. A
 ticket-backed Metal Zone 1 result also settles live: the client repeats its
 pre-entry Item 50 count, the server retains the already-committed spend, and
-the bounded Companion drop persists. Strikes Back now shows its first two
-progress-gated families and the original client entered Spinetrich Kino Chapter
-8000-1. Its clear callback has not yet been observed. These are fast-lane
-client observations, not a replacement for the Chapter 2-1 canonical
-certification boundary.
+the bounded Companion drop persists. Guided setup now derives the five
+recovered Archive families and merges their progress-gated rows with Money
+Money Time. Strikes Back shows its first two progress-gated families and the
+original client entered Spinetrich Kino Chapter 8000-1. Neither its clear
+callback nor an Archive-event navigation/clear has yet been observed. These
+are fast-lane client observations, not a replacement for the Chapter 2-1
+canonical certification boundary.
 
 Security boundary: the server listens on the local network for Android device
 compatibility. Signup/login associates a client host with an account; a new
@@ -139,7 +148,8 @@ Next unknown boundaries: original-client acceptance of the Item 81
 Fellowship/Fate ticket draw and Crystal Road 3004-1; Issue 25 reporter
 acceptance after the observed 1,800-Coin Special Quest settlement; the first
 reproducible original-client failure after Chapter 8-4; the
-Strikes Back Chapter 8000-1 clear callback; and the Hunting selector flash
+Archive Chapter 2000-1 navigation/clear and associated-character result;
+the Strikes Back Chapter 8000-1 clear callback; and the Hunting selector flash
 after its rows render. An optional later boundary is one converted solo
 Eidolon quest result with before/after collectible state. The Hunting flash
 produced no corresponding server resource request or 404 and needs a client

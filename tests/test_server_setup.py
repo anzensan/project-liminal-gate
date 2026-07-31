@@ -9,6 +9,7 @@ from unittest.mock import Mock, call, patch
 
 from liminal_gate.server_setup import (
     DEFAULT_COMPANION_EQUIPMENT_CATALOG,
+    DEFAULT_EVENT_CATALOG,
     DEFAULT_OUTCOME_CATALOG,
     REQUIRED_RESOURCE_CATEGORIES,
     STANDARD_POLICY_FLAGS,
@@ -16,6 +17,7 @@ from liminal_gate.server_setup import (
     main,
     prepare_server,
     resolve_companion_equipment_catalog,
+    resolve_event_catalog,
     resolve_resource_root,
     resolve_story_outcome_catalog,
     run_server,
@@ -134,6 +136,42 @@ class ServerOnlySetupTest(unittest.TestCase):
             resolve_companion_equipment_catalog(
                 self.root / "absent.json", self.root,
             )
+
+    def test_archive_event_catalog_is_discovered_with_its_character_authority(self) -> None:
+        data_directory = self.root / "state"
+        data_directory.mkdir()
+        self.assertIsNone(resolve_event_catalog(None, data_directory))
+        event_catalog = data_directory / DEFAULT_EVENT_CATALOG
+        event_catalog.write_text("{}", encoding="utf-8")
+        with self.assertRaisesRegex(ServerSetupError, "character catalog"):
+            resolve_event_catalog(None, data_directory)
+        (data_directory / "character-catalog.json").write_text(
+            "{}", encoding="utf-8",
+        )
+        self.assertEqual(
+            event_catalog.resolve(),
+            resolve_event_catalog(None, data_directory),
+        )
+        arguments = server_arguments(
+            self.resources.resolve(),
+            data_directory.resolve(),
+            "0.0.0.0",
+            8696,
+            self.root / "profile.json",
+            event_catalog=event_catalog,
+        )
+        self.assertEqual(
+            str(event_catalog),
+            arguments[arguments.index("--event-catalog") + 1],
+        )
+        self.assertEqual(
+            str((data_directory / "character-catalog.json").resolve()),
+            arguments[arguments.index("--character-catalog") + 1],
+        )
+
+    def test_mistyped_archive_event_catalog_is_an_error(self) -> None:
+        with self.assertRaisesRegex(ServerSetupError, "does not exist"):
+            resolve_event_catalog(self.root / "absent.json", self.root)
 
     def test_prepare_only_never_launches_server(self) -> None:
         data_directory = self.root / "state"

@@ -12,6 +12,7 @@ from liminal_gate.event_catalog import (
     EventStage,
     build_bundled_counter_descent_policy,
 )
+from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 
 
 def character(character_id: int) -> dict[str, object]:
@@ -22,11 +23,17 @@ class EventRuntimeTest(unittest.TestCase):
     def test_event_start_is_accepted_over_real_http_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)
-            state.create_account(token, "account", {"coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777346, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
+            state.create_account(token, "account", {"coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777473, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
             state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
             profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
-            server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
+            server = BootstrapServer(
+                ("127.0.0.1", 0),
+                profile,
+                state,
+                event_catalog=catalog,
+                hunting_catalog=build_bundled_hunting_policy(),
+            )
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
                 connection = HTTPConnection(*server.server_address)
@@ -39,12 +46,22 @@ class EventRuntimeTest(unittest.TestCase):
                 connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-start", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
                 response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
                 connection = HTTPConnection(*server.server_address)
+                collision_body = b"stamina=14&coins=0&chapter=2000&section=1&lastUpdate=1"
+                connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-start", body=collision_body, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                collision = connection.getresponse(); collision_payload = json.loads(collision.read()); connection.close()
+                connection = HTTPConnection(*server.server_address)
                 connection.request("POST", f"/gd/start_quest?otk={token}&requestID=event-reenter", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
                 reenter = connection.getresponse(); reenter_payload = json.loads(reenter.read()); connection.close()
             finally:
                 server.shutdown(); thread.join(); server.server_close()
             self.assertEqual(200, response.status)
             self.assertTrue(payload["success"])
+            # Replay is body scoped: the same request ID with a different,
+            # invalid entry is evaluated and refused on its own merits.
+            self.assertEqual(
+                (501, "unsupported_start_quest"),
+                (collision.status, collision_payload["error"]),
+            )
             # Entry debits the stamina meter, so the fill origin moves off zero.
             self.assertGreater(payload["refillStartTime"], 0.0)
             # Entry moved the stamina meter, so the Energy wallet is intact.
@@ -56,7 +73,7 @@ class EventRuntimeTest(unittest.TestCase):
             self.assertEqual(payload, reenter_payload)
             self.assertEqual(200, status_response.status)
             self.assertEqual(
-                ["2000-1"],
+                ["2000-1", "3003-1"],
                 status_payload["constants"]["specialQuestList"],
             )
 

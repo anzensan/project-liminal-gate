@@ -49,6 +49,7 @@ capabilities:
   - family: local_events
     routes: [start_quest, clear_quest]
     status: local_policy
+    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006; bundled Strikes Back Chapters 8000-8007 remain authoritative; original-client clears are pending"
     transport_tests: true
     restart_tests: true
   - family: multiplayer_social_commerce

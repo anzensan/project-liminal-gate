@@ -1,5 +1,48 @@
 # Execution Plans
 
+## 2026-07-30 guided Archive Special Quests and Strikes Back
+
+Objective: make the five recovered Archive Special Quest families and the
+eight bundled Strikes Back families reachable through the standard guided
+setup without an expert-supplied event catalog.
+
+Evidence boundary:
+
+- The final client supplies exact selector flags and chapters for Bahamut
+  Descent (2000), Leviathan Descent (2001), Odin Descent (2002), Jade Dragon
+  Hunt (2004), Lucia (2006), and Strikes Back Chapters 8000--8007.
+- The tester's own BattleData supplies section identities and entry economics.
+  The tester's own character catalog bounds the four recovered character
+  associations.
+- Permanent availability, the Chapter 2/4/10/13/20 archive unlock cadence,
+  zero clear Coins, and granting an associated character on the first event
+  section are local archive policy. They are not claimed as recovered service
+  schedules, probabilities, or complete historical reward tables.
+- Bundled Strikes Back remains authoritative for Chapters 8000--8007: five
+  tiers, recovered stamina costs, progress gates, and zero-base settlement.
+  Selector navigation and Chapter 8000-1 entry are original-client confirmed;
+  its clear callback is not.
+
+Required proof:
+
+1. Generate and validate the default archive catalog during guided setup from
+   the same user-local BattleData and character inputs already required for
+   the complete game path.
+2. Carry the labeled archive unlock cadence into the generated catalog and
+   keep older explicit catalogs loadable.
+3. Start the guided server with that generated catalog automatically while
+   preserving an explicit `--event-catalog` override.
+4. Prove Archive and Strikes Back selector projection, start, bounded clear,
+   exact replay, body-scoped same-ID/different-body handling, and restart
+   persistence over real HTTP.
+5. Update the endpoint matrix, checkpoint, status, and operator documentation;
+   run focused tests, the warning-strict full suite, compilation, structured
+   file checks, and diff review.
+
+Physical-device completion remains a separate boundary: Bahamut 2000-1 and
+Strikes Back 8000-1 must each visibly clear and return to free roam in the
+final client before either path is described as client-certified.
+
 ## 2026-07-30 guided-setup usability remediation
 
 Objective: make `tester_setup --check` predict the exact guided setup path and

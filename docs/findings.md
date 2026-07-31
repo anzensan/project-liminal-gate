@@ -50,6 +50,21 @@ Private inputs, captures, account state, and original assets remain excluded.
   `--check` now executes the dumper without inputs and requires its usage
   output. A failed apphost points the operator at `Il2CppDumper.dll`, which
   setup runs through `dotnet`.
+- **Confirmed onboarding defect and fix:** guided setup judged the Il2CppDumper
+  run by its exit code, which a successful run cannot be relied on to set.
+  Il2CppDumper v6.7.46 (tag `v6.7.46`, commit `8a521b9c`) ends `Program.Main`
+  with a `Console.ReadKey` guarded only by the `RequireAnyKey` its shipped
+  `config.json` sets true, and that call sits outside the `try` wrapping the
+  dump; .NET raises `InvalidOperationException: Cannot read keys ...` whenever
+  standard input is not a console, which it is not while `run_with_heartbeat`
+  captures the child (`stdin=DEVNULL`, piped output). A Windows tester therefore
+  saw `complete guided setup needs Il2CppDumper to produce a DummyDll directory
+  and dump.cs` after a run that had produced both. Redirecting real bytes to
+  stdin does not help — the call wants a console handle. Setup now decides on
+  the artifacts (`DummyDll/*.dll` and `dump.cs`), reports a non-zero exit that
+  produced them rather than failing on it, keeps every run in
+  `user-data/il2cpp/il2cppdumper-last-run.log`, and demotes the refused keypress
+  below any other fault line when the artifacts really are absent.
 - **Environment boundary:** two emulator graphics configurations served the
   same successful transport but rendered black with framebuffer `0x506`
   errors. The already documented software ANGLE launch path rendered the title
@@ -151,8 +166,18 @@ Private inputs, captures, account state, and original assets remain excluded.
   server `specialQuestList` and exact `sp_ch_<chapter>-<section>` flags.
   **Local policy:** after Chapter 3, the bundled server advertises recovered
   Chapter 3003-1 (*Money Money Time*) through the bounded Hunting transaction.
-  Its permanent availability and 1,500 Coin ceiling are not recovered service
-  behavior; Tower and Arena VS remain unsupported.
+  Its permanent availability is not recovered service behavior; the 1,800
+  Coin ceiling is bounded by the Issue 25 final-client result, not a recovered
+  historical distribution. Tower and Arena VS remain unsupported.
+- **Confirmed by final-client static identities and generated-catalog
+  validation:** guided setup derives Archive Special Quest Chapters 2000,
+  2001, 2002, 2004, and 2006 from the matching local BattleData and character
+  catalog. The selector merges these rows with Chapter 3003-1; bundled
+  Chapters 8000--8007 remain authoritative on `descentHuntingList`.
+  **Local policy:** the permanent Chapter 2/4/10/13/20 gates, zero clear Coins,
+  and first-section associated-character grants are not recovered schedules,
+  probabilities, or complete reward tables. Original-client archive clears
+  remain unverified.
 - **Confirmed by supplied final-APK analysis:** BattleData identifies Chapter
   3004-1 as *Crystal Road* (`クリスタルロード`): three battles and seven stamina.
   `UISpecialSelect` mode 7 reads `huntingHuntingList`, while the generic

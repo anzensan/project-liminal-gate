@@ -1,7 +1,8 @@
 # Arena and Hunting implementation plan
 
-Status: Hunting and the first bounded default Special Quest are implemented;
-Arena VS remains deliberately disabled. This
+Status: Hunting, the bounded default Special Quest, the five generated Archive
+Special Quest families, and bundled Strikes Back are implemented; Arena VS
+remains deliberately disabled. This
 document separates the solo content that can be made available through the
 surviving client from the original online Arena system, which cannot be made
 functional by adding ordinary HTTP responses.
@@ -14,7 +15,7 @@ functional by adding ordinary HTTP responses.
 | 1. Hunting discovery | Static client gates and selector list contract recovered; live historical-service schedule remains unavailable. |
 | 2. Hunting vertical slice | Catalog, selector projection, lifecycle, costs, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py` and `liminal_gate/server_constants.py`). |
 | 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, Crystal Road, and eight packaged Counter Descent families with explicit per-stage bounds. |
-| 4. Arena -> Special Quests | Default recovered Chapter 3003-1 is bundled after Chapter 3; additional stages remain gated on reviewed local inputs. |
+| 4. Arena -> Special Quests | Chapter 3003-1 is bundled after Chapter 3. Guided setup also derives Chapters 2000, 2001, 2002, 2004, and 2006 from the tester's matching BattleData and character catalog. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 
 The selector lives in `get_server_status.constants`. The server sends the
@@ -27,7 +28,7 @@ it never attempts a one-field partial projection.
 | --- | --- | --- |
 | Hunting | User-local, solo Metal/Hunting stages selected and settled through the normal quest lifecycle. | Recreating retired rotations, paid-entry systems, or unbounded client-authoritative rewards. |
 | Huntland -> Strikes Back | Packaged non-collaboration Counter Descent families, progress-gated and settled through the bounded normal quest lifecycle. | Claiming recovered historical dates, rotations, or rewards. |
-| Arena -> Special Quests | Bundled Chapter 3003-1 plus user-local solo event/archive stages, using the bounded Hunting/event lifecycle. | Treating Special Quests as PvP or a live event schedule. |
+| Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated five-family Archive list and any explicit reviewed override, using the bounded Hunting/event lifecycle. | Treating Special Quests as PvP or a live event schedule. |
 | Arena VS / ranking | Remain visibly unavailable. | Photon rooms, friends, matchmaking, rankings, co-op, raids, or a simulated service presented as the original Arena. |
 
 The current `GET /gd/multiplay_enable` response must remain the confirmed
@@ -74,12 +75,12 @@ folds each unlocked family to one selector row, and validates a zero-base
 clear. Original-client selector navigation and Chapter 8000-1 entry are
 confirmed; the client clear callback is still outstanding.
 
-Arena -> Special Quests now has one default bounded slice: recovered Chapter
-3003-1, advertised after Chapter 3 with its exact section flag and settled
-through the Hunting transaction. Its permanent availability and 1,500 Coin
-ceiling are local policy. A reviewed user-local event catalog replaces that
-default list; additional stages remain invisible until their inputs are
-reviewed and their own bounded contracts exist.
+Arena -> Special Quests merges recovered Chapter 3003-1 with the generated
+Archive Chapters 2000, 2001, 2002, 2004, and 2006 as their progress gates open.
+The archive rows come from matching user-local BattleData and character
+catalogs. Permanent gates, zero clear Coins, and first-section associated
+character grants are local policy. An explicit reviewed catalog replaces the
+generated Archive rows but not Chapter 3003-1 or bundled Strikes Back.
 
 Arena VS stays explicitly disabled.
 

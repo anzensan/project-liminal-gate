@@ -285,6 +285,45 @@ class EnsureIl2cppDumpTest(unittest.TestCase):
                 ensure_il2cpp_dump(wrong, self.data)
         ran.assert_not_called()
 
+    def test_a_dump_that_arrived_is_used_though_the_run_exited_non_zero(self) -> None:
+        """The dumper ends a *finished* run with a keypress it cannot take here.
+
+        `Console.ReadKey` sits outside its `try`, and .NET refuses it whenever
+        standard input is not a console, which it is not while setup captures
+        the run.  A tester lost a complete dump to that exit code.
+        """
+        keypress = self.root / "keypress_dumper.py"
+        keypress.write_text(
+            self.stub.read_text(encoding="utf-8")
+            + "sys.stderr.write('Unhandled exception. System.InvalidOperationException: "
+            "Cannot read keys when either application does not have a console or when console "
+            "input has been redirected.\\n')\n"
+            "sys.exit(134)\n",
+            encoding="utf-8",
+        )
+        with patch("liminal_gate.tester_setup.find_il2cpp_dumper", return_value=(sys.executable, str(keypress))), \
+             patch("builtins.print"):
+            dummy_dll, dump_cs = ensure_il2cpp_dump(self.apk, self.data)
+        self.assertTrue(any(dummy_dll.glob("*.dll")) and dump_cs.is_file())
+        # And the run is kept where the operator can confirm what it did.
+        log = self.data / "il2cpp" / "il2cppdumper-last-run.log"
+        self.assertIn("exit code: 134", log.read_text(encoding="utf-8"))
+
+    def test_a_dumper_that_writes_no_assemblies_stops_setup(self) -> None:
+        """An empty DummyDll would be re-run by the reuse check anyway."""
+        hollow = self.root / "hollow_dumper.py"
+        hollow.write_text(
+            "import pathlib, sys\n"
+            "output = pathlib.Path(sys.argv[3])\n"
+            "(output / 'DummyDll').mkdir(parents=True, exist_ok=True)\n"
+            "(output / 'dump.cs').write_text('')\n",
+            encoding="utf-8",
+        )
+        with patch("liminal_gate.tester_setup.find_il2cpp_dumper", return_value=(sys.executable, str(hollow))), \
+             patch("builtins.print"):
+            with self.assertRaisesRegex(TesterSetupError, "DummyDll"):
+                ensure_il2cpp_dump(self.apk, self.data)
+
     def test_a_bad_metadata_member_is_refused_too(self) -> None:
         wrong = self.root / "wrong-metadata.apk"
         with zipfile.ZipFile(wrong, "w") as archive:
@@ -326,6 +365,25 @@ class DumperFailureReportTest(unittest.TestCase):
 
     def test_a_silent_failure_still_reports_its_exit_code(self) -> None:
         self.assertIn("exit code 134", self._describe("", code=134))
+
+    def test_the_refused_keypress_never_outranks_the_real_fault(self) -> None:
+        detail = self._describe(
+            "Initializing metadata...\n"
+            "ERROR: Can't use auto mode to process file, try manual mode.\n"
+            "Unhandled exception. System.InvalidOperationException: Cannot read keys when either "
+            "application does not have a console or when console input has been redirected.\n"
+        )
+        self.assertIn("auto mode", detail)
+        self.assertNotIn("Cannot read keys", detail)
+
+    def test_a_failure_with_nothing_but_the_keypress_names_the_setting(self) -> None:
+        """With no other fault, the keypress may be all that stopped it."""
+        detail = self._describe(
+            "Unhandled exception. System.InvalidOperationException: Cannot read keys when either "
+            "application does not have a console or when console input has been redirected.\n"
+        )
+        self.assertIn("Cannot read keys", detail)
+        self.assertIn("RequireAnyKey", detail)
 
     def test_progress_notes_fall_back_to_how_far_it_got(self) -> None:
         self.assertIn("Initializing il2cpp file", self._describe(

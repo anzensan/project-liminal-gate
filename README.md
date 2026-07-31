@@ -32,7 +32,7 @@ until the later run is independently recorded and reviewed.
   - [2. Arrange your local files](#2-arrange-your-local-files)
   - [Run only the server on a separate Linux machine](#run-only-the-server-on-a-separate-linux-machine)
   - [3. One-command setup, install, and server start](#3-one-command-setup-install-and-server-start)
-  - [Optional: enable a reviewed local event catalog](#optional-enable-a-reviewed-local-event-catalog)
+  - [Optional: override the generated archive-event catalog](#optional-override-the-generated-archive-event-catalog)
   - [4. Manual setup](#4-manual-setup-only-if-you-need-to-troubleshoot)
   - [4a. Validate and map the local inputs](#4a-validate-and-map-the-local-inputs)
   - [4b. Create a local test signing key](#4b-create-a-local-test-signing-key)
@@ -83,7 +83,12 @@ each zone waits for, which is well past the verified stopping point:
 | Metal Zone 1, Dragon Road, Machine Road | Chapter 3 |
 | Crystal Road | Chapter 3 |
 | Metal Zones 2 to 7 | Chapters 8, 12, 17, 21, 26, 30 |
-
+| Bahamut Descent | Chapter 2 |
+| Jade Dragon Hunt | Chapter 4 |
+| Leviathan Descent | Chapter 10 |
+| Lucia archive | Chapter 13 |
+| Odin Descent | Chapter 20 |
+| Strikes Back families | Chapters 5 through 12, one family per chapter |
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
 
 Those thresholds are a local preservation policy, not a recovered schedule: the
@@ -96,9 +101,14 @@ a new account are expected, not a fault.
 server advertises the recovered solo Chapter 3003-1 *Money Money Time* card in
 Arena -> Special Quests. It costs 5 stamina and uses a bounded local Coin
 settlement policy; it is not a claim about the original event rotation or
-rewards. Arena VS, rankings, multiplayer, and Tower are not implemented and
-remain unavailable rather than presenting a menu that cannot complete a
-durable solo quest.
+rewards. Guided setup also derives the five recovered archive families from
+your own BattleData and character catalog, and enables the eight packaged
+Strikes Back families. Their permanent progress gates, zero-Coin clears, and
+first-section associated-character grants are local archive policy rather than
+recovered schedules, probabilities, or complete historical reward tables.
+Arena VS, rankings, multiplayer, and Tower are not implemented and remain
+unavailable rather than presenting a menu that cannot complete a durable solo
+quest.
 
 **Eidolons are not a missing final-version battle mechanic.** Version 5.5.0
 retired Co-op/VS, the in-battle Eidolon charging gauge, and Tavern Eidolon
@@ -772,10 +782,11 @@ Everything below stays under the ignored `user-data/` directory:
 | Generated output | Why setup creates it | Needed by the running server? |
 | --- | --- | --- |
 | `il2cpp/DummyDll/` and `il2cpp/dump.cs` | Recover the stripped IL2CPP type layout, game enums, method names, and native offsets from your APK. Later importers cannot safely interpret the master data or native battle code without them. | No. They are retained so catalogs can be inspected or regenerated without rerunning Il2CppDumper. |
-| `character-catalog.json` | Records the valid character and job structure recovered from the master data and anchors later catalog provenance to the selected APK. | Not for the standard bundled server. It is also passed at runtime when an optional reviewed event catalog can grant characters. |
+| `character-catalog.json` | Records the valid character and job structure recovered from the master data and anchors later catalog provenance to the selected APK. | **Yes.** It authorizes character IDs in the generated archive-event catalog and any explicit override. |
 | `derived/native-encounters.json` | Maps the compiled Chapter 8–42 battle programs to the enemies each stage can spawn. Producing it requires the AArch64 disassembler. | No. It is an evidence intermediate used to compose `story-outcomes.json`. |
 | `derived/scenario-encounters.json` | Maps the MoonSharp scenario programs used by Chapters 2–7, which have no equivalent compiled battle program. | No. It is another input to `story-outcomes.json`. |
 | `story-outcomes.json` | Combines the encounter maps, character catalog, master data, and their hashes into bounded per-stage outcome rules. Without it, the server cannot safely persist a story Companion rolled by the client. | **Yes.** The dedicated server loads this final catalog. |
+| `event-catalog.json` | Combines the recovered archive identities and local unlock cadence with section economics from your BattleData and character associations validated against your character catalog. | **Yes.** It enables the five Archive Special Quest families; Strikes Back remains bundled. |
 | `companion-equipment.json` | Projects character ancestry, per-job species, and Companion character/species restrictions from the matching APK. It contains no names, skills, descriptions, or assets. `RequiredLevel` is deliberately absent because the final client uses it to activate an equipped Companion's effects, not to prohibit equipping it. | **Yes.** The server needs it to authorize a newly equipped or retargeted Companion; without it, those new links are refused. |
 | `resources.json` | Maps every approved resource URL to a local file and hash. | **Yes.** `server_setup` rebuilds or refreshes it from the matching resource tree when the server starts. |
 | `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
@@ -784,22 +795,24 @@ Everything below stays under the ignored `user-data/` directory:
 | `local-server-plan.json`, the local signing key, and `liminal-gate-test.apk` | Record the client patch, sign it with a local-only key, and produce the APK installed on your device. | The plan and key are not server inputs. The generated APK belongs on the client device. |
 
 For a dedicated server, retain the matching resource tree, `resources.json`,
-`story-outcomes.json`, `companion-equipment.json`, optional `public_data/`, and
-the server's durable `bootstrap-state.json`. Keep the remaining generated
-output on the setup workstation: it is the reproducible path from the private
-APK to the final runtime catalogs, not unnecessary clutter and not material to
-publish. If the dedicated host predates `companion-equipment.json`, rerun guided
-setup on the APK workstation and copy that one generated file into the
+`story-outcomes.json`, `event-catalog.json`, `character-catalog.json`,
+`companion-equipment.json`, optional `public_data/`, and the server's durable
+`bootstrap-state.json`. Keep the remaining generated output on the setup
+workstation: it is the reproducible path from the private APK to the final
+runtime catalogs, not unnecessary clutter and not material to publish. If the
+dedicated host predates one of these generated runtime catalogs, rerun guided
+setup on the APK workstation and copy the matching generated files into the
 dedicated server's `user-data/` directory before updating the server.
 
-Advanced local events never interrupt the standard setup with a prompt. People
-who already have a reviewed local event catalog enable it explicitly with
-`--event-catalog`; see [Optional: enable a reviewed local event catalog](#optional-enable-a-reviewed-local-event-catalog).
+Archive events never interrupt standard setup with a prompt. Setup derives and
+validates them automatically. People who already have a separately reviewed
+local event catalog can replace the generated archive list explicitly with
+`--event-catalog`; see [Optional: override the generated archive-event catalog](#optional-override-the-generated-archive-event-catalog).
 You do not need to supply `DummyDll` yourself for normal guided setup: setup
 generates and retains it automatically as described above. Passing
 `--dummy-dll-dir` is useful when you already have matching output or when an
-optional local event catalog needs the corresponding character data. The
-command validates the inputs, creates the local manifests, creates a local
+explicit local event-catalog override needs the corresponding character data.
+The command validates the inputs, creates the local manifests, creates a local
 signing key on first use, patches and signs the APK, installs it on that one
 device, then starts the local server in the foreground. Press Control-C when
 you finish testing.
@@ -863,14 +876,16 @@ To build the APK without installing or starting the server, add
 
 For a non-interactive repeat of the standard setup, add `--no-configure`.
 
-### Optional: enable a reviewed local event catalog
+### Optional: override the generated archive-event catalog
 
-Additional archived events are not enabled by default. If you have independently
-prepared a reviewed event catalog and the matching local `DummyDll` directory,
-add `--dummy-dll-dir` and `--event-catalog` to the normal setup command. Setup
-derives the required local character catalog and passes both local files to the
-server. This is optional analysis-derived content, not a requirement for the
-bundled Hunting or Special Quest paths. See [Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
+The five recovered Archive Special Quest families and all eight Strikes Back
+families are enabled by standard guided setup. If you have independently
+prepared a stricter reviewed catalog, add `--event-catalog` to the normal setup
+command. Use `--dummy-dll-dir` only when you want setup to reuse a matching
+local IL2CPP dump instead of its generated one. Setup derives the matching
+character catalog and passes both runtime files to the server. An override
+replaces the generated normal Special Quest rows; the bundled Strikes Back
+definitions remain authoritative. See [Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
 
 ### 4. Manual setup (only if you need to troubleshoot)
 
@@ -1343,6 +1358,7 @@ apart. Give those a `--data-dir` and a port each instead.
 | `--check` says Il2CppDumper exists but could not start | A framework-dependent .NET apphost can exist while its runtime is undiscoverable. Install the .NET runtime, or point `LIMINAL_GATE_IL2CPPDUMPER` at the adjacent `Il2CppDumper.dll` instead; setup will run it through `dotnet`. |
 | `--check` opens an Il2CppDumper file picker | Fixed; update your clone. The check used to run the tool with no arguments to see whether it starts, which is how the Windows release is asked to prompt for its inputs. It is now given arguments, so it cannot prompt. If you do run Il2CppDumper by hand, note that its first dialog wants `lib/arm64-v8a/libil2cpp.so` from your APK — not `Il2CppDumper.exe`, and not the 32-bit `armeabi-v7a` copy. |
 | `--check` still cannot find Il2CppDumper after you installed it | Read the rest of that line: it distinguishes a variable that was never set from one naming a path that does not exist, a directory holding no release, or a `.dll` with no `dotnet` to run it. The two usual causes are a variable set in a different terminal window than the one running setup, and a path with a typo. Confirm with `Test-Path $env:LIMINAL_GATE_IL2CPPDUMPER` (PowerShell) or `ls "$LIMINAL_GATE_IL2CPPDUMPER"`. Copying the tool into this repository has no effect. |
+| Setup reports `Cannot read keys when either application does not have a console` from Il2CppDumper | Fixed; update your clone. Il2CppDumper ends every run — including a successful one — with a "press any key to exit" it cannot perform while setup is capturing its output, so a complete dump used to be thrown away on the exit code that followed. Setup now judges the run by the `DummyDll` directory and `dump.cs` it produced. If those really are missing, read `user-data/il2cpp/il2cppdumper-last-run.log` for the actual fault, and you can set `"RequireAnyKey": false` in the `config.json` beside Il2CppDumper to remove the keypress entirely. |
 | `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [step 3](#3-one-command-setup-install-and-server-start). |
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the optional dependency as above if you want the images. |
 | `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data using the reset commands above. |

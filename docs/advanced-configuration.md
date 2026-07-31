@@ -442,7 +442,9 @@ the Luck rules needed for its `luckType=true` Fate variant.
 
 The archived events sit in BattleData beside the main story, so their entry
 stamina and start costs come out of the same import that serves ordinary
-stages -- nothing here needs native disassembly:
+stages -- nothing here needs native disassembly. Guided setup performs this
+composition automatically and writes `user-data/event-catalog.json`. The
+standalone command remains useful when reviewing or replacing that artifact:
 
 ```sh
 python3 -m liminal_gate.event_catalog_generator \
@@ -451,17 +453,20 @@ python3 -m liminal_gate.event_catalog_generator \
     --output user-data/event-catalog.json
 ```
 
-The generator contributes the 13 recovered manifest identities -- selector flag,
-chapter, and character association -- and takes everything else from your own
-files. Character grants are still validated against your character catalog and
-are omitted with a note when a character is missing, which is the boundary
-`--event-catalog` exists to keep.
+The generator contributes the 13 recovered manifest identities -- selector
+flag, chapter, local archive unlock, and character association -- and takes
+everything else from your own files. Character grants are still validated
+against your character catalog and are omitted with a note when a character is
+missing. The generated catalog and matching character-catalog hash keep that
+boundary; `--event-catalog` can replace the generated artifact with a stricter
+reviewed local one.
 
 Two things it does not claim. The release order is local archive policy: the
-original schedule was never recovered, so the events are permanently available
-rather than scheduled. And an event clear credits no Coins, because BattleData
-records a start cost for these sections but no clear reward -- the same reading
-that leaves Dragon and Machine Road settling at zero.
+original schedule was never recovered, so each event becomes permanently
+available after its declared story gate rather than following a calendar. And
+an event clear credits no Coins, because BattleData records a start cost for
+these sections but no clear reward -- the same reading that leaves Dragon and
+Machine Road settling at zero.
 
 ### Built-in policies
 
@@ -628,29 +633,31 @@ wiki, so these mint at level 1, matching the Companion draw.
 
 ## Local event stages and character grants
 
-Event support is deliberately opt-in and operator-local. An event catalog must
-contain only stages whose start and clear behavior you have independently
-tested with the client. Its character IDs are validated against a matching
-catalog derived from your own local APK; neither catalog belongs in Git.
+Standard guided setup derives the five recovered Archive Special Quest
+families and the eight recovered Strikes Back identities from operator-local
+master data. The bundled Counter Descent policy remains authoritative for
+Strikes Back's five tiers, stamina, progress gates, and zero-base clears. These
+runtime catalogs and their character IDs are validated against a matching
+catalog derived from your own APK; neither catalog belongs in Git.
 
-The normal tester command can launch an approved local event catalog once you
-also supply your locally generated Il2CppDumper `DummyDll` directory; see
-[Generating the `DummyDll` directory](#generating-the-dummydll-directory):
+An explicit event catalog is now an expert override, not a requirement for
+archive content. The normal tester command can launch one as follows:
 
 ```sh
 python3 -m liminal_gate.tester_setup \
   --port 8696 \
   --device emulator-5570 \
-  --dummy-dll-dir /path/to/DummyDll \
   --event-catalog /path/to/local-events.json
 ```
 
 Setup writes the derived `user-data/character-catalog.json`, then starts the
-server with both that file and the supplied event catalog. It rejects an event
-catalog without `--dummy-dll-dir`, rather than accepting unverified character
-IDs. A stage needs its observed chapter, section, entry stamina/Coins, clear
-Coins, visibility flag, and character grant IDs; do not add a stage merely
-because it appears in a menu.
+server with both that file and the supplied event catalog. Pass
+`--dummy-dll-dir` as well only to reuse an existing matching IL2CPP dump. A
+stage needs its observed chapter, section, entry stamina/Coins, clear Coins,
+visibility flag, character grant IDs, and optional nonnegative
+`unlock_after_chapter`; do not add a stage merely because it appears in a menu.
+Older reviewed catalogs without `unlock_after_chapter` remain loadable and are
+treated as always unlocked.
 
 ### The visibility flag is not free-form
 
@@ -701,7 +708,7 @@ real-time board has no cumulative spawn counter to recover a true cap from.
 EXP ceilings, and Companion manifests are declared by the bundled policy; an
 undeclared result is refused. Dragon and Machine Road currently settle zero
 base rewards because no complete reward contract was recovered. The default
-Special Quest is also bounded: Chapter 3003-1 accepts up to 1,500 Coins and no
+Special Quest is also bounded: Chapter 3003-1 accepts up to 1,800 Coins and no
 EXP, items, or Companions. Crystal Road (3004-1) is a permanent local Huntland
 route after Chapter 3: its seven-stamina entry and three-battle client record
 are recovered, while its published material/Ticket/power-up table is explicit

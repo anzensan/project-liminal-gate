@@ -5,8 +5,9 @@ stamina and start costs come from the same import that serves ordinary stages --
 no native disassembly is involved.
 
 The generator contributes only the recovered manifest identities. Character
-grants are still validated against the user's own catalog, which is the boundary
-`--event-catalog` exists to keep.
+grants are still validated against the user's own catalog, which is the
+boundary the generated artifact and an explicit `--event-catalog` override
+keep.
 """
 from __future__ import annotations
 
@@ -51,6 +52,21 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual(2, len(loaded.stages))
         self.assertEqual(hashlib.sha256, hashlib.sha256)  # sanity: hashing available
         self.assertEqual("user-supplied", document["provenance"])
+        self.assertEqual(
+            {2},
+            {stage.unlock_after_chapter for stage in loaded.stages},
+        )
+
+    def test_archive_unlock_cadence_is_projected_from_the_manifest(self) -> None:
+        _, _, loaded = self._generate(
+            _battledata(2000, 2001, 2002, 2004, 2006),
+            (144, 148, 151, 673),
+        )
+        progress_after_chapter_4 = 0x01000000 | (5 << 6) | 1
+        self.assertEqual(
+            ["2000-1", "2000-2", "2004-1", "2004-2"],
+            loaded.client_lists(progress_after_chapter_4)["specialQuestList"],
+        )
 
     def test_grant_rides_the_first_section_only(self) -> None:
         # Repeating it per section would grant the character once per stage.

@@ -23,6 +23,29 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-30 Il2CppDumper exit-code defect: a Windows tester's complete dump was
+  rejected because Il2CppDumper v6.7.46 ends even a successful run with a
+  "press any key to exit" `Console.ReadKey` that .NET refuses while setup
+  captures the process, leaving an unhandled exception and a non-zero exit.
+  `ensure_il2cpp_dump` now decides on the produced `DummyDll/*.dll` and
+  `dump.cs`, reports the non-zero exit instead of failing on it, always keeps
+  the run in `user-data/il2cpp/il2cppdumper-last-run.log`, and ranks the refused
+  keypress below any other reported fault. See `docs/findings.md`.
+- 2026-07-30 guided Archive Special Quests and Strikes Back: complete guided
+  setup now writes `event-catalog.json` from the same user-owned BattleData and
+  character catalog it already derives. The normal server loads Archive
+  Chapters 2000, 2001, 2002, 2004, and 2006 automatically, merges their
+  Special Quest rows with bounded Chapter 3003-1, and retains the bundled
+  five-tier policy as the authoritative owner of Strikes Back Chapters
+  8000--8007. The Chapter 2/4/10/13/20 archive gates, zero clear Coins, and
+  first-section associated-character grants are explicitly local policy.
+  Older explicit catalogs without an unlock gate still load. Generated
+  catalogs are atomic and hash-bound to the matching character catalog;
+  server-only setup discovers both together or fails clearly. Affected-domain
+  real-HTTP tests cover merged selector projection, entry, body-scoped
+  same-ID/different-body refusal, bounded character settlement, replay, and
+  restart for Archive and Strikes Back. Original-client Bahamut and Strikes
+  Back clears remain pending.
 - 2026-07-30 guided setup usability: `tester_setup --check` and the real build
   now share one complete IL2CPP-artifact resolver. A supplied `DummyDll`
   without sibling `dump.cs` fails before hashing, while a complete generated
@@ -233,9 +256,9 @@ machine-readable/current capability boundary.
   body-scoped replay, and restart handling are covered by real HTTP tests. Its
   1,800-Coin ceiling is now bounded by Issue 25 final-client evidence; the
   permanent unlock remains explicit local preservation policy, not a claim
-  about the retired event rotation or complete reward rule. A reviewed
-  user-local event catalog replaces this default Special list. Tower and Arena
-  VS remain unsupported.
+  about the retired event rotation or complete reward rule. Generated Archive
+  rows merge with this default; an explicit override replaces only those
+  Archive rows. Tower and Arena VS remain unsupported.
 - 2026-07-28 story Companion drops settle instead of being silently discarded,
   and the outcome catalog stops refusing what it merely cannot evidence. A live
   account cleared the whole story seeing only Metal Zone's Companions: the
@@ -436,6 +459,10 @@ machine-readable/current capability boundary.
 - Original-client Strikes Back battle clear and return to free roam. Selector,
   tier navigation, and Chapter 8000-1 entry are confirmed; clear is currently
   covered only by the real-HTTP regression.
+- Original-client Archive Special Quest navigation, Chapter 2000-1 entry,
+  battle clear, associated-character result, and return to free roam. Current
+  proof is static identity/master data plus generated-catalog and real-HTTP
+  regressions.
 - Retired Tavern “Watch Video” controls are client/ad-SDK UI. The server does
   not advertise or implement an ad service; hiding those controls requires a
   separately validated APK patch.
@@ -458,5 +485,6 @@ machine-readable/current capability boundary.
 
 ## Next recommended task
 
-Capture and certify the next original-client failure after Chapter 2-1, then
-implement only that smallest evidence-backed client-visible boundary.
+Run the generated archive catalog on the final client and capture Chapter
+2000-1 selector navigation, entry, clear/result, and return to free roam. Then
+repeat the clear boundary for Strikes Back Chapter 8000-1.

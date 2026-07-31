@@ -11,6 +11,9 @@ from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.event_manifest_data import EVENT_MANIFEST_ROWS
 
 
+DEFAULT_EVENT_CATALOG = "event-catalog.json"
+
+
 class EventCatalogError(ValueError):
     """A user-local event catalog is malformed."""
 
@@ -171,7 +174,12 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
             "event_id", "flag", "chapter", "section", "stamina", "coins",
             "clear_coins", "character_ids",
         }
-        if not isinstance(raw, dict) or set(raw) != required:
+        optional = {"unlock_after_chapter"}
+        if (
+            not isinstance(raw, dict)
+            or not required.issubset(raw)
+            or not set(raw).issubset(required | optional)
+        ):
             raise EventCatalogError("each event stage has an invalid schema")
         if (
             not isinstance(raw["event_id"], str)
@@ -184,6 +192,17 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
             )
         ):
             raise EventCatalogError("event stage has invalid values")
+        unlock_after_chapter = raw.get("unlock_after_chapter")
+        if (
+            unlock_after_chapter is not None
+            and (
+                type(unlock_after_chapter) is not int
+                or unlock_after_chapter < 0
+            )
+        ):
+            raise EventCatalogError(
+                "event stage unlock_after_chapter must be a nonnegative integer"
+            )
         # The client constructs this key and looks it up by exact name. Any
         # other flag is inert: the row disappears without a useful error.
         permitted = event_flags_for(raw["chapter"], raw["section"])
@@ -219,6 +238,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 selector=(
                     "descent_hunting" if 8000 <= chapter <= 8007 else "special"
                 ),
+                unlock_after_chapter=unlock_after_chapter,
             )
         )
     if (

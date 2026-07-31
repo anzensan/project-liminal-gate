@@ -27,6 +27,10 @@ from typing import Callable, Sequence
 
 from liminal_gate.apk_patcher import PatchPlanError, apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import ApkSigningError, sign_apk
+from liminal_gate.battledata_importer import (
+    BattleDataImportError,
+    build_stage_metadata,
+)
 from liminal_gate.file_digests import DigestCache, count_files
 from liminal_gate.input_importer import ImportError, build_import_manifest, write_import_manifest
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError
@@ -46,6 +50,16 @@ from liminal_gate.setup_progress import (
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
 from liminal_gate import account_state
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
+from liminal_gate.event_catalog import (
+    DEFAULT_EVENT_CATALOG,
+    EventCatalogError,
+    load_event_catalog,
+)
+from liminal_gate.event_catalog_generator import (
+    EventCatalogGeneratorError,
+    build_catalog as build_event_catalog,
+    write_catalog as write_event_catalog,
+)
 from liminal_gate.companion_equipment_catalog import (
     DEFAULT_COMPANION_EQUIPMENT_CATALOG,
     CompanionEquipmentCatalogError,
@@ -597,6 +611,25 @@ IL2CPP_DUMPER_MISSING = (
 #: How long Il2CppDumper may run before setup gives up on it.
 IL2CPP_DUMPER_TIMEOUT_SECONDS = 1800
 
+#: How a *complete* dump still ends in an unhandled exception here.  v6.7.46
+#: finishes `Program.Main` with a "Press any key to exit" `Console.ReadKey`,
+#: enabled by the `RequireAnyKey` its shipped `config.json` sets true, and that
+#: call sits **outside** the `try` wrapping the dump.  .NET refuses `ReadKey`
+#: whenever standard input is not a console -- which it never is here, because
+#: setup captures the run to show progress, and feeding a pipe does not help:
+#: the call wants a console handle, not bytes.  So the work finishes, the files
+#: are written, and the process exits non-zero anyway.  Recognised so the exit
+#: code cannot condemn a dump that is sitting on disk.
+_READKEY_REFUSED = "cannot read keys"
+
+#: Said only when the outputs are missing as well, since the keypress is then no
+#: longer the harmless last act of a finished run and may be hiding the fault.
+_READKEY_ADVICE = (
+    ' Il2CppDumper also waits for a keypress at exit ("RequireAnyKey" in the config.json beside '
+    "it), which it cannot do while setup is capturing its output; set that to false and re-run if "
+    "the log shows nothing else went wrong."
+)
+
 #: The distributions `pyproject.toml` installs under the `master-import` extra.
 #: Reading master data out of the APK needs both, so the guided path needs both.
 MASTER_IMPORT_DISTRIBUTIONS = ("UnityPy", "TypeTreeGeneratorAPI")
@@ -912,10 +945,20 @@ def ensure_il2cpp_dump(apk: Path, data_directory: Path) -> tuple[Path, Path]:
             completed = run_with_heartbeat(invocation, "Il2CppDumper", IL2CPP_DUMPER_TIMEOUT_SECONDS)
     except (OSError, KeyError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         raise TesterSetupError(f"complete guided setup could not run Il2CppDumper: {error}") from error
-    if completed.returncode or not dummy_dll.is_dir() or not dump_cs.is_file():
+    # What it produced decides this, not what it exited with.  The dumper ends a
+    # successful run with a keypress it cannot take from a captured process, so
+    # an exit code is not evidence that the dump failed -- and a run rejected on
+    # one threw away a finished DummyDll that setup would have gone on to reuse.
+    if not dummy_dll.is_dir() or not any(dummy_dll.glob("*.dll")) or not dump_cs.is_file():
         raise TesterSetupError(
             "complete guided setup needs Il2CppDumper to produce a DummyDll directory and dump.cs"
             + describe_dumper_failure(completed, output)
+        )
+    if completed.returncode:
+        kept = write_dumper_log(completed, output)
+        print(
+            f"Il2CppDumper exited with code {completed.returncode} after writing a complete dump "
+            f"to {output}; using it." + (f" {kept}" if kept else "")
         )
     return dummy_dll, dump_cs
 
@@ -962,7 +1005,7 @@ def describe_dumper_failure(completed: subprocess.CompletedProcess, output: Path
     run failed to produce, because a report from someone else's machine is worth
     more than a paraphrase of it.
     """
-    text = "\n".join(part for part in (completed.stdout, completed.stderr) if part).strip()
+    text = _dumper_output(completed)
     spoken = [
         line.strip() for line in text.splitlines()
         if line.strip() and not line.strip().startswith("at ")
@@ -971,22 +1014,45 @@ def describe_dumper_failure(completed: subprocess.CompletedProcess, output: Path
         line for line in spoken
         if "exception" in line.casefold() or "error" in line.casefold()
     ]
+    # The refused keypress is the last act of every captured run, successful or
+    # not, so it is never the fault when the run said anything else.  Reported
+    # only when nothing else was: it is then the one thing there is to go on.
+    said = [line for line in faults if _READKEY_REFUSED not in line.casefold()] or faults
     # Failing that, the last thing it managed to say: with only progress notes
     # to go on, how far it got is the whole of the evidence.
-    said = faults or spoken[-1:]
+    said = said or spoken[-1:]
+    advice = _READKEY_ADVICE if _READKEY_REFUSED in text.casefold() else ""
+    kept = write_dumper_log(completed, output)
+    kept = f" {kept}" if kept else ""
+    if not said:
+        return f" (exit code {completed.returncode}).{advice}{kept}"
+    return ", but it reported: " + " ".join(said[:3]).rstrip(".") + f".{advice}{kept}"
+
+
+def _dumper_output(completed: subprocess.CompletedProcess) -> str:
+    return "\n".join(part for part in (completed.stdout, completed.stderr) if part).strip()
+
+
+def write_dumper_log(completed: subprocess.CompletedProcess, output: Path) -> str:
+    """Keep the run beside the output it was meant to produce, and say where.
+
+    A report from someone else's machine is worth more than a paraphrase of it,
+    and that holds for a run whose files arrived despite a non-zero exit as much
+    as for one that failed: the log is what decides which of the two happened.
+    Returns an empty string when the log cannot be written, which is not itself
+    worth failing over -- the caller is already reporting something.
+    """
     log = output / "il2cppdumper-last-run.log"
     try:
         output.mkdir(parents=True, exist_ok=True)
         log.write_text(
-            "$ " + " ".join(completed.args) + f"\nexit code: {completed.returncode}\n\n{text}\n",
+            "$ " + " ".join(completed.args) + f"\nexit code: {completed.returncode}\n\n"
+            f"{_dumper_output(completed)}\n",
             encoding="utf-8",
         )
-        kept = f" The whole of its output, and the command, are in {log}."
     except OSError:
-        kept = ""
-    if not said:
-        return f" (exit code {completed.returncode}).{kept}"
-    return ", but it reported: " + " ".join(said[:3]).rstrip(".") + f".{kept}"
+        return ""
+    return f"The whole of its output, and the command, are in {log}."
 
 
 def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> str | None:
@@ -1012,6 +1078,22 @@ def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> s
             if "aarch64" in completed.stdout.lower():
                 return candidate
     return None
+
+
+def derive_archive_event_catalog(
+    battledata_tree: dict, apk_sha256: str, character_catalog: Path,
+    output: Path,
+) -> tuple[dict, list[str]]:
+    """Write and reload the guided archive catalog from user-local master data."""
+    characters = _read_json(character_catalog)
+    document, notes = build_event_catalog(
+        build_stage_metadata(battledata_tree, apk_sha256),
+        characters,
+        character_catalog,
+    )
+    write_event_catalog(output, document)
+    load_event_catalog(output, character_catalog)
+    return document, notes
 
 
 def derive_story_outcome_catalog(
@@ -1072,16 +1154,34 @@ def derive_story_outcome_catalog(
         )
         write_story_outcome_catalog(catalog_path, catalog)
         load_story_outcome_catalog(catalog_path)
+        archive_catalog, archive_notes = derive_archive_event_catalog(
+            trees["BattleData"],
+            sha256_file(apk),
+            character_catalog,
+            data_directory / DEFAULT_EVENT_CATALOG,
+        )
     except (
         NativeEncounterImportError, ScenarioEncounterImportError, StoryOutcomeGeneratorError,
-        StoryOutcomeCatalogError, CharacterCatalogImportError, OSError,
+        StoryOutcomeCatalogError, CharacterCatalogImportError, BattleDataImportError,
+        EventCatalogGeneratorError, EventCatalogError, OSError,
     ) as error:
-        raise TesterSetupError(f"complete guided setup could not derive story Companion drops: {error}") from error
+        raise TesterSetupError(
+            f"complete guided setup could not derive story and archive-event catalogs: {error}"
+        ) from error
     print(
         f"Story Companion drops: ON -- {report['core_stages_with_companion_ceiling']} story stage(s) "
         f"can mint a Companion, {report['distinct_companions']} distinct Companion(s)."
     )
     for note in notes:
+        print(f"  note: {note}")
+    archive_events = len({
+        row["event_id"] for row in archive_catalog["stages"]
+    })
+    print(
+        f"Archive Special Quests: ON -- {len(archive_catalog['stages'])} "
+        f"stage(s) across {archive_events} recovered event family/families."
+    )
+    for note in archive_notes:
         print(f"  note: {note}")
     return catalog_path
 
@@ -1227,11 +1327,15 @@ def server_arguments(
     arguments.extend((
         "--story-outcome-catalog", str((data_directory / DEFAULT_OUTCOME_CATALOG).resolve()),
     ))
-    if event_catalog is not None:
-        arguments.extend((
-            "--event-catalog", str(event_catalog.resolve()),
-            "--character-catalog", str((data_directory / "character-catalog.json").resolve()),
-        ))
+    selected_event_catalog = (
+        event_catalog
+        if event_catalog is not None
+        else data_directory / DEFAULT_EVENT_CATALOG
+    )
+    arguments.extend((
+        "--event-catalog", str(selected_event_catalog.resolve()),
+        "--character-catalog", str((data_directory / "character-catalog.json").resolve()),
+    ))
     return arguments
 
 
@@ -1253,7 +1357,10 @@ def choose_local_server_options(
     interactive API; it is deliberately never called.
     """
     print("\nLocal setup")
-    print("Story, Hunting zones, Pacts, and Companions are all enabled.")
+    print(
+        "Story, Archive Special Quests, Strikes Back, Hunting zones, Pacts, "
+        "and Companions are all enabled."
+    )
     print("Custom drop-rate controls are not available yet.")
     if event_catalog is not None:
         print(f"Reviewed local event catalog: {event_catalog}")

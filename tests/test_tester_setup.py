@@ -14,7 +14,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from liminal_gate.tester_setup import EMULATOR_LOOPBACK_HOST, MINIMUM_KEY_PASSWORD_LENGTH, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, ensure_keystore, find_build_tools, find_keytools, install_apk, prepare_local_tester, prompt_key_password, resolve_adb, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
+from liminal_gate.tester_setup import DEFAULT_EVENT_CATALOG, EMULATOR_LOOPBACK_HOST, MINIMUM_KEY_PASSWORD_LENGTH, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, derive_archive_event_catalog, ensure_keystore, find_build_tools, find_keytools, install_apk, prepare_local_tester, prompt_key_password, resolve_adb, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
 class GuidedServerPolicyTest(unittest.TestCase):
@@ -59,6 +59,47 @@ class GuidedServerPolicyTest(unittest.TestCase):
 
 
 class TesterSetupTest(unittest.TestCase):
+
+    def test_guided_archive_catalog_is_derived_and_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            characters = root / "character-catalog.json"
+            characters.write_text(
+                json.dumps({"characters": [{"character_id": 148}]}),
+                encoding="utf-8",
+            )
+            battledata = {
+                "chapters": [{
+                    "chapterNo": 2000,
+                    "sections": [{
+                        "rawStamina": 10,
+                        "coins": 0,
+                        "battleCnt": 5,
+                    }],
+                }],
+            }
+            output = root / DEFAULT_EVENT_CATALOG
+            document, notes = derive_archive_event_catalog(
+                battledata, "a" * 64, characters, output,
+            )
+            self.assertTrue(output.is_file())
+            self.assertEqual([], [
+                note for note in notes if note.startswith("bahamut_descent:")
+            ])
+            self.assertEqual(
+                {
+                    "event_id": "bahamut_descent",
+                    "flag": "sp_ch_2000",
+                    "chapter": 2000,
+                    "section": 1,
+                    "stamina": 10,
+                    "coins": 0,
+                    "clear_coins": 0,
+                    "unlock_after_chapter": 2,
+                    "character_ids": [148],
+                },
+                document["stages"][0],
+            )
 
     def test_required_dummy_dll_directory_derives_local_character_catalog(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -191,8 +232,16 @@ class TesterSetupTest(unittest.TestCase):
         self.assertIn("user-data/public_data", arguments)
         self.assertIn("0.0.0.0", arguments)
         self.assertEqual(
-            ["--story-outcome-catalog", str((Path("user-data") / "story-outcomes.json").resolve())],
-            arguments[-2:],
+            str((Path("user-data") / "story-outcomes.json").resolve()),
+            arguments[arguments.index("--story-outcome-catalog") + 1],
+        )
+        self.assertEqual(
+            str((Path("user-data") / DEFAULT_EVENT_CATALOG).resolve()),
+            arguments[arguments.index("--event-catalog") + 1],
+        )
+        self.assertEqual(
+            str((Path("user-data") / "character-catalog.json").resolve()),
+            arguments[arguments.index("--character-catalog") + 1],
         )
 
     def test_event_catalog_is_started_with_the_matching_local_character_catalog(self) -> None:

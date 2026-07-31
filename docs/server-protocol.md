@@ -90,10 +90,10 @@ returned. Stamina fallback and every other inventory slot remain exact.
 `get_server_status` returns the complete required constants object. A partial
 object is not served because client setters directly index required economy,
 version, and country fields. Hunting selector lists are added per account from
-the enabled Hunting catalog and current progress. `specialQuestList` is always
-nonempty: after Chapter 3 the bundled local Hunting policy supplies recovered
-Chapter 3003-1; a validated user-local event catalog replaces it. Before that
-threshold, a closed recovered entry suppresses the client's fixed 50-entry
+the enabled Hunting and event catalogs and current progress.
+`specialQuestList` merges the generated Archive Special Quest rows with the
+bundled Chapter 3003-1 row whenever their gates are open. Before any real row
+unlocks, a closed recovered entry suppresses the client's fixed 50-entry
 fallback, which would otherwise leak Chapter 3000 rows into Arena -> Special
 Quests. Advertised non-1000-series entries receive exact section flags rather
 than one broad chapter flag: this includes Crystal Road (3004-1) in
@@ -109,6 +109,14 @@ retry or restart cannot debit it again. `clear_quest` requires unchanged
 progress, roster, inventory, Summons, and a zero base reward because no
 server-authored reward was recovered. This is preservation policy, not a claim
 about historical event schedules or rewards.
+
+Guided setup also composes Archive Special Quests for recovered Chapters 2000,
+2001, 2002, 2004, and 2006 from the tester's own BattleData and character
+catalog. Their section economics and flags are client-derived. Permanent
+Chapter 2/4/10/13/20 unlocks, zero clear Coins, and granting the associated
+character on the first section are local archive policy. The same generic
+quest transaction provides body-scoped replay and restart persistence; no
+original-client archive clear is claimed yet.
 
 The bundled Special Quest uses that same Hunting transaction: Chapter 3003-1
 charges 5 stamina, accepts no EXP, items, or Companions, and has a local 1,800

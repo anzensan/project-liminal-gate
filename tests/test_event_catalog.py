@@ -13,6 +13,16 @@ class EventCatalogTest(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[{'character_id':3}]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'test','flag':'sp_ch_2000-1','chapter':2000,'section':1,'stamina':1,'coins':0,'clear_coins':0,'character_ids':[3]}]})); self.assertEqual((3,),load_event_catalog(e,c).stages[0].character_ids)
 
+ def test_legacy_catalog_without_unlock_cadence_remains_loadable(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[{'character_id':3}]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'test','flag':'sp_ch_2000','chapter':2000,'section':1,'stamina':1,'coins':0,'clear_coins':0,'character_ids':[3]}]})); self.assertIsNone(load_event_catalog(e,c).stages[0].unlock_after_chapter)
+
+ def test_invalid_unlock_cadence_is_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[{'character_id':3}]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'test','flag':'sp_ch_2000','chapter':2000,'section':1,'stamina':1,'coins':0,'clear_coins':0,'unlock_after_chapter':True,'character_ids':[3]}]}))
+   with self.assertRaisesRegex(EventCatalogError, "unlock_after_chapter"):
+    load_event_catalog(e,c)
+
 
 class EventFlagRuleTest(unittest.TestCase):
     """A stage's flag must be one the client will actually ask about."""

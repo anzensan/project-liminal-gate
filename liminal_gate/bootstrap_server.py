@@ -3429,22 +3429,25 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             token,
             self._client_host(),
         )
-        has_local_special_events = False
+        local_special_events: list[str] = []
         if self.server.event_catalog is not None:
             event_lists = self.server.event_catalog.client_lists(progress)
             if event_lists["specialQuestList"]:
-                constants["specialQuestList"] = event_lists["specialQuestList"]
-                has_local_special_events = True
+                local_special_events = event_lists["specialQuestList"]
+                constants["specialQuestList"] = local_special_events
             constants["descentHuntingList"] = event_lists["descentHuntingList"]
         if progress is not None and self.server.hunting_catalog is not None:
             hunting_lists = self.server.hunting_catalog.client_lists(progress)
             constants["metalHuntingList"] = hunting_lists["metalHuntingList"]
             constants["huntingHuntingList"] = hunting_lists["huntingHuntingList"]
-            # A reviewed local event catalog takes precedence over the bundled
-            # preservation slice. Below Chapter 3 keep the closed sentinel so
-            # the client never falls back to its built-in 50-row Metal list.
-            if hunting_lists["specialQuestList"] and not has_local_special_events:
-                constants["specialQuestList"] = hunting_lists["specialQuestList"]
+            # Archive rows and the bounded built-in Special Quest are separate
+            # preservation slices. Keep both when their gates are open, while
+            # preserving the closed sentinel below every unlock so the client
+            # never falls back to its built-in 50-row Metal list.
+            if hunting_lists["specialQuestList"]:
+                constants["specialQuestList"] = list(dict.fromkeys(
+                    local_special_events + hunting_lists["specialQuestList"]
+                ))
         return constants
 
     def log_message(self, format: str, *args: object) -> None:
