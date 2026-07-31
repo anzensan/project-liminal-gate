@@ -178,6 +178,16 @@ Private inputs, captures, account state, and original assets remain excluded.
   and first-section associated-character grants are not recovered schedules,
   probabilities, or complete reward tables. Original-client archive clears
   remain unverified.
+- **Confirmed local master-data projection:**
+  `user-data/derived/battledata-stages.json`, SHA-256
+  `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`,
+  was produced by `battledata_importer` for final Android 5.5.7-170 APK
+  SHA-256 `f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`.
+  `jq` grouped the recovered rows by chapter: 2000/2001/2002 each have four
+  sections at 15/25/40/40 stamina, 2004 has one at 15, 2006 has four at
+  30/35/40/40, and every Chapter 8000--8007 family has five at
+  5/10/15/15/15. All record zero entry Coins. This confirms local section
+  economics, not service-authored clear rewards.
 - **Confirmed by supplied final-APK analysis:** BattleData identifies Chapter
   3004-1 as *Crystal Road* (`クリスタルロード`): three battles and seven stamina.
   `UISpecialSelect` mode 7 reads `huntingHuntingList`, while the generic

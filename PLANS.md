@@ -43,6 +43,27 @@ Physical-device completion remains a separate boundary: Bahamut 2000-1 and
 Strikes Back 8000-1 must each visibly clear and return to free roam in the
 final client before either path is described as client-certified.
 
+Outcome:
+
+- Guided setup atomically writes `user-data/event-catalog.json` from the
+  already loaded local BattleData and matching character catalog. The standard
+  launcher passes it automatically; server-only setup discovers it only with
+  the matching `character-catalog.json`. An explicit event catalog remains an
+  override.
+- The generated archive cadence is enforced while older explicit catalogs
+  without `unlock_after_chapter` remain loadable. Archive rows merge with
+  Chapter 3003-1 instead of hiding it. Bundled Counter Descent remains the
+  first owner of every Chapter 8000--8007 section.
+- The existing user-derived BattleData projection, SHA-256
+  `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`,
+  contains all five Archive chapters and all eight five-section Strikes Back
+  chapters with the expected entry economics.
+- The warning-strict full suite passed all 635 tests in 118.402 seconds.
+  Compilation, profile JSON, endpoint YAML, and diff checks passed.
+- No APK was built or installed and no physical-client run was performed.
+  Bahamut 2000-1 and Strikes Back 8000-1 clear/result callbacks remain the next
+  client-visible evidence boundary.
+
 ## 2026-07-30 guided-setup usability remediation
 
 Objective: make `tester_setup --check` predict the exact guided setup path and

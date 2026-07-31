@@ -39,8 +39,10 @@ bundled Counter Descent remains authoritative for Strikes Back Chapters
 8000--8007. Archive gates, zero clear Coins, and first-section associated
 character grants are labeled local policy. Focused real-HTTP tests cover
 selector projection, start, body-scoped same-ID/different-body handling,
-bounded clear, replay, and restart. Physical-client Bahamut and Strikes Back
-clears remain open.
+bounded clear, replay, and restart. The warning-strict full suite passed all
+635 tests in 118.402 seconds; compilation, profile JSON, endpoint YAML, and
+diff checks passed. Physical-client Bahamut and Strikes Back clears remain
+open.
 
 Prior guided-setup validation: preflight and the real build resolve the same
 explicit or generated `(DummyDll, dump.cs)` pair and validate port and

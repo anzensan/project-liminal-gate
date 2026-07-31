@@ -44,8 +44,11 @@ machine-readable/current capability boundary.
   server-only setup discovers both together or fails clearly. Affected-domain
   real-HTTP tests cover merged selector projection, entry, body-scoped
   same-ID/different-body refusal, bounded character settlement, replay, and
-  restart for Archive and Strikes Back. Original-client Bahamut and Strikes
-  Back clears remain pending.
+  restart for Archive and Strikes Back. The existing final-client-derived
+  BattleData projection contains every advertised Archive/Strikes chapter and
+  expected section economy. The warning-strict full suite passed all 635 tests
+  in 118.402 seconds; compilation, JSON/YAML, and diff checks passed.
+  Original-client Bahamut and Strikes Back clears remain pending.
 - 2026-07-30 guided setup usability: `tester_setup --check` and the real build
   now share one complete IL2CPP-artifact resolver. A supplied `DummyDll`
   without sibling `dump.cs` fails before hashing, while a complete generated
