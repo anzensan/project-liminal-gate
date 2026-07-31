@@ -154,6 +154,251 @@ class EventRuntimeTest(unittest.TestCase):
                 restarted.close()
 
 
+class TowerRuntimeTest(unittest.TestCase):
+    """The first Tower floor uses the solo event transport and durable state."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.profile = load_profile(
+            Path(__file__).resolve().parents[1]
+            / "profiles"
+            / "legacy-client-bootstrap.json"
+        )
+        self.catalog = EventCatalog((
+            EventStage(
+                "tower_of_temptation",
+                "sp_ch_9100",
+                9100,
+                1,
+                5,
+                0,
+                0,
+                (),
+                selector="tower",
+                unlock_after_chapter=3,
+            ),
+        ))
+        self.token, self.account_id = "tower-token", "tower-account"
+        state = BootstrapState(self.state_path)
+        state.create_account(
+            self.token,
+            self.account_id,
+            {
+                "coins": 0,
+                "energy": 20,
+                "freeEnergy": 2,
+                "progressCode": 0x01000000 | (4 << 6) | 1,
+                "worldMapNo": 0,
+                "chrdata": [character(3)],
+                "itemList": [],
+                "summonList": [],
+            },
+        )
+        state.accounts[self.account_id]["tutorial_phase"] = "free_roam"
+        state._persist_locked()
+        state.close()
+        self.start_server()
+
+    def tearDown(self) -> None:
+        self.stop_server()
+        self.temporary_directory.cleanup()
+
+    def start_server(self) -> None:
+        self.server = BootstrapServer(
+            ("127.0.0.1", 0),
+            self.profile,
+            BootstrapState(self.state_path),
+            event_catalog=self.catalog,
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+
+    def stop_server(self) -> None:
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+
+    def restart(self) -> None:
+        self.stop_server()
+        self.start_server()
+
+    def get(self, path: str) -> tuple[int, dict]:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    def post(self, path: str, body: bytes) -> tuple[int, dict]:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "POST",
+            path,
+            body=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    def account(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))[
+            "accounts"
+        ][self.account_id]
+
+    def clear_body(self, *, coins: int = 0) -> bytes:
+        userdata = self.account()["userdata"]
+        return urlencode({
+            "progressCode": userdata["progressCode"],
+            "worldMapNo": userdata["worldMapNo"],
+            "valuables": json.dumps({
+                "energyAppStore": 0,
+                "energy": userdata["energy"],
+                "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"],
+                "energyGooglePlay": 0,
+                "coins": userdata["coins"] + coins,
+            }),
+            "chrdata": json.dumps(userdata["chrdata"]),
+            "itemList": json.dumps(userdata["itemList"]),
+            "summonList": json.dumps(userdata["summonList"]),
+            "battle_result": json.dumps({
+                "coins": coins,
+                "buddies": [],
+                "items": {},
+                "exp": 0,
+                "section": 1,
+                "monsters": [],
+                "summons": [],
+                "luckynum": 0,
+                "chapter": 9100,
+                "unableluckdrop": False,
+                "boostup": [0] * 6,
+            }),
+            "itmp0": 0,
+            "itmp1": 0,
+            "lastUpdate": 1,
+        }).encode()
+
+    def test_locked_floor_is_hidden_and_refused_over_http(self) -> None:
+        self.stop_server()
+        state = BootstrapState(self.state_path)
+        state.accounts[self.account_id]["userdata"]["progressCode"] = (
+            0x01000000 | (3 << 6) | 1
+        )
+        state._persist_locked()
+        state.close()
+        self.start_server()
+
+        status, server_status = self.get(
+            f"/gd/get_server_status?otk={self.token}&requestID=status-locked"
+        )
+        self.assertEqual(200, status)
+        self.assertEqual([], server_status["constants"]["towerQuestList"])
+        start = b"stamina=5&coins=0&chapter=9100&section=1&lastUpdate=1"
+        status, refused = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=locked",
+            start,
+        )
+        self.assertEqual((409, "event_stage_locked"), (status, refused["error"]))
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_visibility_entry_clear_and_restart_replay(self) -> None:
+        status, server_status = self.get(
+            f"/gd/get_server_status?otk={self.token}&requestID=status"
+        )
+        self.assertEqual(200, status)
+        constants = server_status["constants"]
+        self.assertEqual(["9100-1"], constants["towerQuestList"])
+        self.assertEqual(["3003-1"], constants["specialQuestList"])
+
+        status, login = self.get(
+            f"/gd/login?otk={self.token}&uuid={self.account_id}&requestID=login"
+        )
+        self.assertEqual(200, status)
+        self.assertIn("sp_ch_9100", login["eventFlags"])
+
+        status, multiplayer = self.get(
+            f"/gd/multiplay_enable?otk={self.token}&requestID=multiplayer"
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(
+            {"success": True, "enable": False, "enablemain": False},
+            {
+                key: multiplayer[key]
+                for key in ("success", "enable", "enablemain")
+            },
+        )
+
+        start = b"stamina=5&coins=0&chapter=9100&section=1&lastUpdate=1"
+        status, started = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=start",
+            start,
+        )
+        self.assertEqual((200, True), (status, started["success"]))
+        refill_start = self.account()["userdata"]["refillStartTime"]
+        self.assertGreater(refill_start, 0.0)
+        self.assertEqual("generic_story_active", self.account()["tutorial_phase"])
+
+        collision = b"stamina=6&coins=0&chapter=9100&section=1&lastUpdate=1"
+        status, refused = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=start",
+            collision,
+        )
+        self.assertEqual((501, "unsupported_start_quest"), (status, refused["error"]))
+        self.assertEqual(refill_start, self.account()["userdata"]["refillStartTime"])
+
+        status, retried = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=start-again",
+            start,
+        )
+        self.assertEqual((200, started), (status, retried))
+        self.assertEqual(refill_start, self.account()["userdata"]["refillStartTime"])
+
+        unknown = b"stamina=5&coins=0&chapter=9100&section=2&lastUpdate=1"
+        status, refused = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=unknown",
+            unknown,
+        )
+        self.assertEqual((501, "unsupported_start_quest"), (status, refused["error"]))
+
+        self.restart()
+        status, refused = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=bad-clear",
+            self.clear_body(coins=1),
+        )
+        self.assertEqual(
+            (409, "event_clear_wallet_conflict"),
+            (status, refused["error"]),
+        )
+        self.assertEqual("generic_story_active", self.account()["tutorial_phase"])
+
+        clear = self.clear_body()
+        status, cleared = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=clear",
+            clear,
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+        self.assertIsNone(self.account()["active_generic_story"])
+        self.assertEqual(
+            0x01000000 | (4 << 6) | 1,
+            self.account()["userdata"]["progressCode"],
+        )
+
+        self.restart()
+        self.assertEqual(
+            (status, cleared),
+            self.post(
+                f"/gd/clear_quest?otk={self.token}&requestID=clear",
+                clear,
+            ),
+        )
+
+
 class CounterDescentRuntimeTest(unittest.TestCase):
     """The standard Strikes Back slice uses the real HTTP and durable path."""
 

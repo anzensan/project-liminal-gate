@@ -105,6 +105,7 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         lists = self.catalog.client_lists(self.progress_at(7))
         self.assertEqual(["8000-1", "8001-1"], lists["descentHuntingList"])
         self.assertEqual([], lists["specialQuestList"])
+        self.assertEqual([], lists["towerQuestList"])
         self.assertEqual(
             ["sp_ch_8000", "sp_ch_8001"],
             sorted(self.catalog.flags(self.progress_at(7))),

@@ -60,11 +60,16 @@ class EventCatalog:
         }
 
     def client_lists(self, progress_code: int | None) -> dict[str, list[str]]:
-        """Project normal Special and folded Strikes Back selector rows."""
+        """Project Special, Tower, and folded Strikes Back selector rows."""
         special = [
             stage.identity_label()
             for stage in self.stages
             if stage.selector == "special" and stage.unlocked_at(progress_code)
+        ]
+        tower = [
+            stage.identity_label()
+            for stage in self.stages
+            if stage.selector == "tower" and stage.unlocked_at(progress_code)
         ]
         descent_chapters: dict[int, None] = {}
         for stage in self.stages:
@@ -75,6 +80,7 @@ class EventCatalog:
                 descent_chapters.setdefault(stage.chapter, None)
         return {
             "specialQuestList": special,
+            "towerQuestList": tower,
             # Counter Descent is a folded five-tier card. The selector receives
             # one row; the client expands the chapter's packaged sections.
             "descentHuntingList": [
@@ -236,7 +242,11 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 raw["clear_coins"],
                 tuple(grants),
                 selector=(
-                    "descent_hunting" if 8000 <= chapter <= 8007 else "special"
+                    "descent_hunting"
+                    if 8000 <= chapter <= 8007
+                    else "tower"
+                    if 9100 <= chapter <= 9102
+                    else "special"
                 ),
                 unlock_after_chapter=unlock_after_chapter,
             )

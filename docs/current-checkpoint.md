@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-07-30
+Date: 2026-07-31
 
 Mode: public-release implementation hardening.
 
@@ -17,6 +17,32 @@ Fast validation lane:
 PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
+
+Latest tutorial Pact validation: the mandatory `kind=10` draw now declares
+equal weights for Bahl (character 1) and Grace (character 3), following the
+maintainer-supplied retail rule. The selected starter commits with the roster,
+team, canonical response, and replay entry. Real-HTTP tests force each branch;
+the Bahl branch survives restart, replays without another random draw, receives
+A'misandra into `[1, 25]`, and settles the following tutorial userdata without
+introducing Grace. Legacy saves without the explicit starter retain their prior
+Grace behavior. The exact request and Grace client path are confirmed; a clean
+original-client Bahl result and continuation remain unverified, including the
+Bahl-specific packed level/EXP projection returned after Chapter 1-2. Thirty-two
+focused bootstrap/profile tests and all 641 warning-strict repository tests
+passed; compilation, structured-file, and diff checks passed.
+
+Latest Tower validation: final-client static output contains
+`towerQuestList`, `UISpecialSelect.Mode.TowerQuest`, Tower chapter-range
+handling, and Chapter 9100 battle code. Guided setup now projects only
+Chapter 9100-1 from matching user-local BattleData: five stamina, zero entry
+Coins, and a permanent Chapter 3 local gate. Focused real-HTTP tests cover
+hidden/locked refusal, selector and login flag, exact entry, body-scoped retry,
+unknown-floor refusal, rejected clear, successful settlement, restart replay,
+unchanged story progress, and the still-disabled Arena VS response.
+Original-client Tower navigation and clear remain open; Chapters 9100-2
+through 9102-15 remain unavailable. The warning-strict full suite passed all
+638 tests in 120.460 seconds; compilation, profile JSON, endpoint YAML, and
+diff checks passed.
 
 Latest clean-onboarding validation: 585 warning-strict tests passed in 112.308
 seconds. A clean public clone with no prior derived output generated IL2CPP and
@@ -151,8 +177,9 @@ Fellowship/Fate ticket draw and Crystal Road 3004-1; Issue 25 reporter
 acceptance after the observed 1,800-Coin Special Quest settlement; the first
 reproducible original-client failure after Chapter 8-4; the
 Archive Chapter 2000-1 navigation/clear and associated-character result;
-the Strikes Back Chapter 8000-1 clear callback; and the Hunting selector flash
-after its rows render. An optional later boundary is one converted solo
-Eidolon quest result with before/after collectible state. The Hunting flash
+the Strikes Back Chapter 8000-1 clear callback; Tower 9100-1 navigation and
+clear; and the Hunting selector flash after its rows render. An optional later
+boundary is one converted solo Eidolon quest result with before/after
+collectible state. The Hunting flash
 produced no corresponding server resource request or 404 and needs a client
 runtime capture.

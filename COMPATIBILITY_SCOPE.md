@@ -15,18 +15,18 @@ only this bootstrap and initial-account boundary:
 | Resume userdata refresh | `GET /gd/userdata_after_close` | Requires an `otk` bound by signup or login. | Signed authoritative local userdata projection, identical in shape to ordinary userdata. |
 | Local multiplayer capability | `GET /gd/multiplay_enable` | Requires nonempty `otk`. | Signed `success:true`, `enable:false`, `enablemain:false`; multiplayer is explicitly unavailable locally. |
 | Special-event parameters | `GET /gd/get_special_event_param` | Requires nonempty `otk`. | Signed `success:true` with no event rows, representing no active live events. |
-| Tutorial summon 1 | `POST /gd/do_slot` | Requires the exact `kind=10` form and request identity after initial userdata. | Signed deterministic Grace result, local team `[3]`, and durable character state. |
-| Tutorial summon 2 | `POST /gd/do_slot` | Requires the exact `kind=11` form and request identity after tutorial summon 1. | Signed deterministic A'misandra level-15 result, local team `[3, 25]`, and durable character state. |
-| Tutorial state write | `POST /gd/userdata` | Requires the exact ordered ten-field form and request identity after tutorial summon 2. Equivalent URL escaping is accepted only when it decodes to the same field sequence. | Signed `lastupdate: 1.0`; atomically records the Chapter 1 transition state. |
+| Tutorial summon 1 | `POST /gd/do_slot` | Requires the exact `kind=10` form and request identity after initial userdata. | Signed equal-weight Bahl (ID 1) or Grace (ID 3) result. The selected starter, local team, response, and replay record commit atomically. |
+| Tutorial summon 2 | `POST /gd/do_slot` | Requires the exact `kind=11` form and request identity after tutorial summon 1. | Signed deterministic A'misandra level-15 result, local team `[starter, 25]`, and durable character state. |
+| Tutorial state write | `POST /gd/userdata` | Requires the exact ordered ten-field form for the selected Bahl or Grace branch and request identity after tutorial summon 2. Equivalent URL escaping is accepted only when it decodes to the same field sequence. | Signed `lastupdate: 1.0`; atomically records the Chapter 1 transition state without replacing the selected starter. |
 | Map-reveal write | `POST /gd/userdata` | Requires the exact three-field form and request identity after the tutorial state write. | Signed `lastupdate: 1.0`; atomically records Chapter 1 map progress `16777281`. |
 | Chapter 1-1 start | `POST /gd/start_quest` | Requires the exact five-field Chapter 1-1 form and request identity after the map-reveal write. | Signed `success: true` and JSON-double `refillStartTime: 0.0`; atomically records the active battle phase. |
 | Chapter 1-1 clear | `POST /gd/clear_quest` | Requires the confirmed ordered ten-field clear grammar and request identity after the Chapter 1-1 start. Structured client-state fields must decode as their observed JSON types. | Signed `success: true` and JSON-double `lastupdate: 1.0`; atomically records Chapter 1-1 completion/progress and the reviewed local coin result. |
 | Tavern Tutorial02 | `POST /gd/do_slot` | Requires the exact `kind=12` form and request identity after Chapter 1-1 clear. | Signed deterministic Knight level-10 result and durable local character state. |
 | Knight state write | `POST /gd/userdata` | Requires ordered `chrdata`, `lastUpdate=1` after Tutorial02; `chrdata` must decode as JSON array. | Signed `lastupdate: 1.0`; atomically records the acknowledgement without importing client character state. |
-| Knight party write | `POST /gd/userdata` | Requires the confirmed ordered eight-field party grammar after the Knight state write; structured fields must decode as JSON arrays. | Signed `lastupdate: 1.0`; atomically records local team `[3, 25, 64, 0, 0, 0]`. |
+| Knight party write | `POST /gd/userdata` | Requires the confirmed ordered eight-field party grammar after the Knight state write; structured fields must decode as JSON arrays. | Signed `lastupdate: 1.0`; atomically records local team `[starter, 25, 64, 0, 0, 0]`. |
 | Chapter 1-2 start | `POST /gd/start_quest` | Requires the exact five-field section-2 form after Knight party formation. | Signed `success: true` and JSON-double `refillStartTime: 0.0`; atomically records the active battle phase. |
 | Chapter 1-2 clear | `POST /gd/clear_quest` | Requires the confirmed ordered ten-field clear grammar after Chapter 1-2 start. | Signed full roster replacement, `lastupdate: 1.0`, and `sentMessage: false`; atomically records Warrior/progress. |
-| Warrior party write | `POST /gd/userdata` | Requires the confirmed ordered eight-field party grammar after Warrior grant. | Signed `lastupdate: 1.0`; atomically records local team `[3,25,64,63,0,0]`. |
+| Warrior party write | `POST /gd/userdata` | Requires the confirmed ordered eight-field party grammar after Warrior grant. | Signed `lastupdate: 1.0`; atomically records local team `[starter,25,64,63,0,0]`. |
 | Chapter 1-3 start | `POST /gd/start_quest` | Requires the exact five-field section-3 form after Warrior party formation. | Signed `success: true` and JSON-double `refillStartTime: 0.0`; atomically records active battle phase. |
 | Chapter 1-3 clear | `POST /gd/clear_quest` | Requires the confirmed ordered ten-field clear grammar after Chapter 1-3 start. | Signed `lastupdate: 1.0` and `sentMessage: false`; atomically records reviewed progress/coins. |
 | Chapter 1-4 start/clear | `POST /gd/start_quest`, `POST /gd/clear_quest` | Exact five-field section-4 start followed by confirmed structural clear grammar. | Minimal signed start callback; clear records progress `16777285`, coins, and `sentMessage:false`. |
@@ -96,9 +96,14 @@ distinct request. The file is not a session or cookie store.
   floating-point timestamp requirement: confirmed against the surviving client.
 - The signup → login → userdata transport progression and minimal accepted
   response types: confirmed for the supported initial-account boundary.
-- The exact tutorial summon forms, result types, and client acceptance:
-  confirmed. The scripted Grace/A'misandra selection is local preservation
-  policy, not a claim about historical production reward selection.
+- The exact tutorial summon forms, result types, and Grace-path client
+  acceptance are confirmed. The maintainer identifies the retail first-Pact
+  distribution as equal-weight Bahl or Grace; that historical rule is
+  operator-supplied rather than independently captured in this public source.
+  Both branches, one-time random choice, byte-stable restart replay, and Bahl's
+  continuation through the next Pact and state write are real-HTTP tested.
+  Original-client Bahl-path acceptance remains pending, including its packed
+  starter level/EXP projection after Chapter 1-2.
 - The exact map-reveal form, progress transition, and client acceptance:
   confirmed.
 - The exact Chapter 1-1 start form, minimal response types, and client

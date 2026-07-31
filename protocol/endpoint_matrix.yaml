@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-07-30"
+updated: "2026-07-31"
 canonical_client_boundary: "Chapter 2-1 clear"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -15,7 +15,7 @@ capabilities:
   - family: tutorial_story
     routes: [do_slot, userdata, start_quest, clear_quest]
     status: confirmed
-    note: "post-Chapter-1-1 Tutorial03 restore userdata is phase-preserving and restart-tested; reporter retest pending"
+    note: "first kind=10 Pact uses the maintainer-supplied retail 50/50 Bahl-or-Grace rule with one-time durable selection and byte-stable restart replay; Grace is client-confirmed, original-client Bahl continuation is pending; post-Chapter-1-1 Tutorial03 restore remains phase-preserving and restart-tested"
     transport_tests: true
     restart_tests: true
   - family: ordinary_story_chapter_2_to_42
@@ -49,7 +49,13 @@ capabilities:
   - family: local_events
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006; bundled Strikes Back Chapters 8000-8007 remain authoritative; original-client clears are pending"
+    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006 plus bounded Tower 9100-1; bundled Strikes Back Chapters 8000-8007 remain authoritative; original-client clears are pending"
+    transport_tests: true
+    restart_tests: true
+  - family: tower_vertical_slice
+    routes: [get_server_status, login, start_quest, clear_quest]
+    status: local_policy
+    note: "only 9100-1 is projected after Chapter 3; 9100 mapping is strongly inferred from final-client static and BattleData evidence; original-client navigation and clear are pending"
     transport_tests: true
     restart_tests: true
   - family: multiplayer_social_commerce

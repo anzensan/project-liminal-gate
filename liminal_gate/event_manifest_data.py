@@ -36,6 +36,21 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
     ("eight_bit_hiso_alien_strikes_back", "sp_ch_8007", 8007, 12, ()),
 )
 
+# event_id, flag, chapter, section, unlock_after_chapter
+#
+# The first Tower floor is deliberately separate from EVENT_MANIFEST_ROWS:
+# those rows expand an entire recovered event chapter, while Tower remains a
+# one-floor compatibility experiment until the surviving client proves how its
+# dedicated selector advances. Chapter 3 is a permanent local archive gate,
+# not a recovered Tower schedule.
+TOWER_VERTICAL_SLICE: tuple[str, str, int, int, int] = (
+    "tower_of_temptation",
+    "sp_ch_9100",
+    9100,
+    1,
+    3,
+)
+
 # BattleData records a start cost for each event section but no clear reward, so
 # an event clear credits no Coins. This is the same reading applied to Dragon and
 # Machine Road, which settle at zero for the same reason: it reports what the

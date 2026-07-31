@@ -1166,7 +1166,7 @@ def derive_story_outcome_catalog(
         EventCatalogGeneratorError, EventCatalogError, OSError,
     ) as error:
         raise TesterSetupError(
-            f"complete guided setup could not derive story and archive-event catalogs: {error}"
+            f"complete guided setup could not derive story and local-event catalogs: {error}"
         ) from error
     print(
         f"Story Companion drops: ON -- {report['core_stages_with_companion_ceiling']} story stage(s) "
@@ -1178,8 +1178,8 @@ def derive_story_outcome_catalog(
         row["event_id"] for row in archive_catalog["stages"]
     })
     print(
-        f"Archive Special Quests: ON -- {len(archive_catalog['stages'])} "
-        f"stage(s) across {archive_events} recovered event family/families."
+        f"Archive Special Quests and Tower: ON -- {len(archive_catalog['stages'])} "
+        f"stage(s) across {archive_events} local event family/families."
     )
     for note in archive_notes:
         print(f"  note: {note}")
@@ -1358,8 +1358,8 @@ def choose_local_server_options(
     """
     print("\nLocal setup")
     print(
-        "Story, Archive Special Quests, Strikes Back, Hunting zones, Pacts, "
-        "and Companions are all enabled."
+        "Story, Archive Special Quests, Tower, Strikes Back, Hunting zones, "
+        "Pacts, and Companions are all enabled."
     )
     print("Custom drop-rate controls are not available yet.")
     if event_catalog is not None:

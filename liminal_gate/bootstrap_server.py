@@ -276,6 +276,11 @@ class MutationDispatch:
 
 MutationOperation = Callable[[], tuple[str, dict[str, Any] | None]]
 BODY_TRANSITION_FIELDS = frozenset({"body", "phase", "next_phase", "response"})
+TUTORIAL_SUMMON_BASE_FIELDS = frozenset({"body", "phase", "next_phase"})
+TUTORIAL_SUMMON_OUTCOME_FIELDS = frozenset({
+    "weight", "starter_character_id", "response",
+})
+TUTORIAL_STARTER_TOKEN = "{{tutorial_starter_id}}"
 STRUCTURAL_TRANSITION_FIELDS = frozenset({
     "field_names",
     "fixed_fields",
@@ -297,6 +302,93 @@ def _valid_body_transition(item: object) -> bool:
         and isinstance(item["next_phase"], str)
         and isinstance(item["response"], dict)
     )
+
+
+def _valid_tutorial_summon_transition(item: object) -> bool:
+    if not isinstance(item, dict):
+        return False
+    fields = frozenset(item)
+    if fields == BODY_TRANSITION_FIELDS:
+        return _valid_body_transition(item)
+    if fields != TUTORIAL_SUMMON_BASE_FIELDS | {"outcomes"}:
+        return False
+    outcomes = item["outcomes"]
+    return (
+        isinstance(item["body"], str)
+        and isinstance(item["phase"], str)
+        and isinstance(item["next_phase"], str)
+        and isinstance(outcomes, list)
+        and bool(outcomes)
+        and all(
+            isinstance(outcome, dict)
+            and frozenset(outcome) == TUTORIAL_SUMMON_OUTCOME_FIELDS
+            and type(outcome["weight"]) is int
+            and outcome["weight"] > 0
+            and type(outcome["starter_character_id"]) is int
+            and outcome["starter_character_id"] > 0
+            and isinstance(outcome["response"], dict)
+            and isinstance(outcome["response"].get("chrdata"), list)
+            and len(outcome["response"]["chrdata"]) == 1
+            and outcome["response"]["chrdata"][0].get("id")
+                == outcome["starter_character_id"]
+            and isinstance(outcome["response"].get("teamMembers"), list)
+            and outcome["response"]["teamMembers"]
+                == [outcome["starter_character_id"]]
+            for outcome in outcomes
+        )
+    )
+
+
+def _tutorial_starter_id(account: dict[str, Any]) -> int:
+    """Resolve new explicit starter state or an older Grace-only save."""
+    stored = account.get("tutorial_starter_character_id")
+    if type(stored) is int and stored > 0:
+        return stored
+    for row in account.get("userdata", {}).get("chrdata", []):
+        if isinstance(row, dict) and row.get("id") in {1, 3}:
+            return int(row["id"])
+    # Saves made before the weighted rule have no field and could only contain
+    # the old deterministic Grace path.
+    return 3
+
+
+def _resolve_tutorial_template(value: Any, starter_character_id: int) -> Any:
+    """Resolve the durable starter in profile-declared tutorial projections."""
+    if isinstance(value, str):
+        if value == TUTORIAL_STARTER_TOKEN:
+            return starter_character_id
+        return value.replace(TUTORIAL_STARTER_TOKEN, str(starter_character_id))
+    if isinstance(value, list):
+        return [
+            _resolve_tutorial_template(item, starter_character_id)
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _resolve_tutorial_template(item, starter_character_id)
+            for key, item in value.items()
+        }
+    return copy.deepcopy(value)
+
+
+def _select_tutorial_response(
+    transition: dict[str, Any],
+) -> tuple[dict[str, Any], int | None]:
+    """Select once; the caller commits the chosen response into replay state."""
+    if "response" in transition:
+        return copy.deepcopy(transition["response"]), None
+    outcomes = transition["outcomes"]
+    threshold = random.SystemRandom().randrange(
+        sum(outcome["weight"] for outcome in outcomes)
+    )
+    for outcome in outcomes:
+        if threshold < outcome["weight"]:
+            return (
+                copy.deepcopy(outcome["response"]),
+                outcome["starter_character_id"],
+            )
+        threshold -= outcome["weight"]
+    raise AssertionError("validated tutorial outcome weights must select a response")
 
 
 def _valid_structural_transition(item: object) -> bool:
@@ -375,11 +467,18 @@ def load_profile(path: Path) -> BootstrapProfile:
         if not isinstance(tutorial_summons, list) or not tutorial_summons:
             raise ProfileError("tutorial_summons must be a nonempty list when do_slot is enabled")
         if not all(
-            isinstance(item, dict) and item.keys() == BODY_TRANSITION_FIELDS
+            isinstance(item, dict)
+            and frozenset(item) in {
+                BODY_TRANSITION_FIELDS,
+                TUTORIAL_SUMMON_BASE_FIELDS | {"outcomes"},
+            }
             for item in tutorial_summons
         ):
-            raise ProfileError("every tutorial summon must define body, phase, next_phase, and response")
-        if not all(_valid_body_transition(item) for item in tutorial_summons):
+            raise ProfileError(
+                "every tutorial summon must define body, phase, next_phase, "
+                "and either response or outcomes"
+            )
+        if not all(_valid_tutorial_summon_transition(item) for item in tutorial_summons):
             raise ProfileError("tutorial summon values have invalid types")
         if len({item["body"] for item in tutorial_summons}) != len(tutorial_summons):
             raise ProfileError("tutorial summon bodies must be unique")
@@ -1270,6 +1369,11 @@ class BootstrapState:
                 if cached.get("body_sha256") != body_hash:
                     return "request_collision", None
                 return "replay", copy.deepcopy(cached["payload"])
+            starter_character_id = _tutorial_starter_id(account)
+            transitions = tuple(
+                _resolve_tutorial_template(item, starter_character_id)
+                for item in transitions
+            )
             if kind in {"summon", "start"}:
                 transition = next(
                     (item for item in transitions if item["body"].encode("utf-8") == body), None
@@ -1311,7 +1415,13 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             if account.setdefault("tutorial_phase", "initial") != transition["phase"]:
                 return "tutorial_state_conflict", None
-            payload = copy.deepcopy(transition["response"])
+            payload, selected_starter = _select_tutorial_response(transition)
+            if selected_starter is not None:
+                account["tutorial_starter_character_id"] = selected_starter
+            # State files sort object keys. Canonicalizing before the first
+            # response keeps a retry byte-identical after a full restart,
+            # including a weighted result selected only on the first request.
+            payload = _canonical_payload(payload)
             userdata = account["userdata"]
             if kind == "summon" and "chrdata" in payload:
                 existing = {item.get("id"): item for item in userdata.get("chrdata", []) if isinstance(item, dict)}
@@ -2588,6 +2698,13 @@ class BootstrapState:
                 not isinstance(account["tutorial_phase"], str)
                 or not isinstance(account["tutorial_requests"], dict)
                 or type(account["initial_userdata_served"]) is not bool
+                or (
+                    "tutorial_starter_character_id" in account
+                    and (
+                        type(account["tutorial_starter_character_id"]) is not int
+                        or account["tutorial_starter_character_id"] <= 0
+                    )
+                )
                 or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
                 or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
                 or account["active_hunt_ticket_spent"] is not None and type(account["active_hunt_ticket_spent"]) is not bool
@@ -3424,6 +3541,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "metalHuntingList": [],
             "huntingHuntingList": [],
             "descentHuntingList": [],
+            "towerQuestList": [],
         }
         progress = self.server.state.progress_for_status(
             token,
@@ -3436,6 +3554,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 local_special_events = event_lists["specialQuestList"]
                 constants["specialQuestList"] = local_special_events
             constants["descentHuntingList"] = event_lists["descentHuntingList"]
+            constants["towerQuestList"] = event_lists["towerQuestList"]
         if progress is not None and self.server.hunting_catalog is not None:
             hunting_lists = self.server.hunting_catalog.client_lists(progress)
             constants["metalHuntingList"] = hunting_lists["metalHuntingList"]

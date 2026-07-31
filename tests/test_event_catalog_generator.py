@@ -22,7 +22,11 @@ from liminal_gate.event_catalog_generator import (
     EventCatalogGeneratorError,
     build_catalog,
 )
-from liminal_gate.event_manifest_data import EVENT_CLEAR_COINS, EVENT_MANIFEST_ROWS
+from liminal_gate.event_manifest_data import (
+    EVENT_CLEAR_COINS,
+    EVENT_MANIFEST_ROWS,
+    TOWER_VERTICAL_SLICE,
+)
 
 
 def _battledata(*chapters: int) -> dict:
@@ -75,6 +79,24 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual((148,), by_section[1])
         self.assertEqual((), by_section[2])
 
+    def test_tower_vertical_slice_projects_only_the_first_floor(self) -> None:
+        battledata = _battledata(9100)
+        battledata["stages"][0]["stamina"] = 5
+        battledata["stages"][1]["stamina"] = 10
+        _, _, loaded = self._generate(battledata, ())
+        self.assertEqual([(9100, 1)], sorted(loaded.by_identity()))
+        before = 0x01000000 | (3 << 6) | 1
+        after = 0x01000000 | (4 << 6) | 1
+        self.assertEqual([], loaded.client_lists(before)["towerQuestList"])
+        self.assertEqual(
+            ["9100-1"],
+            loaded.client_lists(after)["towerQuestList"],
+        )
+        stage = loaded.by_identity()[(9100, 1)]
+        self.assertEqual(5, stage.stamina)
+        self.assertEqual("tower", stage.selector)
+        self.assertEqual(TOWER_VERTICAL_SLICE[4], stage.unlock_after_chapter)
+
     def test_grant_absent_from_the_local_catalog_is_omitted_and_reported(self) -> None:
         # The user-input boundary: grants are validated, never asserted.
         document, notes, loaded = self._generate(_battledata(2000), ())
@@ -87,10 +109,15 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertTrue(any("skipped" in note for note in notes))
 
     def test_every_manifest_chapter_is_supported(self) -> None:
-        chapters = tuple(row[2] for row in EVENT_MANIFEST_ROWS)
+        chapters = tuple(row[2] for row in EVENT_MANIFEST_ROWS) + (
+            TOWER_VERTICAL_SLICE[2],
+        )
         _, notes, loaded = self._generate(_battledata(*chapters), ())
         self.assertEqual(set(chapters), {stage.chapter for stage in loaded.stages})
-        self.assertEqual(len(EVENT_MANIFEST_ROWS), len({stage.event_id for stage in loaded.stages}))
+        self.assertEqual(
+            len(EVENT_MANIFEST_ROWS) + 1,
+            len({stage.event_id for stage in loaded.stages}),
+        )
         self.assertFalse([note for note in notes if "skipped" in note])
 
     def test_event_clears_credit_no_coins(self) -> None:

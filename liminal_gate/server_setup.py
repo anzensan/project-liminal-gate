@@ -137,7 +137,7 @@ def resolve_companion_equipment_catalog(
 def resolve_event_catalog(
     requested: Path | None, data_directory: Path,
 ) -> Path | None:
-    """Choose a generated archive-event catalog and require its hash authority."""
+    """Choose a generated archive/Tower catalog and require its hash authority."""
     candidate = (
         requested.resolve()
         if requested is not None
@@ -311,11 +311,11 @@ def main() -> int:
         )
         if event_catalog is None:
             print(
-                "Archive Special Quests: OFF (no generated event catalog; "
+                "Archive Special Quests and Tower: OFF (no generated event catalog; "
                 "bundled Strikes Back remains enabled)"
             )
         else:
-            print(f"Archive Special Quests: ON from {event_catalog}")
+            print(f"Archive Special Quests and Tower: ON from {event_catalog}")
         if args.prepare_only:
             return 0
         print(

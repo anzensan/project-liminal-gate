@@ -91,23 +91,50 @@
       "body": "kind=10&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
       "phase": "initial",
       "next_phase": "grace_granted",
-      "response": {
-        "success": true,
-        "coins": 0,
-        "energy": 0,
-        "freeEnergy": 0,
-        "teamMembers": [3],
-        "chrdata": [
-          {
-            "id": 3,
-            "jobID": 0,
-            "jobLevels": [1],
-            "jobSlots": [],
-            "isNew": true,
-            "levelAdded": 1
+      "outcomes": [
+        {
+          "weight": 1,
+          "starter_character_id": 1,
+          "response": {
+            "success": true,
+            "coins": 0,
+            "energy": 0,
+            "freeEnergy": 0,
+            "teamMembers": [1],
+            "chrdata": [
+              {
+                "id": 1,
+                "jobID": 0,
+                "jobLevels": [1],
+                "jobSlots": [],
+                "isNew": true,
+                "levelAdded": 1
+              }
+            ]
           }
-        ]
-      }
+        },
+        {
+          "weight": 1,
+          "starter_character_id": 3,
+          "response": {
+            "success": true,
+            "coins": 0,
+            "energy": 0,
+            "freeEnergy": 0,
+            "teamMembers": [3],
+            "chrdata": [
+              {
+                "id": 3,
+                "jobID": 0,
+                "jobLevels": [1],
+                "jobSlots": [],
+                "isNew": true,
+                "levelAdded": 1
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "body": "kind=11&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
@@ -118,7 +145,7 @@
         "coins": 0,
         "energy": 0,
         "freeEnergy": 0,
-        "teamMembers": [3, 25],
+        "teamMembers": ["{{tutorial_starter_id}}", 25],
         "chrdata": [
           {
             "id": 25,
@@ -140,7 +167,7 @@
         "coins": 0,
         "energy": 0,
         "freeEnergy": 0,
-        "teamMembers": [3, 25],
+        "teamMembers": ["{{tutorial_starter_id}}", 25],
         "chrdata": [
           {
             "id": 64,
@@ -160,7 +187,7 @@
         ["progressCode", "50331713"],
         ["worldMapNo", "0"],
         ["chrdata", "[{\"id\":25,\"buddy\":0,\"date\":0.0,\"jobSlots\":[0.0,0.0,0.0],\"jobLevels\":[344051727.0,0.0,0.0],\"jobID\":0,\"flags\":0,\"skillBoost\":0}]"],
-        ["teamMembers", "[3,25,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0]"],
+        ["teamMembers", "[{{tutorial_starter_id}},25,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0,{{tutorial_starter_id}},0,0,0,0,0]"],
         ["teamMembers_VS", "[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"],
         ["teamBuddies_VS", "[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"],
         ["teamNo", "1"],
@@ -178,7 +205,7 @@
         "lastupdate": 1.0,
         "progressCode": 50331713,
         "worldMapNo": 0,
-        "teamMembers": [3, 25, 0, 0, 0, 0]
+        "teamMembers": ["{{tutorial_starter_id}}", 25, 0, 0, 0, 0]
       }
     },
     {
@@ -336,7 +363,7 @@
         "success": true,
         "lastupdate": 1.0,
         "chrdata": [
-          {"id": 3, "jobID": 0, "jobLevels": [3145731.0, 0.0, 0.0], "jobSlots": [], "flags": 0},
+          {"id": "{{tutorial_starter_id}}", "jobID": 0, "jobLevels": [3145731.0, 0.0, 0.0], "jobSlots": [], "flags": 0},
           {"id": 25, "jobID": 0, "jobLevels": [347197455.0, 0.0, 0.0], "jobSlots": [], "flags": 0},
           {"id": 64, "jobID": 0, "jobLevels": [69689354.0, 0.0, 0.0], "jobSlots": [], "flags": 1},
           {"id": 63, "jobID": 0, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [], "flags": 0, "isNew": true, "levelAdded": 1}
@@ -348,7 +375,7 @@
         "progressCode": 16777283,
         "worldMapNo": 0,
         "coins": 50,
-        "teamMembers": [3, 25, 64, 0, 0, 0]
+        "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 0, 0, 0]
       }
     },
     {
@@ -358,7 +385,7 @@
       "phase": "chapter1_3_active",
       "next_phase": "chapter1_3_cleared",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777284, "worldMapNo": 0, "coins": 90, "teamMembers": [3, 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777284, "worldMapNo": 0, "coins": 90, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
     },
     {
       "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
@@ -367,7 +394,7 @@
       "phase": "chapter1_4_active",
       "next_phase": "chapter1_4_cleared",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777285, "worldMapNo": 0, "coins": 140, "teamMembers": [3, 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777285, "worldMapNo": 0, "coins": 140, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
     },
     {
       "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
@@ -376,7 +403,7 @@
       "phase": "chapter1_5_active",
       "next_phase": "chapter1_5_cleared",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 50331777, "worldMapNo": 0, "coins": 218, "teamMembers": [3, 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 50331777, "worldMapNo": 0, "coins": 218, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
     },
     {
       "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
@@ -385,7 +412,7 @@
       "phase": "chapter2_1_active",
       "next_phase": "free_roam",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777346, "worldMapNo": 0, "coins": 210, "valuables": {"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 210}, "teamMembers": [3, 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777346, "worldMapNo": 0, "coins": 210, "valuables": {"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 210}, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
     }
   ],
   "structural_writes": [
@@ -414,7 +441,7 @@
       "phase": "knight_written",
       "next_phase": "knight_party",
       "response": {"success": true, "lastupdate": 1.0},
-      "userdata_update": {"lastupdate": 1.0, "teamMembers": [3, 25, 64, 0, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 0, 0, 0]}
     },
     {
       "field_names": ["chrdata", "teamMembers", "teamMembers_VS", "teamBuddies_VS", "teamNo", "teamNo_VS", "summonId", "lastUpdate"],
@@ -423,7 +450,7 @@
       "phase": "warrior_granted",
       "next_phase": "warrior_party",
       "response": {"success": true, "lastupdate": 1.0},
-      "userdata_update": {"lastupdate": 1.0, "teamMembers": [3, 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
     },
     {
       "field_names": ["teamMembers", "teamMembers_VS", "teamBuddies_VS", "teamNo", "teamNo_VS", "summonId", "lastUpdate"],

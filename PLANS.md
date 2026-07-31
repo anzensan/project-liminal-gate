@@ -1,5 +1,121 @@
 # Execution Plans
 
+## 2026-07-31 retail first-Pact Bahl or Grace outcome
+
+Objective: make the mandatory `kind=10` tutorial Pact choose Bahl or Grace at
+equal weight while keeping the selected starter durable through the remaining
+tutorial, exact retry, and restart paths.
+
+Evidence boundary:
+
+- The final-client request form, response field types, and accepted Grace path
+  are already captured and client-confirmed.
+- The maintainer identifies the retail first-Pact rule as a 50/50 Bahl-or-Grace
+  choice. This is operator-supplied historical evidence; the public repository
+  does not contain an independent retail response capture for both branches.
+- User-local derived names identify Bahl as character 1 and Grace as character
+  3. No original or derived private input will be committed.
+- The existing profile embeds Grace in later tutorial party projections, so a
+  first-response-only edit would create an invalid Bahl continuation.
+
+Required proof:
+
+1. Declare two equal-weight, strictly validated first-Pact outcomes with the
+   existing response shape and persist the selected starter in account state.
+2. Resolve later tutorial response, party, and transition templates from that
+   durable starter while preserving legacy Grace saves that lack the new field.
+3. Exercise Bahl and Grace over real HTTP; prove the random branch is selected
+   once, exact retry is byte-stable without another roll, and restart retains
+   both the response and starter identity.
+4. Prove Bahl continues through the second tutorial Pact and first tutorial
+   userdata settlement without introducing an unowned Grace party member.
+5. Update the compatibility contract, endpoint matrix, checkpoint, status, and
+   findings; run focused tests, the warning-strict full suite, compilation,
+   structured-file checks, and diff review.
+
+Original-client completion remains separate: a clean final client must visibly
+receive both outcomes across controlled fresh accounts, continue through the
+tutorial on Bahl, and retain the selected starter after a full service/client
+restart.
+
+Outcome:
+
+- The bundled profile now declares Bahl (character 1) and Grace (character 3)
+  as two positive weight-1 outcomes for the exact first `kind=10` form.
+- The selected starter, roster/team projection, canonical response, and replay
+  entry commit together. An exact retry does not select again and returns the
+  same signed bytes after a full server restart.
+- Later tutorial response and party templates resolve from the durable starter.
+  A forced Bahl real-HTTP path continued through A'misandra and the following
+  tutorial userdata settlement without introducing Grace. A forced Grace run
+  completed the existing scripted path through Chapter 2-1, and an older
+  Grace-only state with no starter field continued successfully.
+- Thirty-two focused bootstrap/profile tests passed. The warning-strict full
+  suite passed all 641 tests in 122.438 seconds. Compilation, profile JSON,
+  endpoint YAML, and diff checks passed.
+- No APK was built or installed. Original-client Bahl acceptance and its later
+  packed level/EXP projection remain the next evidence boundary.
+
+## 2026-07-30 Tower of Temptation 9100-1 vertical slice
+
+Objective: make the first recovered Tower of Temptation floor visible and
+settleable through the final client's solo Tower selector without enabling
+Arena VS or claiming the retired Tower schedule and rewards.
+
+Evidence boundary:
+
+- Final-client static output contains `ServerConstants.towerQuestList`,
+  `UISpecialSelect.Mode.TowerQuest`, and the
+  `ChapterInterface.TowerOfTemptationChapter` range check. The derived
+  `dump.cs` has SHA-256
+  `093b32f0015b1498be710fef7c857634ee1350b2ed065c55ae12b02bcb062a34`.
+- BattleData derived from final Android APK SHA-256
+  `f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`
+  records Chapter 9100 Section 1 as a five-battle, five-stamina, zero-Coin
+  stage. The derived projection has SHA-256
+  `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`.
+- The selector, Tower-specific range, Chapter 9100 program, and 15-section
+  structure strongly support the 9100 mapping, but no original-client Tower
+  navigation or clear has been captured.
+- Permanent availability after Chapter 3 and zero clear Coins are explicit
+  local preservation policy. No Tower item, Companion, character, ranking, or
+  historical schedule is invented.
+
+Required proof:
+
+1. Generate only Chapter 9100-1 as the bounded first Tower work packet from
+   the tester's matching BattleData; leave the other 44 recovered 9100--9102
+   floors unavailable.
+2. Project `towerQuestList` and its exact `sp_ch_9100` login flag only after
+   the local Chapter 3 gate, without changing `multiplay_enable` or any Arena
+   VS route.
+3. Prove exact entry economics, locked/unknown-stage refusal, one-active-quest
+   behavior, body-scoped retries, rejected clear stability, successful clear,
+   replay, and restart over real HTTP.
+4. Update the endpoint matrix, checkpoint, status, findings, and setup
+   documentation; run focused tests, the warning-strict full suite,
+   compilation, structured-file checks, and diff review.
+
+Original-client completion remains separate: the final client must visibly
+open Tower, enter 9100-1, clear it, return to free roam, and retain the result
+after server/client restart before this slice is described as client-certified.
+
+Outcome:
+
+- Guided setup now derives only 9100-1 from matching user-local BattleData and
+  projects it through `towerQuestList` after the Chapter 3 local gate.
+- The exact five-stamina, zero-Coin start enters the shared event transaction;
+  clear preserves story progress, returns to `free_roam`, and replays across
+  restart. Unknown Tower floors remain explicitly unsupported.
+- Focused real-HTTP tests cover hidden/locked refusal, selector and login flag,
+  exact entry, body-scoped same-ID/different-body refusal, retry without a
+  second debit, rejected clear, successful clear, and restart replay. The same
+  test confirms `multiplay_enable` remains false.
+- The warning-strict full suite passed all 638 tests in 120.460 seconds.
+  Compilation, profile JSON, endpoint YAML, and diff checks passed.
+- No APK was built or installed. Original-client Tower navigation and clear
+  remain the next evidence boundary.
+
 ## 2026-07-30 guided Archive Special Quests and Strikes Back
 
 Objective: make the five recovered Archive Special Quest families and the

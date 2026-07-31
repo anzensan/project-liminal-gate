@@ -3,6 +3,33 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## First tutorial Pact outcome
+
+- **Confirmed transport and existing client boundary:** the surviving client
+  sends the exact ordered `kind=10&count=1&luckType=false&campaignChrID=0&`
+  `eventFlag=0&lastUpdate=1` form after initial userdata. The Grace result shape
+  and continuation are client-confirmed.
+- **Maintainer-supplied retail behavior:** the first pull was an equal Bahl or
+  Grace choice. The operator's private derived name catalog identifies Bahl as
+  character 1 and Grace as character 3; no private catalog is committed. The
+  public repository does not yet contain independent raw retail responses for
+  both outcomes.
+- **Confirmed executable behavior:** the bundled profile declares two positive
+  weight-1 outcomes. The handler selects only after phase validation, then
+  atomically persists the starter, roster/team delta, canonical response, and
+  body-scoped replay entry. Forced real-HTTP tests cover both sides; Bahl
+  survives restart, replays byte-for-byte without rerolling, continues to the
+  A'misandra result with team `[1, 25]`, and settles the following tutorial save
+  without minting or referencing Grace. Thirty-two focused tests and the full
+  641-test warning-strict suite passed.
+- **Compatibility boundary:** later tutorial templates resolve their starter
+  slot from durable state, while a legacy state with no starter field resolves
+  to Grace because the earlier server could produce no other result. A clean
+  original-client Bahl run through the tutorial remains pending. In particular,
+  the later Chapter 1-2 callback currently applies the captured starter packed
+  level/EXP projection with the durable starter ID; Bahl-specific packed
+  progression has not been independently captured.
+
 ## Quest settlement compatibility
 
 - **Confirmed by Issue 25 final-client/server evidence:** a Pixel 7 Pro running
@@ -168,7 +195,23 @@ Private inputs, captures, account state, and original assets remain excluded.
   Chapter 3003-1 (*Money Money Time*) through the bounded Hunting transaction.
   Its permanent availability is not recovered service behavior; the 1,800
   Coin ceiling is bounded by the Issue 25 final-client result, not a recovered
-  historical distribution. Tower and Arena VS remain unsupported.
+  historical distribution. Arena VS remains unsupported.
+- **Confirmed final-client static contract, strongly inferred chapter
+  mapping:** `ServerConstants.towerQuestList`,
+  `UISpecialSelect.Mode.TowerQuest`, and
+  `ChapterInterface.IsTowerOfTemptationQuest` establish a dedicated solo
+  Tower selector and chapter range. The same client contains Chapter 9100
+  battle code and fifteen sections for each of Chapters 9100--9102. Matching
+  BattleData records 9100-1 as five battles, five stamina, and zero entry
+  Coins. Together these strongly support, but do not dynamically confirm, the
+  9100 Tower mapping.
+- **Local policy with real-HTTP restart proof:** guided setup advertises only
+  `9100-1` through `towerQuestList` after Chapter 3, supplies
+  `sp_ch_9100`, and settles it through the normal durable event transaction
+  without advancing story progress. Permanent availability and zero clear
+  Coins are preservation policy. Chapters 9100-2 through 9102-15 remain
+  unavailable pending original-client navigation and clear of the first
+  floor. Arena VS remains disabled throughout.
 - **Confirmed by final-client static identities and generated-catalog
   validation:** guided setup derives Archive Special Quest Chapters 2000,
   2001, 2002, 2004, and 2006 from the matching local BattleData and character
@@ -186,8 +229,9 @@ Private inputs, captures, account state, and original assets remain excluded.
   `jq` grouped the recovered rows by chapter: 2000/2001/2002 each have four
   sections at 15/25/40/40 stamina, 2004 has one at 15, 2006 has four at
   30/35/40/40, and every Chapter 8000--8007 family has five at
-  5/10/15/15/15. All record zero entry Coins. This confirms local section
-  economics, not service-authored clear rewards.
+  5/10/15/15/15. Chapters 9100--9102 each contain fifteen five-battle
+  sections; 9100-1 costs five stamina. All record zero entry Coins. This
+  confirms local section economics, not service-authored clear rewards.
 - **Confirmed by supplied final-APK analysis:** BattleData identifies Chapter
   3004-1 as *Crystal Road* (`クリスタルロード`): three battles and seven stamina.
   `UISpecialSelect` mode 7 reads `huntingHuntingList`, while the generic

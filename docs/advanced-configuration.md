@@ -440,11 +440,11 @@ the Luck rules needed for its `luckType=true` Fate variant.
 
 ### Composing an event catalog
 
-The archived events sit in BattleData beside the main story, so their entry
-stamina and start costs come out of the same import that serves ordinary
-stages -- nothing here needs native disassembly. Guided setup performs this
-composition automatically and writes `user-data/event-catalog.json`. The
-standalone command remains useful when reviewing or replacing that artifact:
+The archived events and Tower stages sit in BattleData beside the main story,
+so their entry stamina and start costs come out of the same import that serves
+ordinary stages. Guided setup performs this composition automatically and
+writes `user-data/event-catalog.json`. The standalone command remains useful
+when reviewing or replacing that artifact:
 
 ```sh
 python3 -m liminal_gate.event_catalog_generator \
@@ -453,20 +453,22 @@ python3 -m liminal_gate.event_catalog_generator \
     --output user-data/event-catalog.json
 ```
 
-The generator contributes the 13 recovered manifest identities -- selector
-flag, chapter, local archive unlock, and character association -- and takes
-everything else from your own files. Character grants are still validated
-against your character catalog and are omitted with a note when a character is
-missing. The generated catalog and matching character-catalog hash keep that
-boundary; `--event-catalog` can replace the generated artifact with a stricter
-reviewed local one.
+The generator contributes the 13 recovered Archive/Strikes Back manifest
+identities plus the bounded Tower 9100-1 identity. It takes section economics
+from your BattleData and validates event character grants against your
+character catalog, omitting a grant with a note when its character is missing.
+The generated catalog and matching character-catalog hash keep that boundary;
+`--event-catalog` can replace the generated artifact with a stricter reviewed
+local one.
 
 Two things it does not claim. The release order is local archive policy: the
 original schedule was never recovered, so each event becomes permanently
 available after its declared story gate rather than following a calendar. And
 an event clear credits no Coins, because BattleData records a start cost for
 these sections but no clear reward -- the same reading that leaves Dragon and
-Machine Road settling at zero.
+Machine Road settling at zero. Tower exposes only 9100-1 after Chapter 3; the
+other 44 recovered 9100--9102 floors remain deliberately unavailable until
+the first floor is accepted by the original client.
 
 ### Built-in policies
 

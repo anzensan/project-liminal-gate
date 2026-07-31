@@ -23,6 +23,31 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 first tutorial Pact retail outcome: the exact mandatory `kind=10`
+  request now selects Bahl (character 1) or Grace (character 3) from two equal
+  weights instead of always granting Grace. Selection, starter identity, roster,
+  team, canonical response, and replay cache commit atomically. Exact retry does
+  not reroll and remains byte-stable after restart. All later tutorial party and
+  response projections resolve from the durable starter; older Grace-only saves
+  without the new field remain compatible. Real-HTTP regressions force both
+  outcomes and carry Bahl through A'misandra and the next tutorial userdata
+  settlement. The 50/50 rule is maintainer-supplied retail evidence; an
+  original-client Bahl run remains pending. Thirty-two focused tests and all
+  641 warning-strict repository tests passed; compilation, structured-file,
+  and diff checks passed.
+- 2026-07-30 Tower of Temptation 9100-1 vertical slice: guided setup now
+  derives one five-stamina, zero-Coin Tower row from the tester's matching
+  BattleData and advertises it through `towerQuestList` after Chapter 3. The
+  final client statically contains that dedicated list, Tower selector mode,
+  Tower chapter-range handling, and Chapter 9100 battle code; the mapping is
+  strongly inferred rather than original-client accepted. The other 44
+  recovered 9100--9102 floors remain unavailable. Focused real-HTTP coverage
+  proves the progress gate, exact selector and login flag, entry, body-scoped
+  retry/refusal, rejected-clear stability, successful clear, restart replay,
+  unchanged story progress, and the unchanged disabled Arena VS response.
+  The permanent Chapter 3 gate and zero clear Coins are local policy. The
+  warning-strict full suite passed all 638 tests in 120.460 seconds;
+  compilation, profile JSON, endpoint YAML, and diff checks passed.
 - 2026-07-30 Il2CppDumper exit-code defect: a Windows tester's complete dump was
   rejected because Il2CppDumper v6.7.46 ends even a successful run with a
   "press any key to exit" `Console.ReadKey` that .NET refuses while setup
@@ -261,7 +286,8 @@ machine-readable/current capability boundary.
   permanent unlock remains explicit local preservation policy, not a claim
   about the retired event rotation or complete reward rule. Generated Archive
   rows merge with this default; an explicit override replaces only those
-  Archive rows. Tower and Arena VS remain unsupported.
+  Archive rows. Tower 9100-1 is the separately bounded solo slice; Arena VS
+  remains unsupported.
 - 2026-07-28 story Companion drops settle instead of being silently discarded,
   and the outcome catalog stops refusing what it merely cannot evidence. A live
   account cleared the whole story seeing only Metal Zone's Companions: the

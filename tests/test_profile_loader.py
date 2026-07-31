@@ -44,9 +44,26 @@ class ProfileLoaderTest(unittest.TestCase):
             self._load(extra_field)
 
         wrong_value = copy.deepcopy(self.document)
-        wrong_value["tutorial_summons"][0]["response"] = []
+        wrong_value["tutorial_summons"][0]["outcomes"][0]["weight"] = 0
         with self.assertRaisesRegex(ProfileError, "tutorial summon values"):
             self._load(wrong_value)
+
+    def test_first_tutorial_summon_declares_equal_bahl_and_grace_weights(self) -> None:
+        first = self.document["tutorial_summons"][0]
+        self.assertEqual(
+            [(1, 1), (3, 1)],
+            [
+                (outcome["starter_character_id"], outcome["weight"])
+                for outcome in first["outcomes"]
+            ],
+        )
+
+        mismatched = copy.deepcopy(self.document)
+        mismatched["tutorial_summons"][0]["outcomes"][0]["response"][
+            "teamMembers"
+        ] = [3]
+        with self.assertRaisesRegex(ProfileError, "tutorial summon values"):
+            self._load(mismatched)
 
     def test_story_and_userdata_structural_shapes_share_strict_json_kinds(self) -> None:
         wrong_clear = copy.deepcopy(self.document)

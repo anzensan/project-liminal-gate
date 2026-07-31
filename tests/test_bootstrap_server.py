@@ -8,6 +8,7 @@ import socket
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import (
@@ -413,6 +414,134 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever)
         self.thread.start()
 
+    def test_first_tutorial_pull_can_choose_bahl_and_replays_without_rerolling(self) -> None:
+        account_id = "bahl-tutorial-account"
+        login_token = "bahl-tutorial-token"
+        status, _ = self.request(
+            f"/gd/signup?uuid={account_id}&otk=signup-token&requestID=signup"
+        )
+        self.assertEqual(200, status)
+        status, _ = self.request(
+            f"/gd/login?uuid={account_id}&otk={login_token}&requestID=login"
+        )
+        self.assertEqual(200, status)
+        status, initial = self.request(
+            f"/gd/userdata?otk={login_token}&requestID=initial-userdata"
+        )
+        self.assertEqual((200, [], []), (
+            status, initial["chrdata"], initial["teamMembers"],
+        ))
+
+        first_body = (
+            "kind=10&count=1&luckType=false&campaignChrID=0&"
+            "eventFlag=0&lastUpdate=1"
+        )
+        with patch(
+            "liminal_gate.bootstrap_server.random.SystemRandom.randrange",
+            return_value=0,
+        ) as draw:
+            status, bahl = self.post(
+                f"/gd/do_slot?otk={login_token}&requestID=first-pact",
+                first_body,
+            )
+        self.assertEqual(200, status)
+        draw.assert_called_once_with(2)
+        self.assertEqual(([1], [1]), (
+            bahl["teamMembers"],
+            [row["id"] for row in bahl["chrdata"]],
+        ))
+        persisted = json.loads(self.state_path.read_text(encoding="utf-8"))[
+            "accounts"
+        ][account_id]
+        self.assertEqual(1, persisted["tutorial_starter_character_id"])
+        self.assertEqual([1], persisted["userdata"]["teamMembers"])
+
+        self.restart()
+        with patch(
+            "liminal_gate.bootstrap_server.random.SystemRandom.randrange",
+            side_effect=AssertionError("an exact retry must not reroll"),
+        ):
+            status, replay = self.post(
+                f"/gd/do_slot?otk={login_token}&requestID=first-pact",
+                first_body,
+            )
+        self.assertEqual(200, status)
+        self.assertEqual(bahl, replay)
+
+        second_body = (
+            "kind=11&count=1&luckType=false&campaignChrID=0&"
+            "eventFlag=0&lastUpdate=1"
+        )
+        status, amisandra = self.post(
+            f"/gd/do_slot?otk={login_token}&requestID=second-pact",
+            second_body,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual([1, 25], amisandra["teamMembers"])
+        persisted = json.loads(self.state_path.read_text(encoding="utf-8"))[
+            "accounts"
+        ][account_id]
+        self.assertEqual([1, 25], [
+            row["id"] for row in persisted["userdata"]["chrdata"]
+        ])
+
+        write_body = urlencode([
+            (name, value.replace("{{tutorial_starter_id}}", "1"))
+            for name, value in self.server.profile.tutorial_writes[0]["fields"]
+        ])
+        status, settled = self.post(
+            f"/gd/userdata?otk={login_token}&requestID=tutorial-write",
+            write_body,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(1.0, settled["lastupdate"])
+        persisted = json.loads(self.state_path.read_text(encoding="utf-8"))[
+            "accounts"
+        ][account_id]
+        self.assertEqual([1, 25, 0, 0, 0, 0], persisted["userdata"]["teamMembers"])
+        self.assertNotIn(3, persisted["userdata"]["teamMembers"])
+
+    def test_legacy_grace_state_without_starter_field_continues_as_grace(self) -> None:
+        account_id = "legacy-grace-account"
+        token = "legacy-grace-token"
+        self.server.state.create_account(
+            token,
+            account_id,
+            copy.deepcopy(self.server.profile.userdata_seed),
+        )
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "grace_granted"
+            account["initial_userdata_served"] = True
+            account["userdata"]["chrdata"] = [
+                {
+                    "id": 3,
+                    "jobID": 0,
+                    "jobLevels": [1],
+                    "jobSlots": [],
+                    "isNew": True,
+                    "levelAdded": 1,
+                }
+            ]
+            account["userdata"]["teamMembers"] = [3]
+            self.server.state._persist_locked()
+        self.restart()
+
+        status, amisandra = self.post(
+            f"/gd/do_slot?otk={token}&requestID=legacy-second-pact",
+            "kind=11&count=1&luckType=false&campaignChrID=0&"
+            "eventFlag=0&lastUpdate=1",
+        )
+        self.assertEqual(200, status)
+        self.assertEqual([3, 25], amisandra["teamMembers"])
+        persisted = json.loads(self.state_path.read_text(encoding="utf-8"))[
+            "accounts"
+        ][account_id]
+        self.assertNotIn("tutorial_starter_character_id", persisted)
+        self.assertEqual([3, 25], [
+            row["id"] for row in persisted["userdata"]["chrdata"]
+        ])
+
     def test_profile_persists_the_declared_account_flow_and_rejects_later_routes(self) -> None:
         token = "0123456789ABCDEF"
         status, time_payload = self.request(f"/gd/get_current_time?otk={token}&digest2=client-value&requestID=request-id")
@@ -496,9 +625,13 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual({key: userdata_payload[key] for key in userdata_payload if key != "digest"}, {key: after_close[key] for key in after_close if key != "digest"})
         persisted = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.assertEqual(1, len(persisted["accounts"]))
-        status, grace_payload = self.post(
-            f"/gd/do_slot?otk={login_token}&digest2=client-value&requestID=grace-request", grace_body
-        )
+        with patch(
+            "liminal_gate.bootstrap_server.random.SystemRandom.randrange",
+            return_value=1,
+        ):
+            status, grace_payload = self.post(
+                f"/gd/do_slot?otk={login_token}&digest2=client-value&requestID=grace-request", grace_body
+            )
         self.assertEqual(200, status)
         self.assertEqual(3, grace_payload["chrdata"][0]["id"])
         status, grace_replay = self.post(
@@ -522,7 +655,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(25, amisandra_payload["chrdata"][0]["id"])
         self.assertEqual(15, amisandra_payload["chrdata"][0]["levelAdded"])
-        write_body = urlencode([tuple(field) for field in self.server.profile.tutorial_writes[0]["fields"]])
+        write_body = urlencode([
+            (name, value.replace("{{tutorial_starter_id}}", "3"))
+            for name, value in self.server.profile.tutorial_writes[0]["fields"]
+        ])
         status, write_payload = self.post(
             f"/gd/userdata?otk={login_token}&digest2=client-value&requestID=tutorial-write", write_body
         )

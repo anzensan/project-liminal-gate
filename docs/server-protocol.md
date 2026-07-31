@@ -32,6 +32,15 @@ committed together. Replay identity includes operation, request ID, and body,
 so the same ID with a different body is not mistaken for the earlier request.
 Caches are bounded and survive restart.
 
+The exact first tutorial Pact form (`kind=10`) selects one of two profile
+outcomes with equal integer weight: Bahl (character 1) or Grace (character 3).
+Selection happens only after phase and request validation. The selected starter,
+roster/team mutation, canonical signed payload, and replay record commit in the
+same atomic state write, so an exact retry cannot reroll and returns identical
+bytes after restart. Later tutorial response and party templates resolve from
+that durable starter. Older saves without the explicit field retain Grace, the
+only outcome the earlier profile could produce.
+
 The tutorial uses phase-bound structural `userdata` writes, not ordinary
 free-roam roster authority. After Chapter 1-1, a restarted final client can
 send the established ordered party-save structure while it resumes
@@ -39,6 +48,12 @@ send the established ordered party-save structure while it resumes
 as a same-phase no-op: client roster arrays are not applied, and only the
 following `kind=12` Pact advances to `knight_granted`. The acknowledgment and
 its body-scoped replay survive restart.
+
+The equal Bahl/Grace retail rule is maintainer-supplied historical evidence.
+The `kind=10` wire form and Grace response shape are client-confirmed; Bahl's
+character identity is corroborated by the operator's derived character names.
+Original-client Bahl navigation beyond the first result remains an acceptance
+boundary rather than a confirmed public capture.
 
 The permanent Fellowship Ticket form is
 `kind=20&count=1&luckType=<false|true>&campaignChrID=0&eventFlag=0&lastUpdate=1`.
@@ -89,8 +104,9 @@ returned. Stamina fallback and every other inventory slot remain exact.
 
 `get_server_status` returns the complete required constants object. A partial
 object is not served because client setters directly index required economy,
-version, and country fields. Hunting selector lists are added per account from
-the enabled Hunting and event catalogs and current progress.
+version, country, and selector fields. Hunting and Tower selector lists are
+added per account from the enabled Hunting and event catalogs and current
+progress.
 `specialQuestList` merges the generated Archive Special Quest rows with the
 bundled Chapter 3003-1 row whenever their gates are open. Before any real row
 unlocks, a closed recovered entry suppresses the client's fixed 50-entry
@@ -101,6 +117,14 @@ than one broad chapter flag: this includes Crystal Road (3004-1) in
 Counter Descent family to its tier-1 identity; login supplies only the matching
 chapter flags. Detailed static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
+
+`towerQuestList` is always present. After Chapter 3, the generated event
+catalog contributes only `9100-1` and login supplies `sp_ch_9100`. Entry uses
+the ordinary `start_quest` transaction with five stamina and zero Coins; clear
+uses the same durable event settlement and does not advance story progress.
+The permanent gate and zero clear Coins are local policy. Original-client
+Tower navigation and clear are not yet confirmed, so Chapters 9100-2 through
+9102-15 remain unavailable.
 
 Counter Descent starts use the ordinary `start_quest` route. The bundled policy
 accepts only Chapters 8000--8007, sections 1--5, with exact stamina costs of

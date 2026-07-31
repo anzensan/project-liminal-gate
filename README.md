@@ -32,7 +32,7 @@ until the later run is independently recorded and reviewed.
   - [2. Arrange your local files](#2-arrange-your-local-files)
   - [Run only the server on a separate Linux machine](#run-only-the-server-on-a-separate-linux-machine)
   - [3. One-command setup, install, and server start](#3-one-command-setup-install-and-server-start)
-  - [Optional: override the generated archive-event catalog](#optional-override-the-generated-archive-event-catalog)
+  - [Optional: override the generated event catalog](#optional-override-the-generated-event-catalog)
   - [4. Manual setup](#4-manual-setup-only-if-you-need-to-troubleshoot)
   - [4a. Validate and map the local inputs](#4a-validate-and-map-the-local-inputs)
   - [4b. Create a local test signing key](#4b-create-a-local-test-signing-key)
@@ -71,9 +71,9 @@ Single Item 81 Fellowship Ticket draws are supported for Fellowship and the
 Fellowship-side Pact of Fate. Campaign and event Pact variants remain
 intentionally unsupported.
 
-**Huntland opens on story progress, so it is locked at first.** The Hunting and
-Metal Zone cards stay unavailable until your account has finished the chapter
-each zone waits for, which is well past the verified stopping point:
+**Optional solo areas open on story progress, so most are locked at first.**
+Hunting, Metal Zone, Special Quest, Tower, and world-map cards stay unavailable
+until your account has finished the chapter each row waits for:
 
 | Area | Available after clearing |
 | --- | --- |
@@ -89,13 +89,13 @@ each zone waits for, which is well past the verified stopping point:
 | Lucia archive | Chapter 13 |
 | Odin Descent | Chapter 20 |
 | Strikes Back families | Chapters 5 through 12, one family per chapter |
+| Tower of Temptation 9100-1 | Chapter 3 |
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
 
-Those thresholds are a local preservation policy, not a recovered schedule: the
-original zones rotated, and no rotation was ever captured, so each one simply
-becomes permanent once you pass its chapter. Nothing you can set on the server
-opens a zone earlier — play the story to it. Empty Hunting and Metal screens on
-a new account are expected, not a fault.
+Those thresholds are local preservation policy, not recovered schedules. The
+retired event and Hunting rotations were not captured, so the standard setup
+makes each row permanent after its story gate. Empty optional screens on a new
+account are expected, not a fault.
 
 **Special Quests are separate from Arena VS.** After Chapter 3, the guided
 server advertises the recovered solo Chapter 3003-1 *Money Money Time* card in
@@ -106,9 +106,13 @@ your own BattleData and character catalog, and enables the eight packaged
 Strikes Back families. Their permanent progress gates, zero-Coin clears, and
 first-section associated-character grants are local archive policy rather than
 recovered schedules, probabilities, or complete historical reward tables.
-Arena VS, rankings, multiplayer, and Tower are not implemented and remain
-unavailable rather than presenting a menu that cannot complete a durable solo
-quest.
+The first Tower of Temptation floor is a separate bounded compatibility slice:
+guided setup derives Chapter 9100-1 from your BattleData and advertises it
+through the client's dedicated Tower list after Chapter 3. Its permanent gate
+and zero-Coin clear are local policy, and original-client navigation and clear
+remain unverified. The other 44 recovered Chapter 9100--9102 floors stay
+unavailable. Arena VS, rankings, and multiplayer remain disabled rather than
+presenting a menu that cannot complete.
 
 **Eidolons are not a missing final-version battle mechanic.** Version 5.5.0
 retired Co-op/VS, the in-battle Eidolon charging gauge, and Tavern Eidolon
@@ -786,7 +790,7 @@ Everything below stays under the ignored `user-data/` directory:
 | `derived/native-encounters.json` | Maps the compiled Chapter 8–42 battle programs to the enemies each stage can spawn. Producing it requires the AArch64 disassembler. | No. It is an evidence intermediate used to compose `story-outcomes.json`. |
 | `derived/scenario-encounters.json` | Maps the MoonSharp scenario programs used by Chapters 2–7, which have no equivalent compiled battle program. | No. It is another input to `story-outcomes.json`. |
 | `story-outcomes.json` | Combines the encounter maps, character catalog, master data, and their hashes into bounded per-stage outcome rules. Without it, the server cannot safely persist a story Companion rolled by the client. | **Yes.** The dedicated server loads this final catalog. |
-| `event-catalog.json` | Combines the recovered archive identities and local unlock cadence with section economics from your BattleData and character associations validated against your character catalog. | **Yes.** It enables the five Archive Special Quest families; Strikes Back remains bundled. |
+| `event-catalog.json` | Combines the recovered archive identities, the bounded Tower 9100-1 slice, and local unlock cadence with section economics from your BattleData and character associations validated against your character catalog. | **Yes.** It enables the five Archive Special Quest families and Tower 9100-1; Strikes Back remains bundled. |
 | `companion-equipment.json` | Projects character ancestry, per-job species, and Companion character/species restrictions from the matching APK. It contains no names, skills, descriptions, or assets. `RequiredLevel` is deliberately absent because the final client uses it to activate an equipped Companion's effects, not to prohibit equipping it. | **Yes.** The server needs it to authorize a newly equipped or retargeted Companion; without it, those new links are refused. |
 | `resources.json` | Maps every approved resource URL to a local file and hash. | **Yes.** `server_setup` rebuilds or refreshes it from the matching resource tree when the server starts. |
 | `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
@@ -804,10 +808,11 @@ dedicated host predates one of these generated runtime catalogs, rerun guided
 setup on the APK workstation and copy the matching generated files into the
 dedicated server's `user-data/` directory before updating the server.
 
-Archive events never interrupt standard setup with a prompt. Setup derives and
-validates them automatically. People who already have a separately reviewed
-local event catalog can replace the generated archive list explicitly with
-`--event-catalog`; see [Optional: override the generated archive-event catalog](#optional-override-the-generated-archive-event-catalog).
+Archive events and Tower 9100-1 never interrupt standard setup with a prompt.
+Setup derives and validates them automatically. People who already have a
+separately reviewed local event catalog can replace the generated rows
+explicitly with `--event-catalog`; see
+[Optional: override the generated event catalog](#optional-override-the-generated-event-catalog).
 You do not need to supply `DummyDll` yourself for normal guided setup: setup
 generates and retains it automatically as described above. Passing
 `--dummy-dll-dir` is useful when you already have matching output or when an
@@ -876,16 +881,17 @@ To build the APK without installing or starting the server, add
 
 For a non-interactive repeat of the standard setup, add `--no-configure`.
 
-### Optional: override the generated archive-event catalog
+### Optional: override the generated event catalog
 
-The five recovered Archive Special Quest families and all eight Strikes Back
-families are enabled by standard guided setup. If you have independently
-prepared a stricter reviewed catalog, add `--event-catalog` to the normal setup
-command. Use `--dummy-dll-dir` only when you want setup to reuse a matching
-local IL2CPP dump instead of its generated one. Setup derives the matching
-character catalog and passes both runtime files to the server. An override
-replaces the generated normal Special Quest rows; the bundled Strikes Back
-definitions remain authoritative. See [Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
+The five recovered Archive Special Quest families, Tower 9100-1, and all eight
+Strikes Back families are enabled by standard guided setup. If you have
+independently prepared a stricter reviewed catalog, add `--event-catalog` to
+the normal setup command. Use `--dummy-dll-dir` only when you want setup to
+reuse a matching local IL2CPP dump instead of its generated one. Setup derives
+the matching character catalog and passes both runtime files to the server. An
+override replaces the generated Special Quest and Tower rows; the bundled
+Strikes Back definitions remain authoritative. See
+[Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
 
 ### 4. Manual setup (only if you need to troubleshoot)
 
