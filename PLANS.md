@@ -1,5 +1,58 @@
 # Execution Plans
 
+## 2026-07-30 guided-setup usability remediation
+
+Objective: make `tester_setup --check` predict the exact guided setup path and
+keep the normal first-run interaction limited to choices a new tester can
+meaningfully make.
+
+Evidence boundary:
+
+- A supplied `DummyDll` directory without sibling `dump.cs` was reported as
+  ready, although the mandatory story-outcome derivation rejects it.
+- A complete generated `user-data/il2cpp/{DummyDll,dump.cs}` pair was ignored
+  by preflight and by the early prerequisite gate, needlessly requiring
+  Il2CppDumper again.
+- A ready physical-device serial paired with the emulator-only `10.0.2.2`
+  address passed preflight, then the real setup rejected it.
+- `--check --port 70000` reached `socket.bind` and raised an uncaught
+  `OverflowError`.
+- Every normal interactive run asked about an advanced local event catalog
+  even when no `--event-catalog` was supplied.
+
+Plan:
+
+1. Resolve explicit and generated IL2CPP artifact pairs through one shared
+   helper used by preflight and the real build.
+2. Validate the same port, device-host, requested-device, and physical-device
+   routing conditions in preflight that the real setup enforces.
+3. Enable advanced events only through the explicit CLI option.
+4. Add focused regressions, update the operator documentation, then run the
+   warning-strict focused/full suites, compilation, structured-file checks,
+   and diff review.
+
+This changes setup diagnostics and selection only. It does not change server
+wire behavior, account state, replay semantics, or the canonical client
+boundary.
+
+Outcome:
+
+- Preflight and the real build now resolve the same complete explicit or
+  generated `(DummyDll, dump.cs)` pair. Generated output beneath the selected
+  `--data-dir` is reusable without Il2CppDumper, while an incomplete supplied
+  pair fails before hashing.
+- Port range, device-host syntax, requested-device readiness, and the
+  physical-device/emulator-host mismatch are reported by `--check`; an absent
+  unselected device remains a warning for `--prepare-only`.
+- The standard TTY path no longer asks about advanced events. Supplying
+  `--event-catalog` enables the existing reviewed event path directly.
+- The focused warning-strict setup suite passed 123 tests. The complete
+  warning-strict suite passed all 625 tests in 118.332 seconds; compilation and
+  diff checks passed.
+- No APK was built or installed on a physical device in this pass. The changed
+  behavior is command-line/preflight confirmed and covered with platform-neutral
+  fixtures; Windows and physical-device operator confirmation remain pending.
+
 ## 2026-07-30 GitHub Issue 25 Chapter 3003-1 settlement deadlock
 
 Status: implementation and release validation completed 2026-07-30; reporter

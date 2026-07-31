@@ -242,6 +242,14 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Configuration and derived-data boundaries
 
+- **Confirmed by setup/preflight regressions:** guided setup resolves one
+  complete explicit or generated `(DummyDll, dump.cs)` pair through the same
+  path in `--check` and the real build. Generated output beneath `--data-dir`
+  remains reusable without the dumper executable; an incomplete pair fails
+  before the resource inventory. Port range, requested-device readiness, and
+  physical-device host routing are likewise checked before the build. Advanced
+  local events are enabled only by explicit `--event-catalog`, not a normal
+  first-run prompt. This is setup behavior, not recovered service behavior.
 - **Confirmed by parsed-launcher and TOML tests:** `--config` works by itself,
   remains mutually exclusive with individual flags, and every bundled-policy
   option requires a TOML boolean rather than accepting a truthy string, number,

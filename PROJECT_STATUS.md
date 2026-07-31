@@ -23,6 +23,19 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-30 guided setup usability: `tester_setup --check` and the real build
+  now share one complete IL2CPP-artifact resolver. A supplied `DummyDll`
+  without sibling `dump.cs` fails before hashing, while a complete generated
+  pair beneath the selected `--data-dir` is reused without requiring
+  Il2CppDumper to remain installed. Preflight also reports invalid port ranges,
+  explicitly requested devices that are not ready, and physical devices paired
+  with the emulator-only host as required failures rather than deferring them
+  to the build or raising a traceback. The normal TTY path no longer asks a
+  first-time tester about advanced local events; the existing reviewed path is
+  enabled explicitly with `--event-catalog`. The focused warning-strict setup
+  suite passed 123 tests and all 625 warning-strict tests passed in 118.332
+  seconds; compilation and diff checks passed. No APK/device run was performed,
+  so Windows and physical-device operator confirmation remain pending.
 - 2026-07-30 Issue 25 Chapter 3003-1 settlement deadlock: the reporter's
   privacy-filtered event log contains 34 rejected clears for the same
   final-client 1,800-Coin result, followed by 19 rejected unrelated actions;

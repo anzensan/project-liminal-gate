@@ -80,7 +80,9 @@ class PreflightChecksTest(unittest.TestCase):
     def _checks(self, **overrides) -> dict[str, Check]:
         arguments = {
             "apk": self.apk, "resource_root": self.resources, "dummy_dll_dir": None,
-            "port": 0, "adb": "adb", "device": None, "build_tools": None,
+            "port": 8696, "adb": "adb", "device": None, "build_tools": None,
+            "data_directory": self.root / "user-data", "dump_cs": None,
+            "device_host": tester_setup.EMULATOR_LOOPBACK_HOST,
         }
         arguments.update(overrides)
         return {check.name: check for check in preflight_checks(**arguments)}
@@ -127,11 +129,33 @@ class PreflightChecksTest(unittest.TestCase):
     def test_a_supplied_dummy_dll_makes_the_dumper_unnecessary(self) -> None:
         dummy = self.root / "DummyDll"
         dummy.mkdir()
+        (dummy / "Assembly-CSharp.dll").write_bytes(b"")
+        (dummy.parent / "dump.cs").write_text("", encoding="utf-8")
         with self._stub_environment() as stack:
             stack.enter_context(patch.object(tester_setup, "find_il2cpp_dumper", return_value=None))
             checks = self._checks(dummy_dll_dir=dummy)
         self.assertTrue(checks["Il2CppDumper"].ok)
         self.assertIn("not needed", checks["Il2CppDumper"].detail)
+
+    def test_a_dummy_dll_without_dump_cs_fails_preflight(self) -> None:
+        dummy = self.root / "DummyDll"
+        dummy.mkdir()
+        (dummy / "Assembly-CSharp.dll").write_bytes(b"")
+        with self._stub_environment():
+            checks = self._checks(dummy_dll_dir=dummy)
+        self.assertFalse(checks["Il2CppDumper"].ok)
+        self.assertIn("dump.cs", checks["Il2CppDumper"].detail)
+
+    def test_generated_il2cpp_output_is_reused_without_the_dumper(self) -> None:
+        generated = self.root / "user-data" / "il2cpp" / "DummyDll"
+        generated.mkdir(parents=True)
+        (generated / "Assembly-CSharp.dll").write_bytes(b"")
+        (generated.parent / "dump.cs").write_text("", encoding="utf-8")
+        with self._stub_environment() as stack:
+            stack.enter_context(patch.object(tester_setup, "find_il2cpp_dumper", return_value=None))
+            checks = self._checks()
+        self.assertTrue(checks["Il2CppDumper"].ok)
+        self.assertIn(str(generated), checks["Il2CppDumper"].detail)
 
     def test_a_dumper_that_cannot_find_dotnet_fails_preflight(self) -> None:
         with self._stub_environment() as stack:
@@ -241,6 +265,30 @@ class PreflightChecksTest(unittest.TestCase):
         self.assertFalse(checks["device"].ok)
         self.assertFalse(checks["device"].required)
 
+    def test_a_requested_device_that_is_not_ready_fails(self) -> None:
+        with self._stub_environment() as stack:
+            stack.enter_context(patch.object(
+                tester_setup, "select_device", side_effect=TesterSetupError("requested device is not ready"),
+            ))
+            checks = self._checks(device="R52T80ABCDE")
+        self.assertFalse(checks["device"].ok)
+        self.assertTrue(checks["device"].required)
+
+    def test_a_physical_device_with_the_emulator_host_fails(self) -> None:
+        with self._stub_environment() as stack:
+            stack.enter_context(patch.object(tester_setup, "select_device", return_value="R52T80ABCDE"))
+            checks = self._checks()
+        self.assertFalse(checks["device"].ok)
+        self.assertTrue(checks["device"].required)
+        self.assertIn("--device-host", checks["device"].detail)
+
+    def test_a_physical_device_with_a_lan_host_passes(self) -> None:
+        with self._stub_environment() as stack:
+            stack.enter_context(patch.object(tester_setup, "select_device", return_value="R52T80ABCDE"))
+            checks = self._checks(device_host="192.168.1.10")
+        self.assertTrue(checks["device"].ok)
+        self.assertTrue(checks["device host"].ok)
+
     def test_a_port_already_listening_is_reported_before_the_build(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taken:
             taken.bind(("0.0.0.0", 0))
@@ -258,6 +306,12 @@ class PreflightChecksTest(unittest.TestCase):
             probe.bind(("0.0.0.0", 0))
             port = probe.getsockname()[1]
         self.assertTrue(port_is_free(port))
+
+    def test_an_out_of_range_port_is_a_preflight_failure_not_a_traceback(self) -> None:
+        with self._stub_environment():
+            checks = self._checks(port=70000)
+        self.assertFalse(checks["port"].ok)
+        self.assertIn("1 through 65535", checks["port"].detail)
 
 
 class GeneratedKeyPasswordTest(unittest.TestCase):

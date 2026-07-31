@@ -164,6 +164,8 @@ class DeriveStoryOutcomeCatalogTest(unittest.TestCase):
         first.
         """
         inventoried = []
+        (self.dummy_dll / "Assembly-CSharp.dll").write_bytes(b"")
+        (self.dummy_dll.parent / "dump.cs").write_text("", encoding="utf-8")
         with patch("liminal_gate.tester_setup.find_missing_master_import", return_value=()), \
              patch("liminal_gate.tester_setup.find_aarch64_objdump", return_value=None), \
              patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: inventoried.append(1) or {}), \
@@ -176,6 +178,8 @@ class DeriveStoryOutcomeCatalogTest(unittest.TestCase):
         # This one used to surface from inside UnityPy, after a completed
         # inventory and a completed dump, as an import error about a package.
         inventoried = []
+        (self.dummy_dll / "Assembly-CSharp.dll").write_bytes(b"")
+        (self.dummy_dll.parent / "dump.cs").write_text("", encoding="utf-8")
         with patch("liminal_gate.tester_setup.find_missing_master_import", return_value=("UnityPy",)), \
              patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: inventoried.append(1) or {}), \
              patch("liminal_gate.tester_setup.ensure_il2cpp_dump", side_effect=_StopSetup):

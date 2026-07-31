@@ -201,9 +201,13 @@ python3 -m liminal_gate.tester_setup --check
 ```
 
 Each line is either `ok`, `warn`, or `FAIL` with the command that fixes it. The
-`device` line is only a warning, because you do not need an emulator running
-until you install. Add the same `--apk`, `--resource-root`, and `--port` options
-you intend to use for real, so it checks the paths you will actually pass.
+`device` line is only a warning when no device was selected, because you do not
+need an emulator running until you install. A specifically requested device, or
+a physical device paired with the emulator-only host address, is a failure.
+Add the same `--apk`, `--resource-root`, `--data-dir`, `--port`, `--device`, and
+`--device-host` options you intend to use for real. If you supply existing
+Il2CppDumper output, also add its `--dummy-dll-dir` and optional `--dump-cs`, so
+the check validates the exact paths the build will use.
 
 ### Install and check the tools first
 
@@ -738,10 +742,10 @@ Get-NetTCPConnection -LocalPort 8696 -State Listen -ErrorAction SilentlyContinue
 python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 ```
 
-Replace the port and serial with yours. At the start, choose what you want to
-test. Story chapters, Hunting zones, Pacts, Companion draws and sales, job
-unlocks, Rebirth, and status items are all enabled — setup no longer asks you
-to choose between them. To isolate one feature while troubleshooting, run
+Replace the port and serial with yours. Story chapters, Hunting zones, Pacts,
+Companion draws and sales, job unlocks, Rebirth, and status items are all
+enabled with no feature-selection prompt. To isolate one feature while
+troubleshooting, run
 `liminal_gate.bootstrap_server` directly with only the flags you want; see
 [docs/advanced-configuration.md](docs/advanced-configuration.md).
 Setup derives everything the full game needs from your own APK, including the
@@ -788,15 +792,17 @@ publish. If the dedicated host predates `companion-equipment.json`, rerun guided
 setup on the APK workstation and copy that one generated file into the
 dedicated server's `user-data/` directory before updating the server.
 
-An advanced event question appears only for people who already have a reviewed
-local event catalog. You do not need to supply `DummyDll` yourself for normal
-guided setup: setup generates and retains it automatically as described above.
-Passing `--dummy-dll-dir` is useful when you already have matching output or
-when an optional local event catalog needs the corresponding character data.
-Press Enter to accept the recommended choice. The command validates the inputs,
-creates the local manifests, creates a local signing key on first use, patches
-and signs the APK, installs it on that one device, then starts the local server
-in the foreground. Press Control-C when you finish testing.
+Advanced local events never interrupt the standard setup with a prompt. People
+who already have a reviewed local event catalog enable it explicitly with
+`--event-catalog`; see [Optional: enable a reviewed local event catalog](#optional-enable-a-reviewed-local-event-catalog).
+You do not need to supply `DummyDll` yourself for normal guided setup: setup
+generates and retains it automatically as described above. Passing
+`--dummy-dll-dir` is useful when you already have matching output or when an
+optional local event catalog needs the corresponding character data. The
+command validates the inputs, creates the local manifests, creates a local
+signing key on first use, patches and signs the APK, installs it on that one
+device, then starts the local server in the foreground. Press Control-C when
+you finish testing.
 
 The local test signing key is created on the first run only. Its password is
 generated for you and saved to `user-data/keystore-password.txt` with owner-only

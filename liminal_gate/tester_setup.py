@@ -179,13 +179,14 @@ def select_device(adb: str, requested: str | None) -> str:
     raise TesterSetupError("multiple Android devices are ready; rerun with --device one of: " + ", ".join(devices))
 
 
-def build_server_origin(device_host: str, port: int) -> str:
-    """Build the origin baked into the client, checking it before any patching.
+def validate_port(port: int) -> None:
+    """Reject a port the server cannot bind before it reaches ``socket.bind``."""
+    if not 1 <= port <= 65535:
+        raise TesterSetupError("--port must be an integer from 1 through 65535")
 
-    Every rejection here describes the mistake in terms of what was passed, not
-    of the resulting URL, because the address is compiled into the APK and a
-    wrong one produces a client that fails only later, at launch.
-    """
+
+def validate_device_host(device_host: str) -> str:
+    """Return a normalized host-only value or explain why it cannot be routed."""
     host = device_host.strip()
     if not host or any(character.isspace() for character in host):
         raise TesterSetupError("--device-host must be a host name or address with no spaces")
@@ -204,6 +205,18 @@ def build_server_origin(device_host: str, port: int) -> str:
             f"Use {EMULATOR_LOOPBACK_HOST} for an Android emulator, or this machine's LAN address "
             f"for a physical phone or tablet."
         )
+    return host
+
+
+def build_server_origin(device_host: str, port: int) -> str:
+    """Build the origin baked into the client, checking it before any patching.
+
+    Every rejection here describes the mistake in terms of what was passed, not
+    of the resulting URL, because the address is compiled into the APK and a
+    wrong one produces a client that fails only later, at launch.
+    """
+    validate_port(port)
+    host = validate_device_host(device_host)
     try:
         return normalize_server_origin(f"http://{host}:{port}")
     except PlanGenerationError as error:
@@ -625,7 +638,50 @@ def describe_missing_master_import(missing: Sequence[str]) -> str:
     )
 
 
-def check_derivation_prerequisites(dummy_dll_dir: Path | None) -> None:
+def reusable_il2cpp_dump(
+    dummy_dll_dir: Path | None,
+    data_directory: Path,
+    dump_cs: Path | None = None,
+) -> tuple[Path, Path] | None:
+    """Resolve one complete existing ``(DummyDll, dump.cs)`` pair.
+
+    Guided setup accepts either operator-supplied Il2CppDumper output or the
+    output it generated beneath ``--data-dir`` on an earlier run.  Preflight
+    and the real setup must use this same resolver: accepting a directory
+    without ``dump.cs`` fails minutes later, while overlooking the generated
+    pair needlessly requires Il2CppDumper to remain installed forever.
+    """
+    if dump_cs is not None and not dump_cs.is_file():
+        raise TesterSetupError(f"no Il2CppDumper dump.cs at {dump_cs}; correct --dump-cs or omit it")
+
+    generated = data_directory / IL2CPP_OUTPUT_DIRECTORY / "DummyDll"
+    candidates: list[Path] = []
+    for candidate in (dummy_dll_dir, generated):
+        if candidate is not None and candidate not in candidates:
+            candidates.append(candidate)
+
+    missing_dump: Path | None = None
+    for candidate in candidates:
+        if not candidate.is_dir() or not any(candidate.glob("*.dll")):
+            continue
+        resolved_dump_cs = dump_cs if dump_cs is not None else candidate.parent / "dump.cs"
+        if resolved_dump_cs.is_file():
+            return candidate, resolved_dump_cs
+        missing_dump = resolved_dump_cs
+
+    if missing_dump is not None:
+        raise TesterSetupError(
+            "complete guided setup requires dump.cs beside the DummyDll directory "
+            f"(looked for {missing_dump}); it is written by the same Il2CppDumper run"
+        )
+    return None
+
+
+def check_derivation_prerequisites(
+    dummy_dll_dir: Path | None,
+    data_directory: Path = DEFAULT_DATA,
+    dump_cs: Path | None = None,
+) -> None:
     """Confirm every tool the master-data derivations need, before any hashing.
 
     All three are checked together, beside the SDK tools and the signing
@@ -635,7 +691,8 @@ def check_derivation_prerequisites(dummy_dll_dir: Path | None) -> None:
     still. An incomplete toolchain should cost seconds and name every missing
     piece it can, not one piece per attempt.
     """
-    if (dummy_dll_dir is None or not dummy_dll_dir.is_dir()) and find_il2cpp_dumper() is None:
+    reusable = reusable_il2cpp_dump(dummy_dll_dir, data_directory, dump_cs)
+    if reusable is None and find_il2cpp_dumper() is None:
         raise TesterSetupError(describe_missing_il2cpp_dumper(
             "complete guided setup needs the master-data layout an IL2CPP build strips, without "
             "which story clears mint no Companion. Either point --dummy-dll-dir at an Il2CppDumper "
@@ -1040,8 +1097,7 @@ def prepare_local_tester(
     dump_cs: Path | None = None, prompt_for_key_password: bool = False,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
-    if not 1 <= port <= 65535:
-        raise TesterSetupError("--port must be an integer from 1 through 65535")
+    validate_port(port)
     if event_catalog is not None and dummy_dll_dir is None:
         raise TesterSetupError("--event-catalog requires --dummy-dll-dir so setup can derive the matching local character catalog")
     # Resolved before the input hashing below, so a rejected address fails in
@@ -1061,7 +1117,7 @@ def prepare_local_tester(
     # toolchain costs seconds rather than surfacing after the whole resource tree
     # has been inventoried. Either route to the master-data layout will do; only
     # having neither stops setup.
-    check_derivation_prerequisites(dummy_dll_dir)
+    check_derivation_prerequisites(dummy_dll_dir, data_directory, dump_cs)
     try:
         # One shared cache, so the two inventories below read the tree once
         # between them instead of once each. Deliberately scoped to the APK and
@@ -1071,13 +1127,17 @@ def prepare_local_tester(
         digests = DigestCache(on_hash=lambda files, read: hashing.update(files, _format_bytes(read)))
         imported = build_import_manifest(apk, resource_root, reviewed_android_5_5_7=True, digests=digests)
         write_import_manifest(data_directory / "input-manifest", imported)
-        if dummy_dll_dir is None or not dummy_dll_dir.is_dir():
+        reusable = reusable_il2cpp_dump(dummy_dll_dir, data_directory, dump_cs)
+        if reusable is None:
             # The default location is a hint, not a requirement. When nothing is
             # there, setup produces the dump itself: both Il2CppDumper inputs
             # live inside the APK it was already given, so this asks the
             # operator for nothing beyond having the tool installed.
             dummy_dll_dir, discovered = ensure_il2cpp_dump(apk, data_directory)
             dump_cs = dump_cs if dump_cs is not None else discovered
+        else:
+            dummy_dll_dir, dump_cs = reusable
+            print(f"Reusing the local IL2CPP dump in {dummy_dll_dir.parent}.")
         trees = load_master_trees(apk, dummy_dll_dir, ("ChrDatabase", "ItemSet", "BuddyDatabase"))
         apk_sha256 = sha256_file(apk)
         character_catalog = build_character_catalog(trees["ChrDatabase"], apk_sha256)
@@ -1175,44 +1235,28 @@ def server_arguments(
     return arguments
 
 
-def _ask_yes_no(prompt: str, default: bool, ask: Callable[[str], str] = input) -> bool:
-    suffix = "Y/n" if default else "y/N"
-    while True:
-        answer = ask(f"{prompt} [{suffix}] ").strip().lower()
-        if not answer:
-            return default
-        if answer in {"y", "yes"}:
-            return True
-        if answer in {"n", "no"}:
-            return False
-        print("Please answer y or n.")
-
-
 def choose_local_server_options(
     event_catalog: Path | None, ask: Callable[[str], str] = input,
 ) -> LocalServerOptions:
-    """Prompt only for what an operator must actually supply.
+    """Describe and return the explicit guided-server configuration.
 
     Every built-in policy is on.  They were briefly selectable, but the modes
     only ever subtracted content from a preservation build: nobody testing this
     wants the story without the Tavern, and the one genuine case -- isolating a
     feature while troubleshooting -- is better served by running
     ``liminal_gate.bootstrap_server`` directly with the flags you want, which
-    ``docs/advanced-configuration.md`` documents.
+    ``docs/advanced-configuration.md`` documents.  Reviewed local events are an
+    expert feature enabled only by the explicit ``--event-catalog`` option, so a
+    first-time setup is not interrupted by a question it cannot usefully answer.
+
+    ``ask`` remains as a compatibility argument for callers of the former
+    interactive API; it is deliberately never called.
     """
     print("\nLocal setup")
     print("Story, Hunting zones, Pacts, and Companions are all enabled.")
     print("Custom drop-rate controls are not available yet.")
-    enable_events = _ask_yes_no(
-        "Do you already have an advanced local event catalog", event_catalog is not None, ask,
-    )
-    if not enable_events:
-        return LocalServerOptions()
-    if event_catalog is None:
-        raw = ask("Path to your local event catalog JSON: ").strip()
-        if not raw:
-            raise TesterSetupError("an event catalog path is required when local events are enabled")
-        event_catalog = Path(raw)
+    if event_catalog is not None:
+        print(f"Reviewed local event catalog: {event_catalog}")
     return LocalServerOptions(event_catalog=event_catalog)
 
 
@@ -1245,6 +1289,7 @@ def port_is_free(port: int) -> bool:
     free on loopback and taken on 0.0.0.0 would pass a narrower test and then
     fail at launch.
     """
+    validate_port(port)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
@@ -1257,6 +1302,8 @@ def port_is_free(port: int) -> bool:
 def preflight_checks(
     apk: Path, resource_root: Path, dummy_dll_dir: Path | None, port: int,
     adb: str, device: str | None, build_tools: Path | None,
+    data_directory: Path = DEFAULT_DATA, dump_cs: Path | None = None,
+    device_host: str = EMULATOR_LOOPBACK_HOST,
 ) -> list[Check]:
     """Answer every question setup would otherwise ask one failure at a time."""
     def build_tool_paths() -> str:
@@ -1270,8 +1317,10 @@ def preflight_checks(
         return ", ".join(MASTER_IMPORT_DISTRIBUTIONS)
 
     def il2cpp_dumper() -> str:
-        if dummy_dll_dir is not None and dummy_dll_dir.is_dir():
-            return f"not needed; using {dummy_dll_dir}"
+        reusable = reusable_il2cpp_dump(dummy_dll_dir, data_directory, dump_cs)
+        if reusable is not None:
+            dummy_dll, resolved_dump_cs = reusable
+            return f"not needed; reusing {dummy_dll} with {resolved_dump_cs}"
         command = find_il2cpp_dumper()
         if command is None:
             raise TesterSetupError(describe_missing_il2cpp_dumper())
@@ -1292,12 +1341,30 @@ def preflight_checks(
         return str(resolve_resource_root(resource_root))
 
     def free_port() -> str:
+        validate_port(port)
         if not port_is_free(port):
             raise TesterSetupError(f"port {port} is already in use; choose another with --port")
         return f"{port} is free"
 
-    def ready_device() -> str:
-        return select_device(resolve_adb(adb), device)
+    def server_origin() -> str:
+        host = validate_device_host(device_host)
+        if not 1 <= port <= 65535:
+            return f"{host} (port checked separately)"
+        return build_server_origin(device_host, port)
+
+    def device_check() -> Check:
+        try:
+            selected = select_device(resolve_adb(adb), device)
+        except (TesterSetupError, OSError) as error:
+            # A specifically requested target must be ready for the same command
+            # to install. With no selection, absence remains a warning because
+            # --prepare-only is useful before a device is started.
+            return Check("device", False, str(error), required=device is not None)
+        try:
+            check_device_host_suits_device(selected, device_host)
+        except TesterSetupError as error:
+            return Check("device", False, str(error), required=True)
+        return Check("device", True, selected)
 
     return [
         Check("python", True, f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"),
@@ -1310,10 +1377,11 @@ def preflight_checks(
         _probe("APK", local_apk),
         _probe("resources", resources),
         _probe("port", free_port),
+        _probe("device host", server_origin),
         # Not required: --prepare-only builds the APK with nothing attached, and
         # a tester who has not started the emulator yet still wants the rest of
         # this list rather than one line about adb.
-        _probe("device", ready_device, required=False),
+        device_check(),
     ]
 
 
@@ -1374,13 +1442,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dummy-dll-dir", type=Path, default=DEFAULT_DUMMY_DLL,
         help=(
-            "local Il2CppDumper DummyDll directory; required for the complete guided "
-            f"setup (default: {DEFAULT_DUMMY_DLL})"
+            "existing Il2CppDumper DummyDll directory; setup generates and reuses one "
+            f"under --data-dir when this path is absent (default hint: {DEFAULT_DUMMY_DLL})"
         ),
     )
     parser.add_argument("--event-catalog", type=Path, help="optional user-local event-stage catalog; requires --dummy-dll-dir")
     parser.add_argument("--dump-cs", type=Path, help="Il2CppDumper dump.cs; defaults to the file beside --dummy-dll-dir")
-    parser.add_argument("--no-configure", dest="configure", action="store_false", help="skip interactive local-server options and use the standard defaults")
+    parser.add_argument(
+        "--no-configure", dest="configure", action="store_false",
+        help="skip the setup summary and any optional saved-account switch",
+    )
     parser.set_defaults(configure=True)
     parser.add_argument(
         "--check", action="store_true",
@@ -1473,6 +1544,7 @@ def main() -> int:
         return report_preflight(preflight_checks(
             args.apk, args.resource_root, args.dummy_dll_dir, args.port,
             args.adb, args.device, args.build_tools,
+            args.data_dir, args.dump_cs, args.device_host,
         ))
     try:
         options = (

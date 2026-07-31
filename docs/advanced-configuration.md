@@ -90,7 +90,10 @@ existing directory, setup runs it for you: both its inputs — `libil2cpp.so` an
 `global-metadata.dat` — are already inside the APK you gave it, so nothing is
 asked of you beyond having the tool installed. The result is kept under
 `user-data/il2cpp/` and reused on later runs. Point `--dummy-dll-dir` at output
-you already have to skip that step.
+you already have to skip that step. A reusable result consists of both a
+`DummyDll` directory containing assemblies and the sibling `dump.cs`; `--check`
+validates the pair and also finds the generated pair beneath the selected
+`--data-dir`.
 
 Setup needs to find Il2CppDumper on `PATH` or via the
 `LIMINAL_GATE_IL2CPPDUMPER` environment variable, which may name a native

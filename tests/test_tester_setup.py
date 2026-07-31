@@ -35,8 +35,10 @@ class GuidedServerPolicyTest(unittest.TestCase):
         self.assertNotIn("--summon-skills", arguments)
 
     def choose(self):
-        """Answer the only remaining prompt: decline the event catalog."""
-        return choose_local_server_options(None, ask=lambda _: "n")
+        """The standard setup has no feature-selection prompt."""
+        return choose_local_server_options(
+            None, ask=lambda _: self.fail("standard setup must not ask an advanced question"),
+        )
 
     def test_setup_enables_every_built_in_policy(self) -> None:
         # The mode prompt was removed: it only ever subtracted content from a
@@ -62,6 +64,8 @@ class TesterSetupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); apk = root / "game.apk"; resources = root / "resources"; data = root / "user-data"; dummy = root / "DummyDll"
             apk.write_bytes(b"apk"); dummy.mkdir()
+            (dummy / "Assembly-CSharp.dll").write_bytes(b"")
+            (dummy.parent / "dump.cs").write_text("", encoding="utf-8")
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (resources / category).mkdir(parents=True, exist_ok=True)
             with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.load_master_trees", return_value={
@@ -209,13 +213,17 @@ class TesterSetupTest(unittest.TestCase):
             with self.assertRaisesRegex(TesterSetupError, "--dummy-dll-dir"):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
 
-    def test_interactive_setup_asks_only_about_the_event_catalog(self) -> None:
-        options = choose_local_server_options(None, lambda _: "n")
+    def test_standard_setup_does_not_ask_about_advanced_events(self) -> None:
+        options = choose_local_server_options(
+            None, lambda _: self.fail("the standard path must not prompt"),
+        )
         self.assertIsNone(options.event_catalog)
 
-    def test_interactive_options_require_a_local_event_catalog(self) -> None:
-        answers = iter(("y", "local/events.json"))
-        options = choose_local_server_options(None, lambda _: next(answers))
+    def test_an_explicit_event_catalog_is_enabled_without_a_prompt(self) -> None:
+        options = choose_local_server_options(
+            Path("local/events.json"),
+            lambda _: self.fail("an explicit option must not be confirmed again"),
+        )
         self.assertEqual(Path("local/events.json"), options.event_catalog)
 
     def test_runs_server_with_argument_sequence(self) -> None:
@@ -399,6 +407,8 @@ class LocalSigningToolTest(unittest.TestCase):
             # order of the checks, not about what they produce.
             dummy_dll = root / "DummyDll"
             dummy_dll.mkdir()
+            (dummy_dll / "Assembly-CSharp.dll").write_bytes(b"")
+            (dummy_dll.parent / "dump.cs").write_text("", encoding="utf-8")
             with patch("liminal_gate.tester_setup.load_master_trees", return_value={"ChrDatabase": {}, "BuddyDatabase": {}}), \
                  patch("liminal_gate.tester_setup.build_character_catalog", return_value={}), \
                  patch("liminal_gate.tester_setup.write_character_catalog"), \

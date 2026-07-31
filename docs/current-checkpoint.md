@@ -32,6 +32,15 @@ Issue 22 tutorial recovery, and the exact hash/byte-guarded Issue 15 ARM64
 constructor replacement. Compilation, profile JSON, endpoint YAML, and diff
 checks pass. An exact clean source candidate passed both publication gates.
 
+Latest guided-setup validation: preflight and the real build resolve the same
+explicit or generated `(DummyDll, dump.cs)` pair, validate port and device-host
+routing before expensive work, and leave advanced events behind the explicit
+`--event-catalog` option. The focused warning-strict setup suite passed 123
+tests; the complete warning-strict suite passed all 625 tests in 118.332
+seconds, and compilation and diff checks passed. This is command-line and
+fixture proof; Windows and physical-device operator confirmation remain open,
+and no client gameplay boundary changed.
+
 Latest client blocker: Issue 25 captured a final-client Chapter 3003-1 clear
 reporting 1,800 Coins. The old local 1,500 ceiling rejected settlement and
 durably retained `hunting_active`, which correctly survived restart but blocked
