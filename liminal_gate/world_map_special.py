@@ -43,6 +43,13 @@ WORLD_MAP_SPECIAL_CHAPTER = 1100
 # core progress that may enter is Chapter 35 Section 1.
 UNLOCK_AFTER_CHAPTER = 34
 WORLD_MAP_SPECIAL_STAMINA = 25
+# A bound on the battle's own experience, not a recovered reward. Its purpose is
+# to stop an arbitrary client-authored claim, so it is reasoned as an upper
+# limit: Metal Zone 7 permits 7,720,000 across *five* battles at assumed level
+# 70, and a Chapter-1100 section is a *single* battle at level 80 or 90, which
+# cannot plausibly exceed that. Erring high is deliberate -- a bound that is too
+# tight refuses honest clears, which is the failure this replaces.
+WORLD_MAP_SPECIAL_EXP_CEILING = 7_720_000
 
 
 @dataclass(frozen=True)

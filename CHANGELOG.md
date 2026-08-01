@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.1 — 2026-08-01
+
+### Fixed
+
+- **Dragon Road, Machine Road, and the Chapter-1100 routes rejected the battles
+  you won.** All three had a zero experience ceiling, so a clear reporting any
+  EXP — which every won battle does — returned `409` and the stamina was
+  already spent. 1.0.0 documented this as "these areas award nothing"; that was
+  wrong twice over. They do not award nothing, and what they were doing was
+  worse than awarding nothing.
+
+  Reading the sections out of the APK settled it. Each declares the absence of
+  the *other* rewards itself: empty `dropBuddies`, `allowLucky` 0, and on the
+  Roads `doNotDropExchangeItem` 1. So Coins, items, and Companions are still
+  refused, now on the game's own authority rather than for want of evidence.
+  Experience was never one of those channels — and the Roads are species-locked
+  training zones (`species` 128 Dragon and 256 Machine at `assumedLevel` 35),
+  where gaining it is the entire purpose of entering.
+
+  Both now pay experience, bounded by a ceiling derived from the same selector's
+  own tiers: the Roads' assumed level 35 sits between Metal Zone 3 and 4, and
+  the higher neighbour is taken; a single Chapter-1100 battle is bounded by
+  Metal Zone 7's five-battle allowance. The bounds err high on purpose. They
+  exist to stop a tampered client, and a bound that is too tight refuses honest
+  clears — which is the failure being fixed.
+
 ## 1.0.0 — 2026-08-01
 
 The first release. What 1.0 claims is narrow and deliberate:

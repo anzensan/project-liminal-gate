@@ -220,11 +220,31 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual(409, status)
         self.assertEqual("world_map_special_active", self.phase())
 
-    def test_coins_and_exp_claims_are_refused(self) -> None:
+    def test_a_coin_claim_is_refused(self) -> None:
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
         self.assertEqual(409, self.clear("wms-clear-a", SHINEN_FIRST, coins=500)[0])
-        self.assertEqual(409, self.clear("wms-clear-b", SHINEN_FIRST, exp=1000)[0])
         self.assertEqual(100, self.userdata()["coins"])
+
+    def test_the_battles_own_experience_is_accepted_up_to_its_ceiling(self) -> None:
+        """A won level-90 battle grants EXP; refusing it failed the clear.
+
+        The section's own BattleData switches Coins, items, and Luck chests off,
+        so those stay refused. Experience is not one of those channels -- it is
+        what the battle produced -- and a zero ceiling meant 25 stamina bought a
+        fight the player won and the server then rejected.
+        """
+        self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
+        self.assertEqual(200, self.clear("wms-clear", SHINEN_FIRST, exp=1000)[0])
+
+    def test_an_experience_claim_beyond_the_ceiling_is_still_refused(self) -> None:
+        from liminal_gate.world_map_special import WORLD_MAP_SPECIAL_EXP_CEILING
+
+        self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
+        self.assertEqual(
+            409,
+            self.clear("wms-over", SHINEN_FIRST, exp=WORLD_MAP_SPECIAL_EXP_CEILING + 1)[0],
+        )
+        self.assertEqual("world_map_special_active", self.phase())
 
     def test_the_route_advances_one_battle_at_a_time(self) -> None:
         # Battle 2 of the Shin'en route is section 3; it is locked until

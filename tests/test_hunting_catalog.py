@@ -6,7 +6,8 @@ import tempfile
 import unittest
 
 from liminal_gate.hunting_catalog import (
-    HuntingCatalogError, build_bundled_hunting_policy, load_hunting_catalog,
+    HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds,
+    load_hunting_catalog,
 )
 
 
@@ -147,12 +148,45 @@ class BundledHuntingPolicyTest(unittest.TestCase):
                     self.assertEqual(expected, stage.companion_maxima)
                     self.assertTrue(set(stage.companion_maxima) <= set(stage.companion_drop_levels))
 
-    def test_the_two_roads_reward_nothing_that_was_recovered(self) -> None:
+    def test_the_two_roads_pay_experience_and_nothing_else(self) -> None:
+        """Training is the whole point of a species-locked Road.
+
+        Their BattleData sections switch every other channel off themselves --
+        empty `dropBuddies`, `allowLucky` 0, `doNotDropExchangeItem` 1 -- so
+        Coins, items, and Companions settle at zero on the client's own say-so.
+        EXP is not one of those channels, and a zero ceiling there refused the
+        clear outright, so 15 stamina bought a won battle the server rejected.
+        """
         for chapter in (1200, 1201):
             road = self.stages[(chapter, 1)]
             with self.subTest(chapter=chapter):
-                self.assertEqual((15, 0, 0, 0), (road.stamina, road.coins, road.max_coins, road.max_exp))
+                self.assertEqual((15, 0, 0), (road.stamina, road.coins, road.max_coins))
                 self.assertEqual(({}, {}, {}), (road.item_maxima, road.companion_maxima, road.entry_items()))
+                self.assertGreater(road.max_exp, 0)
+
+    def test_a_road_accepts_a_won_battles_experience_and_still_refuses_the_rest(self) -> None:
+        road = self.stages[(1200, 1)]
+
+        def result(**overrides: object) -> dict[str, object]:
+            return {
+                "coins": 0, "exp": 0, "items": {}, "buddies": [],
+                "summons": [], "monsters": [],
+            } | overrides
+
+        self.assertTrue(hunting_settlement_within_bounds(road, result(exp=road.max_exp)))
+        self.assertFalse(hunting_settlement_within_bounds(road, result(exp=road.max_exp + 1)))
+        for channel, value in (
+            ("coins", 1), ("items", {"50": 1}), ("buddies", [128]),
+            ("summons", [1]), ("monsters", [1]),
+        ):
+            with self.subTest(channel):
+                self.assertFalse(hunting_settlement_within_bounds(road, result(**{channel: value})))
+
+    def test_the_road_ceiling_sits_on_its_own_selectors_tier_above_it(self) -> None:
+        """The ceiling is derived, not chosen: Metal's tier above level 35."""
+        from liminal_gate.hunting_catalog import _METAL_EXP_CEILING
+
+        self.assertEqual(_METAL_EXP_CEILING[3], self.stages[(1200, 1)].max_exp)
 
     def test_advertises_only_the_zones_the_account_has_unlocked(self) -> None:
         """The client hard-codes no thresholds; an unlisted zone does not exist.

@@ -81,6 +81,7 @@ from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_serv
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 from liminal_gate.world_map_special import (
     WORLD_MAP_SPECIAL_CHAPTER,
+    WORLD_MAP_SPECIAL_EXP_CEILING,
     WorldMapSpecialCatalog,
     build_bundled_world_map_special_policy,
     initial_route_progress,
@@ -2376,8 +2377,13 @@ class BootstrapState:
                 or clear["valuables"].get("coins") != int(userdata.get("coins", 0))
             ):
                 return "tutorial_state_conflict", None
-            if not _zero_base_event_matches(userdata, clear):
+            if not _zero_base_event_matches(userdata, clear, WORLD_MAP_SPECIAL_EXP_CEILING):
                 return "invalid_local_world_map_special_result", None
+            # The battle really was fought, so the levels it produced are kept
+            # the way every other EXP-bearing clear keeps them: as a trusted
+            # local client report, merged so a stale client cannot delete a
+            # grant it never read back.
+            userdata["chrdata"] = _preserved_roster(userdata.get("chrdata"), clear["chrdata"])
             frontier = self._world_map_special_progress(account, catalog)
             if stage.battle == frontier[stage.route] and stage.battle < catalog.final_battle(stage.route):
                 frontier[stage.route] = stage.battle + 1
@@ -4851,10 +4857,28 @@ def _parse_message_ids(body: bytes) -> list[str] | None:
 
 
 def _zero_base_event_matches(
-    userdata: dict[str, Any], clear: dict[str, Any],
+    userdata: dict[str, Any], clear: dict[str, Any], max_exp: int = 0,
 ) -> bool:
-    """Require a Counter Descent clear to grant nothing unrecovered."""
+    """Require a Counter Descent clear to grant nothing unrecovered.
+
+    `max_exp` above zero additionally permits the battle's own experience, and
+    with it the roster the client reports back. Only Chapter 1100 uses that: it
+    is a real level-90 battle, and refusing its EXP made a won fight fail.
+    """
     result = clear["battle_result"]
+    if max_exp:
+        return (
+            result["coins"] == 0
+            and result["exp"] <= max_exp
+            and result["items"] == {}
+            and result["buddies"] == []
+            and result["monsters"] == []
+            and result["summons"] == []
+            and result["luckynum"] == 0
+            and result["boostup"] == [0] * 6
+            and clear["itemList"] == userdata.get("itemList")
+            and clear["summonList"] == userdata.get("summonList")
+        )
     return (
         result["coins"] == 0
         and result["exp"] == 0
