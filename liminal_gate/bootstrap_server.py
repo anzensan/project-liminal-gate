@@ -1138,18 +1138,25 @@ class BootstrapState:
             items = data.get("itemList")
             if not isinstance(items, list) or len(items) != catalog.item_slots or any(type(value) is not int or value < 0 for value in items):
                 return "unsupported_message_read", None
+            unread = [message for message in selected if message is not None and not message["read"]]
+            # Character and Companion grants are resolved before anything is
+            # written, because they are the two rewards that can legitimately
+            # fail -- a malformed roster, a full Companion box. Settling coins
+            # first and discovering that afterwards would leave a message read
+            # and its headline reward never delivered.
+            grants = _message_grants(data, unread, catalog)
+            if grants is None:
+                return "unsupported_message_read", None
             updated_items = list(items)
             coins, energy = int(data.get("coins", 0)), int(data.get("freeEnergy", 0))
-            for message in selected:
-                assert message is not None
-                if message["read"]:
-                    continue
+            for message in unread:
                 coins = min(catalog.max_coins, coins + message["coins"])
                 energy = min(catalog.max_free_energy, energy + message["free_energy"])
                 for item_id, amount in message["items"].items():
                     updated_items[int(item_id) - 1] = min(catalog.max_stack, updated_items[int(item_id) - 1] + amount)
                 message["read"] = True
             data["coins"], data["freeEnergy"], data["itemList"] = coins, energy, updated_items
+            _apply_message_grants(data, grants)
             payload = _canonical_payload({"result": True, "readlist": message_ids, "itemList": updated_items, "coins": coins, "energy": int(data.get("energy", 0)), "freeEnergy": energy, **_message_reload_projection(data, account)})
             requests[_replay_key(request_id, body, "read")] = {"operation": "read", "body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -4649,6 +4656,89 @@ def _initial_messages(catalog: MessageCatalog | None) -> dict[str, dict[str, Any
     }
 
 
+def _message_grants(
+    userdata: dict[str, Any], unread: list[dict[str, Any]], catalog: MessageCatalog,
+) -> tuple[list[int], list[tuple[int, int]]] | None:
+    """Resolve the character and Companion rewards a read is about to deliver.
+
+    Returns the characters to add and the `(companion_id, level)` pairs to mint,
+    or `None` when the account cannot receive them. Nothing is written here: a
+    read that cannot deliver every reward it displays must refuse rather than
+    settle the affordable half.
+    """
+    characters = [message["character_id"] for message in unread if message.get("character_id")]
+    companions = [
+        (message["companion_id"], message.get("companion_level", 1))
+        for message in unread if message.get("companion_id")
+    ]
+    if not characters and not companions:
+        return [], []
+    rows = userdata.get("chrdata")
+    if characters and (
+        not isinstance(rows, list)
+        or any(not isinstance(row, dict) for row in rows)
+    ):
+        return None
+    if companions and _companion_box_room(userdata, len(companions), catalog.max_owned) is None:
+        return None
+    return characters, companions
+
+
+def _companion_box_room(
+    userdata: dict[str, Any], wanted: int, capacity: int,
+) -> tuple[list[dict[str, Any]], int] | None:
+    """Return the account's Companion box and next inventory id, if it has room."""
+    raw_info = userdata.get("buddyInfo", {"list": [], "record": []})
+    owned = raw_info.get("list") if isinstance(raw_info, dict) else None
+    if not isinstance(owned, list) or any(
+        not isinstance(row, dict) or type(row.get("iid")) is not int or row["iid"] <= 0
+        for row in owned
+    ):
+        return None
+    known = {row["iid"] for row in owned}
+    if len(known) != len(owned) or len(owned) + wanted > capacity:
+        return None
+    next_id = userdata.get("nextCompanionInventoryId", max(known, default=0) + 1)
+    if type(next_id) is not int or next_id <= max(known, default=0):
+        return None
+    return owned, next_id
+
+
+def _apply_message_grants(
+    userdata: dict[str, Any], grants: tuple[list[int], list[tuple[int, int]]],
+) -> None:
+    """Add the resolved characters and Companions to the account.
+
+    A character the account already holds is left untouched. A Pact raises a
+    duplicate's Skill Boost, but nothing records what an inbox present did with
+    one, and inventing a second source of Skill Boost would be a reward this
+    project made up.
+    """
+    characters, companions = grants
+    rows = userdata.setdefault("chrdata", [])
+    held = {row.get("id") for row in rows if isinstance(row, dict)}
+    for character_id in characters:
+        if character_id in held:
+            continue
+        rows.append({
+            "id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [],
+            "isNew": True, "levelAdded": 1, "skillBoost": 0,
+        })
+        held.add(character_id)
+    if not companions:
+        return
+    info = userdata.setdefault("buddyInfo", {"list": [], "record": []})
+    owned = info.setdefault("list", [])
+    next_id = userdata.get("nextCompanionInventoryId", max((row["iid"] for row in owned), default=0) + 1)
+    for companion_id, level in companions:
+        owned.append({
+            "bid": companion_id, "lv": level, "date": 0.0,
+            "iid": next_id, "exp": 0, "flag": 0, "chrID": 0,
+        })
+        next_id += 1
+    userdata["nextCompanionInventoryId"] = next_id
+
+
 def _message_state(message: Any) -> dict[str, Any]:
     return {
         "id": message.message_id,
@@ -4659,6 +4749,9 @@ def _message_state(message: Any) -> dict[str, Any]:
         "coins": message.coins,
         "free_energy": message.free_energy,
         "items": {str(item_id): amount for item_id, amount in message.items.items()},
+        "character_id": message.character_id,
+        "companion_id": message.companion_id,
+        "companion_level": message.companion_level,
     }
 
 
@@ -4724,9 +4817,13 @@ def _parse_exchange(body: bytes) -> tuple[int, int] | None:
 def _message_wire(message: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": message["id"], "date": float(message["date"]), "read": bool(message["read"]), "daysLast": int(message["days_last"]),
-        "gifts": [], "coins": int(message["coins"]), "energy": int(message["free_energy"]), "chr": 0,
+        "gifts": [], "coins": int(message["coins"]), "energy": int(message["free_energy"]),
+        "chr": int(message.get("character_id", 0)),
         "item": [{"id": int(item_id), "num": amount} for item_id, amount in sorted(message["items"].items(), key=lambda value: int(value[0]))],
-        "summon": 0, "buddy": 0, "title": 0, "messages": copy.deepcopy(message["messages"]),
+        # Summon and title stay zero: no owner is modeled for either, so a
+        # nonzero value would render a reward the read could not deliver.
+        "summon": 0, "buddy": int(message.get("companion_id", 0)), "title": 0,
+        "messages": copy.deepcopy(message["messages"]),
     }
 
 

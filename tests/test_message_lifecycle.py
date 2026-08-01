@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
 from liminal_gate.message_catalog import (
+    MessageCatalogError,
     build_bundled_chapter_message_policy,
     eligible_chapter_messages,
     load_message_catalog,
@@ -166,3 +167,147 @@ class MessageLifecycleTest(unittest.TestCase):
                 self.assertEqual((200, deleted), post(restarted, "delete_messages", "delete-one", read_body))
             finally:
                 restarted.shutdown(); thread.join(); restarted.server_close()
+
+
+class MessageRewardKindTest(unittest.TestCase):
+    """The client's record carries four reward channels beside coins and items.
+
+    Two of them can be delivered here, because this server already owns the
+    durable models they need: the roster a character joins, and the box a
+    Companion enters. The other two are refused rather than displayed and
+    dropped, which would look to a player like a reward that never arrived.
+    """
+
+    PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json"
+
+    def _catalog(self, root: Path, body: str) -> object:
+        path = root / "messages.toml"
+        path.write_text(
+            'schema_version = 1\nprovenance = "user-supplied"\nitem_slots = 3\n'
+            'max_free_energy = 9\nmax_coins = 99\nmax_stack = 8\n\n' + body,
+            encoding="utf-8",
+        )
+        return load_message_catalog(path)
+
+    def _serve(self, catalog: object, state_path: Path, userdata: dict[str, object]):
+        server = BootstrapServer(
+            ("127.0.0.1", 0), load_profile(self.PROFILE), BootstrapState(state_path),
+            message_catalog=catalog,
+        )
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        server.state.create_account("signup", "account", userdata, catalog)
+        return server, thread
+
+    def _account(self) -> dict[str, object]:
+        return {
+            "chrdata": [], "buddyInfo": {"list": [], "record": []}, "summonList": [0] * 16,
+            "itemList": [0, 0, 0], "coins": 0, "freeEnergy": 0, "energy": 0,
+            "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+        }
+
+    def _read(self, server, request_id: str = "read"):
+        body = urlencode({"idlist": json.dumps(["local-1"]), "lastUpdate": "1"})
+        connection = HTTPConnection(*server.server_address)
+        connection.request("POST", f"/gd/read_messages?otk=token&requestID={request_id}", body=body)
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    MESSAGE = (
+        '[[messages]]\nid = "local-1"\ndate = 1.0\ndays_last = 0\n'
+        'messages = { default = "d", ja = "j", en = "e" }\ncoins = 0\nfree_energy = 0\nitems = {}\n'
+    )
+
+    def test_a_character_present_joins_the_roster_and_survives_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.json"
+            catalog = self._catalog(root, self.MESSAGE + "character_id = 1018\n")
+            server, thread = self._serve(catalog, state_path, self._account())
+            try:
+                status, read = self._read(server)
+                self.assertEqual(200, status)
+                self.assertEqual([1018], [row["id"] for row in read["chrdata"]])
+                self.assertTrue(read["chrdata"][0]["isNew"])
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+            restarted = BootstrapServer(
+                ("127.0.0.1", 0), load_profile(self.PROFILE), BootstrapState(state_path),
+                message_catalog=catalog,
+            )
+            thread = threading.Thread(target=restarted.serve_forever)
+            thread.start()
+            try:
+                held = restarted.state.accounts["account"]["userdata"]["chrdata"]
+                self.assertEqual([1018], [row["id"] for row in held])
+            finally:
+                restarted.shutdown(); thread.join(); restarted.server_close()
+
+    def test_a_companion_present_enters_the_box_at_its_declared_level(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root, self.MESSAGE + "companion_id = 42\ncompanion_level = 5\n")
+            server, thread = self._serve(catalog, root / "state.json", self._account())
+            try:
+                status, read = self._read(server)
+                self.assertEqual(200, status)
+                owned = read["buddyInfo"]["list"]
+                self.assertEqual([(42, 5)], [(row["bid"], row["lv"]) for row in owned])
+                self.assertEqual(1, owned[0]["iid"])
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+    def test_a_duplicate_character_present_grants_no_second_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root, self.MESSAGE + "character_id = 1018\n")
+            account = self._account()
+            account["chrdata"] = [{"id": 1018, "jobID": 0, "jobLevels": [1], "jobSlots": []}]
+            server, thread = self._serve(catalog, root / "state.json", account)
+            try:
+                status, read = self._read(server)
+                self.assertEqual(200, status)
+                self.assertEqual([1018], [row["id"] for row in read["chrdata"]])
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+    def test_a_full_companion_box_refuses_the_read_instead_of_half_settling(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "messages.toml"
+            path.write_text(
+                'schema_version = 1\nprovenance = "user-supplied"\nitem_slots = 3\n'
+                'max_free_energy = 9\nmax_coins = 99\nmax_stack = 8\n\n'
+                '[[messages]]\nid = "local-1"\ndate = 1.0\ndays_last = 0\n'
+                'messages = { default = "d", ja = "j", en = "e" }\ncoins = 7\nfree_energy = 0\n'
+                'items = {}\ncompanion_id = 42\n',
+                encoding="utf-8",
+            )
+            catalog = load_message_catalog(path)
+            catalog = type(catalog)(
+                catalog.item_slots, catalog.max_free_energy, catalog.max_coins,
+                catalog.max_stack, catalog.messages, 1,
+            )
+            account = self._account()
+            account["buddyInfo"] = {"list": [{"bid": 1, "lv": 1, "date": 0.0, "iid": 1, "exp": 0, "flag": 0, "chrID": 0}], "record": []}
+            server, thread = self._serve(catalog, root / "state.json", account)
+            try:
+                status, refused = self._read(server)
+                self.assertEqual(501, status)
+                self.assertEqual("unsupported_message_read", refused["error"])
+                # The coins on the same message must not have been paid either.
+                self.assertEqual(0, server.state.accounts["account"]["userdata"]["coins"])
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+    def test_a_summon_or_title_reward_is_refused_at_catalog_load(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for field in ("summon_id", "title_id"):
+                with self.subTest(field):
+                    with self.assertRaises(MessageCatalogError) as raised:
+                        self._catalog(root, self.MESSAGE + f"{field} = 3\n")
+                    self.assertIn("no owner", str(raised.exception))
