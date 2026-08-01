@@ -267,6 +267,24 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual("local-account", state.client_hosts["192.168.1.10"])
         self.assertFalse(state.bind_rotated_token("stranger", "192.168.1.99"))
 
+    def test_a_linked_device_uuid_logs_in_to_the_shared_account(self) -> None:
+        """The `link` command's aliases resolve on the wire's only two
+        identity-bearing routes, so a second device's stored UUID opens the
+        save its owner already plays instead of being refused as unknown."""
+        self.request("/local/signup?uuid=local-account&otk=signup-token")
+        with self.server.state.lock:
+            self.server.state.account_aliases["linked-device"] = "local-account"
+            self.server.state._persist_locked()
+        status, _ = self.request("/local/login?uuid=linked-device&otk=tablet-token")
+        self.assertEqual(200, status)
+        self.assertEqual("local-account", self.server.state.tokens["tablet-token"])
+        status, body = self.request("/local/userdata?otk=tablet-token")
+        self.assertEqual(200, status)
+        self.assertEqual(0, body["coins"])
+        # The link survives a restart like every other binding.
+        saved = json.loads(self.state_path.read_text(encoding="utf-8"))
+        self.assertEqual({"linked-device": "local-account"}, saved["account_aliases"])
+
     def test_a_save_that_will_not_load_names_its_retained_states(self) -> None:
         self.request("/local/signup?uuid=local-account&otk=signup-token")
         with self.server.state.lock:

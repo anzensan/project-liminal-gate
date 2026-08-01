@@ -10,6 +10,13 @@ the app's data or reinstalling gives the client a new UUID, so its login no
 longer matches and it signs up into a new, empty account while the real save
 sits in the same file, complete and unreachable. Re-pointing it is a local
 bookkeeping change, not a protocol one.
+
+`link` is the two-device version of the same bookkeeping: instead of moving the
+save onto a new UUID, it records the second device's UUID as an alias of an
+existing account, so both devices sign in to one save. The wire protocol has no
+account system at all — the silently stored device UUID is the only credential —
+so this operator command is where "log in to my account from another device"
+lives. `unlink` detaches the device again.
 """
 
 from __future__ import annotations
@@ -58,6 +65,7 @@ def read_document(path: Path) -> tuple[bytes, dict[str, Any]]:
 def summarize_account(account_id: str, account: dict[str, Any], document: dict[str, Any]) -> dict[str, Any]:
     userdata = account.get("userdata") if isinstance(account.get("userdata"), dict) else {}
     roster = userdata.get("chrdata")
+    aliases = document.get("account_aliases")
     return {
         "accountId": account_id,
         "active": account_id == document.get("active_account_id"),
@@ -67,6 +75,9 @@ def summarize_account(account_id: str, account: dict[str, Any], document: dict[s
         "coins": userdata.get("coins"),
         "characters": len(roster) if isinstance(roster, list) else None,
         "boundTokens": sum(1 for value in document["tokens"].values() if value == account_id),
+        "linkedDevices": sorted(
+            device for device, owner in aliases.items() if owner == account_id
+        ) if isinstance(aliases, dict) else [],
         # A never-played account is the one `adopt` may safely replace.
         "played": account.get("tutorial_phase", "initial") != "initial" or bool(account.get("tutorial_requests")),
     }
@@ -227,6 +238,16 @@ def adopt(state: Path, source_id: str, target_id: str, confirmed: bool, force: b
                 host: target_id if account_id in (source_id, target_id) else account_id
                 for host, account_id in hosts.items()
             }
+        aliases = document.get("account_aliases")
+        if isinstance(aliases, dict):
+            # The moved save keeps its linked devices, and a target UUID that
+            # was itself a linked device now names a real account instead — a
+            # UUID may never be both, or the server refuses to load the save.
+            aliases.pop(target_id, None)
+            document["account_aliases"] = {
+                device: target_id if account_id == source_id else account_id
+                for device, account_id in aliases.items()
+            }
         encoded = (json.dumps(document, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
         write_document(state, encoded)
     finally:
@@ -236,6 +257,103 @@ def adopt(state: Path, source_id: str, target_id: str, confirmed: bool, force: b
         "from": source_id,
         "to": target_id,
         "discardedAccount": None if replaced is None else target_id,
+        "preservedPrimary": None if preserved is None else str(preserved.resolve()),
+        **summarize(state),
+    }
+
+
+def link(state: Path, device_id: str, target_id: str, confirmed: bool, force: bool) -> dict[str, Any]:
+    """Give a second device's UUID the save its owner already plays.
+
+    The linked device has usually signed up already, into a fresh empty
+    account: that throwaway is absorbed here, with the same played-progress
+    guard `adopt` uses. Linking a UUID the server has never seen is also fine —
+    the device's first signup then lands straight on the shared save.
+    """
+    if not confirmed:
+        raise AccountStateError("link requires --yes")
+    if device_id == target_id:
+        raise AccountStateError("--device and --to are the same id; nothing to link")
+    lock = acquire_lock(state)
+    try:
+        _, document = read_document(state)
+        accounts = document["accounts"]
+        aliases = document.get("account_aliases") if isinstance(document.get("account_aliases"), dict) else {}
+        if target_id not in accounts:
+            if target_id in aliases:
+                raise AccountStateError(
+                    f"{target_id} is itself a linked device of {aliases[target_id]}; link --to {aliases[target_id]} instead"
+                )
+            raise AccountStateError(f"no account {target_id} in {state}; run `inspect` to list them")
+        absorbed = accounts.get(device_id)
+        if absorbed is not None and summarize_account(device_id, absorbed, document)["played"] and not force:
+            raise AccountStateError(
+                f"account {device_id} has its own progress; pass --force to discard it, "
+                f"or `adopt` it if it is the save you meant to keep"
+            )
+        preserved = preserve(state, "pre-link")
+        accounts.pop(device_id, None)
+        # Devices linked to the absorbed throwaway follow it to the shared
+        # save, or their aliases would name an account that no longer exists.
+        aliases = {
+            device: target_id if account_id == device_id else account_id
+            for device, account_id in aliases.items()
+        }
+        aliases[device_id] = target_id
+        document["account_aliases"] = aliases
+        # The linked device's client is the one holding these bindings, and it
+        # is now playing the shared save.
+        document["tokens"] = {
+            token: target_id if account_id == device_id else account_id
+            for token, account_id in document["tokens"].items()
+        }
+        if document.get("active_account_id") == device_id:
+            document["active_account_id"] = target_id
+        hosts = document.get("client_hosts")
+        if isinstance(hosts, dict):
+            document["client_hosts"] = {
+                host: target_id if account_id == device_id else account_id
+                for host, account_id in hosts.items()
+            }
+        encoded = (json.dumps(document, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        write_document(state, encoded)
+    finally:
+        lock.close()
+    return {
+        "status": "linked",
+        "device": device_id,
+        "account": target_id,
+        "discardedAccount": None if absorbed is None else device_id,
+        "preservedPrimary": None if preserved is None else str(preserved.resolve()),
+        **summarize(state),
+    }
+
+
+def unlink(state: Path, device_id: str, confirmed: bool) -> dict[str, Any]:
+    """Detach a linked device so its UUID no longer opens the shared save.
+
+    The device itself keeps sending the unlinked UUID, so its next login is
+    refused until it clears the app's data (a fresh signup under a new UUID)
+    or is linked or adopted again.
+    """
+    if not confirmed:
+        raise AccountStateError("unlink requires --yes")
+    lock = acquire_lock(state)
+    try:
+        _, document = read_document(state)
+        aliases = document.get("account_aliases")
+        if not isinstance(aliases, dict) or device_id not in aliases:
+            raise AccountStateError(f"{device_id} is not a linked device; run `inspect` to list them")
+        preserved = preserve(state, "pre-unlink")
+        detached_from = aliases.pop(device_id)
+        encoded = (json.dumps(document, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        write_document(state, encoded)
+    finally:
+        lock.close()
+    return {
+        "status": "unlinked",
+        "device": device_id,
+        "account": detached_from,
         "preservedPrimary": None if preserved is None else str(preserved.resolve()),
         **summarize(state),
     }
@@ -365,6 +483,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     adopt_parser.add_argument("--to", dest="target_id", required=True)
     adopt_parser.add_argument("--yes", action="store_true")
     adopt_parser.add_argument("--force", action="store_true", help="discard progress already on --to")
+    link_parser = subparsers.add_parser("link", help="let a second device play an existing account")
+    link_parser.add_argument("state", type=Path)
+    link_parser.add_argument("--device", required=True, dest="device_id", help="the second device's UUID")
+    link_parser.add_argument("--to", required=True, dest="target_id", help="the account both devices will play")
+    link_parser.add_argument("--yes", action="store_true")
+    link_parser.add_argument("--force", action="store_true", help="discard progress already on --device")
+    unlink_parser = subparsers.add_parser("unlink", help="detach a linked device from its shared account")
+    unlink_parser.add_argument("state", type=Path)
+    unlink_parser.add_argument("--device", required=True, dest="device_id", help="the linked device's UUID")
+    unlink_parser.add_argument("--yes", action="store_true")
     switch_parser = subparsers.add_parser("switch", help="put the client on a different saved account")
     switch_parser.add_argument("state", type=Path)
     switch_parser.add_argument("--account", required=True, dest="account_id", help="the account to play")
@@ -392,6 +520,10 @@ def main(argv: list[str] | None = None) -> int:
             result = snapshot(args.state, args.output)
         elif args.command == "restore":
             result = restore(args.state, args.source, args.yes)
+        elif args.command == "link":
+            result = link(args.state, args.device_id, args.target_id, args.yes, args.force)
+        elif args.command == "unlink":
+            result = unlink(args.state, args.device_id, args.yes)
         elif args.command == "switch":
             result = switch(args.state, args.account_id, args.yes)
         elif args.command == "validate":
