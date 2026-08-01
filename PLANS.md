@@ -1,5 +1,63 @@
 # Execution Plans
 
+## 2026-07-31 Pact pool cap and Daily Quests
+
+Objective: implement the two items the secondary-source audit listed as
+unmodeled. One was already implemented and needed only coverage; the other is
+blocked on unrecovered data and is **not** being implemented.
+
+### Removal from the pool at 100% Skill Boost — already implemented
+
+The audit was wrong to list this as missing. `bootstrap_server` already filters
+every draw against the catalog cap, on `skillBoost` for an ordinary pull and on
+`luck` for the Fate variant, and refuses the whole Pact when nothing in the pool
+remains eligible. Both of the recorded service rules were therefore already
+honored: a character at 100% stops being offered, and an account holding the
+entire pool at 100% can no longer pull.
+
+What was missing was a test. Added one covering both halves: with one member of
+a two-entry pool capped, three consecutive draws all select the other member;
+with the pool wholly capped the Pact answers `success:true, cmdError:3` and the
+coin balance is untouched. Note the wire shape — the refusal is a *successful*
+call carrying a command error, not an HTTP failure, matching the documented
+`cmdError` convention. The exhausted case needs its own server and state file,
+because one account per state file owns the host claim.
+
+### Daily Quests — blocked, not implemented
+
+The client schedules these itself. `DailyQuestManager` computes up to three
+quests a day from `DailyQuestData.questOrder` and its own UTC/local clock,
+`ChapterInterface.DailyQuestChapter` is a client static rather than a served
+constant, and playability is decided from `lastDailyQuestPlayTime`,
+`lastDailyQuestPlayTime1` and `lastDailyQuestPlayTime2`, three save fields this
+server does not currently persist. `enableDailyQuest` is a known client flag and
+`AppServerUtil.DeleteDailyQuestPlayTime` is the reset call. So the server side
+is small: three longs, a flag, one endpoint, and entry/clear for the daily
+chapters.
+
+The content is the blocker. In the daily chapter block 6000--6012 the operator's
+own BattleData gives **exactly one** row a battle program, 6007 with three
+battles. Every other row including 6006, which the client names
+`DailyQuestManager.EnergyGetChapter`, is a zero-battle placeholder with no
+stamina and no coins. `BoostUpChapter` 6077 is absent from BattleData entirely.
+The recovered constants `EnergyItemId = 80`, `BoostUpCount = 20` and the two
+drop-up ratios of 2 therefore attach to stages that either cannot be played or
+do not exist.
+
+Implementing now would mean inventing the daily rotation, the reward settlement
+and most of the stage set. That is the same reasoning that excluded the sixteen
+empty Eidolon tier placeholders and all 45 Donation stages, and it applies here
+with less recovered material than either.
+
+Unblock condition: recover `DailyQuestData.questOrder` from the operator's own
+Unity assets. It is a MonoBehaviour string array, so it lives in a scene or
+prefab in the resource tree rather than in BattleData or master data, and
+UnityPy — already an optional dependency for Pact banner extraction — can read
+it. With the real rotation in hand, the three save fields, the flag, the reset
+endpoint and a 6007-only slice become a bounded and honest piece of work. Until
+then Daily Quests stay absent rather than invented, and the Huntland menu is
+short one category.
+
 ## 2026-07-31 secondary-source audit of the bundled local policies
 
 Objective: check every value this project labels local policy against the

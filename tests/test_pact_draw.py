@@ -493,3 +493,72 @@ class PactDrawTest(unittest.TestCase):
                 restarted.shutdown()
                 restarted_thread.join()
                 restarted.server_close()
+
+    def test_a_character_at_the_skill_boost_cap_leaves_the_pool(self) -> None:
+        """The retired service stopped offering a character at 100% Skill Boost.
+
+        With a two-entry pool and one member already capped, every draw must
+        select the other member; once both are capped the Pact itself refuses
+        rather than selecting an ineligible character or granting nothing.
+        """
+        catalog_document = {
+            "schema_version": 1, "provenance": "user-supplied", "coin_cost": 10,
+            "new_level": 1, "max_level": 9, "max_skill_boost": 100,
+            "draws": [
+                {"character_id": 9001, "weight": 1, "duplicate_level_added": 2, "duplicate_skill_boost": 5},
+                {"character_id": 9002, "weight": 1, "duplicate_level_added": 2, "duplicate_skill_boost": 5},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog_path, state_path = root / "pact.json", root / "state.json"
+            catalog_path.write_text(json.dumps(catalog_document), encoding="utf-8")
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=load_pact_draw_catalog(catalog_path))
+            thread = threading.Thread(target=server.serve_forever); thread.start()
+
+            def post(request_id: str) -> dict[str, object]:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", f"/gd/do_slot?otk=token&requestID={request_id}", body="kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
+                payload = json.loads(connection.getresponse().read()); connection.close()
+                return payload
+
+            def owned(character_id: int, skill_boost: int) -> dict[str, object]:
+                return {
+                    "id": character_id, "buddy": 0, "date": 0.0,
+                    "jobSlots": [0.0, 0.0, 0.0], "jobLevels": [1.0, 0.0, 0.0],
+                    "jobID": 0, "flags": 0, "skillBoost": skill_boost,
+                }
+
+            try:
+                # 9001 is already at the catalog's 100% cap, so every draw must
+                # land on 9002 even though both carry the same weight.
+                server.state.create_account("token", "account", {"coins": 100, "energy": 0, "freeEnergy": 0, "chrdata": [owned(9001, 100)]})
+                for index in range(3):
+                    payload = post(f"draw-{index}")
+                    self.assertTrue(payload["success"])
+                    self.assertEqual(9002, payload["chrdata"][0]["id"])
+                stored = server.state.userdata_for("token")
+                assert stored is not None
+                self.assertEqual(100, next(row for row in stored["chrdata"] if row["id"] == 9001)["skillBoost"])
+
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+            # With the whole pool capped the Pact refuses rather than selecting
+            # an ineligible character or charging for nothing. This needs its
+            # own server, because one account per state file owns the host claim.
+            exhausted_server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(root / "exhausted.json"), pact_draw_catalog=load_pact_draw_catalog(catalog_path))
+            exhausted_thread = threading.Thread(target=exhausted_server.serve_forever); exhausted_thread.start()
+            try:
+                exhausted_server.state.create_account("token", "exhausted", {"coins": 100, "energy": 0, "freeEnergy": 0, "chrdata": [owned(9001, 100), owned(9002, 100)]})
+                connection = HTTPConnection(*exhausted_server.server_address)
+                connection.request("POST", "/gd/do_slot?otk=token&requestID=draw-exhausted", body="kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
+                exhausted = json.loads(connection.getresponse().read()); connection.close()
+                # The client's own refusal shape: a successful call reporting a
+                # command error, not an HTTP or transport failure.
+                self.assertEqual((True, 3), (exhausted["success"], exhausted["cmdError"]))
+                self.assertNotIn("chrdata", exhausted)
+                self.assertEqual(100, exhausted_server.state.userdata_for("token")["coins"])
+            finally:
+                exhausted_server.shutdown(); exhausted_thread.join(); exhausted_server.server_close()

@@ -23,6 +23,25 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 Pact pool cap covered, Daily Quests blocked: removal from the pool
+  at 100% Skill Boost turned out to be already implemented — the draw path
+  filters on the catalog cap, `skillBoost` for an ordinary pull and `luck` for
+  Fate, and refuses with `success:true, cmdError:3` when nothing eligible
+  remains — so the audit was wrong to list it as unmodeled. It had no test; one
+  now covers both the per-character exclusion and the exhausted pool, including
+  that the coin balance is untouched by the refusal. All 662 repository tests
+  pass. Daily Quests are **not** implemented and should not be until one thing
+  is recovered. The server side is small (three `lastDailyQuestPlayTime` save
+  fields, the `enableDailyQuest` flag, the `DeleteDailyQuestPlayTime` reset, and
+  entry/clear), but in the 6000--6012 daily chapter block the operator's own
+  BattleData gives exactly one row a battle program, 6007; 6006, which the
+  client names `EnergyGetChapter`, is a zero-battle placeholder, and
+  `BoostUpChapter` 6077 is absent entirely. Building it now would mean inventing
+  the rotation, the rewards, and most of the stage set, the same reasoning that
+  excluded the empty Eidolon placeholders and the Donation stages. Unblock
+  condition: recover `DailyQuestData.questOrder` from the operator's Unity
+  assets with UnityPy. See the matching `PLANS.md` entry.
+
 - 2026-07-31 secondary-source audit of the bundled local policies: every value
   labeled local policy was checked against the community record. Thirteen
   bundled values are now independently corroborated rather than merely
