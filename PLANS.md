@@ -42,8 +42,11 @@ Current result:
 - Local generation produces 148 total rows across 34 event families: 45 Tower
   floors, 28 Eidolon stages, and the existing Archive/Counter Descent rows.
   The eight recovered Eidolon stage/ID pairs are present exactly once.
-- Thirty-four focused tests and all 648 repository tests passed. Deployment
-  and original-client acceptance remain open.
+- Thirty-four focused tests and all 648 repository tests passed. Commit
+  `8d18c88` is deployed on the Beelink with a regenerated 148-stage catalog;
+  live Chapter 8 status projects all 45 Tower and 28 Eidolon rows, Arena VS is
+  still disabled, loopback returns HTTP 200, and the save hash is unchanged.
+  Original-client Tower/Eidolon acceptance remains open.
 
 ## 2026-07-31 late non-collaboration Counter Descent expansion
 

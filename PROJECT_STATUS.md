@@ -39,8 +39,15 @@ machine-readable/current capability boundary.
   the BattleData SHA-256
   `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`.
   Thirty-four focused tests and all 648 repository tests passed in 127.844
-  seconds. Beelink deployment and original-client Tower/Eidolon acceptance are
-  still pending.
+  seconds. Commit `8d18c88` is deployed on the Beelink with event-catalog
+  SHA-256
+  `1eb4a565f5fdf80d460dd87585a77f68f8043567f8a7f1ffb0212c890261d26b`.
+  The service restarted under PID 236574 and returned loopback HTTP 200. Its
+  live Chapter 8 status contains 45 Tower and 28 Eidolon rows, while
+  `multiplay_enable` remains false. The durable save stayed byte-identical at
+  SHA-256
+  `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`.
+  Original-client Tower/Eidolon acceptance is still pending.
 - 2026-07-31 late non-collaboration Counter Descent expansion: the bundled
   solo policy now includes Chapters 8012--8017 in addition to 8000--8007.
   Final-client static identities and the retained APK-matched BattleData
