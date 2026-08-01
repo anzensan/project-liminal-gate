@@ -28,6 +28,7 @@ class EventStage:
     coins: int
     clear_coins: int
     character_ids: tuple[int, ...]
+    summon_ids: tuple[int, ...] = ()
     selector: str = "special"
     unlock_after_chapter: int | None = None
     zero_base: bool = False
@@ -71,6 +72,11 @@ class EventCatalog:
             for stage in self.stages
             if stage.selector == "tower" and stage.unlocked_at(progress_code)
         ]
+        eidolon = [
+            stage.identity_label()
+            for stage in self.stages
+            if stage.selector == "eidolon" and stage.unlocked_at(progress_code)
+        ]
         descent_chapters: dict[int, None] = {}
         for stage in self.stages:
             if (
@@ -81,6 +87,7 @@ class EventCatalog:
         return {
             "specialQuestList": special,
             "towerQuestList": tower,
+            "eidolonQuestList": eidolon,
             # Counter Descent is a folded five-tier card. The selector receives
             # one row; the client expands the chapter's packaged sections.
             "descentHuntingList": [
@@ -195,7 +202,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
             "event_id", "flag", "chapter", "section", "stamina", "coins",
             "clear_coins", "character_ids",
         }
-        optional = {"unlock_after_chapter"}
+        optional = {"unlock_after_chapter", "summon_ids"}
         if (
             not isinstance(raw, dict)
             or not required.issubset(raw)
@@ -245,6 +252,16 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
             raise EventCatalogError(
                 "event grants must be ordered local character IDs"
             )
+        summon_ids = raw.get("summon_ids", [])
+        if (
+            not isinstance(summon_ids, list)
+            or any(type(summon_id) is not int or not 1 <= summon_id <= 16 for summon_id in summon_ids)
+            or summon_ids != sorted(set(summon_ids))
+            or summon_ids and not 4100 <= raw["chapter"] <= 4111
+        ):
+            raise EventCatalogError(
+                "event summon grants must be ordered Summon IDs from 1 through 16"
+            )
         chapter = raw["chapter"]
         stages.append(
             EventStage(
@@ -256,11 +273,14 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 raw["coins"],
                 raw["clear_coins"],
                 tuple(grants),
+                tuple(summon_ids),
                 selector=(
                     "descent_hunting"
                     if _counter_descent_stamina(chapter) is not None
                     else "tower"
                     if 9100 <= chapter <= 9102
+                    else "eidolon"
+                    if 4100 <= chapter <= 4111
                     else "special"
                 ),
                 unlock_after_chapter=unlock_after_chapter,

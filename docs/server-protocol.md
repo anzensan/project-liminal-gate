@@ -119,12 +119,23 @@ chapter flags. Detailed static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
 
 `towerQuestList` is always present. After Chapter 3, the generated event
-catalog contributes only `9100-1` and login supplies `sp_ch_9100`. Entry uses
-the ordinary `start_quest` transaction with five stamina and zero Coins; clear
-uses the same durable event settlement and does not advance story progress.
-The permanent gate and zero clear Coins are local policy. Original-client
-Tower navigation and clear are not yet confirmed, so Chapters 9100-2 through
-9102-15 remain unavailable.
+catalog contributes all 45 BattleData-backed identities in Chapters
+9100--9102 and login supplies the matching chapter flags. Entry uses the
+ordinary `start_quest` transaction with each floor's recovered stamina and
+zero entry Coins; clear uses the same durable event settlement and does not
+advance story progress. The permanent gate and zero fixed clear Coins are
+local policy. Original-client Tower navigation and clear remain unverified.
+
+`eidolonQuestList` is likewise always present. After Chapter 3, it advertises
+all 28 BattleData-backed stages in Chapters 4100--4111. The clear request's
+`summonList` is the pre-result-screen 16-slot raw-data vector; the result's
+`summons` array may be empty or contain the one statically recovered,
+previously unowned Summon allowed for that stage. A grant is persisted as raw
+value `1`, matching `UserData.AddSummon(id)` constructing
+`SummonInfo(id, 1, 0)`. The response intentionally omits `summonList`: the
+client's clear callback does not read it, and `ShowSummonGet` adds the drop
+locally. Invalid, duplicate, unlisted, or already-owned reports are refused
+before mutation. Exact accepted replays remain stable after restart.
 
 Counter Descent starts use the ordinary `start_quest` route. The bundled policy
 accepts Chapters 8000--8007, sections 1--5, at 5/10/15/15/15 stamina and

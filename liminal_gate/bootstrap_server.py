@@ -2516,6 +2516,13 @@ class BootstrapState:
                 userdata, clear
             ):
                 return "invalid_local_event_result", None
+            eidolon_summons = None
+            if event and stage.selector == "eidolon":
+                eidolon_summons = _eidolon_summon_projection(
+                    userdata, clear, stage.summon_ids
+                )
+                if eidolon_summons is None:
+                    return "invalid_local_event_result", None
             if settlement_catalog is not None and not _settlement_matches(userdata, clear, identity, settlement_catalog):
                 return "invalid_local_settlement", None
             if clear_state_catalog is not None and not _clear_state_matches(userdata, clear, clear_state_catalog):
@@ -2538,7 +2545,13 @@ class BootstrapState:
                 "valuables": canonical_valuables,
                 "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
                 "itemList": _preserved_counts(userdata.get("itemList"), clear["itemList"]),
-                "summonList": _preserved_counts(userdata.get("summonList"), clear["summonList"]),
+                "summonList": (
+                    eidolon_summons
+                    if eidolon_summons is not None
+                    else _preserved_counts(
+                        userdata.get("summonList"), clear["summonList"]
+                    )
+                ),
             })
             if buddy_info is not None:
                 userdata["buddyInfo"] = buddy_info
@@ -3540,7 +3553,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
 
         The client refetches the status route after every login and after
         clears, so the zone lists here follow story progress without any push.
-        Both list keys are always present, even when empty: the client's setter
+        Dedicated list keys are always present, even when empty: the client's setter
         reads them directly, and an absent key is not the same as no zones.
         """
         pacts = self.server.pact_draw_catalog
@@ -3555,6 +3568,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "huntingHuntingList": [],
             "descentHuntingList": [],
             "towerQuestList": [],
+            "eidolonQuestList": [],
         }
         progress = self.server.state.progress_for_status(
             token,
@@ -3568,6 +3582,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 constants["specialQuestList"] = local_special_events
             constants["descentHuntingList"] = event_lists["descentHuntingList"]
             constants["towerQuestList"] = event_lists["towerQuestList"]
+            constants["eidolonQuestList"] = event_lists["eidolonQuestList"]
         if progress is not None and self.server.hunting_catalog is not None:
             hunting_lists = self.server.hunting_catalog.client_lists(progress)
             constants["metalHuntingList"] = hunting_lists["metalHuntingList"]
@@ -4588,6 +4603,36 @@ def _zero_base_event_matches(
         and clear["itemList"] == userdata.get("itemList")
         and clear["summonList"] == userdata.get("summonList")
     )
+
+
+def _eidolon_summon_projection(
+    userdata: dict[str, Any], clear: dict[str, Any], allowed: tuple[int, ...],
+) -> list[int] | None:
+    """Validate and durably project the final client's result-screen grant.
+
+    ``summonList`` is serialized before the result screen processes drops, so
+    it must match the server's current 16-slot raw-data vector. The battle
+    result may report no drop or one allowed, previously unowned Summon. The
+    result screen constructs a new ``SummonInfo(id, 1, 0)``, whose raw value is
+    exactly 1; the clear callback does not consume a returned summonList.
+    """
+    current = userdata.get("summonList")
+    submitted = clear["summonList"]
+    reported = clear["battle_result"]["summons"]
+    if (
+        not isinstance(current, list)
+        or len(current) != 16
+        or any(type(value) is not int or value < 0 for value in current)
+        or submitted != current
+        or len(reported) > 1
+        or any(summon_id not in allowed for summon_id in reported)
+        or any(current[summon_id - 1] != 0 for summon_id in reported)
+    ):
+        return None
+    projected = list(current)
+    for summon_id in reported:
+        projected[summon_id - 1] = 1
+    return projected
 
 
 def _settlement_matches(userdata: dict[str, Any], clear: dict[str, Any], identity: tuple[int, int], catalog: SettlementCatalog) -> bool:

@@ -23,9 +23,10 @@ from liminal_gate.event_catalog_generator import (
     build_catalog,
 )
 from liminal_gate.event_manifest_data import (
+    EIDOLON_MANIFEST_ROWS,
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
-    TOWER_VERTICAL_SLICE,
+    TOWER_MANIFEST_ROWS,
 )
 
 
@@ -79,23 +80,54 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual((148,), by_section[1])
         self.assertEqual((), by_section[2])
 
-    def test_tower_vertical_slice_projects_only_the_first_floor(self) -> None:
-        battledata = _battledata(9100)
+    def test_tower_projects_every_imported_floor_in_all_three_chapters(self) -> None:
+        battledata = _battledata(9100, 9101, 9102)
         battledata["stages"][0]["stamina"] = 5
         battledata["stages"][1]["stamina"] = 10
         _, _, loaded = self._generate(battledata, ())
-        self.assertEqual([(9100, 1)], sorted(loaded.by_identity()))
+        self.assertEqual(
+            [
+                (chapter, section)
+                for chapter in (9100, 9101, 9102)
+                for section in (1, 2)
+            ],
+            sorted(loaded.by_identity()),
+        )
         before = 0x01000000 | (3 << 6) | 1
         after = 0x01000000 | (4 << 6) | 1
         self.assertEqual([], loaded.client_lists(before)["towerQuestList"])
         self.assertEqual(
-            ["9100-1"],
+            [
+                f"{chapter}-{section}"
+                for chapter in (9100, 9101, 9102)
+                for section in (1, 2)
+            ],
             loaded.client_lists(after)["towerQuestList"],
         )
         stage = loaded.by_identity()[(9100, 1)]
         self.assertEqual(5, stage.stamina)
         self.assertEqual("tower", stage.selector)
-        self.assertEqual(TOWER_VERTICAL_SLICE[4], stage.unlock_after_chapter)
+        self.assertEqual(TOWER_MANIFEST_ROWS[0][3], stage.unlock_after_chapter)
+
+    def test_eidolon_stages_and_recovered_drop_ceiling_are_projected(self) -> None:
+        _, _, loaded = self._generate(_battledata(*range(4100, 4112)), ())
+        before = 0x01000000 | (3 << 6) | 1
+        after = 0x01000000 | (4 << 6) | 1
+        self.assertEqual([], loaded.client_lists(before)["eidolonQuestList"])
+        self.assertEqual(
+            [
+                f"{chapter}-{section}"
+                for chapter in range(4100, 4112)
+                for section in (1, 2)
+            ],
+            loaded.client_lists(after)["eidolonQuestList"],
+        )
+        self.assertEqual((4,), loaded.by_identity()[(4100, 1)].summon_ids)
+        self.assertEqual((), loaded.by_identity()[(4100, 2)].summon_ids)
+        self.assertEqual((7,), loaded.by_identity()[(4109, 1)].summon_ids)
+        self.assertTrue(
+            all(stage.selector == "eidolon" for stage in loaded.stages)
+        )
 
     def test_grant_absent_from_the_local_catalog_is_omitted_and_reported(self) -> None:
         # The user-input boundary: grants are validated, never asserted.
@@ -109,13 +141,17 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertTrue(any("skipped" in note for note in notes))
 
     def test_every_manifest_chapter_is_supported(self) -> None:
-        chapters = tuple(row[2] for row in EVENT_MANIFEST_ROWS) + (
-            TOWER_VERTICAL_SLICE[2],
+        chapters = (
+            tuple(row[2] for row in EVENT_MANIFEST_ROWS)
+            + tuple(row[2] for row in TOWER_MANIFEST_ROWS)
+            + tuple(row[2] for row in EIDOLON_MANIFEST_ROWS)
         )
         _, notes, loaded = self._generate(_battledata(*chapters), ())
         self.assertEqual(set(chapters), {stage.chapter for stage in loaded.stages})
         self.assertEqual(
-            len(EVENT_MANIFEST_ROWS) + 1,
+            len(EVENT_MANIFEST_ROWS)
+            + len(TOWER_MANIFEST_ROWS)
+            + len(EIDOLON_MANIFEST_ROWS),
             len({stage.event_id for stage in loaded.stages}),
         )
         self.assertFalse([note for note in notes if "skipped" in note])

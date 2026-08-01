@@ -42,19 +42,40 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
     ("leviathan_kino_strikes_back", "sp_ch_8017", 8017, 18, ()),
 )
 
-# event_id, flag, chapter, section, unlock_after_chapter
+# event_id, flag, chapter, unlock_after_chapter
 #
-# The first Tower floor is deliberately separate from EVENT_MANIFEST_ROWS:
-# those rows expand an entire recovered event chapter, while Tower remains a
-# one-floor compatibility experiment until the surviving client proves how its
-# dedicated selector advances. Chapter 3 is a permanent local archive gate,
+# The final client contains dedicated Tower selector/range handling and all
+# three 15-floor chapter programs. Chapter 3 is a permanent local archive gate,
 # not a recovered Tower schedule.
-TOWER_VERTICAL_SLICE: tuple[str, str, int, int, int] = (
-    "tower_of_temptation",
-    "sp_ch_9100",
-    9100,
-    1,
-    3,
+TOWER_MANIFEST_ROWS: tuple[tuple[str, str, int, int], ...] = (
+    ("tower_of_temptation_1", "sp_ch_9100", 9100, 3),
+    ("tower_of_temptation_2", "sp_ch_9101", 9101, 3),
+    ("tower_of_temptation_3", "sp_ch_9102", 9102, 3),
+)
+
+# event_id, flag, chapter, unlock_after_chapter, (section, summon_id) drops
+#
+# Chapters 4100--4111 are the final client's converted single-player Eidolon
+# quests. The eight acquisition pairs below are recovered by mapping each
+# chapter program's enemy enum through EnemyData's ordinal table; those enemy
+# rows carry a 50 percent DropSummonRatio. The client performs the random roll
+# and reports the result, so this policy records only which single Summon a
+# stage is allowed to report. Chapter 3 is local availability policy.
+EIDOLON_MANIFEST_ROWS: tuple[
+    tuple[str, str, int, int, tuple[tuple[int, int], ...]], ...
+] = (
+    ("eidolon_artemis", "sp_ch_4100", 4100, 3, ((1, 4),)),
+    ("eidolon_chaos", "sp_ch_4101", 4101, 3, ((1, 9),)),
+    ("eidolon_valkyrie", "sp_ch_4102", 4102, 3, ((1, 3),)),
+    ("eidolon_lamia", "sp_ch_4103", 4103, 3, ()),
+    ("eidolon_risin", "sp_ch_4104", 4104, 3, ((1, 8),)),
+    ("eidolon_phoenix", "sp_ch_4105", 4105, 3, ((1, 10),)),
+    ("eidolon_king", "sp_ch_4106", 4106, 3, ()),
+    ("eidolon_bahamut", "sp_ch_4107", 4107, 3, ((1, 6),)),
+    ("eidolon_odin", "sp_ch_4108", 4108, 3, ((1, 5),)),
+    ("eidolon_leviathan", "sp_ch_4109", 4109, 3, ((1, 7),)),
+    ("eidolon_apollo", "sp_ch_4110", 4110, 3, ()),
+    ("eidolon_selene", "sp_ch_4111", 4111, 3, ()),
 )
 
 # BattleData records a start cost for each event section but no fixed clear

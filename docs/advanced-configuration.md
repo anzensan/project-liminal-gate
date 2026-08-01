@@ -427,9 +427,10 @@ request safely across restart. Unsupported variants return an explicit error.
 Version 5.5.0 discontinued Eidolon enhancement and in-battle summoning when
 Co-op/VS ended. The summon-skill options preserve the statically recovered
 legacy transport and cost table for archival interoperability; they are not
-needed for normal final 5.5.7 solo play and do not implement collectible
-acquisition from the converted solo Eidolon quests. Guided setup leaves this
-route disabled, as does the server-only launcher. An operator can still select
+needed for normal final 5.5.7 solo play. Collectible acquisition instead uses
+the converted solo Eidolon quest result path in the generated event catalog.
+Guided setup leaves the retired enhancement route disabled, as does the
+server-only launcher. An operator can still select
 `bootstrap_server --summon-skills` explicitly for archival interoperability.
 
 The guided setup enables `--pacts`, a built-in local Fellowship/Truth policy.
@@ -440,7 +441,8 @@ the Luck rules needed for its `luckType=true` Fate variant.
 
 ### Composing an event catalog
 
-The archived events and Tower stages sit in BattleData beside the main story,
+The archived events, Tower stages, and converted solo Eidolon quests sit in
+BattleData beside the main story,
 so their entry stamina and start costs come out of the same import that serves
 ordinary stages. Guided setup performs this composition automatically and
 writes `user-data/event-catalog.json`. The standalone command remains useful
@@ -453,10 +455,14 @@ python3 -m liminal_gate.event_catalog_generator \
     --output user-data/event-catalog.json
 ```
 
-The generator contributes the 13 recovered Archive/Strikes Back manifest
-identities plus the bounded Tower 9100-1 identity. It takes section economics
-from your BattleData and validates event character grants against your
-character catalog, omitting a grant with a note when its character is missing.
+The generator contributes the recovered Archive/Strikes Back identities, all
+45 Tower floors in Chapters 9100--9102, and all 28 solo Eidolon stages in
+Chapters 4100--4111. It takes section economics from your BattleData and
+validates event character grants against your character catalog, omitting a
+grant with a note when its character is missing. The eight allowed first-tier
+Eidolon acquisitions are bounded by the final client's chapter programs and
+matching EnemyData; the client performs the random roll and reports either no
+drop or that one allowed collectible.
 The generated catalog and matching character-catalog hash keep that boundary;
 `--event-catalog` can replace the generated artifact with a stricter reviewed
 local one.
@@ -464,11 +470,11 @@ local one.
 Two things it does not claim. The release order is local archive policy: the
 original schedule was never recovered, so each event becomes permanently
 available after its declared story gate rather than following a calendar. And
-an event clear credits no Coins, because BattleData records a start cost for
-these sections but no clear reward -- the same reading that leaves Dragon and
-Machine Road settling at zero. Tower exposes only 9100-1 after Chapter 3; the
-other 44 recovered 9100--9102 floors remain deliberately unavailable until
-the first floor is accepted by the original client.
+an event clear credits no fixed Coins, because BattleData records a start cost
+for these sections but no clear reward -- the same reading that leaves Dragon
+and Machine Road settling at zero. Tower and Eidolon quest availability after
+Chapter 3 is permanent local archive policy, not a recovered historical
+rotation. Original-client acceptance remains a separate validation boundary.
 
 ### Built-in policies
 

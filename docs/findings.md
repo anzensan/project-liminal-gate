@@ -167,9 +167,10 @@ Private inputs, captures, account state, and original assets remain excluded.
   `eidolonQuestList`, the Mode 4 selector, Chapters 4100--4111, and a distinct
   result path for Summon collectibles because the former Co-op Eidolon quests
   became single-player quests. Owned Eidolons remain viewable under Options.
-  The missing solo boundary is therefore optional quest visibility,
-  start/clear, and durable collectible acquisition—not a charging gauge or
-  battle summon system.
+  The relevant solo boundary is therefore quest visibility, start/clear, and
+  durable collectible acquisition—not a charging gauge or battle summon
+  system. That server boundary is now implemented; original-client acceptance
+  remains pending.
   Public source trail: the archived community
   [Eidolons status](https://terrabattle.fandom.com/wiki/Eidolons) records the
   final behavior and collection location; the contemporary
@@ -227,13 +228,28 @@ Private inputs, captures, account state, and original assets remain excluded.
   BattleData records 9100-1 as five battles, five stamina, and zero entry
   Coins. Together these strongly support, but do not dynamically confirm, the
   9100 Tower mapping.
-- **Local policy with real-HTTP restart proof:** guided setup advertises only
-  `9100-1` through `towerQuestList` after Chapter 3, supplies
-  `sp_ch_9100`, and settles it through the normal durable event transaction
-  without advancing story progress. Permanent availability and zero clear
-  Coins are preservation policy. Chapters 9100-2 through 9102-15 remain
-  unavailable pending original-client navigation and clear of the first
-  floor. Arena VS remains disabled throughout.
+- **Local policy with real-HTTP restart proof:** guided setup advertises all 45
+  BattleData-backed floors in Chapters 9100--9102 through `towerQuestList`
+  after Chapter 3, supplies their chapter flags, and settles them through the
+  normal durable event transaction without advancing story progress.
+  Permanent availability and zero fixed clear Coins are preservation policy.
+  Original-client navigation and clear remain pending. Arena VS remains
+  disabled throughout.
+- **Confirmed final-client Eidolon result contract with bounded local
+  settlement:** `ClearQuest` serializes the existing `summonList` before the
+  result UI runs; `battle_result.summons` carries the dropped IDs; and the
+  clear callback does not read a returned Summon list. `ShowSummonGet` then
+  calls `UserData.AddSummon`, which constructs `SummonInfo(id, 1, 0)`, so the
+  durable raw value for a new collectible is exactly `1`. Mapping the final
+  chapter programs through EnemyData's ordinal table yields eight allowed
+  first-tier pairs: 4100-1 -> 4, 4101-1 -> 9, 4102-1 -> 3, 4104-1 -> 8,
+  4105-1 -> 10, 4107-1 -> 6, 4108-1 -> 5, and 4109-1 -> 7. Each matching enemy
+  row carries a 50 percent ratio; the client rolls it, not the server. The
+  server accepts an empty result or one allowed, unowned ID, commits it before
+  acknowledgment, and refuses unlisted, duplicate, or already-owned reports
+  without mutation. Exact replay survives restart. Chapters 4100--4111 and
+  their 28 BattleData rows are exposed through `eidolonQuestList` after the
+  Chapter 3 local gate. Original-client acceptance remains pending.
 - **Confirmed by final-client static identities and generated-catalog
   validation:** guided setup derives Archive Special Quest Chapters 2000,
   2001, 2002, 2004, and 2006 from the matching local BattleData and character

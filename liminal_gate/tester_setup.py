@@ -1178,7 +1178,8 @@ def derive_story_outcome_catalog(
         row["event_id"] for row in archive_catalog["stages"]
     })
     print(
-        f"Archive Special Quests and Tower: ON -- {len(archive_catalog['stages'])} "
+        "Archive Special Quests, Tower, and Eidolon quests: ON -- "
+        f"{len(archive_catalog['stages'])} "
         f"stage(s) across {archive_events} local event family/families."
     )
     for note in archive_notes:
@@ -1358,7 +1359,7 @@ def choose_local_server_options(
     """
     print("\nLocal setup")
     print(
-        "Story, Archive Special Quests, Tower, Strikes Back, Hunting zones, "
+        "Story, Archive Special Quests, Tower, solo Eidolon quests, Strikes Back, Hunting zones, "
         "Pacts, and Companions are all enabled."
     )
     print("Custom drop-rate controls are not available yet.")

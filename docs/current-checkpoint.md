@@ -47,18 +47,20 @@ Bahl-specific packed level/EXP projection returned after Chapter 1-2. Thirty-two
 focused bootstrap/profile tests and all 641 warning-strict repository tests
 passed; compilation, structured-file, and diff checks passed.
 
-Latest Tower validation: final-client static output contains
-`towerQuestList`, `UISpecialSelect.Mode.TowerQuest`, Tower chapter-range
-handling, and Chapter 9100 battle code. Guided setup now projects only
-Chapter 9100-1 from matching user-local BattleData: five stamina, zero entry
-Coins, and a permanent Chapter 3 local gate. Focused real-HTTP tests cover
-hidden/locked refusal, selector and login flag, exact entry, body-scoped retry,
-unknown-floor refusal, rejected clear, successful settlement, restart replay,
-unchanged story progress, and the still-disabled Arena VS response.
-Original-client Tower navigation and clear remain open; Chapters 9100-2
-through 9102-15 remain unavailable. The warning-strict full suite passed all
-638 tests in 120.460 seconds; compilation, profile JSON, endpoint YAML, and
-diff checks passed.
+Latest Tower/Eidolon validation: final-client static output contains the
+dedicated Tower and Eidolon lists, selector modes, Chapter 9100--9102 and
+4100--4111 programs, and the distinct result-screen Summon acquisition path.
+Guided setup now projects all 45 Tower floors and all 28 converted solo
+Eidolon stages from matching user-local BattleData behind a permanent Chapter
+3 local gate. Eight first-tier stages carry a single statically recovered
+Summon ceiling; the client performs the roll, while the server accepts no drop
+or that one previously unowned ID and durably records raw value `1`. Real-HTTP
+tests cover visibility, entry, accepted clear, exact restart replay, and the
+absence of a synthetic response `summonList`; focused mutation tests refuse an
+unlisted, duplicate, or already-owned report without changing state.
+Original-client Tower/Eidolon selector, battle, and result acceptance remain
+open. Thirty-four focused tests and all 648 warning-strict repository tests
+passed in 127.844 seconds.
 
 Latest clean-onboarding validation: 585 warning-strict tests passed in 112.308
 seconds. A clean public clone with no prior derived output generated IL2CPP and
@@ -110,8 +112,9 @@ no old allocator message or signal 11. Its unpatched control also stayed live,
 so the AVD did not reproduce the Pixel 7 Pro allocation pattern;
 original-device acceptance remains the next boundary.
 
-Latest live deployment: the live Beelink loads the generated Archive/Tower event
-catalog and its matching character authority.
+Latest live deployment before the pending Tower/Eidolon update: the Beelink
+loads the generated Archive/Tower event catalog and its matching character
+authority.
 Both identify final Android APK SHA-256
 `f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`;
 the deployed event and character files have SHA-256
@@ -140,10 +143,11 @@ Current Eidolon boundary: Version 5.5.0 retired in-battle Eidolon summoning,
 its multiplayer charging gauge, and Tavern enhancement, so none is required
 for final 5.5.7 solo completeness. The former Co-op Eidolon quests became
 single-player quests, and final-client static evidence retains their Mode 4
-selector, Chapters 4100--4111, and collectible result path. This optional solo
-quest/acquisition lifecycle remains unsupported until a successful
-original-client result and before/after owned-Eidolon state establish its
-mapping and settlement. The recovered skill-unlock route remains archival
+selector, Chapters 4100--4111, and collectible result path. The public server
+now implements those 28 stages and the eight recovered first-tier acquisition
+ceilings with durable replay-safe settlement. Original-client acceptance and
+before/after owned-Eidolon observation remain pending. The recovered
+skill-unlock route remains archival
 compatibility evidence behind an explicit option, not a guided or server-only
 default or a claimed reachable final-version UI loop.
 
@@ -205,9 +209,8 @@ Fellowship/Fate ticket draw and Crystal Road 3004-1; Issue 25 reporter
 acceptance after the observed 1,800-Coin Special Quest settlement; the first
 reproducible original-client failure after Chapter 8-4; the
 another Archive-family clear and associated-character result;
-the Strikes Back Chapter 8000-1 clear callback; Tower 9100-1 navigation and
-clear; and the Hunting selector flash after its rows render. An optional later
-boundary is one converted solo Eidolon quest result with before/after
-collectible state. The Hunting flash
+the Strikes Back Chapter 8000-1 clear callback; Tower navigation and clear; one
+converted solo Eidolon quest result with before/after collectible state; and
+the Hunting selector flash after its rows render. The Hunting flash
 produced no corresponding server resource request or 404 and needs a client
 runtime capture.

@@ -311,11 +311,15 @@ def main() -> int:
         )
         if event_catalog is None:
             print(
-                "Archive Special Quests and Tower: OFF (no generated event catalog; "
+                "Archive Special Quests, Tower, and Eidolon quests: OFF "
+                "(no generated event catalog; "
                 "bundled Strikes Back remains enabled)"
             )
         else:
-            print(f"Archive Special Quests and Tower: ON from {event_catalog}")
+            print(
+                "Archive Special Quests, Tower, and Eidolon quests: "
+                f"ON from {event_catalog}"
+            )
         if args.prepare_only:
             return 0
         print(

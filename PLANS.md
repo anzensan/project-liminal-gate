@@ -1,5 +1,50 @@
 # Execution Plans
 
+## 2026-07-31 complete solo Tower and Eidolon archive
+
+Objective: make every final-client Tower floor and converted solo Eidolon quest
+available through its dedicated selector and durable result lifecycle without
+enabling Arena VS, Co-op, rankings, or retired Eidolon battle/enhancement UI.
+
+Evidence boundary:
+
+- Final-client static output contains `towerQuestList`, `eidolonQuestList`,
+  selector modes 5 and 4, Tower Chapters 9100--9102, and Eidolon Chapters
+  4100--4111. APK-matched BattleData contains 45 Tower floors and 28 Eidolon
+  stages with their entry economics.
+- `ClearQuest` serializes the pre-result `summonList` and reports drops in
+  `battle_result.summons`; its callback does not consume a returned Summon
+  list. `ShowSummonGet` calls `UserData.AddSummon`, whose
+  `SummonInfo(id, 1, 0)` constructor establishes raw value `1`.
+- Mapping the compiled chapter enemy enums through EnemyData's ordinal table
+  identifies eight first-tier acquisition ceilings. Their enemy rows carry a
+  50 percent ratio, so the client performs the roll and the server validates
+  the reported outcome.
+- Permanent Chapter 3 availability and zero fixed clear-Coin increments are
+  local archive policy. Historical rotations and complete reward tables were
+  not recovered. Original-client acceptance remains separate from static and
+  local transport proof.
+
+Required proof:
+
+1. Generate every BattleData-backed Tower and Eidolon stage and project them
+   through their dedicated status lists and exact login flags.
+2. Accept only no Eidolon drop or one stage-allowed, previously unowned ID;
+   durably store raw value `1` without returning an invented response field.
+3. Refuse unlisted, duplicate, already-owned, or malformed reports without
+   mutation; prove accepted clear, exact replay, and restart behavior over the
+   real HTTP path.
+4. Keep `multiplay_enable` false, regenerate and deploy the catalog to the
+   Beelink, and request original-client Tower/Eidolon acceptance.
+
+Current result:
+
+- Local generation produces 148 total rows across 34 event families: 45 Tower
+  floors, 28 Eidolon stages, and the existing Archive/Counter Descent rows.
+  The eight recovered Eidolon stage/ID pairs are present exactly once.
+- Thirty-four focused tests and all 648 repository tests passed. Deployment
+  and original-client acceptance remain open.
+
 ## 2026-07-31 late non-collaboration Counter Descent expansion
 
 Objective: complete the ordinary solo Strikes Back tranche that shares the

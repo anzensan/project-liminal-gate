@@ -72,7 +72,7 @@ Fellowship-side Pact of Fate. Campaign and event Pact variants remain
 intentionally unsupported.
 
 **Optional solo areas open on story progress, so most are locked at first.**
-Hunting, Metal Zone, Special Quest, Tower, and world-map cards stay unavailable
+Hunting, Metal Zone, Special Quest, Tower, Eidolon Quest, and world-map cards stay unavailable
 until your account has finished the chapter each row waits for:
 
 | Area | Available after clearing |
@@ -89,7 +89,8 @@ until your account has finished the chapter each row waits for:
 | Lucia archive | Chapter 13 |
 | Odin Descent | Chapter 20 |
 | Strikes Back families | Chapters 5 through 12, one family per chapter |
-| Tower of Temptation 9100-1 | Chapter 3 |
+| Tower of Temptation — all 45 floors in 9100--9102 | Chapter 3 |
+| Solo Eidolon Quests — Chapters 4100--4111 | Chapter 3 |
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
 
 Those thresholds are local preservation policy, not recovered schedules. The
@@ -108,22 +109,25 @@ non-collaboration Strikes Back families. Little Noah 8008--8011 and Hime Rush
 enabled families' permanent progress gates, zero-Coin clears, and
 first-section associated-character grants are local archive policy rather than
 recovered schedules, probabilities, or complete historical reward tables.
-The first Tower of Temptation floor is a separate bounded compatibility slice:
-guided setup derives Chapter 9100-1 from your BattleData and advertises it
-through the client's dedicated Tower list after Chapter 3. Its permanent gate
-and zero-Coin clear are local policy, and original-client navigation and clear
-remain unverified. The other 44 recovered Chapter 9100--9102 floors stay
-unavailable. Arena VS, rankings, and multiplayer remain disabled rather than
-presenting a menu that cannot complete.
+Tower of Temptation is a separate solo selector. Guided setup derives all 45
+floors in Chapters 9100--9102 from your BattleData and advertises them after
+Chapter 3. Their permanent gate and zero fixed clear-Coin increment are local
+policy; original-client navigation and clear still need a device observation.
+Arena VS, rankings, and multiplayer remain disabled rather than presenting a
+menu that cannot complete.
 
 **Eidolons are not a missing final-version battle mechanic.** Version 5.5.0
 retired Co-op/VS, the in-battle Eidolon charging gauge, and Tavern Eidolon
 enhancement. The final 5.5.7 client therefore does not need those systems for
 solo play. Owned Eidolons remain collectible entries under Options, and the
-former Co-op Eidolon quests were converted to single-player quests. Those
-optional Chapters 4100--4111 and their collectible reward settlement are not
-yet supported; they remain capture-gated rather than receiving invented
-acquisition rules. Guided setup does not enable the retired enhancement route.
+former Co-op Eidolon quests were converted to single-player quests. Guided
+setup now derives all 28 stages in Chapters 4100--4111 and exposes them after
+Chapter 3. The client performs the original random roll; the server accepts no
+drop or the one statically recovered, previously unowned Eidolon allowed for
+that stage, and commits the collectible before acknowledging the clear. It
+does not invent additional drops or return a field the clear callback never
+reads. Original-client selector, battle, and result-screen acceptance remain
+to be observed. Guided setup does not enable the retired enhancement route.
 The server-only launcher also leaves it disabled by default; archival analysis
 can still opt into `bootstrap_server --summon-skills` explicitly.
 
@@ -792,7 +796,7 @@ Everything below stays under the ignored `user-data/` directory:
 | `derived/native-encounters.json` | Maps the compiled Chapter 8–42 battle programs to the enemies each stage can spawn. Producing it requires the AArch64 disassembler. | No. It is an evidence intermediate used to compose `story-outcomes.json`. |
 | `derived/scenario-encounters.json` | Maps the MoonSharp scenario programs used by Chapters 2–7, which have no equivalent compiled battle program. | No. It is another input to `story-outcomes.json`. |
 | `story-outcomes.json` | Combines the encounter maps, character catalog, master data, and their hashes into bounded per-stage outcome rules. Without it, the server cannot safely persist a story Companion rolled by the client. | **Yes.** The dedicated server loads this final catalog. |
-| `event-catalog.json` | Combines the recovered archive identities, the bounded Tower 9100-1 slice, and local unlock cadence with section economics from your BattleData and character associations validated against your character catalog. | **Yes.** It enables the five Archive Special Quest families and Tower 9100-1; Strikes Back remains bundled. |
+| `event-catalog.json` | Combines the recovered Archive, all 45 Tower floors, and all 28 solo Eidolon stages with section economics from your BattleData, bounded Eidolon acquisition identities, and character associations validated against your character catalog. | **Yes.** It enables the five Archive families, Tower, and solo Eidolon quests; Strikes Back remains bundled. |
 | `companion-equipment.json` | Projects character ancestry, per-job species, and Companion character/species restrictions from the matching APK. It contains no names, skills, descriptions, or assets. `RequiredLevel` is deliberately absent because the final client uses it to activate an equipped Companion's effects, not to prohibit equipping it. | **Yes.** The server needs it to authorize a newly equipped or retargeted Companion; without it, those new links are refused. |
 | `resources.json` | Maps every approved resource URL to a local file and hash. | **Yes.** `server_setup` rebuilds or refreshes it from the matching resource tree when the server starts. |
 | `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
@@ -810,7 +814,7 @@ dedicated host predates one of these generated runtime catalogs, rerun guided
 setup on the APK workstation and copy the matching generated files into the
 dedicated server's `user-data/` directory before updating the server.
 
-Archive events and Tower 9100-1 never interrupt standard setup with a prompt.
+Archive events, Tower, and solo Eidolon quests never interrupt standard setup with a prompt.
 Setup derives and validates them automatically. People who already have a
 separately reviewed local event catalog can replace the generated rows
 explicitly with `--event-catalog`; see
@@ -885,13 +889,14 @@ For a non-interactive repeat of the standard setup, add `--no-configure`.
 
 ### Optional: override the generated event catalog
 
-The five recovered Archive Special Quest families, Tower 9100-1, and all eight
-Strikes Back families are enabled by standard guided setup. If you have
+The five recovered Archive Special Quest families, all 45 Tower floors, all 28
+solo Eidolon stages, and the bundled Strikes Back families are enabled by
+standard guided setup. If you have
 independently prepared a stricter reviewed catalog, add `--event-catalog` to
 the normal setup command. Use `--dummy-dll-dir` only when you want setup to
 reuse a matching local IL2CPP dump instead of its generated one. Setup derives
 the matching character catalog and passes both runtime files to the server. An
-override replaces the generated Special Quest and Tower rows; the bundled
+override replaces the generated Special Quest, Tower, and Eidolon rows; the bundled
 Strikes Back definitions remain authoritative. See
 [Advanced local configuration](docs/advanced-configuration.md#local-event-stages-and-character-grants).
 

@@ -23,6 +23,12 @@ class EventCatalogTest(unittest.TestCase):
    with self.assertRaisesRegex(EventCatalogError, "unlock_after_chapter"):
     load_event_catalog(e,c)
 
+ def test_invalid_summon_ceiling_is_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'test','flag':'sp_ch_4100','chapter':4100,'section':1,'stamina':10,'coins':0,'clear_coins':0,'character_ids':[],'summon_ids':[4,4]}]}))
+   with self.assertRaisesRegex(EventCatalogError, "Summon IDs"):
+    load_event_catalog(e,c)
+
 
 class EventFlagRuleTest(unittest.TestCase):
     """A stage's flag must be one the client will actually ask about."""
@@ -132,6 +138,7 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         self.assertEqual(["8000-1", "8001-1"], lists["descentHuntingList"])
         self.assertEqual([], lists["specialQuestList"])
         self.assertEqual([], lists["towerQuestList"])
+        self.assertEqual([], lists["eidolonQuestList"])
         self.assertEqual(
             ["sp_ch_8000", "sp_ch_8001"],
             sorted(self.catalog.flags(self.progress_at(7))),

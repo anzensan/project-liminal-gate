@@ -23,6 +23,24 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 complete solo Tower/Eidolon archive implementation: guided setup
+  now derives all 45 Tower floors in Chapters 9100--9102 and all 28 converted
+  solo Eidolon stages in Chapters 4100--4111 from the matching user-local
+  BattleData. The dedicated selector lists are always present and open after a
+  permanent Chapter 3 local gate; Arena VS and multiplayer remain disabled.
+  Final-client native analysis establishes that ClearQuest sends the existing
+  16-slot `summonList`, reports drops separately, and lets the result screen
+  call `AddSummon`; its constructor establishes raw value `1`. Chapter-program
+  to EnemyData ordinal mapping bounds eight first-tier stages to one possible
+  collectible each. The server accepts no drop or that one unowned ID, commits
+  it atomically, omits an unused response `summonList`, and refuses unlisted,
+  duplicate, or already-owned reports without mutation. Exact replay survives
+  restart. A real catalog generated 148 stages across 34 families and retained
+  the BattleData SHA-256
+  `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`.
+  Thirty-four focused tests and all 648 repository tests passed in 127.844
+  seconds. Beelink deployment and original-client Tower/Eidolon acceptance are
+  still pending.
 - 2026-07-31 late non-collaboration Counter Descent expansion: the bundled
   solo policy now includes Chapters 8012--8017 in addition to 8000--8007.
   Final-client static identities and the retained APK-matched BattleData
@@ -332,8 +350,9 @@ machine-readable/current capability boundary.
   permanent unlock remains explicit local preservation policy, not a claim
   about the retired event rotation or complete reward rule. Generated Archive
   rows merge with this default; an explicit override replaces only those
-  Archive rows. Tower 9100-1 is the separately bounded solo slice; Arena VS
-  remains unsupported.
+  Archive rows. This was the first Tower 9100-1 slice; all 45 Tower floors and
+  the solo Eidolon archive were completed in the later 2026-07-31 work above.
+  Arena VS remains unsupported.
 - 2026-07-28 story Companion drops settle instead of being silently discarded,
   and the outcome catalog stops refusing what it merely cannot evidence. A live
   account cleared the whole story seeing only Metal Zone's Companions: the
@@ -543,9 +562,11 @@ machine-readable/current capability boundary.
   separately validated APK patch.
 - Canonical original-client certification beyond Chapter 2-1.
 - Exact ordinary-story reward/drop authority and scripted-stage exceptions.
-- Final-version solo Eidolon quest visibility and collectible reward settlement
-  for Chapters 4100--4111. Eidolon battle summoning and enhancement are not
-  gaps: Version 5.5.0 retired them with multiplayer.
+- Original-client acceptance of Tower Chapters 9100--9102 and converted solo
+  Eidolon Chapters 4100--4111, including before/after collectible state for one
+  successful Eidolon drop. Their local selector and durable result lifecycles
+  are implemented; Eidolon battle summoning and enhancement are not gaps
+  because Version 5.5.0 retired them with multiplayer.
 - End-to-end original-client certification of the combined Companion
   equipment/party transport. Master-backed selection restrictions are covered
   statically and over real HTTP; `RequiredLevel` is client-side effect

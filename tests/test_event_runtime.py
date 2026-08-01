@@ -317,6 +317,191 @@ class EventRuntimeTest(unittest.TestCase):
             ))
 
 
+class EidolonRuntimeTest(unittest.TestCase):
+    """Converted solo Eidolon drops persist at the result-screen boundary."""
+
+    def test_visibility_drop_and_restart_replay_over_real_http(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            token, account_id = "eidolon-token", "eidolon-account"
+            state = BootstrapState(state_path)
+            initial = {
+                "coins": 0,
+                "energy": 0,
+                "freeEnergy": 20,
+                "progressCode": 0x01000000 | (4 << 6) | 1,
+                "worldMapNo": 0,
+                "chrdata": [character(3)],
+                "itemList": [0] * 181,
+                "summonList": [0] * 16,
+            }
+            state.create_account(token, account_id, initial)
+            state.accounts[account_id]["tutorial_phase"] = "free_roam"
+            state._persist_locked()
+            state.close()
+            catalog = EventCatalog((
+                EventStage(
+                    "eidolon_artemis", "sp_ch_4100", 4100, 1,
+                    10, 0, 0, (), summon_ids=(4,), selector="eidolon",
+                    unlock_after_chapter=3,
+                ),
+            ))
+            profile = load_profile(
+                Path(__file__).resolve().parents[1]
+                / "profiles"
+                / "legacy-client-bootstrap.json"
+            )
+
+            def start_server() -> tuple[BootstrapServer, threading.Thread]:
+                server = BootstrapServer(
+                    ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                    event_catalog=catalog,
+                )
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                return server, thread
+
+            def request(
+                server: BootstrapServer, method: str, path: str,
+                body: bytes | None = None,
+            ) -> tuple[int, dict]:
+                connection = HTTPConnection(*server.server_address)
+                connection.request(
+                    method, path, body=body,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                return response.status, payload
+
+            clear = urlencode({
+                "progressCode": initial["progressCode"],
+                "worldMapNo": 0,
+                "valuables": json.dumps({
+                    "energyAppStore": 0, "energy": 0, "energyAndApp": 0,
+                    "freeEnergy": 20, "energyGooglePlay": 0, "coins": 0,
+                }),
+                "chrdata": json.dumps(initial["chrdata"]),
+                "itemList": json.dumps(initial["itemList"]),
+                # ClearQuest serializes this before ShowSummonGet adds the drop.
+                "summonList": json.dumps(initial["summonList"]),
+                "battle_result": json.dumps({
+                    "coins": 0, "buddies": [], "items": {}, "exp": 0,
+                    "section": 1, "monsters": [], "summons": [4],
+                    "luckynum": 0, "chapter": 4100,
+                    "unableluckdrop": False, "boostup": [0] * 6,
+                }),
+                "itmp0": 0, "itmp1": 0, "lastUpdate": 1,
+            }).encode()
+            start = b"stamina=10&coins=0&chapter=4100&section=1&lastUpdate=1"
+
+            server, thread = start_server()
+            try:
+                status, server_status = request(
+                    server, "GET", f"/gd/get_server_status?otk={token}"
+                )
+                self.assertEqual(200, status)
+                self.assertEqual(
+                    ["4100-1"],
+                    server_status["constants"]["eidolonQuestList"],
+                )
+                status, _ = request(
+                    server, "POST",
+                    f"/gd/start_quest?otk={token}&requestID=eidolon-start",
+                    start,
+                )
+                self.assertEqual(200, status)
+                status, cleared = request(
+                    server, "POST",
+                    f"/gd/clear_quest?otk={token}&requestID=eidolon-clear",
+                    clear,
+                )
+                self.assertEqual(200, status, cleared)
+                self.assertNotIn("summonList", cleared)
+                self.assertEqual(
+                    1,
+                    server.state.accounts[account_id]["userdata"]["summonList"][3],
+                )
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+            server, thread = start_server()
+            try:
+                status, replayed = request(
+                    server, "POST",
+                    f"/gd/clear_quest?otk={token}&requestID=eidolon-clear",
+                    clear,
+                )
+                self.assertEqual((200, cleared), (status, replayed))
+                self.assertEqual(
+                    1,
+                    server.state.accounts[account_id]["userdata"]["summonList"][3],
+                )
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+    def test_unlisted_owned_or_multiple_drop_is_rejected_without_mutation(self) -> None:
+        catalog = EventCatalog((
+            EventStage(
+                "eidolon_artemis", "sp_ch_4100", 4100, 1,
+                10, 0, 0, (), summon_ids=(4,), selector="eidolon",
+            ),
+        ))
+        for reported, owned in (([9], False), ([4], True), ([4, 4], False)):
+            with self.subTest(reported=reported, owned=owned), tempfile.TemporaryDirectory() as directory:
+                state = BootstrapState(Path(directory) / "state.json")
+                summons = [0] * 16
+                if owned:
+                    summons[3] = 1
+                userdata = {
+                    "coins": 0, "energy": 0, "freeEnergy": 20,
+                    "progressCode": 1, "worldMapNo": 0,
+                    "chrdata": [character(3)], "itemList": [],
+                    "summonList": summons,
+                }
+                state.create_account("token", "account", userdata)
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state._persist_locked()
+                start = b"stamina=10&coins=0&chapter=4100&section=1&lastUpdate=1"
+                self.assertEqual(
+                    "success",
+                    state.apply_generic_story_start("token", "start", start, catalog)[0],
+                )
+                clear = urlencode({
+                    "progressCode": 1, "worldMapNo": 0,
+                    "valuables": json.dumps({
+                        "energyAppStore": 0, "energy": 0, "energyAndApp": 0,
+                        "freeEnergy": 20, "energyGooglePlay": 0, "coins": 0,
+                    }),
+                    "chrdata": json.dumps(userdata["chrdata"]),
+                    "itemList": "[]", "summonList": json.dumps(summons),
+                    "battle_result": json.dumps({
+                        "coins": 0, "buddies": [], "items": {}, "exp": 0,
+                        "section": 1, "monsters": [], "summons": reported,
+                        "luckynum": 0, "chapter": 4100,
+                        "unableluckdrop": False, "boostup": [0] * 6,
+                    }),
+                    "itmp0": 0, "itmp1": 0, "lastUpdate": 1,
+                }).encode()
+                before = list(summons)
+                self.assertEqual(
+                    "invalid_local_event_result",
+                    state.apply_generic_story_clear(
+                        "token", "clear", clear, catalog
+                    )[0],
+                )
+                self.assertEqual(
+                    before,
+                    state.accounts["account"]["userdata"]["summonList"],
+                )
+                self.assertEqual(
+                    "generic_story_active",
+                    state.accounts["account"]["tutorial_phase"],
+                )
+                state.close()
+
+
 class TowerRuntimeTest(unittest.TestCase):
     """The first Tower floor uses the solo event transport and durable state."""
 

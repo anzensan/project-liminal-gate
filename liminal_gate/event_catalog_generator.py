@@ -1,19 +1,18 @@
-"""Compose a local Archive and Tower catalog from the user's own BattleData.
+"""Compose a local Archive, Tower, and Eidolon catalog from BattleData.
 
 Guided setup runs this composition automatically because event character grants
 are checked against the user's own recovered character catalog rather than
 asserted by this repository.  That boundary remains deliberate: the generator
 reads the user's BattleData import for section economics and their character
 catalog for grant validation, and contributes only the recovered manifest
-identities from :mod:`liminal_gate.event_manifest_data`. The first Tower floor
-is a deliberately bounded compatibility slice; later floors remain absent
-until original-client behavior is observed. The command-line form
+identities from :mod:`liminal_gate.event_manifest_data`. The command-line form
 remains available for inspection and explicit catalog overrides.
 
-Nothing here needs native disassembly.  The event chapters sit in BattleData
-alongside the main story, and `battledata_importer` already reads every chapter,
-so their entry stamina and start costs come from the same import that serves
-ordinary stages.
+The event chapters sit in BattleData alongside the main story, and
+`battledata_importer` reads their entry stamina and start costs exactly as it
+does ordinary stages. The bounded Eidolon drop identities additionally come
+from reviewed native chapter-program and EnemyData analysis recorded beside
+the manifest; the generator does not derive or broaden them at setup time.
 
 Usage:
 
@@ -39,9 +38,10 @@ from typing import Any
 
 from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.event_manifest_data import (
+    EIDOLON_MANIFEST_ROWS,
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
-    TOWER_VERTICAL_SLICE,
+    TOWER_MANIFEST_ROWS,
 )
 
 
@@ -110,40 +110,55 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
                 "character_ids": granted if number == sections[0]["section"] else [],
             })
 
-    tower_id, tower_flag, tower_chapter, tower_section, tower_unlock = (
-        TOWER_VERTICAL_SLICE
-    )
-    tower_stage = next(
-        (
-            stage
-            for stage in stages_by_chapter.get(tower_chapter, [])
-            if stage.get("section") == tower_section
-        ),
-        None,
-    )
-    if tower_stage is None:
-        notes.append(
-            f"{tower_id}: stage {tower_chapter}-{tower_section} absent from "
-            "the BattleData import; skipped"
-        )
-    else:
-        permitted = event_flags_for(tower_chapter, tower_section)
-        if tower_flag not in permitted:
-            raise EventCatalogGeneratorError(
-                f"{tower_id}: recovered flag {tower_flag!r} cannot gate "
-                f"{tower_chapter}-{tower_section}"
-            )
-        rows.append({
-            "event_id": tower_id,
-            "flag": tower_flag,
-            "chapter": tower_chapter,
-            "section": tower_section,
-            "stamina": int(tower_stage.get("stamina", 0)),
-            "coins": int(tower_stage.get("coins", 0)),
-            "clear_coins": EVENT_CLEAR_COINS,
-            "unlock_after_chapter": tower_unlock,
-            "character_ids": [],
-        })
+    for event_id, flag, chapter, unlock_after in TOWER_MANIFEST_ROWS:
+        sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
+        if not sections:
+            notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
+            continue
+        for section in sections:
+            number = section["section"]
+            if flag not in event_flags_for(chapter, number):
+                raise EventCatalogGeneratorError(
+                    f"{event_id}: recovered flag {flag!r} cannot gate {chapter}-{number}"
+                )
+            rows.append({
+                "event_id": event_id,
+                "flag": flag,
+                "chapter": chapter,
+                "section": number,
+                "stamina": int(section.get("stamina", 0)),
+                "coins": int(section.get("coins", 0)),
+                "clear_coins": EVENT_CLEAR_COINS,
+                "unlock_after_chapter": unlock_after,
+                "character_ids": [],
+            })
+
+    for event_id, flag, chapter, unlock_after, drops in EIDOLON_MANIFEST_ROWS:
+        sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
+        if not sections:
+            notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
+            continue
+        drops_by_section = dict(drops)
+        for section in sections:
+            number = section["section"]
+            if flag not in event_flags_for(chapter, number):
+                raise EventCatalogGeneratorError(
+                    f"{event_id}: recovered flag {flag!r} cannot gate {chapter}-{number}"
+                )
+            rows.append({
+                "event_id": event_id,
+                "flag": flag,
+                "chapter": chapter,
+                "section": number,
+                "stamina": int(section.get("stamina", 0)),
+                "coins": int(section.get("coins", 0)),
+                "clear_coins": EVENT_CLEAR_COINS,
+                "unlock_after_chapter": unlock_after,
+                "character_ids": [],
+                "summon_ids": (
+                    [drops_by_section[number]] if number in drops_by_section else []
+                ),
+            })
 
     if not rows:
         raise EventCatalogGeneratorError("no event chapter in the manifest set is present in this BattleData import")
