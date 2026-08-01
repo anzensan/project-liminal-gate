@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.0.2 — 2026-08-01
+
+### Changed
+
+- **The verified original-client boundary is now Chapter 9**, played
+  continuously on physical hardware with no client-visible failure. Chapter 2-1
+  remains the deepest point backed by preserved request traces; the two answer
+  different questions — whether the wire shapes are exact, and whether the game
+  is actually finishable — so both are recorded rather than one replacing the
+  other.
+
+### Fixed
+
+- **A Chapter-1100 clear could add characters to the roster.** Paying that
+  chapter's experience in 1.0.1 meant accepting a changed roster, because levels
+  live in it — but the check that replaced was requiring the roster back
+  *unchanged*, so the loosening also let a submitted roster name someone the
+  account never held. That is exactly the grant the same clear's Companion check
+  refuses, arriving through another door. Levels may now advance; the set of
+  characters may not.
+- The inbox read no longer touches the account when a message grants neither a
+  character nor a Companion, so an ordinary coin present cannot create a roster
+  or Companion box that was not already there.
+- `setup_rehearsal --keep` now prunes only directories it named itself
+  (`YYYYmmdd-HHMMSS`). Recursive deletion was applied to whatever `--run-root`
+  contained, and that argument is an ordinary path an operator can mistype.
+
 ## 1.0.1 — 2026-08-01
 
 ### Fixed

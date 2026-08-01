@@ -17,11 +17,11 @@ Donations support independent clean-room development and project operating costs
 The guided setup enables ordinary story progression through **Chapter 42**, local
 Pacts, Companion draws, job unlocks, Rebirth, and status items.
 
-**Chapter 2-1 is the verified evidence checkpoint.** Everything past it is a bulk
-compatibility policy, not a claim that every later reward, drop, or scripted scene
-has been historically reproduced. The maintainer has played through Chapter 8-4 on
-a physical device without a client-visible failure. This is a tester build, and
-later stages may still need individual fixes.
+**Chapter 9 is the verified evidence checkpoint**, played through on the original
+client on physical hardware. Everything past it is a bulk compatibility policy,
+not a claim that every later reward, drop, or scripted scene has been
+historically reproduced. This is a tester build, and later stages may still need
+individual fixes.
 
 **Optional areas — Hunting, Metal Zone, Arena, Tower — open on story progress, so
 most are locked on a new account. Empty optional screens at the start are expected,

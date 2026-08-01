@@ -62,7 +62,7 @@ network error](#reporting-a-network-error) at the end.
 | `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data. |
 | Resource-manifest error on server start | Confirm the resource root, then rerun `python3 -m liminal_gate.resource_catalog_builder`. |
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the [optional dependency](install-tools.md#optional-the-python-image-extraction-dependency) if you want the images. |
-| A request fails after Chapter 2-1 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
+| A request fails after Chapter 9 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
 | An optional area (Hunting, Arena, Tower) is empty or greyed out | Expected on a new account: these open on story progress. See [What works right now](scope-and-status.md#optional-areas-open-on-story-progress-so-most-are-locked-at-first). |
 
 ## Graphics and sound

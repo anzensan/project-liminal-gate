@@ -4,12 +4,12 @@ Date: 2026-07-31
 
 Mode: public-release implementation hardening.
 
-Deepest canonical client path: clean local setup through Chapter 2-1 clear.
+Deepest verified client path: clean local setup played through Chapter 9 on a
+physical device without a client-visible failure.
 
-Operator acceptance note: the maintainer has played continuously through
-Chapter 8-4 on a physical device without a client-visible failure. That run is
-not yet a preserved trace-based certification, so it does not replace the
-canonical Chapter 2-1 checkpoint.
+Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
+traces. The playthrough and the traces answer different questions -- whether the
+game is finishable, and whether the wire shapes are exact -- so both are kept.
 
 Fast validation lane:
 

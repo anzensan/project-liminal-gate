@@ -59,9 +59,9 @@ not exist anywhere in the APK, the resources, or any surviving capture.
 
 ## Open
 
-- **Original-client certification beyond Chapter 2-1.** The deepest preserved
-  trace-based boundary. Operator playthroughs reach further, which is
-  acceptance, not certification.
+- **Original-client verification beyond Chapter 9.** The client is played
+  through Chapter 9 on physical hardware; Chapter 2-1 is the deepest point
+  backed by preserved request traces. Extending both is open work.
 - Chapters 1--7 and 38--42 keep empty item/character ceilings: the first use
   scenario-script encounters rather than compiled battle programs, the second
   include 52 symbols for which the client shipped no `EnemyData` row. Those
