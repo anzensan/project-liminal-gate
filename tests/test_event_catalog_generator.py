@@ -25,6 +25,7 @@ from liminal_gate.event_catalog_generator import (
 from liminal_gate.event_manifest_data import (
     ARCHIVE_SECTION_ALLOWLIST,
     EIDOLON_MANIFEST_ROWS,
+    EIDOLON_PLAYABLE_SECTIONS,
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
     FOLDED_ARCHIVE_CHAPTERS,
@@ -147,25 +148,40 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             {9100, 9101, 9102} & {stage.chapter for stage in loaded.stages}
         )
 
-    def test_eidolon_stages_and_recovered_drop_ceiling_are_projected(self) -> None:
-        _, _, loaded = self._generate(_battledata(*range(4100, 4112)), ())
+    def test_only_banner_backed_battle_eidolon_sections_are_projected(self) -> None:
+        battledata = _battledata(*range(4100, 4112))
+        for stage in battledata["stages"]:
+            expected = EIDOLON_PLAYABLE_SECTIONS[stage["chapter"]]
+            stage["section"] = expected
+        # Deduplicate chapters whose helper-produced rows now share the exact
+        # one playable section from the final BattleData import.
+        battledata["stages"] = list({
+            (stage["chapter"], stage["section"]): stage
+            for stage in battledata["stages"]
+        }.values())
+        _, _, loaded = self._generate(battledata, ())
         before = 0x01000000 | (3 << 6) | 1
         after = 0x01000000 | (4 << 6) | 1
         self.assertEqual([], loaded.client_lists(before)["eidolonQuestList"])
         self.assertEqual(
             [
-                f"{chapter}-{section}"
+                f"{chapter}-{EIDOLON_PLAYABLE_SECTIONS[chapter]}"
                 for chapter in range(4100, 4112)
-                for section in (1, 2)
             ],
             loaded.client_lists(after)["eidolonQuestList"],
         )
-        self.assertEqual((4,), loaded.by_identity()[(4100, 1)].summon_ids)
-        self.assertEqual((), loaded.by_identity()[(4100, 2)].summon_ids)
-        self.assertEqual((7,), loaded.by_identity()[(4109, 1)].summon_ids)
+        self.assertEqual(12, len(loaded.stages))
+        self.assertTrue(all(not stage.summon_ids for stage in loaded.stages))
         self.assertTrue(
             all(stage.selector == "eidolon" for stage in loaded.stages)
         )
+
+    def test_eidolon_battledata_shape_drift_is_refused(self) -> None:
+        with self.assertRaisesRegex(
+            EventCatalogGeneratorError,
+            "expected playable BattleData section 4100-3",
+        ):
+            self._generate(_battledata(4100), ())
 
     def test_grant_absent_from_the_local_catalog_is_omitted_and_reported(self) -> None:
         # The user-input boundary: grants are validated, never asserted.
@@ -184,7 +200,15 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             + tuple(row[2] for row in TOWER_MANIFEST_ROWS)
             + tuple(row[2] for row in EIDOLON_MANIFEST_ROWS)
         )
-        _, notes, loaded = self._generate(_battledata(*chapters), ())
+        battledata = _battledata(*chapters)
+        for stage in battledata["stages"]:
+            if stage["chapter"] in EIDOLON_PLAYABLE_SECTIONS:
+                stage["section"] = EIDOLON_PLAYABLE_SECTIONS[stage["chapter"]]
+        battledata["stages"] = list({
+            (stage["chapter"], stage["section"]): stage
+            for stage in battledata["stages"]
+        }.values())
+        _, notes, loaded = self._generate(battledata, ())
         self.assertEqual(set(chapters), {stage.chapter for stage in loaded.stages})
         self.assertEqual(
             len(EVENT_MANIFEST_ROWS)

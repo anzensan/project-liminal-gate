@@ -251,16 +251,18 @@ Private inputs, captures, account state, and original assets remain excluded.
   result UI runs; `battle_result.summons` carries the dropped IDs; and the
   clear callback does not read a returned Summon list. `ShowSummonGet` then
   calls `UserData.AddSummon`, which constructs `SummonInfo(id, 1, 0)`, so the
-  durable raw value for a new collectible is exactly `1`. Mapping the final
-  chapter programs through EnemyData's ordinal table yields eight allowed
-  first-tier pairs: 4100-1 -> 4, 4101-1 -> 9, 4102-1 -> 3, 4104-1 -> 8,
-  4105-1 -> 10, 4107-1 -> 6, 4108-1 -> 5, and 4109-1 -> 7. Each matching enemy
-  row carries a 50 percent ratio; the client rolls it, not the server. The
-  server accepts an empty result or one allowed, unowned ID, commits it before
-  acknowledgment, and refuses unlisted, duplicate, or already-owned reports
-  without mutation. Exact replay survives restart. Chapters 4100--4111 and
-  their 28 BattleData rows are exposed through `eidolonQuestList` after the
-  Chapter 3 local gate. Original-client acceptance remains pending.
+  durable raw value for a new collectible is exactly `1`. The runtime can
+  therefore validate an explicit reviewed stage ceiling and commits accepted
+  acquisition before acknowledgment; it refuses unlisted, duplicate, or
+  already-owned reports without mutation, and exact replay survives restart.
+  The original 28-row generated projection was nevertheless wrong. Sixteen
+  tier-I/tier-II rows have zero battles and no final-client banner. The twelve
+  nonzero-battle identities exactly match the Android `SpecialBanner` catalog:
+  4100-3, 4101-3, 4102-3, 4103-1, 4104-3, 4105-3, 4106-1, 4107-3, 4108-3,
+  4109-3, 4110-1, and 4111-1. Those are now the only generated selector rows.
+  Older Co-op enemy records contain 50 percent Eidolon drops, but the playable
+  solo programs use different enemy records; generated acquisition ceilings
+  remain empty until a solo result capture establishes their mapping.
 - **Confirmed by final-client static identities, resources, and
   generated-catalog validation:** guided setup derives 42 curated Archive
   Special Quest stages across Chapters 2000--2011 and 2014--2018 from the

@@ -134,15 +134,18 @@ operator-confirmed. A preserved transport trace and the clear/result return
 remain unverified.
 
 `eidolonQuestList` is likewise always present. After Chapter 3, it advertises
-all 28 BattleData-backed stages in Chapters 4100--4111. The clear request's
-`summonList` is the pre-result-screen 16-slot raw-data vector; the result's
-`summons` array may be empty or contain the one statically recovered,
-previously unowned Summon allowed for that stage. A grant is persisted as raw
+the 12 Chapter-4100--4111 sections that have both a nonzero BattleData battle
+count and a matching final-client banner. Sixteen zero-battle tier placeholders
+are excluded. The clear request's `summonList` is the pre-result-screen 16-slot
+raw-data vector. A reviewed explicit catalog may bound a reported `summons`
+entry to one previously unowned Summon; a grant is persisted as raw
 value `1`, matching `UserData.AddSummon(id)` constructing
 `SummonInfo(id, 1, 0)`. The response intentionally omits `summonList`: the
 client's clear callback does not read it, and `ShowSummonGet` adds the drop
 locally. Invalid, duplicate, unlisted, or already-owned reports are refused
-before mutation. Exact accepted replays remain stable after restart.
+before mutation. The generated catalog currently declares no solo Eidolon
+acquisition ceiling because the older Co-op drop records do not establish the
+banner-backed solo result. Exact accepted replays remain stable after restart.
 
 Counter Descent starts use the ordinary `start_quest` route. The bundled policy
 accepts Chapters 8000--8007, sections 1--5, at 5/10/15/15/15 stamina and

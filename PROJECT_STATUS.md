@@ -23,6 +23,22 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 solo Eidolon selector correction in progress: the maintainer's
+  physical client showed the flaw in the 28-row projection because sixteen
+  cards lacked banners. APK-matched BattleData has exactly twelve nonzero-battle
+  rows in Chapters 4100--4111, and those identities exactly match the final
+  Android `SpecialBanner` catalog and retained Android resources. The generator
+  now emits only 4100-3, 4101-3, 4102-3, 4103-1, 4104-3, 4105-3, 4106-1,
+  4107-3, 4108-3, 4109-3, 4110-1, and 4111-1, and refuses mismatched BattleData
+  shape. Local output is 124 stages across 47 families with SHA-256
+  `1b99bc264ac6dbba4f81f4d89105e54e804b9f12cdaa4078d516886b3044ceeb`.
+  Forty focused tests and all 654 repository tests pass warning-strict;
+  compilation, JSON/YAML parsing, and diff checks pass. The previous eight
+  acquisition ceilings belonged to
+  disabled raw tier rows and are no longer generated; moving them to the solo
+  rows requires a real result capture. Both publication gates pass from a clean
+  candidate. Commit, deployment, and device banner confirmation remain pending.
+
 - 2026-07-31 curated solo Archive expansion: dual-ABI
   `UISpecialSelect.SetMode(0)` analysis establishes that the server's nonempty
   `specialQuestList` owns the normal selector and the embedded 50-entry array
@@ -33,7 +49,7 @@ machine-readable/current capability boundary.
   for every selected row. Test Chapter 2012, bannerless Chapter 2013, and empty
   2015-4--6 placeholders remain excluded. Historical schedules, complete
   rewards, and the local story gates/first-section grants are not claimed as
-  recovered service behavior. The retained inputs generated 140 stages across
+  recovered service behavior. At that checkpoint the retained inputs generated 140 stages across
   47 families; 139 focused warning-strict tests and all 653 repository tests
   passed, along with compilation and structured-file checks. See
   `docs/solo-event-completion-audit.md`. Commit `5302fb0` is pushed and deployed
@@ -42,16 +58,21 @@ machine-readable/current capability boundary.
   `364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`.
   Systemd relaunched the service under PID 250477; Chapter 8 live status
   returned Archive cards `2000`, `2004-1`, and `3003-1`, three unlocked Counter
-  Descent cards, all 12 Tower identities, and all 28 Eidolon identities.
+  Descent cards, all 12 Tower identities, and the then-incorrect 28-row Eidolon list.
   `/gd/multiplay_enable` returned `enable=false` and `enablemain=false`, local
   news returned HTTP 200, and the durable save remained byte-identical at
   SHA-256
   `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`.
+  The maintainer then opened the one Bahamut `2000` card in the physical final
+  client and observed its four-section list. A fresh login/status session is
+  present in the Beelink event tail. This is operator-confirmed folded-selector
+  presentation, not yet Bahamut entry or result-screen certification.
 - 2026-07-31 corrected Tower identity and solo-adapter implementation:
   authoritative final-client range predicates identify Chapters 9010--9013 as
   Tower of Temptation and 9100--9102 as Donation. The earlier public mapping
-  was wrong. Guided setup now derives all 12 actual Tower stages and all 28
-  converted solo Eidolon stages from matching user-local BattleData, and it
+  was wrong. Guided setup derived all 12 actual Tower stages and initially all
+  28 raw solo Eidolon rows from matching user-local BattleData; the later
+  correction above narrows Eidolon to twelve battle/banner-backed rows. It
   explicitly excludes all 45 Donation stages. The dedicated selector lists
   open after a permanent Chapter 3 local gate; Arena VS and multiplayer remain
   disabled. Tower is labeled a solo adapter because shared HP, staged
@@ -59,23 +80,23 @@ machine-readable/current capability boundary.
   Final-client native analysis establishes that ClearQuest sends the existing
   16-slot `summonList`, reports drops separately, and lets the result screen
   call `AddSummon`; its constructor establishes raw value `1`. Chapter-program
-  to EnemyData ordinal mapping bounds eight first-tier stages to one possible
-  collectible each. The server accepts no drop or that one unowned ID, commits
+  to EnemyData ordinal mapping bounded eight disabled first-tier rows to one possible
+  collectible each. The generic server path accepts no drop or that one unowned ID, commits
   it atomically, omits an unused response `summonList`, and refuses unlisted,
   duplicate, or already-owned reports without mutation. Exact replay survives
   restart. A real catalog generated 115 stages across 35 families and retained
   the BattleData SHA-256
   `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`.
   Focused generator/runtime validation confirms the exact 12 Tower rows, zero
-  Donation rows, all 28 Eidolon rows, ordinary durable Tower entry/clear/replay,
+  Donation rows, the then-incorrect 28 Eidolon rows, ordinary durable Tower entry/clear/replay,
   and the disabled multiplayer response. All 648 warning-strict repository
   tests passed in 127.822 seconds; compilation, structured-file validation, and
   diff checks passed. Both publication gates passed from clean commit
   `99a6143`. The Beelink fast-forwarded to that commit, regenerated a 115-stage
   catalog with SHA-256
   `8e23ea0f63614050c73bf7cf7154ca27d641688b69ac54f575c5c298ca457cf9`,
-  and restarted under PID 241704. Live status returns the 12 exact Tower rows,
-  28 Eidolon rows, and no Donation row; `multiplay_enable` remains false and
+  and restarted under PID 241704. Live status returned the 12 exact Tower rows,
+  the then-incorrect 28 Eidolon rows, and no Donation row; `multiplay_enable` remains false and
   loopback news returns HTTP 200. The durable save remained byte-identical at
   SHA-256
   `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`.
@@ -629,8 +650,8 @@ machine-readable/current capability boundary.
 
 ## Next recommended task
 
-On the final client, open the folded Bahamut card and clear 2000-1 through its
-result screen. Then certify Strikes Back 8000-1, Tower 9010-1, and Eidolon
-4100-1 one at a time with before/after state and restart proof. After normal
+On the final client, clear Bahamut 2000-1 through its result screen. Then
+certify Strikes Back 8000-1, Tower 9010-1, and Eidolon
+4100-3 one at a time with before/after state and restart proof. After normal
 story progress reaches Chapter 10, smoke injected explicit card 2014-1 to prove
 the server-owned list beyond the embedded fallback.

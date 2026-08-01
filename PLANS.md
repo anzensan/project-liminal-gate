@@ -1,5 +1,49 @@
 # Execution Plans
 
+## 2026-07-31 correct the solo Eidolon selector catalog
+
+Objective: replace the over-broad 28-row Eidolon selector with the twelve
+final-client solo quests that have both an actual battle and a matching banner,
+without restoring Co-op, VS, in-battle summoning, or unproven reward behavior.
+
+Evidence boundary:
+
+- The maintainer's physical client rendered all 28 raw rows but roughly half
+  had no banner. The APK-matched BattleData explains the split exactly: sixteen
+  tier-I/tier-II rows have `battleCnt=0`, while twelve rows have battles.
+- The final Android `SpecialBanner` catalog and retained Android resources have
+  exactly the same twelve identities: 4100-3, 4101-3, 4102-3, 4103-1, 4104-3,
+  4105-3, 4106-1, 4107-3, 4108-3, 4109-3, 4110-1, and 4111-1.
+- Version 5.5.0 removed multiplayer and Eidolon battle use but added Eidolon
+  Single Quests. The quests remain valid solo content; the sixteen empty raw
+  rows are not independent selector cards.
+- Older Co-op enemy records retain 50 percent Eidolon drops, but the playable
+  solo programs use different enemy records. Moving those ceilings to the
+  banner-backed rows would be an unsupported reward claim.
+
+Required proof:
+
+1. Generate exactly the twelve banner-backed, nonzero-battle identities and
+   fail clearly if a supplied BattleData projection has a different shape.
+2. Keep the generic, replay-safe Summon settlement available for an explicitly
+   reviewed override, but generate no Eidolon acquisition ceiling yet.
+3. Run focused and full release validation, publish, regenerate on the Beelink,
+   and verify the live Chapter 8 selector and multiplayer-disabled response.
+4. Reopen the selector on the physical client and confirm every remaining card
+   has its intended banner before attempting one clear/result capture.
+
+Current result:
+
+- Local generation produces 124 stages across 47 families: 42 curated Archive,
+  58 Counter Descent, 12 Tower, and 12 banner-backed solo Eidolon stages. The
+  generated Eidolon rows have no fabricated collectible ceiling.
+- Forty focused generator/catalog/runtime tests and all 654 repository tests
+  pass warning-strict. Compilation, JSON/YAML parsing, and diff checks pass.
+  The retained inputs generate SHA-256
+  `1b99bc264ac6dbba4f81f4d89105e54e804b9f12cdaa4078d516886b3044ceeb`.
+  Both publication gates pass from a clean candidate. Commit, deployment, and
+  physical-client confirmation remain pending.
+
 ## 2026-07-31 complete the curated solo Event Archive
 
 Objective: expose every release-facing, packaged solo Chapter 2000--2018 event
@@ -39,9 +83,10 @@ Required proof:
 
 Current result:
 
-- The retained APK-matched inputs generate 140 stages across 47 families:
+- At this checkpoint the retained inputs generated 140 stages across 47 families:
   42 curated Archive stages, 58 Counter Descent stages, 12 Tower stages, and
-  28 Eidolon stages. The Archive uses 26 folded/explicit selector cards and
+  28 raw Eidolon rows. The later Eidolon correction above retracts that selector
+  shape and reduces it to the twelve battle/banner-backed rows. The Archive uses 26 folded/explicit selector cards and
   excludes Chapters 2012/2013 plus empty 2015-4--6.
 - Focused warning-strict catalog, transport, and setup validation passed all
   139 tests. The complete warning-strict suite passed all 653 tests in 128.357
@@ -50,11 +95,13 @@ Current result:
   catalog has SHA-256
   `364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`.
   The Chapter 8 account receives Archive cards `2000`, `2004-1`, and `3003-1`,
-  three unlocked Strikes Back cards, all 12 Tower rows, and all 28 Eidolon
-  rows. Live status/news return HTTP 200, multiplayer remains exactly disabled,
+  three unlocked Strikes Back cards, all 12 Tower rows, and the then-incorrect
+  28-row Eidolon list. Live status/news return HTTP 200, multiplayer remains exactly disabled,
   and the save hash is unchanged across restart. The physical-client acceptance
   items in `docs/solo-event-completion-audit.md` remain separate completion
-  boundaries.
+  boundaries. The maintainer has now opened the single Bahamut `2000` card in
+  the final client and observed all four sections, confirming folded Archive
+  presentation. Bahamut entry/clear and the injected explicit-card check remain.
 
 ## 2026-07-31 correct Tower identity and complete the solo adapter
 
@@ -81,9 +128,9 @@ Evidence boundary:
   list. `ShowSummonGet` calls `UserData.AddSummon`, whose
   `SummonInfo(id, 1, 0)` constructor establishes raw value `1`.
 - Mapping the compiled chapter enemy enums through EnemyData's ordinal table
-  identifies eight first-tier acquisition ceilings. Their enemy rows carry a
-  50 percent ratio, so the client performs the roll and the server validates
-  the reported outcome.
+  identified eight first-tier acquisition ceilings in the disabled raw rows.
+  The later selector audit above shows those ceilings cannot be moved onto the
+  banner-backed solo rows without new result evidence.
 - Permanent Chapter 3 availability and zero fixed clear-Coin increments are
   local archive policy. Historical rotations and complete reward tables were
   not recovered. Original-client acceptance remains separate from static and
@@ -109,7 +156,8 @@ Current result:
 - Focused validation passes, and all 648 warning-strict repository tests pass
   in 127.822 seconds. Corrective commit `99a6143` is pushed and deployed. The
   regenerated Beelink catalog has 115 rows: the exact 12 Tower identities, no
-  Donation identity, and all 28 Eidolon identities. The service is healthy,
+  Donation identity, and the then-incorrect 28 Eidolon identities. The later
+  correction above replaces them with twelve battle/banner-backed identities. The service is healthy,
   Arena VS remains disabled, and the save hash is unchanged. The maintainer
   opened Tower on the physical final client and the corrected first entry
   loaded its battle after a retry, confirming navigation and entry. Tower

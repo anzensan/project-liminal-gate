@@ -10,9 +10,9 @@ remains available for inspection and explicit catalog overrides.
 
 The event chapters sit in BattleData alongside the main story, and
 `battledata_importer` reads their entry stamina and start costs exactly as it
-does ordinary stages. The bounded Eidolon drop identities additionally come
-from reviewed native chapter-program and EnemyData analysis recorded beside
-the manifest; the generator does not derive or broaden them at setup time.
+does ordinary stages. Only banner-backed Eidolon sections with actual battles
+are projected. Older co-op reward records are not moved onto those solo stages
+without a matching result-path capture.
 
 Usage:
 
@@ -40,6 +40,7 @@ from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.event_manifest_data import (
     ARCHIVE_SECTION_ALLOWLIST,
     EIDOLON_MANIFEST_ROWS,
+    EIDOLON_PLAYABLE_SECTIONS,
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
     FOLDED_ARCHIVE_CHAPTERS,
@@ -147,10 +148,26 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
             })
 
     for event_id, flag, chapter, unlock_after, drops in EIDOLON_MANIFEST_ROWS:
-        sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
-        if not sections:
+        imported = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
+        if not imported:
             notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
             continue
+        expected_section = EIDOLON_PLAYABLE_SECTIONS[chapter]
+        battle_sections = {
+            section["section"]
+            for section in imported
+            if section.get("has_battle") is True
+        }
+        if battle_sections != {expected_section}:
+            raise EventCatalogGeneratorError(
+                f"{event_id}: expected playable BattleData section "
+                f"{chapter}-{expected_section}, found "
+                f"{', '.join(f'{chapter}-{value}' for value in sorted(battle_sections)) or 'none'}"
+            )
+        sections = [
+            section for section in imported
+            if section["section"] == expected_section
+        ]
         drops_by_section = dict(drops)
         for section in sections:
             number = section["section"]

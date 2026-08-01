@@ -61,7 +61,7 @@ capabilities:
   - family: eidolon_solo_archive
     routes: [get_server_status, login, start_quest, clear_quest]
     status: local_policy
-    note: "all 28 BattleData-backed stages in 4100-4111 are projected after Chapter 3; eight first-tier Summon ceilings come from final-client chapter programs and EnemyData; accepted acquisition is durable and replay-safe; original-client acceptance is pending"
+    note: "the 12 nonzero-battle stages with matching final-client banners in 4100-4111 are projected after Chapter 3; 16 empty tier placeholders are excluded; generated solo collectible mapping awaits a result capture while explicit reviewed ceilings remain durable and replay-safe"
     transport_tests: true
     restart_tests: true
   - family: multiplayer_social_commerce

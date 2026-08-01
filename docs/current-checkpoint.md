@@ -26,9 +26,9 @@ final client. Matching BattleData, compiled chapter programs, backgrounds, and
 required explicit banners exist for every selected stage. Test Chapter 2012,
 bannerless Chapter 2013, and empty 2015-4--6 placeholders remain excluded.
 The permanent gates and first-section character grants remain labeled local
-policy. The retained inputs generated 140 stages across 47 families with event
-catalog SHA-256
-`364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`.
+policy. At that deployment checkpoint the retained inputs generated 140 stages
+across 47 families; the later Eidolon correction below replaces the 28 raw
+Eidolon rows with twelve battle/banner-backed rows.
 Focused warning-strict validation passed 139 tests and the complete suite
 passed all 653 tests in 128.357 seconds; compilation, profile JSON, endpoint
 YAML, and diff checks passed. See `solo-event-completion-audit.md`; broader
@@ -37,11 +37,15 @@ physical-client acceptance remains a separate boundary. Commit
 that exact catalog hash and systemd relaunched the server under PID 250477.
 For the active Chapter 8 account, real HTTP returned Archive cards `2000`,
 `2004-1`, and `3003-1`, three unlocked Strikes Back cards, all 12 Tower rows,
-and all 28 Eidolon rows. The exact multiplayer response remained
+and the then-incorrect 28-row Eidolon list. The exact multiplayer response remained
 `enable=false, enablemain=false`, news returned HTTP 200, and the durable save
 hash remained
 `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`
-across restart.
+across restart. The maintainer subsequently opened the single Bahamut `2000`
+card in the physical final client and observed all four sections. The Beelink
+tail records the corresponding fresh login/status session, but no battle start;
+this confirms folded selector presentation only. Bahamut entry and result
+settlement remain the next boundary.
 
 Latest Archive client validation: the original Android client cleared Jade
 Dragon Chapter 2004-1 and exited its result screen after the server returned
@@ -72,14 +76,30 @@ Bahl-specific packed level/EXP projection returned after Chapter 1-2. Thirty-two
 focused bootstrap/profile tests and all 641 warning-strict repository tests
 passed; compilation, structured-file, and diff checks passed.
 
-Latest Tower/Eidolon validation: final-client static output contains the
+Latest Tower/Eidolon validation: the physical client exposed the flaw in the
+initial 28-row Eidolon projection because sixteen cards lacked banners.
+APK-matched BattleData has exactly twelve nonzero-battle rows, and those exact
+identities are the only Chapter-4100--4111 entries in the final Android
+`SpecialBanner` catalog and retained resources. The generator now projects
+4100-3, 4101-3, 4102-3, 4103-1, 4104-3, 4105-3, 4106-1, 4107-3, 4108-3,
+4109-3, 4110-1, and 4111-1, refuses BattleData shape drift, and generates no
+solo collectible ceiling. Older Co-op enemy drops do not prove the reward on
+these different solo programs. Local output is 124 rows across 47 families
+with SHA-256
+`1b99bc264ac6dbba4f81f4d89105e54e804b9f12cdaa4078d516886b3044ceeb`.
+Forty focused tests and all 654 repository tests pass warning-strict;
+compilation, JSON/YAML parsing, and diff checks pass. Both publication gates
+pass from a clean candidate. Commit, Beelink deployment, and corrected device
+banner confirmation remain pending.
+
+Prior Tower/Eidolon validation: final-client static output contains the
 dedicated Tower and Eidolon lists, selector modes, Tower Chapters 9010--9013,
 Donation Chapters 9100--9102, converted solo Eidolon Chapters 4100--4111, and
 the distinct result-screen Summon acquisition path. Guided setup projects all
-12 Tower solo-adapter stages and all 28 converted solo Eidolon stages from
+12 Tower solo-adapter stages and initially all 28 raw solo Eidolon rows from
 matching user-local BattleData behind a permanent Chapter 3 local gate. It
-does not expose Donation. Eight first-tier Eidolon stages carry one statically recovered
-Summon ceiling; the client performs the roll, while the server accepts no drop
+does not expose Donation. Eight disabled first-tier Eidolon rows carried one statically recovered
+Summon ceiling; the generic server path accepts no drop
 or that one previously unowned ID and durably records raw value `1`. Real-HTTP
 tests cover visibility, entry, accepted clear, exact restart replay, and the
 absence of a synthetic response `summonList`; focused mutation tests refuse an
@@ -88,11 +108,12 @@ The maintainer subsequently opened the corrected Tower selector on the
 physical final client and its first entry loaded the battle after a retry.
 That confirms Tower navigation and entry at the operator-observation level;
 no preserved request trace or successful Tower clear/result return is claimed.
-Eidolon selector, battle, and result acceptance remain open. The earlier
+The over-broad Eidolon selector rendered on the physical client, which exposed
+its missing-banner rows; corrected selector, battle, and result acceptance remain open. The earlier
 9100--9102 Tower claim was retracted after the authoritative
 range audit identified those chapters as Donation. The corrected generator
-emits 115 rows across 35 families: exactly 12 Tower rows, no Donation rows, and
-all 28 Eidolon rows. Focused validation passed 106 tests, and all 648
+emitted 115 rows across 35 families: exactly 12 Tower rows, no Donation rows,
+and the then-incorrect 28 Eidolon rows. Focused validation passed 106 tests, and all 648
 warning-strict repository tests passed in 127.822 seconds.
 
 Latest clean-onboarding validation: 585 warning-strict tests passed in 112.308
@@ -154,7 +175,7 @@ the deployed event and character files have SHA-256
 `ff79204f1020ff44022ae95fa30ee87e2b0e2a9e656d4b2f85d5fe52f3b980be`.
 After a clean launcher restart, the real `/gd/get_server_status` transport for
 the active Chapter 8 account returned all 12 Tower identities from 9010-1
-through 9013-3, all 28 converted solo Eidolon identities, and zero Donation
+through 9013-3, the then-incorrect 28-row Eidolon list, and zero Donation
 identity from Chapters 9100--9102. `multiplay_enable` still returned
 `enable=false` and `enablemain=false`. The durable account state remained
 byte-identical at SHA-256
@@ -181,9 +202,10 @@ its multiplayer charging gauge, and Tavern enhancement, so none is required
 for final 5.5.7 solo completeness. The former Co-op Eidolon quests became
 single-player quests, and final-client static evidence retains their Mode 4
 selector, Chapters 4100--4111, and collectible result path. The public server
-now implements those 28 stages and the eight recovered first-tier acquisition
-ceilings with durable replay-safe settlement. Original-client acceptance and
-before/after owned-Eidolon observation remain pending. The recovered
+now projects the twelve battle/banner-backed solo stages. Its generic explicit
+catalog settlement remains replay-safe, but generated collectible mapping is
+capture-gated. Original-client clear/result acceptance and before/after
+owned-Eidolon observation remain pending. The recovered
 skill-unlock route remains archival
 compatibility evidence behind an explicit option, not a guided or server-only
 default or a claimed reachable final-version UI loop.
@@ -246,7 +268,7 @@ Fellowship/Fate ticket draw and Crystal Road 3004-1; Issue 25 reporter
 acceptance after the observed 1,800-Coin Special Quest settlement; the first
 reproducible original-client failure after Chapter 8-4; the
 another Archive-family clear and associated-character result;
-the Strikes Back Chapter 8000-1 clear callback; Tower navigation and clear; one
+the Strikes Back Chapter 8000-1 clear callback; Tower clear/result return; one
 converted solo Eidolon quest result with before/after collectible state; and
 the Hunting selector flash after its rows render. The Hunting flash
 produced no corresponding server resource request or 404 and needs a client

@@ -1,8 +1,8 @@
 # Arena and Hunting implementation plan
 
 Status: Hunting, the bounded default Special Quest, the curated 42-stage Archive
-Special Quest families, bundled Strikes Back, all 12 Tower solo-adapter stages, and all 28
-converted solo Eidolon stages are implemented; Arena VS remains deliberately
+Special Quest families, bundled Strikes Back, all 12 Tower solo-adapter stages, and the 12
+battle/banner-backed solo Eidolon stages are implemented; Arena VS remains deliberately
 disabled. This
 document separates the solo content that can be made available through the
 surviving client from the original online Arena system, which cannot be made
@@ -18,7 +18,7 @@ functional by adding ordinary HTTP responses.
 | 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, Crystal Road, and fourteen packaged non-collaboration Counter Descent families with explicit per-stage bounds. |
 | 4. Arena -> Special Quests | Chapter 3003-1 is bundled after Chapter 3. Guided setup also derives 42 curated stages across Archive Chapters 2000--2011 and 2014--2018 from the tester's matching BattleData and character catalog. |
 | 4a. Tower | All 12 BattleData-backed stages in Chapters 9010--9013 use the dedicated selector and normal durable event lifecycle as a labeled solo adapter. |
-| 4b. Eidolon Quests | All 28 converted solo stages use the dedicated selector; eight recovered first-tier collectible ceilings settle through the result-screen contract. |
+| 4b. Eidolon Quests | The 12 nonzero-battle rows with matching final-client banners use the dedicated selector; the 16 empty tier placeholders are excluded and solo collectible mapping awaits a result capture. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 
 The selector lives in `get_server_status.constants`. The server sends the
@@ -33,7 +33,7 @@ it never attempts a one-field partial projection.
 | Huntland -> Strikes Back | Packaged non-collaboration Counter Descent families, progress-gated and settled through the bounded normal quest lifecycle. | Claiming recovered historical dates, rotations, or rewards. |
 | Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated 42-stage curated Archive and any explicit reviewed override, using the bounded Hunting/event lifecycle. | Treating Special Quests as PvP or a live event schedule. |
 | Tower | All 12 shipped battles, permanently available after a local Chapter 3 gate as a solo adapter. | Shared HP, staged achievements, rankings, historical rotations, or invented fixed rewards. |
-| Eidolon Quests | All 28 converted solo stages with only the statically recovered collectible ceilings. | Retired Co-op, in-battle summoning, enhancement, or server-side rerolling. |
+| Eidolon Quests | The 12 converted solo battles with matching banners and zero fabricated collectible reward. | Empty tier placeholders, retired Co-op, in-battle summoning, enhancement, or server-side rerolling. |
 | Arena VS / ranking | Remain visibly unavailable. | Photon rooms, friends, matchmaking, rankings, co-op, raids, or a simulated service presented as the original Arena. |
 
 The current `GET /gd/multiplay_enable` response must remain the confirmed

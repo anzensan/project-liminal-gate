@@ -427,8 +427,9 @@ request safely across restart. Unsupported variants return an explicit error.
 Version 5.5.0 discontinued Eidolon enhancement and in-battle summoning when
 Co-op/VS ended. The summon-skill options preserve the statically recovered
 legacy transport and cost table for archival interoperability; they are not
-needed for normal final 5.5.7 solo play. Collectible acquisition instead uses
-the converted solo Eidolon quest result path in the generated event catalog.
+needed for normal final 5.5.7 solo play. The converted solo Eidolon quests use
+their distinct result path, but generated collectible mapping remains disabled
+until a real solo result capture establishes it.
 Guided setup leaves the retired enhancement route disabled, as does the
 server-only launcher. An operator can still select
 `bootstrap_server --summon-skills` explicitly for archival interoperability.
@@ -457,13 +458,14 @@ python3 -m liminal_gate.event_catalog_generator \
 
 The generator contributes 42 curated Archive stages across Chapters
 2000--2011 and 2014--2018, all 12 Tower solo-adapter stages in Chapters
-9010--9013, and all 28 solo Eidolon stages in Chapters 4100--4111. Strikes
+9010--9013, and the 12 battle/banner-backed solo Eidolon stages in Chapters
+4100--4111. Strikes
 Back remains bundled separately. It takes section economics from your BattleData and
 validates event character grants against your character catalog, omitting a
-grant with a note when its character is missing. The eight allowed first-tier
-Eidolon acquisitions are bounded by the final client's chapter programs and
-matching EnemyData; the client performs the random roll and reports either no
-drop or that one allowed collectible.
+grant with a note when its character is missing. The sixteen zero-battle
+Eidolon tier placeholders are deliberately excluded. Their older Co-op reward
+records are not reassigned to the final solo stages without a matching result
+capture.
 The generated catalog and matching character-catalog hash keep that boundary;
 `--event-catalog` can replace the generated artifact with a stricter reviewed
 local one.

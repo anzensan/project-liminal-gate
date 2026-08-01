@@ -82,15 +82,17 @@ grants; **unrecovered** for historical schedules and complete reward tables.
 | Money Money Time | Chapter 3003-1, including the observed 1,800-Coin ceiling and successful result-screen retry | no open settlement boundary for the observed result |
 | Strikes Back | 8000--8007 and 8012--8017 through folded Counter Descent cards; 8008--8011 and 8018 remain excluded | one clear/result return, then smoke the added 8012--8017 banners |
 | Tower | all 12 stages in 9010--9013 as a labeled solo adapter; Donation 9100--9102 excluded | first-stage clear and result return; navigation/entry already observed |
-| Solo Eidolon | all 28 stages in 4100--4111 with eight bounded first-tier collectible identities | selector, entry, clear/result, and before/after collectible state |
+| Solo Eidolon | the 12 nonzero-battle, banner-backed stages in 4100--4111; 16 empty tier placeholders excluded | confirm every corrected banner, then entry and clear/result; collectible mapping remains capture-gated |
 
 ## Generated result and validation boundary
 
-Against the retained APK-matched local inputs, the generator now produces 140
+Against the retained APK-matched local inputs, the corrected generator produces 124
 stages across 47 event families: 42 Archive stages, 58 bundled Counter Descent
-stages, 12 Tower stages, and 28 solo Eidolon stages. At full story progress the
+stages, 12 Tower stages, and 12 solo Eidolon stages. At full story progress the
 normal Special Quest list contains 26 curated Archive cards; the separately
 bundled Money Money Time card is merged by the Hunting policy.
+The corrected event catalog SHA-256 is
+`1b99bc264ac6dbba4f81f4d89105e54e804b9f12cdaa4078d516886b3044ceeb`.
 
 Focused warning-strict validation passed 139 tests covering schema refusal, folded-card deduplication,
 placeholder exclusion, character association, progress gates, real-HTTP list
@@ -109,8 +111,9 @@ Before the broader solo event goal can be called complete:
    `364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`;
 2. ~~confirm multiplayer remains exactly disabled~~ — live response remains
    `enable=false, enablemain=false`;
-3. smoke one folded Archive card and one injected late explicit card on the
-   physical client;
+3. ~~smoke one folded Archive card~~ — the physical final client opened the
+   single Bahamut `2000` card and showed all four sections; one injected late
+   explicit card remains to be checked after its story gate;
 4. clear one Strikes Back stage, the entered Tower stage, and one solo Eidolon
    stage through their result screens; and
 5. record any family-specific failure as a bounded work packet rather than
@@ -122,18 +125,20 @@ Run these from the current Chapter 8 save without editing progression or
 inventory. Preserve the server event tail and before/after save hash for every
 clear.
 
-1. Reopen Arena -> Special Quests and open the single folded Bahamut card
-   (`2000`). It must reveal all four cataloged sections rather than one card per
-   section or a loading failure.
+1. **Confirmed:** Arena -> Special Quests presents one folded Bahamut card
+   (`2000`), and it reveals all four cataloged sections. The maintainer observed
+   this on the physical final client; the Beelink tail records the matching
+   fresh login/status session but no battle start.
 2. Clear Bahamut 2000-1. The result must return to free roam, release the active
    quest, and grant character 148 no more than once.
 3. Clear Strikes Back 8000-1. Its result must return to free roam with a zero
    base reward and no second settlement on retry.
 4. Clear Tower 9010-1. Its result must return to free roam without creating
    shared-HP, ranking, Donation, or story-progression state.
-5. Record the owned-Eidolon vector, clear 4100-1, and record it again. The only
-   accepted outcomes are no new collectible or one newly owned Summon 4; retry
-   and restart must not add it twice.
+5. Open all twelve corrected Eidolon cards and verify their banners. Then clear
+   4100-3 while preserving the exact request, result, and before/after owned
+   Eidolon vector. Use that capture to establish whether and how the final solo
+   quest awards a collectible before enabling any generated acquisition ceiling.
 6. After normal story progress reaches Chapter 10, open injected explicit card
    2014-1. This distinguishes server-list ownership from the embedded fallback;
    earlier Archive cards alone cannot prove that boundary.
