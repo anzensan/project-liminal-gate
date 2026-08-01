@@ -45,6 +45,7 @@ from liminal_gate.tester_setup import (
     DEFAULT_EVENT_CATALOG,
     DEFAULT_OUTCOME_CATALOG,
     IL2CPP_OUTPUT_DIRECTORY,
+    resolve_resource_root,
 )
 
 
@@ -304,17 +305,25 @@ def free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def describe_generation(data_directory: Path, apk: Path) -> dict[str, Any]:
+def describe_generation(data_directory: Path, apk: Path, reuse_il2cpp: Path | None = None) -> dict[str, Any]:
     """Read what setup produced and reduce it to comparable facts.
 
     Hashes alone would report *that* something changed; the counts beside them
     report what, which is the difference between a diff an operator can act on
     and one they have to investigate from scratch.
+
+    With `reuse_il2cpp`, setup reuses the operator's existing dump in place
+    rather than extracting one under the data directory, so the dump facts are
+    read from the reused directory's own root.  They still land in the same
+    summary fields: the dump's identity is a compared input either way.
     """
+    reused_root = reuse_il2cpp.resolve().parent if reuse_il2cpp is not None else None
     facts: dict[str, Any] = {"apk_sha256": sha256_file(apk)}
     artifacts: dict[str, str] = {}
     for name in REQUIRED_ARTIFACTS:
         path = data_directory / name
+        if not path.is_file() and reused_root is not None and name == f"{IL2CPP_OUTPUT_DIRECTORY}/dump.cs":
+            path = reused_root / "dump.cs"
         if not path.is_file():
             raise RehearsalError(f"guided setup did not produce {name} under {data_directory}")
         artifacts[name] = sha256_file(path)
@@ -330,6 +339,8 @@ def describe_generation(data_directory: Path, apk: Path) -> dict[str, Any]:
     }
 
     dummy_dll = data_directory / IL2CPP_OUTPUT_DIRECTORY / "DummyDll"
+    if not dummy_dll.is_dir() and reuse_il2cpp is not None:
+        dummy_dll = reuse_il2cpp.resolve()
     facts["dummy_dll_count"] = len(sorted(dummy_dll.glob("*.dll"))) if dummy_dll.is_dir() else 0
 
     characters = _read_json(data_directory / "character-catalog.json")
@@ -747,7 +758,7 @@ def rehearse(
     run_step(StageLog("setup", run.logs / "setup.log"), (*arguments, "--prepare-only"), cwd=run.source)
 
     print("Reading what setup produced...")
-    summary.update(describe_generation(run.data_directory, apk))
+    summary.update(describe_generation(run.data_directory, apk, reuse_il2cpp))
 
     if run_smoke:
         print("Driving onboarding through a server restart...")
@@ -764,6 +775,10 @@ def rehearse(
 def smoke(interpreter: Path, run: RehearsalRun, resource_root: Path, port: int) -> dict[str, Any]:
     """Serve the generated data to a scripted client, across a real restart."""
     log = StageLog("server", run.logs / "server.log")
+    # Setup generated the manifest against the *detected* Android root, so the
+    # smoke server must resolve the operator's argument the same way setup
+    # did, or every manifest path misses under a common-parent root.
+    resource_root = resolve_resource_root(resource_root)
     resource_path = first_resource_path(run.data_directory)
     with running_server(interpreter, run.source, resource_root, run.data_directory, port, log) as client:
         before = onboard(client, resource_path)
