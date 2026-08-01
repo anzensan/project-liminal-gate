@@ -106,32 +106,45 @@ account are expected, not a fault.**
 
 The last row is the exception: the two world-map points after Chapter 34 are the
 client's own gate, not a policy this project chose, and their five battles each
-open one at a time. They award nothing — a clear that reports Companions, EXP,
-or items is refused, because the original drop rule was never captured and a
-plausible invented one is worse than an honest refusal.
+open one at a time.
 
-### Three areas give EXP and nothing else
+### The Roads give EXP and nothing else
 
-**Dragon Road, Machine Road, and the two world-map Lambda routes pay experience
-only** — no Coins, no items, no Companions.
+**Dragon Road and Machine Road pay experience only** — no Coins, no items, no
+Companions.
 
-That is not a limitation this project chose. Those three switch the other
-channels off in your own copy of the game's data: each declares an empty
-Companion drop list, sets `allowLucky` to 0 so no Luck chest is ever offered,
-and the Roads additionally set `doNotDropExchangeItem`. The game itself says
-these stages drop nothing. A clear that claims otherwise is refused rather than
-settled, because the claim would have to come from somewhere other than the
-game.
+That is not a limitation this project chose. Both switch the other channels off
+in your own copy of the game's data: each declares an empty Companion drop
+list, sets `allowLucky` to 0 so no Luck chest is ever offered, and sets
+`doNotDropExchangeItem`. The game itself says these stages drop nothing. A
+clear that claims otherwise is refused rather than settled, because the claim
+would have to come from somewhere other than the game. The community record
+describes retired-service rewards for both (a Steel Dragon recruit; Star
+drops); those claims are recorded in the reference ledger and deliberately not
+applied, because the recovered declarations outrank an external table.
 
-Experience is different, and it is the whole point of the Roads: both are
-species-locked training zones, Dragon and Machine respectively, and your party
-keeps the levels it earns there. The world-map routes are single level-80 and
-level-90 battles and likewise pay their experience.
+Experience is the whole point of the Roads: both are species-locked training
+zones, Dragon and Machine respectively, and your party keeps the levels it
+earns there.
 
-What is *not* recovered is how much: the retired server validated these totals
-and no recording survives. So the server bounds them instead — generously, and
-derived from the same selector's own tiers rather than picked. The bound exists
-to stop a tampered client claiming an absurd number, not to reproduce a rule.
+### The world-map Lambda routes give EXP and a bounded Companion drop
+
+The two Chapter-34 world-map routes are single level-80 and level-90 battles
+and pay their experience the same way. Unlike the Roads, their sections carry
+recovered non-empty `dropBuddies` manifests, and the community record
+documents one exclusive Companion roll per battle whose candidate lists match
+those manifests exactly. A clear may therefore settle at most one Companion
+the stage's own manifest names, minted at level 1. Everything else — Coins,
+items, the Luck chest their own `allowLucky` 0 rules out, and the documented
+battle-4 character recruit — is still refused, because those channels have no
+recovered identities or captures and a plausible invented rule is worse than
+an honest refusal.
+
+What is *not* recovered in either family is how much experience: the retired
+server validated these totals and no recording survives. So the server bounds
+them instead — generously, and derived from the same selector's own tiers
+rather than picked. The bound exists to stop a tampered client claiming an
+absurd number, not to reproduce a rule.
 
 ## Special Quests are separate from Arena VS
 

@@ -14,13 +14,28 @@ eight collapsible sections are the eight weeks; every target and cost name in
 that table resolved cleanly against the client's own master data, which is the
 reason to trust the mapping.
 
-Two things the source does not establish.  The rotation's **phase** -- which
-real-world week was the first -- was never recorded, so the cycle's starting
-point is a local policy choice.  And a traded Companion's level is fixed by
-neither the client contract nor the wiki; these mint at level 1, matching the
-Companion draw.
+The rotation's **phase** is community-dated rather than guessed.  The wiki's
+rotation page was created alongside version 5.5.0 and then extended live: one
+"Added trade" edit per Friday, 2018-10-12 through 2018-11-23 (revisions 83636,
+83691, 83731, 83763, 83788, 83825, 83834), closing with "Rotation finished" on
+Friday 2018-11-30 (revision 83859) when the cycle looped back to the first
+table.  The archived official 5.5.0 news post dates the feature's launch to
+2018-10-10 00:00 UTC with the first table live, which puts week one's Friday
+boundary at 2018-10-05.  Table order in revision 84575 is the order the tables
+were added, so the bundled week order is the historical week order and
+`exchange_catalog` anchors the cycle to that 2018-10-05 Friday.  The fixed
+cycle only existed from 5.5.0 onward -- the 2016--2018 weekly offers logged on
+the wiki's yearly Trades pages do not match these eight tables -- and no
+service capture confirms the cycle ran unchanged to the end of service; the
+wiki page's two years of edit silence after 2018-11-30 is the evidence it did.
 
-Source: `Trading Post/Trades/Rotation`, terrabattle.fandom.com, revision 84575.
+One thing the source does not establish: a traded Companion's level is fixed
+by neither the client contract nor the wiki; these mint at level 1, matching
+the Companion draw.
+
+Sources: `Trading Post/Trades/Rotation`, terrabattle.fandom.com, revision
+84575 and the revision history above;
+web.archive.org/web/20181223215307/http://www.terra-battle.com/en/news/2018/10/ver-550.html.
 """
 
 from __future__ import annotations

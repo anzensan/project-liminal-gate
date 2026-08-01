@@ -87,12 +87,17 @@ class BundledTradingPostTest(unittest.TestCase):
         self.assertEqual(set(self.catalog.offers), set().union(*weeks))
         # Week 8 is week 0 again: the rotation cycles rather than ending.
         self.assertEqual(weeks[0], frozenset(self.catalog.offers_open_at(8)))
-        # It turns over weekly, on the same weekday each time.
-        friday = 86400  # 1970-01-02 00:00 UTC, the epoch's first Friday
+        # It turns over weekly, on the same weekday each time, anchored to the
+        # community-dated phase: week 0 opened with version 5.5.0 (its Friday
+        # boundary was 2018-10-05) and reopened on Friday 2018-11-30 when the
+        # wiki's live edit trail recorded "Rotation finished".
+        friday = 1_538_697_600  # 2018-10-05 00:00 UTC
         self.assertEqual(0, active_week_index(friday, 8))
         self.assertEqual(0, active_week_index(friday + 604799, 8))
         self.assertEqual(1, active_week_index(friday + 604800, 8))
         self.assertEqual(0, active_week_index(friday + 604800 * 8, 8))
+        # 2018-11-30 00:00 UTC is exactly eight weeks on: week 0 again.
+        self.assertEqual(0, active_week_index(1_543_536_000, 8))
 
     def test_a_companion_offer_mints_into_the_box(self) -> None:
         offer = next(o for o in self.open_offers.values() if o.target_buddy_id)

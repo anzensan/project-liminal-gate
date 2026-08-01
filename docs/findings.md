@@ -453,6 +453,71 @@ Private inputs, captures, account state, and original assets remain excluded.
   `ResourceWarning` promoted to error; a clean temporary source candidate
   passed preflight and repository-history audit.
 
+## 2026-08-01 external-reference sweep
+
+All entries below are operator-approved community/reference material in the
+sense of `external-quest-reference-ledger.md`: they tighten or corroborate
+bounded local policy and never promote a row to recovered. Wiki pages were
+read as raw wikitext through the site's MediaWiki API on 2026-08-01.
+
+- **Corroborated exactly, no change:** Pact of Truth class shares (4/10/15/71),
+  duplicate gains (+6/12.0%, +5/10.0%, +1/5.0%), the Pact of Fate +5.0 Luck
+  duplicate increment, and the 100.0/80.0/70.0 Luck-cap banding that matches
+  the recovered `Character.get_luckMax` split. Provenance is now dated: the
+  in-game rate display began 2018-02-28 per the archived official news post
+  (Wayback 20180228133231, terra-battle.com post-156). Fellowship selection
+  stays uniform; the only surviving empirical record is a 2015 forum sample
+  (Wayback 20150424040406, thread 5198) that predates the final pool.
+- **Recorded, not yet appliable:** the Companions of Truth displayed base
+  rates (Z 3%, SS 8%, S 10%, A 30%, B 49%). The public bundle stores the
+  114-member Rare pool without per-ID rarity, so the bundled draw stays
+  uniform; an operator-supplied weighted catalog is the sanctioned path.
+- **Applied as bounded policy — Chapter 1100:** the community record (Mutoh Λ
+  and Shin'en Λ quest pages) documents one exclusive Companion roll per
+  battle, and its per-battle candidate lists match the recovered `dropBuddies`
+  manifests exactly (three on battle 4, two on battles 2-3, one on battle 1,
+  none on battle 5). The settlement now accepts at most one reported manifest
+  Companion per clear, minted at level 1. The record's roll weights, item
+  drops, story-progress/UTC-hour difficulty schedule, and the battle-4
+  character recruit remain unimplemented; a clear claiming any of those is
+  still refused.
+- **Recorded and deliberately not applied — the two Roads (1200-1/1201-1):**
+  the record documents a Steel Dragon recruit on Dragon Road and Star drops
+  plus a Messages-borne Mech Skill Drop on Machine Road. Both are outranked
+  by the recovered sections' own declarations — empty `dropBuddies`,
+  `allowLucky` 0, `doNotDropExchangeItem` 1 — so the Roads keep their
+  client-declared EXP-only settlement and the external claims are recorded in
+  the reference ledger for comparison only.
+- **Applied as bounded policy — Daily Quests:** Crystal Roundelay's documented
+  guaranteed power-up now bounds the four recovered power-up IDs (53-56), and
+  Rarity Rumble's documented 10% Fellowship Ticket bounds Item 81. Its
+  guaranteed Ore stays unbounded: Ore identities remain unresolved. The
+  record also gives the final rotation as a 41-day cycle of two quests per
+  day; the client schedules that itself from its own `questOrder`, so the
+  server's once-per-UTC-day rule is unchanged.
+- **Applied with dated evidence — Trading Post phase:** the rotation page's own
+  edit history (revisions 83575-83859) was built live, one table per Friday,
+  2018-10-12 through "Rotation finished" on 2018-11-30, and the archived
+  5.5.0 news post dates the first table's launch week. The bundled cycle is
+  now anchored to Friday 2018-10-05 00:00 UTC, so week indices reproduce the
+  historically dated weeks. The fixed cycle existed only from 5.5.0 onward;
+  continuity to end of service rests on two years of edit silence, not a
+  capture.
+- **Corroborated:** chapter ticket milestones (2/3/2/3/4 across Chapters 5-10,
+  introduced by v4.0.0 per the archived official news) with no documented
+  milestones past Chapter 10; Weekly Challenge was removed in v5.5.0, so the
+  final-client all-zero shell is the correct shape; The Hunt For Joker's 100%
+  Joker Λ grant with +10% Skill Boost and +10 Luck duplicates.
+- **Recorded for future boundaries:** the wiki's 62-achievement reward table
+  (Chronicle rows pay 1 Energy + 1 Metal Ticket, matching the recovered
+  present list; the Eidolon/Hunting/VS sets were removed in v5.5.0); Descent
+  quest ownership-gated drop chains (for example Bahamut Descended 20%,
+  Ultra 100%-then-materials); Tower of Temptation's shared-HP/Final Blow
+  reward structure; Battle Champs (Little Noah) Nia recruit rates. No public
+  source documents the Donation event, Hime Rush, or fixed clear-Coin values
+  for the 2000-series archive chapters (tbs.desile.fr covers story chapters
+  1-38 only).
+
 ## Unresolved
 
 - Hunting rows render, but the selector can flash while showing a loading

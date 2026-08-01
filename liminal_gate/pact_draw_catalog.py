@@ -43,11 +43,23 @@ _DUPLICATE_GAINS_BY_CLASS = {
 # Pact of Truth class shares, in parts per million of one pull.  Same evidence
 # status as the duplicate gains above: community record, no APK table, since
 # the retired server owned selection entirely.  The client's only rate-related
-# symbol is ``RareSlotEnergy``, the cost this bundle already sends.  Within a
-# class the share is split evenly, which is what the source describes for A/B
-# and the only defensible reading for the rest.  Fellowship keeps uniform
-# selection because no comparable record of its rates was found; inventing a
-# second table to look symmetrical would be worse than an honest uniform one.
+# symbol is ``RareSlotEnergy``, the cost this bundle already sends.  The
+# record's provenance is now dated: Mistwalker began displaying recruitment
+# rates in-game on 2018-02-28 (archived official news, "Display of
+# Character/Companion recruitment rates", 2018-02-23; Wayback capture
+# 20180228133231 of terra-battle.com/en/news/2018/02/post-156.html), and the
+# community wiki's Pact of Truth page transcribes the displayed split as
+# exactly these 4/10/15/71 shares.  Two things the display had that this table
+# does not: per-character rates, and a pool that shrank as characters hit 100%
+# Skill Boost and left it, redistributing their share.  Within a class the
+# share is split evenly, which is what the source describes for A/B and the
+# only defensible reading for the rest.  Fellowship keeps uniform selection
+# because no comparable record of its rates was found -- the only surviving
+# empirical data, a 2015 forum sample of ~1,200 pulls (Wayback capture
+# 20150424040406 of terrabattleforum.com thread 5198), predates the final
+# pool, though its uniform spread across the six adventurers supports uniform
+# selection within a class.  Inventing a class table from a 2015 sample would
+# be worse than an honest uniform one.
 _TRUTH_CLASS_SHARE_PPM = {
     "z": 40_000,
     "ss": 100_000,
@@ -216,10 +228,14 @@ def _pact_policy(fellowship_draws: tuple[PactDraw, ...], truth_draws: tuple[Pact
         new_level=10,
         max_level=90,
         max_skill_boost=1000,
-        # Luck uses the client's tenths-of-one-percent wire unit. The public
-        # bundle has no original rarity table from which to derive the lower
-        # rarity-specific caps, so the archive policy uses the client's
-        # absolute 100.0 ceiling and the recovered +5.0 duplicate increment.
+        # Luck uses the client's tenths-of-one-percent wire unit.  The
+        # community record documents the retired caps as 100.0 for Λ and Z,
+        # 80.0 for SS/S, and 70.0 for A and below -- the same three-way split
+        # the recovered ``Character.get_luckMax`` banding enforces on the
+        # client itself.  The server-side policy keeps the absolute 100.0
+        # ceiling because the client's own recovered cap already clamps each
+        # character to its band; the record also ties the +5.0 duplicate
+        # increment specifically to the Pact of Fate.
         max_luck=1000,
         fate_duplicate_luck=50,
         fellowship_draws=fellowship_draws,

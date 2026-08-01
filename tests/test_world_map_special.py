@@ -1,9 +1,10 @@
 """The Chapter-1100 World Map Special routes.
 
 Two permanent map points the client draws itself after normal Chapter 34.  The
-server's only jobs are to charge the 25-stamina entry, keep the route's own
-frontier, refuse to move core story progress, and refuse to invent a Companion
-from the `dropBuddies` manifest.
+server's jobs are to charge the 25-stamina entry, keep the route's own
+frontier, refuse to move core story progress, and settle at most one reported
+Companion per clear from the stage's own `dropBuddies` manifest -- the bounded
+acceptance the community record supports.
 """
 from __future__ import annotations
 
@@ -212,11 +213,31 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual(409, status)
         self.assertEqual(UNLOCKED, self.userdata()["progressCode"])
 
-    def test_a_reported_companion_drop_is_refused_not_minted(self) -> None:
-        # Section 4's manifest names Companion 137, but no captured clear proves
-        # the roll rule, so a client claiming it is rejected outright.
+    def test_a_manifest_companion_is_accepted_and_minted_at_level_one(self) -> None:
+        # Section 4's manifest names Companion 137; the community record
+        # documents one exclusive Companion roll per clear, so a single
+        # reported manifest Companion settles into the box at level 1.
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
-        status, _ = self.clear("wms-clear", SHINEN_FIRST, buddies=[137])
+        status, cleared = self.clear("wms-clear", SHINEN_FIRST, buddies=[137])
+        self.assertEqual((200, True), (status, cleared["success"]))
+        self.assertEqual("free_roam", self.phase())
+        minted = cleared["buddyInfo"]["list"]
+        self.assertEqual([(137, 1)], [(row["bid"], row["lv"]) for row in minted])
+
+    def test_a_companion_outside_the_manifest_is_refused(self) -> None:
+        # Companion 128 is a Metal Zone drop, not a Chapter-1100 candidate.
+        self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
+        status, _ = self.clear("wms-clear", SHINEN_FIRST, buddies=[128])
+        self.assertEqual(409, status)
+        self.assertEqual("world_map_special_active", self.phase())
+
+    def test_two_manifest_companions_at_once_are_refused(self) -> None:
+        # The record describes a single exclusive roll: two claims at once are
+        # outside the bound even when both IDs are in the manifest.
+        self.assertEqual(200, self.start("first", SHINEN_FIRST)[0])
+        self.assertEqual(200, self.clear("first-clear", SHINEN_FIRST)[0])
+        self.assertEqual(200, self.start("second", 3)[0])
+        status, _ = self.clear("second-clear", 3, buddies=[223, 66])
         self.assertEqual(409, status)
         self.assertEqual("world_map_special_active", self.phase())
 

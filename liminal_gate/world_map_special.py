@@ -24,13 +24,23 @@ Confirmed from the final client's embedded `BattleData`: the ten identities,
 packed Companion candidate manifests.  Local preservation policy: nothing.
 The entry gate is the native map gate above, not a threshold this project chose.
 
-What is deliberately *not* implemented is the Companion payout.  `dropBuddies`
-proves which Companions each stage could yield and carries one packed byte per
-candidate, but no captured Chapter-1100 clear proves whether candidates are
-guaranteed, exclusive, or independently rolled, nor how many rolls occur.  The
-manifest is retained below for audit and future comparison; the settlement
-rejects every reported Chapter-1100 Companion rather than minting one from a
-guessed rule.
+The Companion payout is a bounded acceptance, not a reproduction.  The
+community record (Mutoh Λ (Quest) and Shin'en Λ (Quest), terrabattle.fandom.com)
+documents each battle's Companion reward as a single exclusive roll -- one
+Companion per clear, drawn from that battle's own candidate set -- and its
+per-battle candidate lists match this recovered `dropBuddies` manifest exactly:
+three candidates on battle 4 (the record's Metal, Glassy and Golden Minion Λ
+split), two on battles 2 and 3, one on battle 1, none on battle 5.  That
+agreement between an independent source and the recovered manifest is why the
+settlement now accepts **at most one** reported Companion per clear, and only
+one the stage's own manifest names, minted at level 1.  The record's roll
+weights (5/10, 3/10, 2/10 on battle 4; the 20% battle-1 chance) and its
+story-progress/UTC-hour difficulty schedule are recorded in the reference
+ledger, not implemented: no settlement capture exists, so the odds are the
+client's to roll and this server's only to bound.  The record also documents a
+100%-if-unowned Mutoh Λ / Shin'en Λ *character* recruit on battle 4; character
+identities for the pair are not resolved against recovered master data, so a
+clear claiming a character remains refused.
 """
 
 from __future__ import annotations
@@ -63,12 +73,17 @@ class WorldMapSpecialStage:
     stamina: int
     coins: int
     # (Companion id, packed level/count byte) exactly as `dropBuddies` stores
-    # it.  Audit evidence only -- see the module docstring.
+    # it.  See the module docstring for the acceptance rule built on it.
     companion_candidates: tuple[tuple[int, int], ...]
 
     @property
     def chapter(self) -> int:
         return WORLD_MAP_SPECIAL_CHAPTER
+
+    @property
+    def companion_drop_levels(self) -> dict[int, int]:
+        """Accepted candidates mint at level 1, like every other bundled drop."""
+        return {companion_id: 1 for companion_id, _ in self.companion_candidates}
 
 
 @dataclass(frozen=True)
@@ -127,3 +142,17 @@ def build_bundled_world_map_special_policy() -> WorldMapSpecialCatalog:
 def initial_route_progress(catalog: WorldMapSpecialCatalog) -> dict[str, int]:
     """Return the frontier every route starts at: its first battle."""
     return {route: 1 for route in catalog.routes()}
+
+
+def world_map_special_companions_within_bounds(
+    stage: WorldMapSpecialStage, buddies: list[int],
+) -> bool:
+    """Whether a reported Chapter-1100 Companion claim stays inside the policy.
+
+    The community record describes one exclusive Companion roll per clear, so
+    the bound is at most one reported Companion, and only one this stage's own
+    recovered `dropBuddies` manifest names.  Battle 5 carries no candidates and
+    therefore accepts none.
+    """
+    allowed = {companion_id for companion_id, _ in stage.companion_candidates}
+    return len(buddies) <= 1 and all(companion_id in allowed for companion_id in buddies)

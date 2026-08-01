@@ -63,20 +63,27 @@ BUNDLED_MAX_COINS = 99999999
 BUNDLED_MAX_OWNED = 1000
 
 
-# The rotation turned over every Friday at 00:00 UTC. 1970-01-02 was the first
-# Friday of the epoch, so weeks align to it exactly.
-_ROTATION_EPOCH = 86400
+# The rotation turned over every Friday at 00:00 UTC.  The anchor below is
+# Friday 2018-10-05 00:00 UTC, the rotation week during which version 5.5.0
+# shipped the fixed cycle (2018-10-10 00:00 UTC, per the archived official
+# news post) with the first table's offers live.  The wiki's rotation page was
+# then built live, one table per Friday -- eight dated "Added trade" edits,
+# 2018-10-12 through 2018-11-23, closing with "Rotation finished" on Friday
+# 2018-11-30 when the cycle looped back to the first table.  That dated edit
+# trail is what fixes the phase; see `trading_post_data` for the citations.
+_ROTATION_EPOCH = 1_538_697_600
 _WEEK_SECONDS = 604800
 
 
 def active_week_index(now: float, week_count: int) -> int:
     """Which week of the rotation is open at a moment in time.
 
-    The turnover cadence is the wiki's: every Friday at 00:00 UTC. The *phase*
-    is not -- which real-world week was the rotation's first was never
-    recorded -- so this anchors to the epoch's own first Friday. That makes the
-    schedule deterministic and reproducible without claiming it reproduces any
-    particular historical week.
+    The turnover cadence is the wiki's: every Friday at 00:00 UTC.  The phase
+    is anchored so that week 0 -- the first bundled table -- is open on the
+    same real-world weeks it historically was, dated by the rotation page's
+    own edit history (community record, not a service capture).  Moments
+    before the anchor extend the same cycle backward, which is deterministic
+    even though the fixed rotation did not exist before version 5.5.0.
     """
     return int((now - _ROTATION_EPOCH) // _WEEK_SECONDS) % max(week_count, 1)
 

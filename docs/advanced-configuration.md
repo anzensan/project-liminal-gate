@@ -474,8 +474,7 @@ Two things it does not claim. The release order is local archive policy: the
 original schedule was never recovered, so each event becomes permanently
 available after its declared story gate rather than following a calendar. And
 an event clear credits no fixed Coins, because BattleData records a start cost
-for these sections but no clear reward -- the same reading that leaves Dragon
-and Machine Road settling at zero. Tower and Eidolon quest availability after
+for these sections but no clear reward. Tower and Eidolon quest availability after
 Chapter 3 is permanent local archive policy, not a recovered historical
 rotation. Tower exposes only the shipped solo battles; shared HP, staged
 achievements, and rewards are not recreated, and Donation Chapters 9100--9102
@@ -812,8 +811,11 @@ real-time board has no cumulative spawn counter to recover a true cap from.
 
 **Metal Zone is bounded, not unrestricted.** Its ticket-or-stamina entries,
 EXP ceilings, and Companion manifests are declared by the bundled policy; an
-undeclared result is refused. Dragon and Machine Road currently settle zero
-base rewards because no complete reward contract was recovered. The default
+undeclared result is refused. Dragon and Machine Road settle their
+client-declared EXP channel and nothing else: their own sections declare the
+absence of every other reward, and the community record's Steel Dragon and
+Star claims are recorded in the reference ledger without being applied,
+because a recovered declaration outranks an external table. The default
 Special Quest is also bounded: Chapter 3003-1 accepts up to 1,800 Coins and no
 EXP, items, or Companions. Crystal Road (3004-1) is a permanent local Huntland
 route after Chapter 3: its seven-stamina entry and three-battle client record

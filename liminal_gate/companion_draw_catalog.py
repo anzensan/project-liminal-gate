@@ -82,9 +82,15 @@ def build_bundled_companion_draw_policy() -> CompanionDrawCatalog:
 
     Pool membership, the ticket item, the displayed three-Energy fallback, and
     the Companion box ceiling are recovered from the final client.  Selection
-    is uniform across the pool as an explicit local policy, exactly as the
-    bundled Pact policy treats its own pools -- the historical per-rarity base
-    rates are deliberately not asserted here.
+    is uniform across the pool as an explicit local policy.  The community
+    record (Companions of Truth, terrabattle.fandom.com) transcribes the
+    officially displayed base rates as Z 3%, SS 8%, S 10%, A 30%, B 49%, and
+    the pool's per-rarity counts above are known -- but the public bundle does
+    not store which of the 114 IDs belongs to which class, so applying that
+    table here would mean bundling an unrecovered membership map.  An operator
+    who imports per-Companion rarity from their own BuddyDatabase can supply a
+    weighted catalog through ``load_companion_draw_catalog`` instead; until
+    then the uniform weight stays, deliberately not a claim about retired odds.
     """
     return CompanionDrawCatalog(
         BUNDLED_ITEM_SLOTS, BUNDLED_TICKET_ITEM_ID, BUNDLED_ENERGY_COST, BUNDLED_MAX_OWNED,
