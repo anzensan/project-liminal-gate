@@ -18,7 +18,9 @@ Signup/login carry the client UUID and establish a durable source-host owner.
 Most later routes carry `otk` and optional `requestID`, but no UUID. The OTK is
 a three-second client time bucket, not an account-unique session identifier, so
 the identified host owns later rotated tokens. An unknown host is refused once
-ownership exists. See `multi-account-design.md` for limitations.
+ownership exists. A UUID linked by the operator's `link` command resolves to
+its shared account on both identity-bearing routes; the wire itself has no
+account or transfer system. See `multi-account-design.md` for limitations.
 
 Response signing remains token-derived according to the included compatibility
 profile. Event diagnostics never record tokens, authentication digests, query

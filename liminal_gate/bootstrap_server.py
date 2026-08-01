@@ -633,6 +633,10 @@ class BootstrapState:
         # three-second time bucket, so two clients playing at once send
         # byte-identical tokens and cannot be told apart by token alone.
         self.client_hosts: dict[str, str] = {}
+        # Linked devices: a second device's UUID resolves to the account its
+        # owner already plays.  Written only by the operator's `link` command,
+        # never by the wire protocol, which has no account-transfer route.
+        self.account_aliases: dict[str, str] = {}
         self.active_account_id: str | None = None
         self._lock_stream: Any = None
         self._acquire_file_lock()
@@ -700,8 +704,16 @@ class BootstrapState:
         self.client_hosts[client_host] = account_id
         return True
 
+    def _resolve_alias_locked(self, account_id: str) -> str:
+        """The account a linked device's UUID plays; unlinked UUIDs are themselves."""
+        return self.account_aliases.get(account_id, account_id)
+
     def create_account(self, token: str, account_id: str, seed: dict[str, Any], message_catalog: MessageCatalog | None = None, exchange_catalog: ExchangeCatalog | None = None, client_host: str | None = None) -> None:
         with self.lock:
+            # A linked device that clears its app data signs up again with its
+            # linked UUID.  The shared save must win over creating a fresh
+            # empty account for it.
+            account_id = self._resolve_alias_locked(account_id)
             if account_id not in self.accounts:
                 self.accounts[account_id] = {
                     "userdata": copy.deepcopy(seed),
@@ -728,10 +740,17 @@ class BootstrapState:
             if changed:
                 self._persist_locked()
 
-    def bind_login_token(self, token: str, account_id: str, client_host: str | None = None) -> bool:
+    def bind_login_token(self, token: str, account_id: str, client_host: str | None = None) -> str | None:
+        """Bind a login's token, returning the account it resolved to.
+
+        The resolved id matters to the caller: a linked device logs in with
+        its own UUID, and every later lookup must use the shared account's id,
+        not the UUID the wire carried.
+        """
         with self.lock:
+            account_id = self._resolve_alias_locked(account_id)
             if account_id not in self.accounts:
-                return False
+                return None
             changed = self.tokens.get(token) != account_id or self.active_account_id != account_id
             changed = self._claim_host_locked(client_host, account_id) or changed
             if self.tokens.get(token) != account_id:
@@ -739,7 +758,7 @@ class BootstrapState:
             self.active_account_id = account_id
             if changed:
                 self._persist_locked()
-            return True
+            return account_id
 
     def bind_rotated_token(self, token: str, client_host: str | None = None) -> bool:
         """Bind a client-rotated OTK to the account that client owns.
@@ -2735,6 +2754,18 @@ class BootstrapState:
         ):
             raise ProfileError("local bootstrap state contains invalid client host bindings")
         self.client_hosts = client_hosts
+        # Absent in saves written before device linking; an empty map means no
+        # UUID resolves to anything but itself, which is the earlier behaviour.
+        # A device UUID may name an account or an alias, never both, or signup
+        # and login would disagree about which save the device plays.
+        account_aliases = document.get("account_aliases", {})
+        if not isinstance(account_aliases, dict) or not all(
+            isinstance(device, str) and device and device not in accounts
+            and isinstance(account_id, str) and account_id in accounts
+            for device, account_id in account_aliases.items()
+        ):
+            raise ProfileError("local bootstrap state contains invalid linked-device aliases")
+        self.account_aliases = account_aliases
         for account in accounts.values():
             account.setdefault("tutorial_phase", "initial")
             account.setdefault("tutorial_requests", {})
@@ -2832,7 +2863,7 @@ class BootstrapState:
     def _persist_locked(self) -> None:
         self._bound_locked()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        encoded = (json.dumps({"accounts": self.accounts, "active_account_id": self.active_account_id, "tokens": self.tokens, "client_hosts": self.client_hosts}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        encoded = (json.dumps({"accounts": self.accounts, "active_account_id": self.active_account_id, "tokens": self.tokens, "client_hosts": self.client_hosts, "account_aliases": self.account_aliases}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
         with tempfile.NamedTemporaryFile(dir=self.path.parent, delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(encoded)
@@ -3045,21 +3076,28 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return
         if target.path == profile.routes.get("login"):
             account_id = query.get(profile.account_binding["login_query_field"])
-            if not token or not isinstance(account_id, str) or not self.server.state.bind_login_token(token, account_id, self._client_host()):
+            resolved = (
+                self.server.state.bind_login_token(token, account_id, self._client_host())
+                if token and isinstance(account_id, str) else None
+            )
+            if resolved is None:
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "unknown_local_account"})
                 return
+            # The response echoes the UUID the client sent — its own stored
+            # credential — while state lookups use the account it resolved to,
+            # which differs for a linked device.
             payload = _render(profile.responses["login"], token, account_id)
             # Required, not decorative: once the status route advertises the
             # final-major client version, the client's own final-major login
             # branch indexes `CountryCodes` with this stored value, and reaches
             # the country-selection modal when nothing is stored.
             payload |= dict(LOCAL_LOGIN_COUNTRY_FIELDS)
-            payload["name"] = self.server.state.accounts[account_id].get("username", payload.get("name", "Player"))
+            payload["name"] = self.server.state.accounts[resolved].get("username", payload.get("name", "Player"))
             payload["messageList"] = self.server.state.login_messages(
-                account_id, self.server.chapter_milestones,
+                resolved, self.server.chapter_milestones,
             )
             event_flags: dict[str, Any] = {}
-            progress = self.server.state.accounts[account_id].get(
+            progress = self.server.state.accounts[resolved].get(
                 "userdata", {}
             ).get("progressCode", 0)
             if self.server.event_catalog is not None:

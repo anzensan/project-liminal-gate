@@ -92,6 +92,19 @@ def validate_document(document: object) -> list[Finding]:
     active = document.get("active_account_id")
     if active is not None and active not in document["accounts"]:
         findings.append(Finding("", "active_account_id", f"active account {active!r} does not exist"))
+    aliases = document.get("account_aliases")
+    if aliases is not None:
+        if not isinstance(aliases, dict):
+            findings.append(Finding("", "account_aliases", "the linked-device map must be an object"))
+        else:
+            for device, owner in sorted(aliases.items(), key=lambda item: str(item[0])):
+                if not isinstance(device, str) or not isinstance(owner, str):
+                    findings.append(Finding("", "account_aliases", "every linked device must map one string UUID to an account id"))
+                    continue
+                if owner not in document["accounts"]:
+                    findings.append(Finding("", f"account_aliases.{device}", f"linked device points at unknown account {owner!r}"))
+                if device in document["accounts"]:
+                    findings.append(Finding("", f"account_aliases.{device}", "a device UUID cannot name both an account and a link; the server refuses such a save"))
     return findings
 
 

@@ -266,3 +266,109 @@ class SwitchTest(unittest.TestCase):
                 account_state.switch(state, "missing", confirmed=True)
             with self.assertRaisesRegex(account_state.AccountStateError, "already the active"):
                 account_state.switch(state, "uuid-C", confirmed=True)
+
+
+class LinkTest(unittest.TestCase):
+    """One save, two devices: `link` records the second UUID as an alias.
+
+    The wire protocol has no account system — the silently stored device UUID
+    is the only credential — so sharing a save across devices is operator
+    bookkeeping, exactly like `adopt` but without moving the save.
+    """
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.state_path = Path(self.temporary_directory.name) / "bootstrap-state.json"
+        state = BootstrapState(self.state_path)
+        state.create_account("phone-token", OLD_DEVICE, {"coins": 50000, "progressCode": 16777400, "chrdata": [{"id": 3}]}, client_host="10.0.0.5")
+        with state.lock:
+            state.accounts[OLD_DEVICE]["tutorial_phase"] = "free_roam"
+            state._persist_locked()
+        # The owner's tablet signed up on its own, into a fresh empty account.
+        state.create_account("tablet-token", NEW_DEVICE, {"coins": 0, "progressCode": 1, "chrdata": []}, client_host="10.0.0.6")
+        state.close()
+
+    def test_link_gives_a_second_device_the_same_save(self) -> None:
+        result = account_state.link(self.state_path, NEW_DEVICE, OLD_DEVICE, confirmed=True, force=False)
+        self.assertEqual("linked", result["status"])
+        self.assertEqual(NEW_DEVICE, result["discardedAccount"])
+        self.assertIsNotNone(result["preservedPrimary"])
+        by_id = {item["accountId"]: item for item in result["accounts"]}
+        self.assertEqual([NEW_DEVICE], by_id[OLD_DEVICE]["linkedDevices"])
+
+        reloaded = BootstrapState(self.state_path)
+        self.addCleanup(reloaded.close)
+        self.assertEqual([OLD_DEVICE], sorted(reloaded.accounts))
+        # The tablet logs in under its own UUID and lands on the shared save.
+        self.assertTrue(reloaded.bind_login_token("tablet-login", NEW_DEVICE, "10.0.0.6"))
+        self.assertEqual(OLD_DEVICE, reloaded.tokens["tablet-login"])
+        userdata = reloaded.userdata_for("tablet-login")
+        assert userdata is not None
+        self.assertEqual(50000, userdata["coins"])
+        # A tablet reinstall signs up again with the linked UUID; the shared
+        # save must win over a fresh empty account.
+        reloaded.create_account("tablet-resignup", NEW_DEVICE, {"coins": 0})
+        self.assertEqual([OLD_DEVICE], sorted(reloaded.accounts))
+        self.assertEqual(OLD_DEVICE, reloaded.tokens["tablet-resignup"])
+
+    def test_link_accepts_a_device_that_has_not_signed_up_yet(self) -> None:
+        unseen = "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+        result = account_state.link(self.state_path, unseen, OLD_DEVICE, confirmed=True, force=False)
+        self.assertIsNone(result["discardedAccount"])
+        reloaded = BootstrapState(self.state_path)
+        self.addCleanup(reloaded.close)
+        reloaded.create_account("first-signup", unseen, {"coins": 0}, client_host="10.0.0.7")
+        self.assertEqual(OLD_DEVICE, reloaded.tokens["first-signup"])
+
+    def test_link_will_not_quietly_discard_a_played_account(self) -> None:
+        document = json.loads(self.state_path.read_text(encoding="utf-8"))
+        document["accounts"][NEW_DEVICE]["tutorial_phase"] = "free_roam"
+        self.state_path.write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(AccountStateError, "--force"):
+            account_state.link(self.state_path, NEW_DEVICE, OLD_DEVICE, confirmed=True, force=False)
+        self.assertEqual({OLD_DEVICE, NEW_DEVICE}, set(json.loads(self.state_path.read_text())["accounts"]))
+        result = account_state.link(self.state_path, NEW_DEVICE, OLD_DEVICE, confirmed=True, force=True)
+        self.assertEqual(NEW_DEVICE, result["discardedAccount"])
+
+    def test_link_requires_confirmation_and_a_known_target(self) -> None:
+        with self.assertRaisesRegex(AccountStateError, "requires --yes"):
+            account_state.link(self.state_path, NEW_DEVICE, OLD_DEVICE, confirmed=False, force=False)
+        with self.assertRaisesRegex(AccountStateError, "no account NOPE"):
+            account_state.link(self.state_path, NEW_DEVICE, "NOPE", confirmed=True, force=False)
+        # Linking to a linked device points at the wrong layer; say which
+        # account to use instead.
+        account_state.link(self.state_path, NEW_DEVICE, OLD_DEVICE, confirmed=True, force=False)
+        with self.assertRaisesRegex(AccountStateError, OLD_DEVICE):
+            account_state.link(self.state_path, "EEEE", NEW_DEVICE, confirmed=True, force=False)
+
+    def test_unlink_detaches_the_device(self) -> None:
+        account_state.link(self.state_path, NEW_DEVICE, OLD_DEVICE, confirmed=True, force=False)
+        with self.assertRaisesRegex(AccountStateError, "requires --yes"):
+            account_state.unlink(self.state_path, NEW_DEVICE, confirmed=False)
+        result = account_state.unlink(self.state_path, NEW_DEVICE, confirmed=True)
+        self.assertEqual("unlinked", result["status"])
+        self.assertEqual(OLD_DEVICE, result["account"])
+        with self.assertRaisesRegex(AccountStateError, "not a linked device"):
+            account_state.unlink(self.state_path, NEW_DEVICE, confirmed=True)
+        reloaded = BootstrapState(self.state_path)
+        self.addCleanup(reloaded.close)
+        # The detached UUID is a stranger again: login is refused, and a fresh
+        # signup starts its own account.
+        self.assertIsNone(reloaded.bind_login_token("stray-login", NEW_DEVICE, "10.0.0.6"))
+        reloaded.create_account("stray-signup", NEW_DEVICE, {"coins": 0})
+        self.assertEqual({OLD_DEVICE, NEW_DEVICE}, set(reloaded.accounts))
+
+    def test_adopt_repoints_linked_devices_with_the_moved_save(self) -> None:
+        account_state.link(self.state_path, NEW_DEVICE, OLD_DEVICE, confirmed=True, force=False)
+        # The owner's phone is reinstalled and now sends a third UUID.
+        reinstalled = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+        adopt(self.state_path, OLD_DEVICE, reinstalled, confirmed=True, force=False)
+        document = json.loads(self.state_path.read_text(encoding="utf-8"))
+        self.assertEqual({NEW_DEVICE: reinstalled}, document["account_aliases"])
+        # The invariant the server refuses to load without: a UUID never names
+        # both an account and a link.
+        reloaded = BootstrapState(self.state_path)
+        self.addCleanup(reloaded.close)
+        self.assertTrue(reloaded.bind_login_token("tablet-login", NEW_DEVICE, "10.0.0.6"))
+        self.assertEqual(reinstalled, reloaded.tokens["tablet-login"])

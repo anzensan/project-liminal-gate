@@ -6,7 +6,8 @@ Cookie-based routing remains unverified and is not used.
 ## 1. Goal
 
 Let several people in one household each keep their own save against a single
-running server, instead of one save per server instance.
+running server, instead of one save per server instance — and let one person
+open their own save from more than one device.
 
 **"Together" here means concurrent, isolated saves on shared hardware.** The
 original game's friends, PvP, co-op, raid, and shared-HP systems are out of
@@ -59,6 +60,23 @@ This is a trusted-LAN compatibility policy, not cryptographic authentication.
 Changing address requires login again; clients hidden behind the same source
 address cannot be distinguished.
 
+## 3a. Linked devices
+
+The client protocol has no account system: the silently stored device UUID is
+the only credential, and the wire has no transfer route. One player on two
+devices is therefore operator bookkeeping, like `adopt`. The state file holds
+an `account_aliases` map from a linked device's UUID to the account it plays;
+signup and login — the only identity-bearing routes — resolve through it, so a
+linked device's own UUID opens the shared save, and a linked device that clears
+its app data re-signs-up into the shared save rather than a fresh one. A UUID
+may name an account or an alias, never both; the server refuses to load a save
+that violates this. The map is written only by
+`python3 -m liminal_gate.account_state link` / `unlink`, never by the wire.
+
+Linking shares one save; it does not merge concurrent play. Two linked devices
+playing at once are last-write-wins, so the documentation tells players to play
+one device at a time (`saves.md`).
+
 ## 4. Alternatives retained as boundaries
 
 ### Server-issued session cookie
@@ -92,5 +110,7 @@ restart replay. A physical two-device soak remains useful for:
 ## 6. Explicit non-goals
 
 No friends, PvP, co-op, raids, shared HP, ranking, or any social feature. No
-account migration between devices. No remote or internet-facing exposure: this
-remains a local-network server.
+in-game account UI or credentials — device identity moves only through the
+operator's `adopt` and `link` commands. No save merging between devices playing
+concurrently. No remote or internet-facing exposure: this remains a
+local-network server.

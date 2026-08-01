@@ -101,3 +101,28 @@ Each device is routed by its own network address, so two phones or tablets on yo
 network can hold separate saves against one server. Two emulators on this same
 machine cannot — they share one address and the server cannot tell them apart.
 Give those a `--data-dir` and a port each instead.
+
+## One account on two devices
+
+The game never had a visible account system: the app silently generates its ID on
+first run, so a second device always signs up as a new player. `link` is where
+"log in to my account from another device" lives — it tells the server the second
+device's ID belongs to your existing account.
+
+Install and launch the game on the second device and let it reach the title
+screen once, so it signs up. Stop the server, run `inspect`, and identify your
+real account and the new empty one, then:
+
+```bash
+python3 -m liminal_gate.account_state link user-data/bootstrap-state.json \
+  --device <the-new-account-id> --to <your-account-id> --yes
+```
+
+Start the server again; both devices now open the same save. `inspect` lists the
+linked IDs under the account's `linkedDevices`, `unlink --device <id> --yes`
+detaches one again, and like `adopt`, `link` refuses to discard a played account
+unless you add `--force` and preserves the file first either way.
+
+**Play on one device at a time.** Linking shares the save; it does not merge
+simultaneous play. Whichever linked device writes last wins, so finish on one
+before picking up the other.
