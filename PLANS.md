@@ -46,8 +46,15 @@ Current result:
 - Focused warning-strict catalog, transport, and setup validation passed all
   139 tests. The complete warning-strict suite passed all 653 tests in 128.357
   seconds; compilation, profile JSON, endpoint YAML, and diff checks passed.
-- Commit/push is ready. Deployment and the physical-client acceptance items in
-  `docs/solo-event-completion-audit.md` remain separate completion boundaries.
+- Commit `5302fb0` is pushed and deployed to the Beelink. The regenerated live
+  catalog has SHA-256
+  `364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`.
+  The Chapter 8 account receives Archive cards `2000`, `2004-1`, and `3003-1`,
+  three unlocked Strikes Back cards, all 12 Tower rows, and all 28 Eidolon
+  rows. Live status/news return HTTP 200, multiplayer remains exactly disabled,
+  and the save hash is unchanged across restart. The physical-client acceptance
+  items in `docs/solo-event-completion-audit.md` remain separate completion
+  boundaries.
 
 ## 2026-07-31 correct Tower identity and complete the solo adapter
 

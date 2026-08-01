@@ -36,7 +36,17 @@ machine-readable/current capability boundary.
   recovered service behavior. The retained inputs generated 140 stages across
   47 families; 139 focused warning-strict tests and all 653 repository tests
   passed, along with compilation and structured-file checks. See
-  `docs/solo-event-completion-audit.md`.
+  `docs/solo-event-completion-audit.md`. Commit `5302fb0` is pushed and deployed
+  at `/opt/project-liminal-gate`. The Beelink regenerated the same 140-stage
+  catalog with SHA-256
+  `364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`.
+  Systemd relaunched the service under PID 250477; Chapter 8 live status
+  returned Archive cards `2000`, `2004-1`, and `3003-1`, three unlocked Counter
+  Descent cards, all 12 Tower identities, and all 28 Eidolon identities.
+  `/gd/multiplay_enable` returned `enable=false` and `enablemain=false`, local
+  news returned HTTP 200, and the durable save remained byte-identical at
+  SHA-256
+  `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`.
 - 2026-07-31 corrected Tower identity and solo-adapter implementation:
   authoritative final-client range predicates identify Chapters 9010--9013 as
   Tower of Temptation and 9100--9102 as Donation. The earlier public mapping

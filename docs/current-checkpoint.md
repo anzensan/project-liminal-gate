@@ -31,8 +31,17 @@ catalog SHA-256
 `364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`.
 Focused warning-strict validation passed 139 tests and the complete suite
 passed all 653 tests in 128.357 seconds; compilation, profile JSON, endpoint
-YAML, and diff checks passed. See `solo-event-completion-audit.md`; deployment
-and broader physical-client acceptance remain separate boundaries.
+YAML, and diff checks passed. See `solo-event-completion-audit.md`; broader
+physical-client acceptance remains a separate boundary. Commit
+`5302fb0` is now deployed at `/opt/project-liminal-gate`; the Beelink generated
+that exact catalog hash and systemd relaunched the server under PID 250477.
+For the active Chapter 8 account, real HTTP returned Archive cards `2000`,
+`2004-1`, and `3003-1`, three unlocked Strikes Back cards, all 12 Tower rows,
+and all 28 Eidolon rows. The exact multiplayer response remained
+`enable=false, enablemain=false`, news returned HTTP 200, and the durable save
+hash remained
+`cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`
+across restart.
 
 Latest Archive client validation: the original Android client cleared Jade
 Dragon Chapter 2004-1 and exited its result screen after the server returned

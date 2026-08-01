@@ -104,8 +104,11 @@ compilation, profile JSON, endpoint YAML, and diff checks also passed.
 
 Before the broader solo event goal can be called complete:
 
-1. regenerate and deploy the 140-stage catalog;
-2. confirm multiplayer remains exactly disabled;
+1. ~~regenerate and deploy the 140-stage catalog~~ — deployed at commit
+   `5302fb0`, catalog SHA-256
+   `364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`;
+2. ~~confirm multiplayer remains exactly disabled~~ — live response remains
+   `enable=false, enablemain=false`;
 3. smoke one folded Archive card and one injected late explicit card on the
    physical client;
 4. clear one Strikes Back stage, the entered Tower stage, and one solo Eidolon
