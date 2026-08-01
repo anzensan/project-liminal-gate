@@ -46,7 +46,15 @@ machine-readable/current capability boundary.
   Donation rows, all 28 Eidolon rows, ordinary durable Tower entry/clear/replay,
   and the disabled multiplayer response. All 648 warning-strict repository
   tests passed in 127.822 seconds; compilation, structured-file validation, and
-  diff checks passed. Corrective Beelink deployment is in progress.
+  diff checks passed. Both publication gates passed from clean commit
+  `99a6143`. The Beelink fast-forwarded to that commit, regenerated a 115-stage
+  catalog with SHA-256
+  `8e23ea0f63614050c73bf7cf7154ca27d641688b69ac54f575c5c298ca457cf9`,
+  and restarted under PID 241704. Live status returns the 12 exact Tower rows,
+  28 Eidolon rows, and no Donation row; `multiplay_enable` remains false and
+  loopback news returns HTTP 200. The durable save remained byte-identical at
+  SHA-256
+  `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`.
   Original-client Tower/Eidolon acceptance is still pending.
 - 2026-07-31 late non-collaboration Counter Descent expansion: the bundled
   solo policy now includes Chapters 8012--8017 in addition to 8000--8007.

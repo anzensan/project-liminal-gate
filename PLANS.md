@@ -51,8 +51,11 @@ Current result:
 - Manifest, classifier, runtime tests, and documentation now use the four
   actual Tower chapters and explicitly exclude all three Donation chapters.
 - Focused validation passes, and all 648 warning-strict repository tests pass
-  in 127.822 seconds. Corrective commit/push, Beelink catalog regeneration,
-  live-state proof, and original-client Tower acceptance remain in progress.
+  in 127.822 seconds. Corrective commit `99a6143` is pushed and deployed. The
+  regenerated Beelink catalog has 115 rows: the exact 12 Tower identities, no
+  Donation identity, and all 28 Eidolon identities. The service is healthy,
+  Arena VS remains disabled, and the save hash is unchanged. Original-client
+  Tower/Eidolon acceptance remains in progress.
 
 ## 2026-07-31 late non-collaboration Counter Descent expansion
 

@@ -116,26 +116,22 @@ no old allocator message or signal 11. Its unpatched control also stayed live,
 so the AVD did not reproduce the Pixel 7 Pro allocation pattern;
 original-device acceptance remains the next boundary.
 
-Latest live deployment: Beelink commit `8d18c88` loads the generated
+Latest live deployment: Beelink commit `99a6143` loads the corrected generated
 Archive/Tower/Eidolon event catalog and its matching character authority.
 Both identify final Android APK SHA-256
 `f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`;
 the deployed event and character files have SHA-256
-`1eb4a565f5fdf80d460dd87585a77f68f8043567f8a7f1ffb0212c890261d26b` and
+`8e23ea0f63614050c73bf7cf7154ca27d641688b69ac54f575c5c298ca457cf9` and
 `ff79204f1020ff44022ae95fa30ee87e2b0e2a9e656d4b2f85d5fe52f3b980be`.
 After a clean launcher restart, the real `/gd/get_server_status` transport for
-the active Chapter 8 account returned Bahamut 2000-1 through 2000-4, Jade
-Dragon 2004-1, Money Money Time 3003-1, Strikes Back 8000-1 through 8002-1,
-and every then-generated Tower and Eidolon row: 45 identities from 9100-1
-through 9102-15 and 28 identities from 4100-1 through 4111-1. That Tower list
-was a deployment error: those 45 identities are Donation and have since been
-removed in favor of the 12 actual Tower identities in 9010--9013.
-`multiplay_enable` still returned
+the active Chapter 8 account returned all 12 Tower identities from 9010-1
+through 9013-3, all 28 converted solo Eidolon identities, and zero Donation
+identity from Chapters 9100--9102. `multiplay_enable` still returned
 `enable=false` and `enablemain=false`. The durable account state remained
 byte-identical at SHA-256
 `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`,
 and the loopback news request returned HTTP 200 after the systemd-owned service
-restarted under PID 236574. Jade Dragon card rendering and clear are
+restarted under PID 241704. Jade Dragon card rendering and clear are
 client-confirmed; Tower and Eidolon navigation/clear remain to be observed on
 the physical device.
 
