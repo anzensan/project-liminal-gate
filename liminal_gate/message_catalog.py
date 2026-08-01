@@ -22,6 +22,13 @@ class LocalMessage:
     coins: int
     free_energy: int
     items: dict[int, int]
+    # The client's message record carries four more reward channels beside
+    # coins, Energy, and items: `chr`, `buddy`, `summon`, and `title`.  Two of
+    # them can be settled here because this server already owns durable models
+    # for them -- the roster a character joins and the box a Companion enters.
+    character_id: int = 0
+    companion_id: int = 0
+    companion_level: int = 1
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,9 @@ class MessageCatalog:
     max_coins: int
     max_stack: int
     messages: tuple[LocalMessage, ...]
+    #: Companion box ceiling, needed only by a message that awards a Companion.
+    #: Shared with the Trading Post's, which awards them the same way.
+    max_owned: int = 1000
 
 
 # Retail first-clear chapter presents. These are progress-gated inbox messages,
@@ -73,9 +83,26 @@ def load_message_catalog(path: Path) -> MessageCatalog:
     return MessageCatalog(*(document[key] for key in limits), messages)
 
 
+#: Reward channels the client's record carries that this server will not settle.
+#: A summon and a title each need an ownership model that was never recovered --
+#: nothing in the client says where an owned summon or an awarded title is kept
+#: or how it is reported back. A catalog naming one is refused outright rather
+#: than accepted and silently dropped, which would look like a delivered reward.
+UNSETTLED_REWARD_FIELDS = ("summon_id", "title_id")
+
+
 def _message(value: object, item_slots: int) -> LocalMessage:
     required = {"id", "date", "days_last", "messages", "coins", "free_energy", "items"}
-    if not isinstance(value, dict) or set(value) != required:
+    optional = {"character_id", "companion_id", "companion_level"}
+    if not isinstance(value, dict):
+        raise MessageCatalogError("each message has an invalid schema")
+    named = set(value) & set(UNSETTLED_REWARD_FIELDS)
+    if named:
+        raise MessageCatalogError(
+            f"{', '.join(sorted(named))} cannot be delivered: this server models no owner "
+            "for a summon or a title, so the reward would be shown and never granted"
+        )
+    if not required <= set(value) or set(value) - required - optional:
         raise MessageCatalogError("each message has an invalid schema")
     if not isinstance(value["id"], str) or not value["id"] or type(value["date"]) not in {int, float} or not math.isfinite(value["date"]) or value["date"] < 0:
         raise MessageCatalogError("message id/date values are outside range")
@@ -92,7 +119,19 @@ def _message(value: object, item_slots: int) -> LocalMessage:
         if not isinstance(raw_id, str) or not raw_id.isdecimal() or raw_id != str(int(raw_id)) or not 1 <= int(raw_id) <= item_slots or type(amount) is not int or amount < 1:
             raise MessageCatalogError("message items require in-range decimal IDs and positive amounts")
         parsed[int(raw_id)] = amount
-    return LocalMessage(value["id"], float(value["date"]), value["days_last"], dict(texts), value["coins"], value["free_energy"], parsed)
+    character_id, companion_id = value.get("character_id", 0), value.get("companion_id", 0)
+    companion_level = value.get("companion_level", 1)
+    if any(type(field) is not int for field in (character_id, companion_id, companion_level)):
+        raise MessageCatalogError("message character/Companion rewards must be integers")
+    if character_id < 0 or companion_id < 0 or companion_level < 1:
+        raise MessageCatalogError("message character/Companion rewards are outside range")
+    if "companion_level" in value and not companion_id:
+        raise MessageCatalogError("companion_level requires a companion_id")
+    return LocalMessage(
+        value["id"], float(value["date"]), value["days_last"], dict(texts),
+        value["coins"], value["free_energy"], parsed,
+        character_id, companion_id, companion_level,
+    )
 
 
 def build_bundled_chapter_message_policy() -> MessageCatalog:
