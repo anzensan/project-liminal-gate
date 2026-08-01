@@ -35,8 +35,12 @@ machine-readable/current capability boundary.
   replay, deletion, restart, and later Chapter 8 issuance. A migration run on a
   copy of the live save adopted Chapters 5/6, added only Chapter 7, and changed
   no inventory balance before read. All 656 warning-strict repository tests,
-  compilation, and diff checks pass. Publication, deployment, and
-  physical-client acceptance remain pending.
+  compilation, diff checks, and both clean-candidate publication gates pass.
+  Commit `d976bd5` is pushed and deployed on the Beelink under systemd PID
+  264479. Live login at progress 8-10 retained the read Chapter 5/6 messages,
+  created exactly one unread Chapter 7 Item 50 x2 message, and left Item 50 and
+  Item 112 at zero until read. Physical-client inbox/read acceptance remains
+  pending.
 
 - 2026-07-31 solo Eidolon selector correction in progress: the maintainer's
   physical client showed the flaw in the 28-row projection because sixteen

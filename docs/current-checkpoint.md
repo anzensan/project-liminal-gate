@@ -30,7 +30,12 @@ only Chapter 7, left both inventory balances unchanged until read, and did not
 issue Chapter 8 early. Real-HTTP tests cover read replay, deletion, restart, and
 Chapter 8 issuance after entering Chapter 9. All 656 warning-strict repository
 tests pass; compilation and diff checks pass. Publication, Beelink deployment,
-and original-client inbox acceptance remain pending.
+and original-client inbox acceptance were the remaining boundaries at that
+test checkpoint. Commit `d976bd5` is now pushed and deployed on the Beelink
+under systemd PID 264479. A live login at progress 8-10 returned the existing
+read Chapter 5/6 messages plus exactly one unread Chapter 7 Item 50 x2 message;
+durable Item 50 and Item 112 balances remained zero until read. Original-client
+inbox/read acceptance remains pending.
 
 Latest curated Archive validation: dual-ABI `UISpecialSelect.SetMode(0)`
 analysis confirms that a nonempty server `specialQuestList` overrides the

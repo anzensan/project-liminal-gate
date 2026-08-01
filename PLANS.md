@@ -38,8 +38,12 @@ Current result:
   Chapter 5/6 messages, added only the missing Chapter 7 message, and left the
   zero ticket balances unchanged until read.
 - Twenty-one focused tests and all 656 repository tests pass warning-strict;
-  compilation and diff checks pass. Publication, Beelink deployment, and
-  original-client inbox acceptance remain pending.
+  compilation and diff checks pass. Both clean-candidate publication gates
+  pass. Commit `d976bd5` is pushed and deployed on the Beelink under systemd
+  PID 264479. Live login at progress 8-10 adopted the read Chapter 5/6 messages,
+  created exactly one unread Chapter 7 Item 50 x2 message, and left Item 50 and
+  Item 112 at zero until the player reads it. Original-client inbox/read
+  acceptance remains pending.
 
 ## 2026-07-31 correct the solo Eidolon selector catalog
 
