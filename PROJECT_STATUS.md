@@ -41,11 +41,19 @@ machine-readable/current capability boundary.
   values, since the retired server owned rewards and the client only rendered
   them; item identities resolved through the operator's own master data and
   cross-check, with `Energy` landing on 80, exactly the client's `EnergyItemId`.
-  Twelve focused tests added; 683 repository tests pass, compilation clean.
-  Two gaps stay open and are recorded: The Hunt For Joker awards nothing,
-  because Joker Λ is character 1018 and bounded settlement cannot express a
-  character grant, and the three `lastDailyQuestPlayTime` fields are still
-  unpersisted so the once-a-day limit is not enforced server-side.
+  Both gaps this work originally recorded are now closed. The Hunt For Joker
+  grants Joker Λ through a new `character_grants` channel on `HuntingStage`,
+  applied after the roster merge where `_preserved_roster` already protects a
+  server-side grant; a duplicate raises Skill Boost 10.0% and Luck 10.0, capped
+  at the client's ceiling. Every stage carries `once_per_utc_day`, the clear
+  stamps the account's UTC day, and a second start that day is refused with the
+  client's soft `success:false, errorCode` shape rather than an error. Real-HTTP
+  coverage confirms login advertises `enableDailyQuest` plus all fourteen stage
+  flags, and that the category stays off unless asked for. 691 repository tests
+  pass, compilation clean. Remaining caveat: the soft refusal reuses the
+  insufficient-resource code, so the client's wording may not name the real
+  reason; sending the real `lastDailyQuestPlayTime` fields would fix that, but
+  their wire format is not recovered and is not worth guessing.
 
 - 2026-08-01 Daily Quest rotation recovered: `liminal_gate/daily_quest_importer.py`
   reads `DailyQuestData.questOrder` out of `assets/bin/Data/data.unity3d` in the

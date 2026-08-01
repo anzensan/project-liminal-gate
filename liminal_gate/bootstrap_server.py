@@ -2121,6 +2121,13 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             if not stage.unlocked_at(int(userdata.get("progressCode", 0))):
                 return "hunting_stage_locked", None
+            # A Daily Quest pays out once per UTC day. The client would
+            # normally grey a played one out from its own save fields, which
+            # this server does not send, so the refusal happens here instead.
+            # It uses the soft shape rather than an error, so a player who
+            # tries anyway sees the client's own refusal, not a Network Error.
+            if stage.once_per_utc_day and _daily_quest_played_today(account, stage, now):
+                return "success", _canonical_payload({"success": False, "errorCode": 1})
             items = userdata.get("itemList")
             if not isinstance(items, list) or len(items) != catalog.item_slots or any(type(value) is not int for value in items):
                 return "unsupported_hunting_start", None
@@ -2160,8 +2167,10 @@ class BootstrapState:
 
     def apply_hunting_clear(
         self, token: str, request_id: str, body: bytes, catalog: HuntingCatalog,
+        now: float | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Settle one cataloged Hunting result, only within its declared bounds."""
+        now = time.time() if now is None else now
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
             if account is None:
@@ -2218,6 +2227,10 @@ class BootstrapState:
                 # delete a grant it had not read back.  See `_preserved_roster`.
                 "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
             })
+            if stage.character_grants:
+                _apply_hunting_character_grants(userdata, stage)
+            if stage.once_per_utc_day:
+                _stamp_daily_quest_clear(account, stage, now)
             account["tutorial_phase"] = "free_roam"
             account["active_hunt"] = None
             account["active_hunt_ticket_spent"] = None
@@ -3657,6 +3670,54 @@ def _started_identity(body: bytes) -> tuple[int, int] | None:
     """The chapter/section a start request names, if it is well formed."""
     values = _parse_generic_story_start(body)
     return None if values is None else (values["chapter"], values["section"])
+
+
+def _utc_day(now: float) -> int:
+    """The UTC day a moment falls in. Daily Quests roll over at 00:00 UTC."""
+    return int(now // 86_400)
+
+
+def _daily_quest_played_today(account: dict[str, Any], stage: Any, now: float) -> bool:
+    played = account.get("daily_quest_clears")
+    if not isinstance(played, dict):
+        return False
+    return played.get(stage.identity_label()) == _utc_day(now)
+
+
+def _stamp_daily_quest_clear(account: dict[str, Any], stage: Any, now: float) -> None:
+    played = account.setdefault("daily_quest_clears", {})
+    if isinstance(played, dict):
+        played[stage.identity_label()] = _utc_day(now)
+
+
+def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> None:
+    """Grant this stage's characters, or raise a duplicate the way a Pact does.
+
+    A first grant arrives as an ordinary new roster row. A duplicate raises
+    Skill Boost and Luck by the stage's declared amounts, both capped at the
+    client's absolute 100.0 ceiling in its own tenths.
+    """
+    rows = userdata.get("chrdata")
+    if not isinstance(rows, list):
+        return
+    by_id = {row.get("id"): row for row in rows if isinstance(row, dict)}
+    for character_id in stage.character_grants:
+        current = by_id.get(character_id)
+        if current is None:
+            row = {
+                "id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [],
+                "isNew": True, "levelAdded": 1, "skillBoost": 0,
+            }
+            rows.append(row); by_id[character_id] = row
+            continue
+        if stage.duplicate_grant_skill_boost:
+            current["skillBoost"] = min(
+                int(current.get("skillBoost", 0)) + stage.duplicate_grant_skill_boost, 1000,
+            )
+        if stage.duplicate_grant_luck:
+            current["luck"] = min(
+                int(current.get("luck", 0)) + stage.duplicate_grant_luck, 1000,
+            )
 
 
 def _granted_hunting_companions(

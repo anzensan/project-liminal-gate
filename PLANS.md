@@ -124,24 +124,31 @@ client's `EnergyItemId`, and the tickets to the 50 and 81 already used here.
 
 ### What is still missing
 
-Two gaps remain, both recorded rather than papered over.
+Both of the gaps this entry originally recorded are now closed.
 
-**The Hunt For Joker pays nothing.** Joker Λ is character 1018, a character
-grant, and the bounded settlement path this reuses expresses items, Coins, EXP
-and Companions but not characters. The stage starts and clears; it simply awards
-nothing until a real result capture defines the grant. An invented character
-award would be worse than an absent one.
+**The Hunt For Joker grants Joker Λ.** Character 1018 is neither an item nor a
+Companion, so `HuntingStage` gained a `character_grants` channel and the clear
+path applies it after the roster merge, where `_preserved_roster` already
+guarantees a server-side grant survives a stale client. A first clear adds the
+row; a later one raises Skill Boost by 10.0% and Luck by 10.0, capped at the
+client's 100.0 ceiling. The identity came from the operator's own master data;
+the two duplicate increments are secondary-source policy like the ceilings.
 
-**The once-a-day limit is not enforced server-side.** The three
-`lastDailyQuestPlayTime` save fields are still unpersisted and
-`DeleteDailyQuestPlayTime` is still unimplemented, so nothing stops a client
-from replaying a Daily Quest within the same day. The bounded ceilings still
-apply per clear, so this inflates pace rather than admitting an unbounded claim.
+**The once-a-day limit is enforced server-side.** Each stage carries
+`once_per_utc_day`, the clear stamps the account's UTC day, and a second start
+that day is refused. The refusal deliberately uses the client's soft
+`success:false, errorCode` shape rather than an error, so a player who tries
+anyway sees an ordinary refusal instead of a Network Error. The caveat is that
+this reuses the insufficient-resource code, so the client's wording may not name
+the real reason. Sending the real `lastDailyQuestPlayTime` fields would let the
+client grey the entry out properly, but their wire format is not recovered --
+`IsDailyQuestPlayable` compares quest strings rather than a plain timestamp --
+and guessing it is not worth a desynced save.
 
-Also unresolved, though it no longer blocks anything: the client's day-to-index
-rule. The `DailyQuestManager` code region contains no modulo or array indexing,
-so the schedule is computed elsewhere. It was never needed — the client owns the
-schedule and the server only needs to know which stages are legitimate.
+Still unresolved, though it blocks nothing: the client's day-to-index rule. The
+`DailyQuestManager` region contains no modulo or array indexing, so the schedule
+is computed elsewhere. It was never needed -- the client owns the schedule and
+the server only needs to know which stages are legitimate.
 
 ## 2026-07-31 secondary-source audit of the bundled local policies
 

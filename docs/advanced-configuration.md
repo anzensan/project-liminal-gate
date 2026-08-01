@@ -692,12 +692,19 @@ IDs through your own master data, which is what makes them checkable: `Energy`
 resolves to 80, the number the client's own `EnergyItemId` carries, and the two
 tickets resolve to the 50 and 81 used elsewhere in this project.
 
-Two things are deliberately left unsettled. **The Hunt For Joker awards
-nothing** — Joker Λ is character 1018, a character grant that bounded item
-settlement cannot express, so the stage is startable and clearable but pays out
-nothing until a real result capture defines it. And the three
-`lastDailyQuestPlayTime` save fields are still not persisted, so the client's
-once-a-day limit is not enforced server-side.
+**The Hunt For Joker grants Joker Λ**, character 1018, resolved from your own
+master data. It is neither an item nor a Companion, so it travels through a
+dedicated server-side grant rather than the reported-drop channel: a first clear
+adds the roster row, and a later one raises Skill Boost by 10.0% and Luck by
+10.0, both capped at the client's own 100.0 ceiling.
+
+**Every Daily Quest pays out once per UTC day**, the boundary the record gives
+for the rotation rolling over. The retired client greyed a played quest out from
+its own `lastDailyQuestPlayTime` save fields; this server does not send those,
+so it enforces the limit itself and refuses a second entry with the client's own
+soft refusal rather than an error. That refusal reuses the same `errorCode` the
+insufficient-resource path uses, so the client's wording may not name the real
+reason — it will not, however, produce a Network Error.
 
 ### The Trading Post is the one that is not from the client
 

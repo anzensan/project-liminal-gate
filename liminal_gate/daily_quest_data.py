@@ -30,11 +30,18 @@ checkable: ``Energy`` resolves to 80, the same number the client's own
 ``DailyQuestManager.EnergyItemId`` carries, and the two tickets resolve to the
 50 and 81 this project already uses elsewhere.
 
-What is deliberately **not** settled: The Hunt For Joker's Joker Λ. That is a
-character grant, character 1018, not an item or a Companion, and the bounded
-Hunting settlement path this module reuses cannot express one. The stage is
-startable and clearable; it simply awards nothing until a real result capture
-defines the grant. An invented character award is worse than an absent one.
+The Hunt For Joker grants **character 1018, Joker Λ**, which is neither an item
+nor a Companion and so travels through a dedicated server-side grant rather than
+the reported-drop channel. Its identity is resolved from the operator's own
+master data. The community record puts the drop at 100% and a further recruit at
++10% Skill Boost and +10 Luck; those two increments are the same grade of
+secondary-source policy as the ceilings.
+
+Every Daily Quest pays out **once per UTC day**, the boundary the record gives
+for the rotation switching over. The retired client greyed a played quest out
+from its own ``lastDailyQuestPlayTime`` save fields, which this server does not
+send, so the limit is enforced server-side instead: a second entry the same day
+is refused with the client's own soft refusal rather than an error.
 """
 
 from __future__ import annotations
@@ -107,6 +114,15 @@ _DAILY_QUEST_ROWS: tuple[tuple[int, int, str, int, dict[int, int], int], ...] = 
 #: The client's own gate for the whole Huntland category.
 DAILY_QUEST_EVENT_FLAG = "enableDailyQuest"
 
+#: Joker Λ, the wild-card Recode DNA material The Hunt For Joker awards.
+#: Resolved from the operator's own master data rather than bundled by name.
+JOKER_LAMBDA_CHARACTER_ID = 1018
+
+#: A further Joker Λ recruit adds 10% Skill Boost and 10 Luck, both in the
+#: client's tenths-of-one-percent wire unit.
+_JOKER_DUPLICATE_SKILL_BOOST = 100
+_JOKER_DUPLICATE_LUCK = 100
+
 
 def build_bundled_daily_quest_stages() -> tuple[HuntingStage, ...]:
     """Return the fourteen Daily Quests as bounded, unadvertised stages.
@@ -132,6 +148,10 @@ def build_bundled_daily_quest_stages() -> tuple[HuntingStage, ...]:
             max_coins=max_coins, max_exp=0,
             max_items_total=max_items_total, item_maxima=dict(item_maxima),
             selector="hidden",
+            once_per_utc_day=True,
+            character_grants=(JOKER_LAMBDA_CHARACTER_ID,) if family == "the_hunt_for_joker" else (),
+            duplicate_grant_skill_boost=_JOKER_DUPLICATE_SKILL_BOOST if family == "the_hunt_for_joker" else 0,
+            duplicate_grant_luck=_JOKER_DUPLICATE_LUCK if family == "the_hunt_for_joker" else 0,
         )
         for chapter, section, family, max_coins, item_maxima, max_items_total in _DAILY_QUEST_ROWS
     )

@@ -60,6 +60,18 @@ class HuntingStage:
     companion_maxima: dict[int, int] = field(default_factory=dict)
     #: Companion id to the level a dropped copy arrives at.
     companion_drop_levels: dict[int, int] = field(default_factory=dict)
+    #: Character IDs a clear grants server-side, rather than as a reported
+    #: drop. The Daily Quest that awards Joker Λ is the only user: the client's
+    #: result screen shows a character, which is neither an item nor a
+    #: Companion and so cannot travel through the reported-drop channel.
+    character_grants: tuple[int, ...] = ()
+    #: Skill Boost and Luck a duplicate grant adds, in the client's tenths.
+    duplicate_grant_skill_boost: int = 0
+    duplicate_grant_luck: int = 0
+    #: When true a clear pays out at most once per UTC day. The retired client
+    #: greyed a played Daily Quest out using its own `lastDailyQuestPlayTime`
+    #: fields; this server does not send those, so it enforces the limit itself.
+    once_per_utc_day: bool = False
 
     def identity_label(self) -> str:
         """The `chapter-section` string the client's selector lists expect."""
