@@ -2,7 +2,18 @@
 
 ## Current phase
 
-Public-release hardening and client-compatible single-player expansion.
+**1.0 released 2026-08-01.** What that claims is narrow and stated in
+`RELEASE_SCOPE.md`: every single-player system the retired client had is
+present, playable, and restart-safe, with reward settlement explicitly labeled
+local preservation policy. It is not a fidelity or parity claim.
+
+`PARITY_ROADMAP.md` now separates implemented behavior from permanently
+unrecoverable behavior from open work. The unrecoverable set — Luck Treasure
+Chest contents, Pact odds, event banner rates, the Trading Post rotation phase,
+exact story reward settlement — are closed questions, not backlog: the retired
+service computed each and the client only rendered it.
+
+Next phase: original-client certification beyond Chapter 2-1.
 
 ## Verified boundary
 
