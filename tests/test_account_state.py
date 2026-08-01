@@ -52,6 +52,8 @@ class AccountStateToolTest(unittest.TestCase):
         self.assertEqual([OLD_DEVICE], [item["accountId"] for item in reports[0]["accounts"]])
         self.assertEqual(50000, reports[0]["accounts"][0]["coins"])
         self.assertTrue(reports[0]["accounts"][0]["played"])
+        # The signup address tells two otherwise-identical fresh signups apart.
+        self.assertEqual(["10.0.0.5"], reports[0]["accounts"][0]["clientHosts"])
         self.assertTrue(any(item["exists"] for item in reports[1:]))
         self.assertTrue(all(not item["exists"] or item["valid"] for item in reports[1:]))
 
