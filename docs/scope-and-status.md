@@ -8,15 +8,16 @@ fault.
 
 ## The evidence checkpoint
 
-The currently verified original-client path reaches and clears Chapter 2-1. The
-guided setup also enables a bulk ordinary-story policy for Chapter 2-2 through
-Chapter 42; it is not a claim that every later reward, drop, or scripted scene
-has been historically reproduced.
+The verified original-client path reaches and clears **Chapter 9**, played
+continuously on a physical device without a client-visible failure. The guided
+setup also enables a bulk ordinary-story policy through Chapter 42; that is not
+a claim that every later reward, drop, or scripted scene has been historically
+reproduced.
 
-The maintainer has also played continuously through Chapter 8-4 on a physical
-device without a client-visible failure. That is valuable operator acceptance,
-but Chapter 2-1 remains the preserved trace-based certification checkpoint until
-the later run is independently recorded and reviewed.
+The deepest point backed by preserved request traces rather than by playing
+remains Chapter 2-1. Both matter: the trace checkpoint is what proves the wire
+shapes exactly, and the playthrough is what proves the game is actually
+finishable.
 
 This remains a tester build. Later story stages may still need individual
 compatibility fixes despite the successful physical-device playthrough.

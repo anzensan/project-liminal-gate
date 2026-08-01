@@ -13,8 +13,9 @@ either labels its own choice as local policy or refuses the outcome. Several
 such values are permanently unrecoverable and are recorded as closed questions
 in `PARITY_ROADMAP.md`, not as remaining work.
 
-The canonical original-client proof remains Chapter 2-1. Everything past it is
-ordered local progression policy.
+The original client is verified through Chapter 9 by maintainer playthrough on
+physical hardware; Chapter 2-1 remains the deepest point backed by preserved
+request traces. Everything past Chapter 9 is ordered local progression policy.
 
 ## The project
 
@@ -37,9 +38,9 @@ documented local implementation and replay/persistence behavior; it does not
 establish historical-service fidelity or legal permission to redistribute
 original material.
 
-The currently canonical original-client proof ends after Chapter 2-1.
-Chapter 2-2 through Chapter 42 is an ordered local progression policy and
-remains subject to stage-specific compatibility gaps.
+The original client is verified through Chapter 9. Chapter 10 through Chapter 42
+is an ordered local progression policy and remains subject to stage-specific
+compatibility gaps.
 
 The license is PolyForm Noncommercial 1.0.0. This project is source-available,
 not open source. Donations are optional support and confer no access, rights,

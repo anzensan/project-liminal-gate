@@ -13,14 +13,16 @@ Chest contents, Pact odds, event banner rates, the Trading Post rotation phase,
 exact story reward settlement — are closed questions, not backlog: the retired
 service computed each and the client only rendered it.
 
-Next phase: original-client certification beyond Chapter 2-1.
+Next phase: extending original-client verification beyond Chapter 9, and
+backing more of it with preserved traces rather than playthrough alone.
 
 ## Verified boundary
 
-- The original Android client path is verified through Chapter 2-1.
-- The maintainer reports an uninterrupted physical-device playthrough through
-  Chapter 8-4 with no client-visible failure. That is operator acceptance, not
-  a replacement for the preserved trace-based Chapter 2-1 certification.
+- The original Android client path is verified through **Chapter 9**, played
+  continuously on physical hardware with no client-visible failure.
+- Chapter 2-1 remains the deepest point backed by preserved request traces. The
+  two are different kinds of evidence and both are recorded: traces prove the
+  wire shapes exactly, the playthrough proves the game is finishable.
 - The guided server provides ordered ordinary-story progression through
   Chapter 42 as explicit local policy.
 - Supported mutations use durable atomic state and body-scoped replay across
@@ -799,7 +801,8 @@ machine-readable/current capability boundary.
 - Retired Tavern “Watch Video” controls are client/ad-SDK UI. The server does
   not advertise or implement an ad service; hiding those controls requires a
   separately validated APK patch.
-- Canonical original-client certification beyond Chapter 2-1.
+- Original-client verification beyond Chapter 9, and trace-backed evidence for
+  more of the path already played.
 - Exact ordinary-story reward/drop authority and scripted-stage exceptions.
 - Original-client Tower clear/result return and acceptance of converted solo
   Eidolon Chapters 4100--4111, including before/after collectible state for one

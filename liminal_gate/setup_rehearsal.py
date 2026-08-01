@@ -32,6 +32,7 @@ from http.client import HTTPConnection, HTTPException
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -829,11 +830,24 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+#: A run directory's name: `YYYYmmdd-HHMMSS`, exactly what `main` creates.
+_RUN_DIRECTORY = re.compile(r"^\d{8}-\d{6}$")
+
+
 def prune_runs(run_root: Path, keep: int) -> None:
-    """Delete the oldest run directories; each one holds an APK and a venv."""
+    """Delete the oldest run directories; each one holds an APK and a venv.
+
+    Only directories this tool named are considered. `--run-root` is an
+    ordinary path an operator can mistype, and recursive deletion is the one
+    genuinely destructive thing here, so it is confined to the timestamp shape
+    rather than applied to whatever the directory happens to contain.
+    """
     if keep < 0 or not run_root.is_dir():
         return
-    runs = sorted((path for path in run_root.iterdir() if path.is_dir()), key=lambda path: path.name)
+    runs = sorted(
+        (path for path in run_root.iterdir() if path.is_dir() and _RUN_DIRECTORY.match(path.name)),
+        key=lambda path: path.name,
+    )
     for stale in runs[: max(0, len(runs) - keep)]:
         shutil.rmtree(stale, ignore_errors=True)
 

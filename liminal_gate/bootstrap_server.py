@@ -2379,6 +2379,14 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             if not _zero_base_event_matches(userdata, clear, WORLD_MAP_SPECIAL_EXP_CEILING):
                 return "invalid_local_world_map_special_result", None
+            # Paying EXP means the roster changes, because levels live in it, so
+            # this can no longer require the roster back unchanged. It does
+            # require the same *characters*: this chapter mints nobody, and
+            # accepting an arbitrary roster would let the id list become a
+            # grant channel for the stage whose reported Companions are refused
+            # two lines above.
+            if not _same_roster_membership(userdata.get("chrdata"), clear["chrdata"]):
+                return "invalid_local_world_map_special_result", None
             # The battle really was fought, so the levels it produced are kept
             # the way every other EXP-bearing clear keeps them: as a trusted
             # local client report, merged so a stale client cannot delete a
@@ -4721,6 +4729,11 @@ def _apply_message_grants(
     project made up.
     """
     characters, companions = grants
+    if not characters and not companions:
+        # The overwhelmingly common case: an ordinary coin/item present. Return
+        # before touching the account so a read that grants neither cannot
+        # create a roster or a Companion box that was not already there.
+        return
     rows = userdata.setdefault("chrdata", [])
     held = {row.get("id") for row in rows if isinstance(row, dict)}
     for character_id in characters:
@@ -5098,6 +5111,25 @@ def _retarget_party(userdata: dict[str, Any], removed_id: int, replacement_id: i
         for index, member in enumerate(members):
             if member == removed_id:
                 members[index] = replacement_id
+
+
+def _same_roster_membership(current: object, submitted: object) -> bool:
+    """Whether two rosters name exactly the same characters.
+
+    Used where a clear may advance levels but must not add or lose anyone.
+    """
+    def identities(rows: object) -> set[int] | None:
+        if not isinstance(rows, list):
+            return None
+        found: set[int] = set()
+        for row in rows:
+            if not isinstance(row, dict) or type(row.get("id")) is not int:
+                return None
+            found.add(row["id"])
+        return found
+
+    held, reported = identities(current), identities(submitted)
+    return held is not None and held == reported
 
 
 def _preserved_roster(current: object, submitted: list[dict[str, Any]]) -> list[dict[str, Any]]:

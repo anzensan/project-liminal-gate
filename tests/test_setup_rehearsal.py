@@ -434,3 +434,27 @@ class RunDirectoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PruneSafetyTest(unittest.TestCase):
+    def test_only_directories_this_tool_named_are_deleted(self) -> None:
+        """`--run-root` is a path an operator can mistype.
+
+        Recursive deletion is the one destructive thing this tool does, so it is
+        confined to the timestamp shape `main` creates rather than applied to
+        whatever the directory happens to hold.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("20260101-000000", "20260102-000000", "20260103-000000"):
+                (root / name).mkdir()
+            for name in ("Documents", "notes", "2026-01-01", "20260101"):
+                (root / name).mkdir()
+            (root / "keepme.txt").write_text("x", encoding="utf-8")
+
+            prune_runs(root, 1)
+
+            self.assertEqual(
+                ["2026-01-01", "20260101", "20260103-000000", "Documents", "keepme.txt", "notes"],
+                sorted(path.name for path in root.iterdir()),
+            )

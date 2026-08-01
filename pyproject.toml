@@ -1,6 +1,6 @@
 [project]
 name = "project-liminal-gate"
-version = "1.0.1"
+version = "1.0.2"
 description = "Source-available, noncommercial compatibility-server foundation"
 requires-python = ">=3.11"
 

@@ -167,7 +167,7 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
     def clear(
         self, request_id: str, section: int, *, coins: int = 0, exp: int = 0,
         buddies: list | None = None, progress: int | None = None,
-        snapshot: dict | None = None,
+        snapshot: dict | None = None, roster: list | None = None,
     ) -> tuple[int, dict]:
         userdata = self.userdata() if snapshot is None else snapshot
         return self.post("/gd/clear_quest", request_id, [
@@ -178,7 +178,7 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
                 "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
                 "coins": userdata["coins"] + coins,
             })),
-            ("chrdata", json.dumps([self.character])),
+            ("chrdata", json.dumps([self.character] if roster is None else roster)),
             ("itemList", json.dumps(userdata["itemList"])),
             ("summonList", json.dumps(userdata["summonList"])),
             ("battle_result", json.dumps({
@@ -235,6 +235,33 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         """
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
         self.assertEqual(200, self.clear("wms-clear", SHINEN_FIRST, exp=1000)[0])
+
+    def test_the_roster_may_gain_levels_but_not_members(self) -> None:
+        """Paying EXP must not turn the roster into a grant channel.
+
+        Levels live in `chrdata`, so a clear that pays experience has to accept
+        a changed roster -- but this chapter mints nobody, and its reported
+        Companions are refused outright. A roster naming a character the account
+        does not hold would be exactly the grant the Companion check denies,
+        arriving through the other door.
+        """
+        self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
+        intruder = dict(self.character, id=self.character["id"] + 991)
+        status, refused = self.clear(
+            "wms-injected", SHINEN_FIRST, exp=1000, roster=[self.character, intruder],
+        )
+        self.assertEqual(409, status)
+        self.assertEqual("invalid_local_world_map_special_result", refused["error"])
+        self.assertEqual("world_map_special_active", self.phase())
+        self.assertEqual(
+            [self.character["id"]], [row["id"] for row in self.userdata()["chrdata"]],
+        )
+
+        levelled = dict(self.character, jobLevels=[9, 0, 0])
+        self.assertEqual(
+            200, self.clear("wms-levelled", SHINEN_FIRST, exp=1000, roster=[levelled])[0],
+        )
+        self.assertEqual([9, 0, 0], self.userdata()["chrdata"][0]["jobLevels"])
 
     def test_an_experience_claim_beyond_the_ceiling_is_still_refused(self) -> None:
         from liminal_gate.world_map_special import WORLD_MAP_SPECIAL_EXP_CEILING

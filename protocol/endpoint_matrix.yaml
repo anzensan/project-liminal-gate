@@ -1,6 +1,6 @@
 schema_version: 1
 updated: "2026-07-31"
-canonical_client_boundary: "Chapter 2-1 clear"
+canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
   static_confirmed: "client-static contract is confirmed; live acceptance is incomplete"
