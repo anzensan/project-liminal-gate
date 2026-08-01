@@ -5,7 +5,7 @@ import unittest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 UNIT_TEMPLATE = PROJECT_ROOT / "deploy" / "project-liminal-gate.service.in"
 INSTALLER = PROJECT_ROOT / "scripts" / "install_systemd_service.sh"
-README = PROJECT_ROOT / "README.md"
+DEDICATED_SERVER_DOC = PROJECT_ROOT / "docs" / "dedicated-server.md"
 
 
 class SystemdUnitTest(unittest.TestCase):
@@ -68,11 +68,8 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("systemctl restart project-liminal-gate.service", source)
         self.assertIn("run this installer as the non-root service user", source)
 
-    def test_readme_documents_generic_dedicated_server_lifecycle(self) -> None:
-        readme = README.read_text(encoding="utf-8")
-        section = readme.split(
-            "### Run only the server on a separate Linux machine", 1
-        )[1].split("### 3. One-command setup", 1)[0]
+    def test_docs_document_generic_dedicated_server_lifecycle(self) -> None:
+        section = DEDICATED_SERVER_DOC.read_text(encoding="utf-8")
         for expected in (
             "server_setup --port 8642 --prepare-only",
             "tester_setup",

@@ -2,6 +2,9 @@
 local-input/
 project_liminal_gate.egg-info/
 user-data/
+# Temporary extraction output, including native binaries pulled from a local
+# APK. Never publishable.
+work/
 state/
 logs/*
 !logs/tooling.md

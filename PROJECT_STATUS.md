@@ -39,6 +39,28 @@ machine-readable/current capability boundary.
   rows requires a real result capture. Both publication gates pass from a clean
   candidate. Commit, deployment, and device banner confirmation remain pending.
 
+- 2026-07-31 tester documentation restructure: repeated reports that the setup
+  instructions were not followable prompted splitting the 1,422-line README into
+  a 245-line install path plus nine task-scoped documents under `docs/`. The
+  README previously placed its first actionable step at line 313, interleaved
+  three operating systems inside every step, wedged the dedicated-server/systemd/
+  Tailscale material between "arrange your files" and "run setup", and buried the
+  one-command invocation about 50 lines into its own section. The new order is
+  install tools, `--check`, arrange files, start emulator, one command, play, with
+  per-OS instructions separated in `docs/install-tools.md`. New files:
+  `docs/install-tools.md`, `docs/emulator.md`, `docs/device-setup.md`,
+  `docs/scope-and-status.md`, `docs/setup-manual.md`, `docs/saves.md`,
+  `docs/troubleshooting.md` (regrouped by symptom location),
+  `docs/dedicated-server.md`, and `docs/generated-files.md`. No instruction
+  content was dropped and no command changed. The policy of not documenting how
+  to obtain the APK or resource pack is unchanged and stated verbatim.
+  `tests/test_systemd_unit.py` now asserts the dedicated-server lifecycle against
+  `docs/dedicated-server.md` rather than a README heading range; all 654 tests
+  pass and every relative link and anchor across the 40 Markdown files resolves.
+  The stale README claim that solo Eidolon Chapters 4100--4111 were unsupported
+  was replaced in `docs/scope-and-status.md` with the twelve battle/banner-backed
+  stages that `docs/advanced-configuration.md` already documents.
+
 - 2026-07-31 curated solo Archive expansion: dual-ABI
   `UISpecialSelect.SetMode(0)` analysis establishes that the server's nonempty
   `specialQuestList` owns the normal selector and the embedded 50-entry array

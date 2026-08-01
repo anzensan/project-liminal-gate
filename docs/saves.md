@@ -1,0 +1,103 @@
+# Look after your save
+
+Your progress lives in one file, `bootstrap-state.json`, inside the `--data-dir`
+you chose at setup. Everything below needs the server **stopped** — it holds the
+save while it runs, and these commands refuse to touch a save in use.
+
+**Only one server may use a save at a time.** Two servers pointed at the same
+`--data-dir` do not share it: each keeps the whole save in memory and rewrites all
+of it, so the second silently overwrites the first player's progress. The server
+now refuses to start rather than let that happen. If you run a second server — a
+different port, a second player — give it its own `--data-dir`.
+
+## Inspect, back up, restore
+
+See what you have, including the states kept automatically before recent saves:
+
+```bash
+python3 -m liminal_gate.account_state inspect user-data/bootstrap-state.json
+```
+
+Keep a copy before doing anything risky, and go back to one if you need to:
+
+```bash
+python3 -m liminal_gate.account_state snapshot user-data/bootstrap-state.json
+python3 -m liminal_gate.account_state restore \
+  user-data/bootstrap-state.json \
+  user-data/bootstrap-state.json.bak.1 --yes
+```
+
+Restoring keeps your current save alongside as a timestamped
+`.pre-restore.*.json`, so a restore is itself undoable. If several safety copies
+are made in the same second, each receives a distinct suffix rather than
+overwriting an earlier copy.
+
+## Editing a save
+
+`tools/save-editor.html` is a single file with no network access and no
+dependencies: open it in a browser, load your save, change what you want, and
+export. **Stop the server first** — it keeps the whole save in memory and rewrites
+all of it when it persists, so an edit made while it runs is lost. A browser
+cannot see the lock the server uses, so that check is yours.
+
+Apply the exported file with the command the editor shows:
+
+```bash
+python3 -m liminal_gate.account_state apply user-data/bootstrap-state.json \
+  edited-save.json --yes
+```
+
+That is the part that decides whether the edit is safe. It re-checks the file in
+Python, refuses one that breaks something the client or server relies on, refuses
+one that has lost an account, keeps a timestamped backup, and will not write while
+a server holds the save. To see what it would say without changing anything:
+
+```bash
+python3 -m liminal_gate.account_state validate edited-save.json
+```
+
+**Edit through the tool rather than by hand in a text editor.** A save is not
+plain data, and the two ways it usually breaks are invisible in the JSON: a
+character's `jobLevels` is a *packed* number whose low bits are the level and
+whose upper bits are its progression, so writing a plain `90` sets the level and
+destroys everything else in the field; and several numbers must stay decimals,
+because the client reads them with an accessor that fails on a whole number and
+takes the whole response down with it. The editor handles both. A text editor will
+not warn you about either, and the damage shows up later, somewhere else.
+
+If a value you changed was one the server had already answered a request with, add
+`--clear-replay-cache` so a repeat of that request cannot return the old answer.
+This clears tutorial, achievement, message, and Trading Post mutation responses
+together; it does not alter the edited account state itself.
+
+Character, item, and Companion names appear beside their IDs when
+`user-data/names.json` is present. Setup writes it if you pass `--dummy-dll-dir`,
+decoding the names from your own copy of the game; see
+[advanced-configuration.md](advanced-configuration.md). Without it everything
+still works, just with bare ID numbers.
+
+## If you reinstall the app and your progress is gone
+
+Your account is keyed to an ID the app generates on first run. Clearing the app's
+data or reinstalling gives it a new one, so it signs up as a new player while your
+real save sits untouched in the same file. **Nothing is lost** — the save just
+needs pointing at the new ID.
+
+Run `inspect`, find your real account (the one with your character count and
+coins) and the new empty one, then:
+
+```bash
+python3 -m liminal_gate.account_state adopt user-data/bootstrap-state.json \
+  --from <your-old-account-id> --to <the-new-account-id> --yes
+```
+
+Start the server and launch the app; your progress is back. `adopt` refuses to
+overwrite an account that has been played unless you add `--force`, and it
+preserves the file first either way.
+
+## Two players on one server
+
+Each device is routed by its own network address, so two phones or tablets on your
+network can hold separate saves against one server. Two emulators on this same
+machine cannot — they share one address and the server cannot tell them apart.
+Give those a `--data-dir` and a port each instead.

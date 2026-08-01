@@ -1,0 +1,99 @@
+# Troubleshooting
+
+Find your symptom in the section that matches where you are. If a local
+client-to-server request fails and nothing here covers it, see [Reporting a
+network error](#reporting-a-network-error) at the end.
+
+## Tools setup cannot find
+
+| What you see | What to do |
+| --- | --- |
+| `No module named liminal_gate` | Run the command from the repository root: the folder containing `README.md` and `liminal_gate/`. |
+| `keytool: command not found`, or `keytool is unavailable` | `keytool` comes with a JDK, not with the Android SDK, so adding the SDK to `PATH` does not provide it. Set `JAVA_HOME` to Android Studio's bundled runtime — on Windows `%LOCALAPPDATA%\Programs\Android Studio\jbr` — then reopen the terminal. Setup also searches that location itself, so do not copy `keytool.exe` into the project folder. See [Installing the tools](install-tools.md). |
+| `adb is unavailable`, or `adb` is not found | Setup falls back to the SDK's own `platform-tools\adb`, so this means the SDK root was not found either. Set `ANDROID_SDK_ROOT`, or pass `--adb` with the full path to `adb`. Copying `adb.exe` into the project folder is not needed. |
+| `APK signing failed: zipalign/apksigner is unavailable` | Set `BUILD_TOOLS` to one of the directories printed by `ls "$SDK_ROOT/build-tools"`; do not use the literal placeholder path from an older guide. On Windows see [if setup cannot find zipalign and apksigner](install-tools.md#if-setup-cannot-find-zipalign-and-apksigner). |
+| `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [the optional Python dependency](install-tools.md#optional-the-python-image-extraction-dependency). |
+
+## Il2CppDumper
+
+| What you see | What to do |
+| --- | --- |
+| `--check` says Il2CppDumper exists but could not start | A framework-dependent .NET apphost can exist while its runtime is undiscoverable. Install the .NET runtime, or point `LIMINAL_GATE_IL2CPPDUMPER` at the adjacent `Il2CppDumper.dll` instead; setup will run it through `dotnet`. |
+| `--check` still cannot find Il2CppDumper after you installed it | Read the rest of that line: it distinguishes a variable that was never set from one naming a path that does not exist, a directory holding no release, or a `.dll` with no `dotnet` to run it. The two usual causes are a variable set in a different terminal window than the one running setup, and a path with a typo. Confirm with `Test-Path $env:LIMINAL_GATE_IL2CPPDUMPER` (PowerShell) or `ls "$LIMINAL_GATE_IL2CPPDUMPER"`. Copying the tool into this repository has no effect. |
+| `--check` opens an Il2CppDumper file picker | Fixed; update your clone. The check used to run the tool with no arguments to see whether it starts, which is how the Windows release is asked to prompt for its inputs. It is now given arguments, so it cannot prompt. If you do run Il2CppDumper by hand, note that its first dialog wants `lib/arm64-v8a/libil2cpp.so` from your APK — not `Il2CppDumper.exe`, and not the 32-bit `armeabi-v7a` copy. |
+| Setup reports `Cannot read keys when either application does not have a console` from Il2CppDumper | Fixed; update your clone. Il2CppDumper ends every run — including a successful one — with a "press any key to exit" it cannot perform while setup is capturing its output, so a complete dump used to be thrown away on the exit code that followed. Setup now judges the run by the `DummyDll` directory and `dump.cs` it produced. If those really are missing, read `user-data/il2cpp/il2cppdumper-last-run.log` for the actual fault, and you can set `"RequireAnyKey": false` in the `config.json` beside Il2CppDumper to remove the keypress entirely. |
+
+## Building and signing the APK
+
+| What you see | What to do |
+| --- | --- |
+| `legacy client plan generation failed: could not read the selected metadata member` | `--source-apk` must name the actual `.apk` file, not `local-input` or another directory. Guided setup selects the imported APK for you. |
+| Input validation rejects the resource root | Use `local-input/resources/data_u2017/android`, not `local-input/resources`. |
+| The signing command exits without output | Update an older checkout with `git pull --ff-only`, then rerun the command. A successful current version prints the signed APK path. |
+| `tester setup failed: apksigner sign failed (exit code ...)` | Keep the complete message: current setup includes the Android signing tool's own error output after the exit code, without printing the password. That output distinguishes a keystore/password problem from a Build Tools or Java failure. |
+| The keystore is never created, and setup reports it could not be created | The password was probably shorter than six characters, which `keytool` refuses. Setup now asks again rather than failing, states the minimum in the prompt, and repeats whatever `keytool` reported. If you are running the manual step instead, see [Create a local test signing key](setup-manual.md#2-create-a-local-test-signing-key). |
+| `server origin ... allow at most 27` | The address and port do not fit in the space available inside the APK. Use a port with four digits or fewer, and an IP address rather than a host name. See [Choose a port](device-setup.md#d-choose-a-port-with-at-most-four-digits). |
+
+## Choosing and reaching the target device
+
+| What you see | What to do |
+| --- | --- |
+| `adb devices` shows no emulator | Start an emulator from Android Studio Device Manager, then run `adb devices` again. |
+| `adb devices` does not list a connected phone or tablet | Enable USB debugging and accept the on-device authorization prompt; if still absent, try another USB cable, since charge-only cables carry no data. |
+| `does not look like an emulator, and --device-host is still ...` | You are installing to a physical device but did not pass `--device-host`. Pass this machine's LAN address. If the target really is an emulator attached over TCP, pass `--device-host 10.0.2.2` explicitly. |
+| `--device-host ... refers to the client's own device` | `localhost`, `127.0.0.1`, and `0.0.0.0` mean the phone or tablet itself. Use `10.0.2.2` for an emulator or this machine's LAN address for a device. |
+| `--device-host must not contain a port` | Pass only the address in `--device-host` and set the port separately with `--port`. |
+
+## Installing the APK
+
+| What you see | What to do |
+| --- | --- |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | A build made from a different checkout, with a different local test key, is already installed. Rerun with `--replace-existing`, or uninstall it yourself with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either way that app's local data is cleared, so it downloads resources again and starts a new local account. |
+| `INSTALL_FAILED_NO_MATCHING_ABIS` / `res=-113` | The emulator image has no ARM translation. Pick a **Translated ABI** image; see [Emulator setup](emulator.md#choose-an-android-14-image-with-translated-abi-support). |
+| Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
+
+## Running the game
+
+| What you see | What to do |
+| --- | --- |
+| Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |
+| A device that worked yesterday now shows Network Error | This machine's network address probably changed. Recheck it, then rerun setup and reinstall. See [Keep that address from changing](device-setup.md#c-keep-that-address-from-changing). |
+| The app closes at the title screen and logcat says `Using memoryadresses from more that 16GB of memory` followed by signal 11 | Fixed for the exact final client by the generated ARM64 plan. Run `git pull --ff-only`, rerun the complete setup command, and reinstall its new APK. `pip install ".[master-import]"` installs the current checkout; it does not pull newer source. Do not drop ARM64 on Pixel 7/7 Pro because those devices run 64-bit apps only. |
+| `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data. |
+| Resource-manifest error on server start | Confirm the resource root, then rerun `python3 -m liminal_gate.resource_catalog_builder`. |
+| `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the [optional dependency](install-tools.md#optional-the-python-image-extraction-dependency) if you want the images. |
+| A request fails after Chapter 2-1 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
+| An optional area (Hunting, Arena, Tower) is empty or greyed out | Expected on a new account: these open on story progress. See [What works right now](scope-and-status.md#optional-areas-open-on-story-progress-so-most-are-locked-at-first). |
+
+## Graphics and sound
+
+| What you see | What to do |
+| --- | --- |
+| Black screen after launching the app, no crash, server log shows `200` responses | The emulator's graphics backend cannot complete Unity's framebuffer. Restart the emulator from a terminal with `-gpu swangle`. Confirm with `adb logcat -d \| grep -c 0x506`: thousands of those errors mean graphics, not the server. See [Start the emulator with `-gpu swangle`](emulator.md#start-the-emulator-with--gpu-swangle-especially-on-macos). |
+| No sound at all on an emulator | The emulator was probably created with audio output switched off. Add `hw.audioInput=yes` and `hw.audioOutput=yes` to the device's `config.ini`, then **cold boot** it — an ordinary restart can restore the silent device from a snapshot. See [Sound on the emulator](emulator.md#sound-on-the-emulator). |
+| Sound starts on an emulator, then becomes silent after several seconds | An emulator/client compatibility failure, not the server. Paired captures rule out muting, rerouting, Android mixer underruns, and the earlier CPU-starvation theory; the old Unity/FMOD producer keeps feeding a fixed-power signal. A physical device is the only reliable workaround currently demonstrated. See [Sound on the emulator](emulator.md#sound-on-the-emulator). |
+| Sound is distorted, cuts out, or does not return on a physical device | Check `user-data/events.jsonl` for `404` requests beneath `/resources/SE/` or `/resources/BGM/`. A missing sound bundle in your local resource set can cause this; include those paths in the issue report. On an emulator, see the two rows above first. |
+
+## Saves
+
+| What you see | What to do |
+| --- | --- |
+| Progress is gone after reinstalling or clearing the app's data | The app generated a new account ID; your save is still there. See [If you reinstall the app and your progress is gone](saves.md#if-you-reinstall-the-app-and-your-progress-is-gone). |
+| `local account state is already in use by another server` | Another server already has that save open. Stop it, or start this one with its own `--data-dir`. See [Look after your save](saves.md). |
+| `account state is in use; stop the local server before changing it` | `restore` and `adopt` will not change a save a running server owns. Stop the server and run the command again. |
+
+## Windows and PowerShell
+
+| What you see | What to do |
+| --- | --- |
+| A `\` at the end of a line is rejected in PowerShell | The multi-line commands use a Unix shell convention. Use a backtick (`` ` ``) instead, or put the whole command on one line. [Manual setup](setup-manual.md#2-create-a-local-test-signing-key) gives PowerShell versions of both signing-key commands. |
+| `grep` is not recognized in PowerShell | `grep` is a Unix tool. Use `Select-String` with the same pattern: `adb logcat -d \| Select-String "OpenSLES\|AudioTrack"`. When a filter is the problem rather than the point, capture the whole log with `adb logcat -d > full-log.txt` and attach that instead. |
+
+## Reporting a network error
+
+For a local client-to-server failure, open the GitHub **Network error** issue form
+with the setup commands, client actions, last screen reached, expected result,
+actual result, and a sanitized `user-data/events.jsonl` excerpt.
+
+**Do not attach APKs, resources, captures, account saves, tokens, digests, or
+keys.**

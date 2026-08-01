@@ -1,0 +1,139 @@
+# What works right now
+
+This is the detail behind the summary in the [README](../README.md). It
+describes what the guided setup enables, what stays locked, and why. None of it
+is needed to install; read it when you want to know what to expect from a
+running game, or when a screen is empty and you want to know whether that is a
+fault.
+
+## The evidence checkpoint
+
+The currently verified original-client path reaches and clears Chapter 2-1. The
+guided setup also enables a bulk ordinary-story policy for Chapter 2-2 through
+Chapter 42; it is not a claim that every later reward, drop, or scripted scene
+has been historically reproduced.
+
+The maintainer has also played continuously through Chapter 8-4 on a physical
+device without a client-visible failure. That is valuable operator acceptance,
+but Chapter 2-1 remains the preserved trace-based certification checkpoint until
+the later run is independently recorded and reviewed.
+
+This remains a tester build. Later story stages may still need individual
+compatibility fixes despite the successful physical-device playthrough.
+
+## Story and Pacts
+
+The guided setup enables ordinary story progression beyond the tutorial, through
+Chapter 42, and local ordinary Pacts:
+
+- **Pact of Fellowship** (`kind=0`) spends 3,000 Coins per pull.
+- **Pact of Truth** (`kind=1`) spends 5 Energy per pull, 50 for ten. New local
+  accounts receive 50 free Energy, which is exactly one ten-pull.
+- **Pact of Fate** uses those same two costs and corresponding local pools when
+  the client sends `luckType=true`; its duplicates gain one local-policy level
+  and 5.0 Luck instead of Skill Boost.
+
+The client may submit any affordable batch from 1 through 10 even though its
+controls normally label 1, 5, and 10. The included pools are bounded local
+policy; selection is uniform and duplicate gains are local defaults, not a claim
+about the retired service's per-character odds.
+
+The exact `kind=20,count=1` form spends one Item 81 Fellowship Ticket before
+Coins, for either an ordinary Fellowship draw or its `luckType=true` Fate
+variant. Mixed ticket/coin batches, campaign Pacts, and event-specific Pacts
+remain unsupported.
+
+Ordinary clear results use the client-reported local result; the server does
+**not** bundle an original reward/drop table. Unusual scripted stages may still
+stop with a Network Error until they are given a specific compatibility rule.
+
+### Testing the starter Energy grant
+
+The 50-Energy grant applies when a local account is first created. To test it
+after upgrading an existing setup, use a new local data directory and clear only
+this test app's data before choosing **New Game** again:
+
+```sh
+python3 -m liminal_gate.tester_setup --data-dir user-data/pact-test --port 8696 --device emulator-5570
+```
+
+Then use the reset commands in [Play](../README.md#6-play) with your own serial
+and package name. This preserves your earlier `user-data/` test state.
+
+## Optional areas open on story progress, so most are locked at first
+
+Hunting, Metal Zone, Special Quest, Tower, and world-map cards stay unavailable
+until your account has finished the chapter each row waits for.
+
+| Area | Available after clearing |
+| --- | --- |
+| Hunting tier 1 — Pudding Time, Tin Parade, Coin Creeps, Puppet Show | Chapter 3 |
+| Hunting tier 2 | Chapter 9 |
+| Hunting tier 3 | Chapter 18 |
+| Metal Zone 1, Dragon Road, Machine Road | Chapter 3 |
+| Crystal Road | Chapter 3 |
+| Metal Zones 2 to 7 | Chapters 8, 12, 17, 21, 26, 30 |
+| Bahamut Descent | Chapter 2 |
+| Jade Dragon Hunt | Chapter 4 |
+| Leviathan Descent | Chapter 10 |
+| Lucia archive | Chapter 13 |
+| Odin Descent | Chapter 20 |
+| Strikes Back families | Chapters 5 through 12, one family per chapter |
+| Tower of Temptation 9100-1 | Chapter 3 |
+| Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
+
+Those thresholds are local preservation policy, not recovered schedules. The
+retired event and Hunting rotations were not captured, so the standard setup
+makes each row permanent after its story gate. **Empty optional screens on a new
+account are expected, not a fault.**
+
+The last row is the exception: the two world-map points after Chapter 34 are the
+client's own gate, not a policy this project chose, and their five battles each
+open one at a time. They award nothing — a clear that reports Companions, EXP,
+or items is refused, because the original drop rule was never captured and a
+plausible invented one is worse than an honest refusal.
+
+## Special Quests are separate from Arena VS
+
+After Chapter 3, the guided server advertises the recovered solo Chapter 3003-1
+*Money Money Time* card in Arena → Special Quests. It costs 5 stamina and uses a
+bounded local Coin settlement policy; it is not a claim about the original event
+rotation or rewards.
+
+Guided setup also derives the five recovered archive families from your own
+BattleData and character catalog, and enables the eight packaged Strikes Back
+families. Their permanent progress gates, zero-Coin clears, and first-section
+associated-character grants are local archive policy rather than recovered
+schedules, probabilities, or complete historical reward tables.
+
+The first Tower of Temptation floor is a separate bounded compatibility slice:
+guided setup derives Chapter 9100-1 from your BattleData and advertises it
+through the client's dedicated Tower list after Chapter 3. Its permanent gate and
+zero-Coin clear are local policy, and original-client navigation and clear remain
+unverified. The other 44 recovered Chapter 9100–9102 floors stay unavailable.
+
+Arena VS, rankings, and multiplayer remain disabled rather than presenting a menu
+that cannot complete.
+
+## Eidolons are not a missing final-version battle mechanic
+
+Version 5.5.0 retired Co-op/VS, the in-battle Eidolon charging gauge, and Tavern
+Eidolon enhancement. The final 5.5.7 client therefore does not need those systems
+for solo play. Owned Eidolons remain collectible entries under Options, and the
+former Co-op Eidolon quests were converted to single-player quests.
+
+Guided setup enables the **12 battle/banner-backed solo Eidolon stages** in
+Chapters 4100–4111. The sixteen zero-battle Eidolon tier placeholders are
+deliberately excluded, and their older Co-op reward records are not reassigned to
+the final solo stages without a matching result capture. Availability after
+Chapter 3 is permanent local archive policy, not a recovered historical rotation.
+
+Guided setup does not enable the retired enhancement route. The server-only
+launcher also leaves it disabled by default; archival analysis can still opt into
+`bootstrap_server --summon-skills` explicitly.
+
+## Emulator caveats
+
+Graphics and sound are both unreliable under emulation and neither problem comes
+from the server. A physical device is the better choice if you care about either.
+See [Emulator setup](emulator.md).

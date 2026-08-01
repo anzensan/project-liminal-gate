@@ -471,7 +471,7 @@ def prompt_key_password(confirm: bool, ask: Callable[[str], str] = getpass.getpa
         except EOFError as error:
             raise TesterSetupError(
                 "setup needs an interactive terminal to choose a local test-key password; "
-                "run it directly in a terminal, or create the keystore first as described in the README"
+                "run it directly in a terminal, or create the keystore first as described in docs/setup-manual.md"
             ) from error
 
 
