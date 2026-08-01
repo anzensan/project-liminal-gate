@@ -23,6 +23,25 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-01 repeatable setup rehearsal: guided setup is the path every operator
+  takes and the one path the unit suite cannot reach, because it replaces the
+  IL2CPP dump, the master-data import, the catalog derivations, the APK patch,
+  and the signing with fakes. `liminal_gate.setup_rehearsal` now runs the real
+  pipeline on a clean copy of the source in an isolated environment, then serves
+  the generated catalogs to a scripted client over real HTTP — signup, login,
+  userdata, the tutorial Pact, one hash-checked resource — across a full server
+  stop and restart requiring the same account, the surviving starter, and a
+  replayed rather than rerolled Pact. Every run's input hashes, artifact hashes,
+  catalog counts, provenance, and transport result are compared field by field
+  against a baseline kept beside the save, so a regression names itself instead
+  of needing to be noticed. No device is involved; device certification is
+  unchanged and still manual. Its first complete run found a defect the whole
+  722-test suite could not see: `--daily-quests` was defined by the parser and
+  read by `main` but never carried by `ServerConfig`, so **every command-line
+  launch died with `AttributeError` before serving a request**, including the
+  one guided setup performs. Fixed, with a structural test asserting that every
+  launch option `main` reads is a field the configuration carries. See
+  [docs/setup-rehearsal.md](docs/setup-rehearsal.md).
 - 2026-08-01 Daily Quests implemented: the chapter-to-quest mapping was resolved
   by matching all fourteen APK banner textures pixel-wise against the community
   record's own banner images, giving a clean bijection — eleven matched at a

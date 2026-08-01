@@ -25,6 +25,7 @@ Everything below stays under the ignored `user-data/` directory.
 | `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
 | `names.json` | Gives the save editor readable character, item, and Companion names. | No. |
 | `input-manifest/` | Records hashes and structural validation for the APK and resource inputs used by this setup. | No. Keep it as provenance evidence. |
+| `rehearsal-baseline.json` | Only if you run [the setup rehearsal](setup-rehearsal.md). Records the hashes, counts, and transport result of a run you trusted, so a later run can report exactly what changed. | No. It is derived from your own APK and never leaves your machine. |
 | `local-server-plan.json`, the local signing key, and `liminal-gate-test.apk` | Record the client patch, sign it with a local-only key, and produce the APK installed on your device. | The plan and key are not server inputs. The generated APK belongs on the client device. |
 
 Keep the output not marked **Yes** on the setup workstation: it is the
