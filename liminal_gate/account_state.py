@@ -66,6 +66,7 @@ def summarize_account(account_id: str, account: dict[str, Any], document: dict[s
     userdata = account.get("userdata") if isinstance(account.get("userdata"), dict) else {}
     roster = userdata.get("chrdata")
     aliases = document.get("account_aliases")
+    hosts = document.get("client_hosts")
     return {
         "accountId": account_id,
         "active": account_id == document.get("active_account_id"),
@@ -75,6 +76,11 @@ def summarize_account(account_id: str, account: dict[str, Any], document: dict[s
         "coins": userdata.get("coins"),
         "characters": len(roster) if isinstance(roster, list) else None,
         "boundTokens": sum(1 for value in document["tokens"].values() if value == account_id),
+        # Which network address the account last identified itself from — the
+        # discriminator that tells two otherwise-identical fresh signups apart.
+        "clientHosts": sorted(
+            host for host, owner in hosts.items() if owner == account_id
+        ) if isinstance(hosts, dict) else [],
         "linkedDevices": sorted(
             device for device, owner in aliases.items() if owner == account_id
         ) if isinstance(aliases, dict) else [],

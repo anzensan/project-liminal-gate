@@ -111,7 +111,9 @@ device's ID belongs to your existing account.
 
 Install and launch the game on the second device and let it reach the title
 screen once, so it signs up. Stop the server, run `inspect`, and identify your
-real account and the new empty one, then:
+real account and the new empty one — if several devices signed up recently and
+the empty accounts look alike, each entry's `clientHosts` shows the network
+address it signed up from. Then:
 
 ```bash
 python3 -m liminal_gate.account_state link user-data/bootstrap-state.json \
