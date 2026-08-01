@@ -10,6 +10,9 @@ logs/*
 !logs/tooling.md
 build/
 dist/
+# Local branding source material. The release preflight prohibits image types
+# in a source tree, so these are kept beside the project rather than in it.
+docs/assets/
 *.apk
 *.ipa
 *.zip
