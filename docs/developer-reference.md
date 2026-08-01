@@ -83,6 +83,19 @@ python3 -m liminal_gate.release_audit
 The preflight checks that no prohibited local material entered the source tree;
 the audit checks that this checkout remains independently releasable.
 
+None of the three runs the setup pipeline: the unit suite replaces the IL2CPP
+dump, the master-data import, the catalog derivations, and the signing with
+fakes. After a change that could reach any of those, rehearse setup on a clean
+copy of the source and compare the result with a run you already trusted:
+
+```sh
+python3 -m liminal_gate.setup_rehearsal \
+  --apk /path/to/your/terra-battle.apk \
+  --resource-root /path/to/your/resources/data_u2017/android
+```
+
+See [Rehearse setup before you trust a change](setup-rehearsal.md).
+
 ## Project references
 
 - [Compatibility scope](../COMPATIBILITY_SCOPE.md)

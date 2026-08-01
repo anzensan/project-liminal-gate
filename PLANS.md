@@ -1,5 +1,73 @@
 # Execution Plans
 
+## 2026-08-01 Repeatable setup rehearsal
+
+Status: completed 2026-08-01.
+
+Objective: make it cheap to prove that a change did not break guided setup.
+Until now the only proof was the manual clean-onboarding rehearsal recorded on
+2026-07-28: reset a checkout by hand, run setup, read the output. That is slow
+enough to happen rarely and is judged by eye, so a catalog that quietly lost
+half its rows looks exactly like one that did not.
+
+Execution boundaries:
+
+1. Rehearse the real pipeline, not a fake of it. The unit suite replaces the
+   IL2CPP dump, the master-data import, the catalog derivations, the APK patch,
+   and the signing; the rehearsal must run all of them.
+2. Require no emulator, phone, or tablet. Device certification stays a separate,
+   manual concern.
+3. Treat the operator's APK and resource tree as immutable inputs, and keep
+   every derived hash out of the repository: the comparison baseline lives
+   beside the save under `user-data/`, which is ignored.
+4. Report a regression as a named changed field rather than as output an
+   operator has to notice. Ignore only what legitimately differs between two
+   correct runs.
+5. Cover the harness's own decision logic with ordinary unit tests, so the thing
+   that judges setup is itself judged.
+
+Result:
+
+- `liminal_gate/setup_rehearsal.py` stages a clean source copy (the working tree
+  including uncommitted files by default, or a Git worktree at a revision),
+  builds an isolated environment, runs the prerequisite check, runs guided setup
+  with `--prepare-only`, then serves the generated catalogs to a scripted client
+  over real HTTP: time, status, signup, login, userdata, the tutorial Pact, and
+  one hash-checked resource; then a full server stop and restart, requiring the
+  same account, the surviving starter, and a replayed rather than rerolled Pact.
+- Each run writes `summary.json`, `summary.txt`, and stage logs under
+  `build/rehearsal/`, and compares every field against
+  `user-data/rehearsal-baseline.json` except timestamps, run directory, commit,
+  interpreter version, and the signed APK, whose hash comes from a keystore each
+  run creates fresh. A baseline recorded from a different APK is refused rather
+  than reported field by field.
+- The build port is fixed at 8697 because it is compiled into the patched APK; a
+  borrowed port would change that file's hash and report a regression where
+  nothing had changed. The smoke server borrows a free port, which nothing bakes
+  in.
+- 31 focused tests cover source staging, generation facts, baseline comparison,
+  transport summarizing, the onboarding assertions, and run-directory handling.
+- Validated against the real inputs: two consecutive independent runs compared
+  identical in every field, a run with a changed build port reported exactly the
+  build port and the patched APK it changes and exited 1, and the freshly
+  extracted `dump.cs`, native/scenario encounter maps, character catalog, and
+  resource manifest reproduced the 2026-07-28 clean-onboarding hashes byte for
+  byte, at 23,594 resource mappings, 780 story rules, and 48 DummyDll
+  assemblies. A run takes about 50 seconds. Warning-strict full suite: 725
+  tests.
+- **The first complete run found a real defect.** `--daily-quests`, added on
+  2026-07-31, was defined by the parser and read by `main`, but never carried by
+  `ServerConfig`, and `load_launch_config` returns a `ServerConfig`
+  unconditionally. Every command-line launch — including the one guided setup
+  performs — died with `AttributeError: 'ServerConfig' object has no attribute
+  'daily_quests'` before serving a request. The whole 722-test suite passed
+  throughout, because every other test constructs `BootstrapServer` directly.
+- Fixed by carrying `daily_quests` through `ServerConfig`, its TOML loader, and
+  `load_launch_config`. Added a structural regression test asserting that every
+  launch option `main` reads is a field the configuration carries — the same
+  guard that already existed one level earlier, between the parser and the
+  launcher, which is why the gap fell between them.
+
 ## 2026-07-31 Pact pool cap and Daily Quests
 
 Objective: implement the two items the secondary-source audit listed as

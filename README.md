@@ -239,6 +239,7 @@ resources, captures, account saves, tokens, digests, or keys.
 **Project and protocol**
 
 - [Developer reference](docs/developer-reference.md) — server modes, custom profiles, resource serving, APK tools, release checks.
+- [Rehearse setup before you trust a change](docs/setup-rehearsal.md) — one command that reruns the whole setup pipeline on a clean copy and compares it with a run you trusted.
 - [Server protocol](docs/server-protocol.md) and [current checkpoint](docs/current-checkpoint.md) — transport, persistence, evidence labels, and the verified client boundary.
 - [Reconstruction architecture](docs/reconstruction-architecture.md) and [distribution architecture](DISTRIBUTION_ARCHITECTURE.md) — runtime modules and the source-only public/private separation.
 - [Compatibility scope](COMPATIBILITY_SCOPE.md) — supported operations and refusals.
