@@ -31,8 +31,9 @@ python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 | `--dummy-dll-dir`, `--dump-cs` | Reuse matching Il2CppDumper output you already have instead of the generated one. |
 | `--event-catalog` | Replace the generated event rows with an independently prepared catalog; see below. |
 
-Story chapters, Hunting zones, Pacts, Companion draws and sales, job unlocks,
-Rebirth, and status items are all enabled with no feature-selection prompt. To
+Story chapters, Hunting zones, Daily Quests, Pacts, Companion draws and sales,
+job unlocks, Rebirth, and status items are all enabled with no
+feature-selection prompt. To
 isolate one feature while troubleshooting, run `liminal_gate.bootstrap_server`
 directly with only the flags you want; see
 [advanced-configuration.md](advanced-configuration.md).
