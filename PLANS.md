@@ -1,5 +1,54 @@
 # Execution Plans
 
+## 2026-07-31 Jade Dragon original-client settlement recovery
+
+Objective: accept the exact final-client Chapter 2004-1 result without relaxing
+the event transaction beyond fields observed on the wire, and prove that the
+settlement is replay- and restart-safe.
+
+Evidence boundary:
+
+- The first result retry was preserved privately as an exact 17,795-byte form,
+  SHA-256 `1d58ffb61f94ccbc1acd10620616b0d6aec8acbc5dc697888bd84b32ba421b3f`.
+  It reported 819 battle Coins, 6,851 EXP, and the observed `itmp0=-1`
+  sentinel. Its 12,124-Coin wallet was stale relative to the durable save.
+- After a clean client login, the same result reported 11,824 wallet Coins,
+  exactly the durable 11,005 plus the reported 819 battle Coins. This ruled out
+  the tentative 300-Coin fixed-increment hypothesis.
+- BattleData establishes the stage identity and entry economics, but does not
+  establish a service-authored fixed clear increment. The generated catalog
+  therefore keeps that increment at zero.
+
+Required proof:
+
+1. Accept the observed `itmp0=-1` sentinel while continuing to refuse values
+   below `-1` and every other malformed clear field.
+2. Reconcile an event wallet as durable Coins plus the catalog's fixed clear
+   increment plus client-reported battle Coins; retain Counter Descent's
+   separate zero-base restriction.
+3. Exercise Chapter 2004-1 over real HTTP, including stale-wallet refusal,
+   successful settlement, exact replay, durable rewards, and replay after a
+   full server restart.
+4. Deploy the bounded fix, obtain original-client result-screen acceptance,
+   and verify that the resulting save remains byte-identical across a service
+   restart.
+5. Update public protocol/status documentation and pass focused, full-suite,
+   compilation, structured-file, diff, and clean-candidate release checks.
+
+Outcome:
+
+- The original client exited the Jade Dragon result screen after receiving
+  HTTP 200 from `POST /gd/clear_quest`.
+- The durable account returned to `free_roam` with no active quest, 11,824
+  Coins, 27 free Energy, 78 characters including one Jade Dragon (673), and
+  the submitted item counts. A service restart changed the PID while preserving
+  the save byte-for-byte.
+- Exact replay/restart behavior is covered by the focused real-HTTP regression.
+  Other Archive families and Strikes Back still require their own client clear
+  observations; this one result does not establish retired reward schedules.
+- Thirty-six focused event tests and all 642 warning-strict repository tests
+  passed. Compilation, profile JSON, endpoint YAML, and diff checks passed.
+
 ## 2026-07-31 retail first-Pact Bahl or Grace outcome
 
 Objective: make the mandatory `kind=10` tutorial Pact choose Bahl or Grace at

@@ -120,11 +120,14 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         )
         self.assertFalse([note for note in notes if "skipped" in note])
 
-    def test_event_clears_credit_no_coins(self) -> None:
-        # BattleData records a start cost for these sections but no clear
-        # reward, so settling at zero reports the data rather than inventing.
-        _, _, loaded = self._generate(_battledata(8000), ())
-        self.assertTrue(all(stage.clear_coins == EVENT_CLEAR_COINS for stage in loaded.stages))
+    def test_event_catalog_adds_no_unsupported_fixed_clear_increment(self) -> None:
+        _, _, loaded = self._generate(_battledata(2004, 8000), (673,))
+        self.assertTrue(
+            all(
+                stage.clear_coins == EVENT_CLEAR_COINS
+                for stage in loaded.stages
+            )
+        )
         self.assertEqual(0, EVENT_CLEAR_COINS)
 
     def test_empty_import_is_refused(self) -> None:

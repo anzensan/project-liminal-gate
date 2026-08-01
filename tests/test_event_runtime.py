@@ -153,6 +153,169 @@ class EventRuntimeTest(unittest.TestCase):
             finally:
                 restarted.close()
 
+    def test_jade_clear_reconciles_reported_and_fixed_coins_and_replays(self) -> None:
+        """Regress the original-client 2004-1 result contract over real HTTP."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            token, account_id = "jade-token", "jade-account"
+            state = BootstrapState(path)
+            state.create_account(
+                token,
+                account_id,
+                {
+                    "coins": 11005,
+                    "energy": 0,
+                    "freeEnergy": 25,
+                    "progressCode": 16777735,
+                    "worldMapNo": 0,
+                    "chrdata": [character(3), character(673)],
+                    "itemList": [0] * 181,
+                    "summonList": [0] * 16,
+                },
+            )
+            state.accounts[account_id]["tutorial_phase"] = "free_roam"
+            state._persist_locked()
+            catalog = EventCatalog((
+                EventStage(
+                    "jade_dragon_hunt", "sp_ch_2004", 2004, 1,
+                    15, 0, 0, (673,), unlock_after_chapter=4,
+                ),
+            ))
+            profile = load_profile(
+                Path(__file__).resolve().parents[1]
+                / "profiles"
+                / "legacy-client-bootstrap.json"
+            )
+
+            def start_server() -> tuple[BootstrapServer, threading.Thread]:
+                server = BootstrapServer(
+                    ("127.0.0.1", 0), profile, BootstrapState(path),
+                    event_catalog=catalog,
+                )
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                return server, thread
+
+            def stop_server(
+                server: BootstrapServer, thread: threading.Thread,
+            ) -> None:
+                server.shutdown()
+                thread.join()
+                server.server_close()
+
+            def post(
+                server: BootstrapServer, request_id: str, body: bytes,
+                route: str = "clear_quest",
+            ) -> tuple[int, dict]:
+                connection = HTTPConnection(*server.server_address)
+                connection.request(
+                    "POST",
+                    f"/gd/{route}?otk={token}&requestID={request_id}",
+                    body=body,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                return response.status, payload
+
+            def clear_body(*, wallet_coins: int = 11824, itmp0: int = -1) -> bytes:
+                advanced = character(3)
+                advanced["jobLevels"] = [4097, 0, 0]
+                advanced["skillBoost"] = 2
+                items = [0] * 181
+                for item_id, count in {16: 1, 105: 1, 122: 1, 123: 1, 181: 8}.items():
+                    items[item_id - 1] = count
+                return urlencode({
+                    "progressCode": 16777735,
+                    "worldMapNo": 0,
+                    "valuables": json.dumps({
+                        "energyAppStore": 0,
+                        "energy": 0,
+                        "energyAndApp": 0,
+                        "freeEnergy": 25,
+                        "energyGooglePlay": 0,
+                        "coins": wallet_coins,
+                    }),
+                    "chrdata": json.dumps([advanced, character(673)]),
+                    "itemList": json.dumps(items),
+                    "summonList": json.dumps([0] * 16),
+                    "battle_result": json.dumps({
+                        "coins": 819,
+                        "buddies": [],
+                        "items": {"16": 1, "105": 1, "122": 1, "123": 1, "181": 8},
+                        "exp": 6851,
+                        "section": 1,
+                        "monsters": [],
+                        "summons": [],
+                        "luckynum": 0,
+                        "chapter": 2004,
+                        "unableluckdrop": False,
+                        "boostup": [2, 0, 0, 0, 0, 0],
+                    }),
+                    "itmp0": itmp0,
+                    "itmp1": 0,
+                    "lastUpdate": 1,
+                }).encode()
+
+            state.close()
+            server, thread = start_server()
+            start = b"stamina=15&coins=0&chapter=2004&section=1&lastUpdate=1"
+            try:
+                start_status, start_payload = post(
+                    server, "jade-start", start, "start_quest"
+                )
+                self.assertEqual(
+                    (200, True),
+                    (start_status, start_payload["success"]),
+                )
+                sentinel_status, sentinel_payload = post(
+                    server, "bad-sentinel", clear_body(itmp0=-2)
+                )
+                self.assertEqual(
+                    (501, "unsupported_clear_quest"),
+                    (sentinel_status, sentinel_payload["error"]),
+                )
+                wallet_status, wallet_payload = post(
+                    server, "stale-wallet", clear_body(wallet_coins=12124)
+                )
+                self.assertEqual(
+                    (409, "event_clear_wallet_conflict"),
+                    (wallet_status, wallet_payload["error"]),
+                )
+                clear = clear_body()
+                status, payload = post(server, "jade-clear", clear)
+                self.assertEqual((200, 11824), (status, payload["coins"]))
+                self.assertEqual(
+                    (status, payload),
+                    post(server, "jade-clear", clear),
+                )
+            finally:
+                stop_server(server, thread)
+
+            durable = json.loads(path.read_text(encoding="utf-8"))["accounts"][account_id]
+            self.assertEqual("free_roam", durable["tutorial_phase"])
+            self.assertIsNone(durable["active_generic_story"])
+            self.assertEqual(11824, durable["userdata"]["coins"])
+            self.assertEqual(27, durable["userdata"]["freeEnergy"])
+            self.assertEqual(2, len(durable["userdata"]["chrdata"]))
+            self.assertEqual(1, durable["userdata"]["itemList"][15])
+            self.assertEqual(8, durable["userdata"]["itemList"][180])
+
+            restarted, restarted_thread = start_server()
+            try:
+                self.assertEqual(
+                    (status, payload),
+                    post(restarted, "jade-clear", clear),
+                )
+            finally:
+                stop_server(restarted, restarted_thread)
+            durable = json.loads(path.read_text(encoding="utf-8"))["accounts"][account_id]
+            self.assertEqual((11824, 27), (
+                durable["userdata"]["coins"],
+                durable["userdata"]["freeEnergy"],
+            ))
+
 
 class TowerRuntimeTest(unittest.TestCase):
     """The first Tower floor uses the solo event transport and durable state."""
@@ -249,7 +412,9 @@ class TowerRuntimeTest(unittest.TestCase):
             "accounts"
         ][self.account_id]
 
-    def clear_body(self, *, coins: int = 0) -> bytes:
+    def clear_body(
+        self, *, coins: int = 0, wallet_coins: int | None = None,
+    ) -> bytes:
         userdata = self.account()["userdata"]
         return urlencode({
             "progressCode": userdata["progressCode"],
@@ -260,7 +425,11 @@ class TowerRuntimeTest(unittest.TestCase):
                 "energyAndApp": 0,
                 "freeEnergy": userdata["freeEnergy"],
                 "energyGooglePlay": 0,
-                "coins": userdata["coins"] + coins,
+                "coins": (
+                    userdata["coins"] + coins
+                    if wallet_coins is None
+                    else wallet_coins
+                ),
             }),
             "chrdata": json.dumps(userdata["chrdata"]),
             "itemList": json.dumps(userdata["itemList"]),
@@ -368,7 +537,7 @@ class TowerRuntimeTest(unittest.TestCase):
         self.restart()
         status, refused = self.post(
             f"/gd/clear_quest?otk={self.token}&requestID=bad-clear",
-            self.clear_body(coins=1),
+            self.clear_body(coins=1, wallet_coins=0),
         )
         self.assertEqual(
             (409, "event_clear_wallet_conflict"),

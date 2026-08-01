@@ -137,10 +137,14 @@ about historical event schedules or rewards.
 Guided setup also composes Archive Special Quests for recovered Chapters 2000,
 2001, 2002, 2004, and 2006 from the tester's own BattleData and character
 catalog. Their section economics and flags are client-derived. Permanent
-Chapter 2/4/10/13/20 unlocks, zero clear Coins, and granting the associated
-character on the first section are local archive policy. The same generic
-quest transaction provides body-scoped replay and restart persistence; no
-original-client archive clear is claimed yet.
+Chapter 2/4/10/13/20 unlocks, zero fixed clear-Coin increments, and granting
+the associated character on the first section are local archive policy. Event
+clear reconciles the wallet as durable Coins plus that fixed increment plus the
+client-reported battle Coins. The exact Jade Dragon 2004-1 form establishes
+that variable channel and the `itmp0=-1` sentinel; lower sentinels and wallet
+conflicts are refused without mutation. The original client received HTTP 200,
+left the result screen, and the settled state survived restart. Other Archive
+families still require their own client-clear observations.
 
 The bundled Special Quest uses that same Hunting transaction: Chapter 3003-1
 charges 5 stamina, accepts no EXP, items, or Companions, and has a local 1,800

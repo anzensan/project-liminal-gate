@@ -51,8 +51,8 @@ TOWER_VERTICAL_SLICE: tuple[str, str, int, int, int] = (
     3,
 )
 
-# BattleData records a start cost for each event section but no clear reward, so
-# an event clear credits no Coins. This is the same reading applied to Dragon and
-# Machine Road, which settle at zero for the same reason: it reports what the
-# recovered data says rather than inventing a reward the service once sent.
+# BattleData records a start cost for each event section but no fixed clear
+# increment, so the default remains zero rather than inventing a retired-service
+# reward. Variable battle Coins are reported separately by the surviving client
+# and reconciled against its submitted wallet during settlement.
 EVENT_CLEAR_COINS = 0

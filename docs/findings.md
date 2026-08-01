@@ -32,6 +32,26 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Quest settlement compatibility
 
+- **Confirmed by exact final-client Chapter 2004-1 transport:** Jade Dragon's
+  result reports variable battle Coins independently of the generated event
+  catalog's fixed clear increment. The preserved 17,795-byte form has SHA-256
+  `1d58ffb61f94ccbc1acd10620616b0d6aec8acbc5dc697888bd84b32ba421b3f`,
+  reports 819 battle Coins and 6,851 EXP, and uses `itmp0=-1`. After a clean
+  login, the client submitted a wallet of 11,824, exactly the durable 11,005
+  plus those 819 Coins; the earlier 12,124 wallet was stale and remained
+  correctly refused.
+- **Confirmed client acceptance and durable behavior:** the bounded settlement
+  returned HTTP 200 and the client exited the result screen. The save returned
+  to `free_roam` with no active quest, 11,824 Coins, 27 free Energy, 78
+  characters including one Jade Dragon (673), and the submitted items. Its
+  SHA-256 remained byte-identical across a service restart. A real-HTTP
+  regression covers stale-wallet and below-`-1` sentinel refusal, successful
+  settlement, immediate replay, and restart replay.
+- **Remaining evidence boundary:** Chapter 2004-1 proves one final-client event
+  result shape, not the retired service's fixed rewards, random drops, or
+  schedules. The generated fixed clear-Coin increment remains zero because no
+  such increment is present in BattleData; other Archive families still need
+  their own client result observations.
 - **Confirmed by Issue 25 final-client/server evidence:** a Pixel 7 Pro running
   the final client reported 1,800 Coins after Chapter 3003-1. The
   privacy-filtered attachment has SHA-256
@@ -217,10 +237,11 @@ Private inputs, captures, account state, and original assets remain excluded.
   2001, 2002, 2004, and 2006 from the matching local BattleData and character
   catalog. The selector merges these rows with Chapter 3003-1; bundled
   Chapters 8000--8007 remain authoritative on `descentHuntingList`.
-  **Local policy:** the permanent Chapter 2/4/10/13/20 gates, zero clear Coins,
-  and first-section associated-character grants are not recovered schedules,
-  probabilities, or complete reward tables. Original-client archive clears
-  remain unverified.
+  **Local policy:** the permanent Chapter 2/4/10/13/20 gates, zero fixed
+  clear-Coin increment, and first-section associated-character grants are not
+  recovered schedules, probabilities, or complete reward tables. Variable
+  battle Coins are reconciled from the client result. Jade Dragon 2004-1 clear
+  is client-confirmed; the other Archive families remain unverified.
 - **Confirmed local master-data projection:**
   `user-data/derived/battledata-stages.json`, SHA-256
   `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`,

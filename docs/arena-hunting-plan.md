@@ -78,9 +78,11 @@ confirmed; the client clear callback is still outstanding.
 Arena -> Special Quests merges recovered Chapter 3003-1 with the generated
 Archive Chapters 2000, 2001, 2002, 2004, and 2006 as their progress gates open.
 The archive rows come from matching user-local BattleData and character
-catalogs. Permanent gates, zero clear Coins, and first-section associated
-character grants are local policy. An explicit reviewed catalog replaces the
-generated Archive rows but not Chapter 3003-1 or bundled Strikes Back.
+catalogs. Permanent gates, zero fixed clear-Coin increments, and first-section
+associated character grants are local policy; variable battle Coins are
+reconciled from the client result. Jade Dragon 2004-1 clear and return to free
+roam are client-confirmed. An explicit reviewed catalog replaces the generated
+Archive rows but not Chapter 3003-1 or bundled Strikes Back.
 
 Arena VS stays explicitly disabled.
 

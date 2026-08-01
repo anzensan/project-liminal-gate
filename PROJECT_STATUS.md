@@ -23,6 +23,31 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 Jade Dragon original-client settlement: an exact Chapter 2004-1
+  clear showed that Archive results use the client's reported battle Coins in
+  addition to any cataloged fixed clear increment, and that the final client
+  can send the observed `itmp0=-1` sentinel. The server now accepts that
+  bounded shape, rejects a stale wallet and sentinels below `-1`, and retains
+  Counter Descent's separate zero-base restriction. The physical client exited
+  the result screen after HTTP 200. Durable state returned to `free_roam` with
+  11,824 Coins, 27 free Energy, 78 characters including Jade Dragon, and the
+  submitted item counts; its SHA-256 remained byte-identical after the service
+  restarted under a new PID. Real-HTTP tests cover refusal, settlement, exact
+  replay, and restart replay. Thirty-six focused tests and all 642
+  warning-strict repository tests passed; compilation, structured-file, and
+  diff checks passed. Other Archive families and Strikes Back remain separate
+  client-clear boundaries.
+- 2026-07-31 live Archive/Tower catalog deployment: regenerated the local
+  event catalog from the retained APK-matched BattleData projection and
+  character catalog, producing 58 stages across 14 event families. The
+  character catalog hash matches the authority already recorded by the live
+  story-outcome catalog. Beelink commit `05d2980` now loads both generated
+  files; a real Chapter 8 `get_server_status` response advertised Bahamut,
+  Jade Dragon, Money Money Time, three unlocked Strikes Back families, and
+  Tower 9100-1. The service restarted under its existing systemd unit, the
+  account state validated, and loopback HTTP returned 200. Arena VS remains
+  disabled and the optional converted Eidolon quest lifecycle remains
+  unsupported.
 - 2026-07-31 first tutorial Pact retail outcome: the exact mandatory `kind=10`
   request now selects Bahl (character 1) or Grace (character 3) from two equal
   weights instead of always granting Grace. Selection, starter identity, roster,
@@ -62,8 +87,9 @@ machine-readable/current capability boundary.
   Chapters 2000, 2001, 2002, 2004, and 2006 automatically, merges their
   Special Quest rows with bounded Chapter 3003-1, and retains the bundled
   five-tier policy as the authoritative owner of Strikes Back Chapters
-  8000--8007. The Chapter 2/4/10/13/20 archive gates, zero clear Coins, and
-  first-section associated-character grants are explicitly local policy.
+  8000--8007. The Chapter 2/4/10/13/20 archive gates, zero fixed clear-Coin
+  increment, and first-section associated-character grants are explicitly
+  local policy; variable battle Coins are reconciled from the client result.
   Older explicit catalogs without an unlock gate still load. Generated
   catalogs are atomic and hash-bound to the matching character catalog;
   server-only setup discovers both together or fails clearly. Affected-domain
@@ -73,7 +99,8 @@ machine-readable/current capability boundary.
   BattleData projection contains every advertised Archive/Strikes chapter and
   expected section economy. The warning-strict full suite passed all 635 tests
   in 118.402 seconds; compilation, JSON/YAML, and diff checks passed.
-  Original-client Bahamut and Strikes Back clears remain pending.
+  Original-client Jade Dragon clear is now confirmed; Bahamut and Strikes Back
+  clears remain pending.
 - 2026-07-30 guided setup usability: `tester_setup --check` and the real build
   now share one complete IL2CPP-artifact resolver. A supplied `DummyDll`
   without sibling `dump.cs` fails before hashing, while a complete generated

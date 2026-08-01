@@ -2481,20 +2481,33 @@ class BootstrapState:
             dynamic = isinstance(catalog, StoryProgressionCatalog)
             event = isinstance(catalog, EventCatalog)
             reward_rule = None if settlement_catalog is None else settlement_catalog.rules.get(identity)
-            clear_coins = (
+            fixed_clear_coins = (
                 reward_rule.clear_coins
                 if dynamic and reward_rule is not None and reward_rule.clear_coins is not None
                 else clear["battle_result"]["coins"] if dynamic else stage.clear_coins
             )
+            reported_battle_coins = clear["battle_result"]["coins"]
             expected_progress = catalog.expected_clear_progress(int(userdata.get("progressCode", 0)), identity) if dynamic else int(userdata.get("progressCode", 0)) if event else stage.clear_progress_code
-            expected_coins = int(userdata.get("coins", 0)) + clear_coins
+            # Archive battles are executed by the surviving client. Its clear
+            # form reports the variable battle Coins separately from the fixed
+            # post-battle increment represented by EventStage.clear_coins. The
+            # wallet must reconcile both. Counter Descent remains zero-base and
+            # is additionally constrained by _zero_base_event_matches below.
+            expected_coins = (
+                int(userdata.get("coins", 0))
+                + fixed_clear_coins
+                + (reported_battle_coins if event else 0)
+            )
             checks = (
                 ("phase", account.setdefault("tutorial_phase", "initial") == "generic_story_active"),
                 ("active_stage", active == {"chapter": identity[0], "section": identity[1]}),
                 ("progress", expected_progress is not None and clear["progressCode"] == expected_progress),
                 ("world_map", clear["worldMapNo"] == int(userdata.get("worldMapNo", 0))),
                 ("wallet", clear["valuables"].get("coins") == expected_coins),
-                ("battle_coins", clear["battle_result"].get("coins") == clear_coins),
+                (
+                    "battle_coins",
+                    event or reported_battle_coins == fixed_clear_coins,
+                ),
             )
             failed = next((name for name, passed in checks if not passed), None)
             if failed is not None:
@@ -3713,7 +3726,14 @@ def _parse_generic_story_clear(body: bytes) -> dict[str, Any] | None:
         }
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
         return None
-    if any(type(result[name]) is not int or result[name] < 0 for name in ("progressCode", "worldMapNo", "itmp0", "itmp1", "lastUpdate")):
+    if (
+        any(
+            type(result[name]) is not int or result[name] < 0
+            for name in ("progressCode", "worldMapNo", "itmp1", "lastUpdate")
+        )
+        or type(result["itmp0"]) is not int
+        or result["itmp0"] < -1
+    ):
         return None
     valuable_fields = {"energyAppStore", "energy", "energyAndApp", "freeEnergy", "energyGooglePlay", "coins"}
     if type(result["valuables"]) is not dict or set(result["valuables"]) != valuable_fields or any(type(value) is not int or value < 0 for value in result["valuables"].values()):

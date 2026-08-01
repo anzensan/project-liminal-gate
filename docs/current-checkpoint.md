@@ -18,6 +18,22 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Latest Archive client validation: the original Android client cleared Jade
+Dragon Chapter 2004-1 and exited its result screen after the server returned
+HTTP 200. The exact preserved form reports 819 battle Coins, 6,851 EXP, and
+`itmp0=-1`; after a clean login its wallet reported 11,824, matching durable
+11,005 plus those 819 battle Coins. Event settlement now reconciles that
+client-reported amount in addition to the catalog's zero fixed clear increment,
+while values below `itmp0=-1`, stale wallets, and Counter Descent nonzero-base
+results remain refused. The save returned to `free_roam` with no active quest,
+11,824 Coins, 27 free Energy, 78 characters including Jade Dragon, and the
+submitted item counts. Its SHA-256 remained
+`cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`
+after a service restart from PID 218246 to 219886. Other Archive clears remain
+unverified. Thirty-six focused event tests and all 642 warning-strict
+repository tests passed; compilation, profile JSON, endpoint YAML, and diff
+checks passed.
+
 Latest tutorial Pact validation: the mandatory `kind=10` draw now declares
 equal weights for Bahl (character 1) and Grace (character 3), following the
 maintainer-supplied retail rule. The selected starter commits with the roster,
@@ -62,13 +78,14 @@ Latest guided archive-event validation: setup derives `event-catalog.json`
 from matching local BattleData and character inputs and starts it by default.
 Archive Chapters 2000, 2001, 2002, 2004, and 2006 merge with Chapter 3003-1;
 bundled Counter Descent remains authoritative for Strikes Back Chapters
-8000--8007. Archive gates, zero clear Coins, and first-section associated
-character grants are labeled local policy. Focused real-HTTP tests cover
+8000--8007. Archive gates, zero fixed clear-Coin increments, and first-section
+associated character grants are labeled local policy; variable battle Coins
+come from the client result. Focused real-HTTP tests cover
 selector projection, start, body-scoped same-ID/different-body handling,
 bounded clear, replay, and restart. The warning-strict full suite passed all
 635 tests in 118.402 seconds; compilation, profile JSON, endpoint YAML, and
-diff checks passed. Physical-client Bahamut and Strikes Back clears remain
-open.
+diff checks passed. Physical-client Jade Dragon clear is now confirmed;
+Bahamut and Strikes Back clears remain open.
 
 Prior guided-setup validation: preflight and the real build resolve the same
 explicit or generated `(DummyDll, dump.cs)` pair and validate port and
@@ -92,11 +109,20 @@ no old allocator message or signal 11. Its unpatched control also stayed live,
 so the AVD did not reproduce the Pixel 7 Pro allocation pattern;
 original-device acceptance remains the next boundary.
 
-Latest live deployment: Beelink implementation commit `3fe4336` runs without
-the retired `--summon-skills` default. The child command still loads
-`story-outcomes.json` and `companion-equipment.json`; durable state matched its
-pre-deploy backup byte-for-byte, and loopback and LAN current-time requests
-returned HTTP 200.
+Latest live deployment: the live Beelink loads the generated Archive/Tower event
+catalog and its matching character authority.
+Both identify final Android APK SHA-256
+`f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`;
+the deployed event and character files have SHA-256
+`7694844d4b728c4a76b28f939013a3a8016d9c5026b62a864761f3b4aa3baad9` and
+`ff79204f1020ff44022ae95fa30ee87e2b0e2a9e656d4b2f85d5fe52f3b980be`.
+After a clean launcher restart, the real `/gd/get_server_status` transport for
+the active Chapter 8 account returned Bahamut 2000-1 through 2000-4, Jade
+Dragon 2004-1, Money Money Time 3003-1, Strikes Back 8000-1 through 8002-1,
+and Tower 9100-1. The durable account state remained structurally valid and
+the loopback news request returned HTTP 200. Jade Dragon card rendering and
+clear are now client-confirmed; Tower navigation/clear remains to be observed
+on the physical device.
 
 Publication lane:
 
@@ -143,8 +169,9 @@ pre-entry Item 50 count, the server retains the already-committed spend, and
 the bounded Companion drop persists. Guided setup now derives the five
 recovered Archive families and merges their progress-gated rows with Money
 Money Time. Strikes Back shows its first two progress-gated families and the
-original client entered Spinetrich Kino Chapter 8000-1. Neither its clear
-callback nor an Archive-event navigation/clear has yet been observed. These
+original client entered Spinetrich Kino Chapter 8000-1. Its clear callback
+remains unobserved; Jade Dragon Chapter 2004-1 navigation, clear, and return to
+free roam are now confirmed. Other Archive clears remain open. These
 are fast-lane client observations, not a replacement for the Chapter 2-1
 canonical certification boundary.
 
@@ -176,7 +203,7 @@ Next unknown boundaries: original-client acceptance of the Item 81
 Fellowship/Fate ticket draw and Crystal Road 3004-1; Issue 25 reporter
 acceptance after the observed 1,800-Coin Special Quest settlement; the first
 reproducible original-client failure after Chapter 8-4; the
-Archive Chapter 2000-1 navigation/clear and associated-character result;
+another Archive-family clear and associated-character result;
 the Strikes Back Chapter 8000-1 clear callback; Tower 9100-1 navigation and
 clear; and the Hunting selector flash after its rows render. An optional later
 boundary is one converted solo Eidolon quest result with before/after
