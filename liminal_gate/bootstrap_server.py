@@ -48,7 +48,7 @@ from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, build_bundled_companion_evolution_policy, load_companion_evolution_catalog
 from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
-from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
+from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
 from liminal_gate.message_catalog import (
     MessageCatalog,
@@ -5214,7 +5214,11 @@ def main() -> int:
         companion_draw = build_bundled_companion_draw_policy() if args.companion_draw else (None if args.companion_draw_catalog is None else load_companion_draw_catalog(args.companion_draw_catalog))
         if args.pacts and args.pact_draw_catalog is not None:
             raise ProfileError("--pacts cannot be combined with --pact-draw-catalog")
-        pact_draw = build_bundled_pact_policy() if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))
+        # Rarity comes from the operator's own catalog when one was supplied,
+        # which is what lets duplicate gains and Truth rates follow the class
+        # bands instead of a flat uniform default.
+        pact_rarity = load_character_rarity(args.character_catalog) if args.pacts and args.character_catalog is not None else None
+        pact_draw = build_bundled_pact_policy(pact_rarity) if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))
         if (args.event_catalog is None) != (args.character_catalog is None):
             raise ProfileError("--event-catalog and --character-catalog must be supplied together")
         events = None if args.event_catalog is None else load_event_catalog(args.event_catalog, args.character_catalog)

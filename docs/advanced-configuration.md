@@ -617,10 +617,20 @@ rather than drops -- true, and irrelevant.
 Four of them make an explicit **local policy** choice rather than a claim about
 the retired service, and say so in their own code: Companion draw selects
 uniformly across its recovered pool instead of asserting the historical
-per-rarity base rates, exactly as `--pacts` does; Companion strengthen's
-random EXP-bonus weights keep the three documented outcomes reachable without
-asserting odds the client never contained; and Hunting's availability
-thresholds and Puppet Show item aggregate are preservation policy.
+per-rarity base rates; Companion strengthen's random EXP-bonus weights keep the
+three documented outcomes reachable without asserting odds the client never
+contained; and Hunting's availability thresholds and Puppet Show item aggregate
+are preservation policy.
+
+`--pacts` is the one that no longer selects uniformly. Pact of Truth is weighted
+by class and both pools' duplicate gains are banded by class, keyed on the
+`rarity` field of the character catalog you passed to `--character-catalog`.
+Those two tables come from the community record of the retired service, not from
+your APK, and no amount of further analysis will change that: the client renders
+whatever the server sent it through `UIPactResult.PrepareShow`, and holds no
+rate table beyond the `RareSlotEnergy` cost. Pass `--pact-draw-catalog` to
+substitute your own. Without `--character-catalog`, `--pacts` falls back to the
+old uniform weights and a flat duplicate gain.
 
 ### The Trading Post is the one that is not from the client
 

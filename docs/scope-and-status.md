@@ -35,8 +35,24 @@ Chapter 42, and local ordinary Pacts:
 
 The client may submit any affordable batch from 1 through 10 even though its
 controls normally label 1, 5, and 10. The included pools are bounded local
-policy; selection is uniform and duplicate gains are local defaults, not a claim
-about the retired service's per-character odds.
+policy, not a claim about the retired service's membership.
+
+**Rates and duplicate gains are class-based.** A recruited duplicate raises an
+existing character by 6 levels and 12.0% Skill Boost at Z, 5 levels and 10.0% at
+SS and S, and 1 level and 5.0% at A and below. Pact of Truth selection is
+weighted 4% Z, 10% SS, 15% S, and 71% split evenly across A and B. The class of
+each pooled character is read from the `rarity` field of your own
+APK-derived character catalog, so nothing about your roster is bundled here.
+
+Those two tables are **local preservation policy taken from the community
+record, and they cannot be upgraded to recovered values.** The final client
+never computed either one: it renders whatever the server sent, through
+`UIPactResult.PrepareShow(chrId, addedLevels, addedSkillBoost, addedLuck)`, and
+carries no rate table of its own. They replace an earlier flat default of +1
+level and +1.0% for every class, which matched no source at all. Pact of
+Fellowship keeps uniform selection because no comparable record of its rates was
+found. If you have a better-sourced table, `--pact-draw-catalog` replaces the
+bundled one.
 
 The exact `kind=20,count=1` form spends one Item 81 Fellowship Ticket before
 Coins, for either an ordinary Fellowship draw or its `luckType=true` Fate
@@ -78,7 +94,7 @@ until your account has finished the chapter each row waits for.
 | Leviathan Descent | Chapter 10 |
 | Lucia archive | Chapter 13 |
 | Odin Descent | Chapter 20 |
-| Strikes Back families | Chapters 5 through 12, one family per chapter |
+| Strikes Back families | Chapters 5 through 18, one family per chapter |
 | Tower of Temptation 9100-1 | Chapter 3 |
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
 
@@ -101,7 +117,7 @@ bounded local Coin settlement policy; it is not a claim about the original event
 rotation or rewards.
 
 Guided setup also derives the five recovered archive families from your own
-BattleData and character catalog, and enables the eight packaged Strikes Back
+BattleData and character catalog, and enables the fourteen packaged Strikes Back
 families. Their permanent progress gates, zero-Coin clears, and first-section
 associated-character grants are local archive policy rather than recovered
 schedules, probabilities, or complete historical reward tables.

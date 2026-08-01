@@ -1,5 +1,65 @@
 # Execution Plans
 
+## 2026-07-31 secondary-source audit of the bundled local policies
+
+Objective: check every value this project labels local policy against the
+community record, correct what was demonstrably wrong, and record what remains
+unmodeled. Done for the Pact tables and documentation; the items under
+"Unresolved" below are open.
+
+Corroborated exactly, and therefore no longer merely asserted: Metal Zone
+stamina 5/8/10/13/15/18/20; the Metal Zone 6 and 7 story gates at Chapters 26
+and 30 (the widely cited 27 and 34 are the pre-4.6.0 schedule and are wrong for
+5.5.7); Metal Minion maxima 1/2/3-and-up with Λ absent below Zone 3 and capped
+at two above it; Coin Creeps 10/15/20; Pudding, Tin and Puppet 5/8/10; Crystal
+Road 7; Pact of Truth 5 Energy and 50 for ten; Pact of Fellowship 3,000 Coins;
+new characters at level 10; Fate reusing the Truth pool with Luck substituted
+for Skill Boost; and the fourteen Strikes Back identities in the order this
+bundle already declares them.
+
+Corrected: Pact duplicate gains were a flat +1 level and +1.0% Skill Boost for
+every class, which matched no source. They are now banded by class, keyed on the
+operator's own catalog `rarity`. Pact of Truth selection was uniform and is now
+weighted 4/10/15/71 across Z, SS, S and A-plus-B. Neither can be promoted to a
+recovered value: `UIPactResult.PrepareShow(chrId, addedLevels, addedSkillBoost,
+addedLuck)` shows the client rendering server-computed gains, and the only
+rate-adjacent client symbol is `RareSlotEnergy`. Documentation claiming eight
+Strikes Back families gated at Chapters 5 through 12 was wrong in both numbers;
+`event_manifest_data.py` carries fourteen at Chapters 5 through 18.
+
+Unresolved:
+
+1. Huntland composition. The community record says 5.5.0 left Metal Zones
+   reachable only as their All Hail the King versions, seven rows plus the two
+   Roads; this bundle advertises all fourteen sections. A tester previously
+   confirmed a regular row on the real client, so operator evidence and the
+   record disagree and a device check should settle it before either is
+   trusted.
+2. All Hail the King guarantees the King floor where a regular run has a 5%
+   chance of it, and the King is worth 4x a standard enemy at Zone 1 rising to
+   14x at Zone 6. Both variants currently share one `max_exp` ceiling. The
+   ceilings are loose enough that no legitimate clear should be refused, so this
+   is a fidelity gap rather than a live defect.
+3. A full base-EXP-per-difficulty table, per-enemy multipliers and the party EXP
+   split are documented and would bound a Metal clear far more tightly than the
+   present single ceiling.
+4. Unmodeled and documented: "+" Pacts granting +1-5 levels and +0.5-3.0% Skill
+   Boost; permanent removal from the pool at 100% Skill Boost; per-character
+   chapter gating inside both pools; and Daily Quests, a fourth Huntland
+   category this project neither implements nor mentions.
+5. Still unsourced, so their local-policy labels stand unchanged: the Chapter
+   3/9/18 Hunting tiers, the Metal Zone 1-5 gates, the Chapter 3003-1 Coin
+   ceiling, and the Descent permanence gates. The Descents are explained rather
+   than merely missing, since they ran as timed Arena rotations and have no
+   permanent schedule to recover.
+
+Evidence status: the community wiki is a secondary source. Everything above is
+Strongly inferred at best, except where it independently agrees with data
+already recovered from the APK. The class banding is the one place where it
+does: `Character.get_luckMax` derives its cap from the same `rarity` field, and
+across a real catalog the non-Lambda caps fall on exactly the three groups the
+duplicate table uses, 700 for rarities 2-5, 800 for 6-7 and 1000 for 8.
+
 ## 2026-07-31 restore chapter milestone tickets
 
 Objective: restore the retail Chapter 5/7 Metal Ticket and Chapter 6/8/10

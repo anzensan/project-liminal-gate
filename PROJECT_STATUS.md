@@ -23,6 +23,35 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 secondary-source audit of the bundled local policies: every value
+  labeled local policy was checked against the community record. Thirteen
+  bundled values are now independently corroborated rather than merely
+  asserted, including the Metal Zone 6 and 7 gates at Chapters 26 and 30, where
+  the commonly cited 27 and 34 are the pre-4.6.0 schedule and wrong for 5.5.7.
+  Two were demonstrably wrong and are corrected: Pact duplicate gains were a
+  flat +1 level and +1.0% Skill Boost for every class and are now banded
+  (Z +6/+12.0%, SS and S +5/+10.0%, A and below +1/+5.0%), and Pact of Truth
+  selection was uniform and is now weighted 4/10/15/71 across Z, SS, S and
+  A-plus-B. Both are keyed on the `rarity` field of the operator's own
+  APK-derived character catalog, so no roster data is bundled; without
+  `--character-catalog` the old flat behavior is preserved. Neither table can
+  be promoted to a recovered value, because
+  `UIPactResult.PrepareShow(chrId, addedLevels, addedSkillBoost, addedLuck)`
+  shows the client rendering server-computed gains and the only rate-adjacent
+  client symbol is `RareSlotEnergy`; they are labeled secondary-source local
+  policy wherever they appear. The class banding is cross-validated against
+  recovered client behavior: `Character.get_luckMax` derives its cap from the
+  same field and its non-Lambda caps fall on exactly those three groups.
+  Documentation claiming eight Strikes Back families gated at Chapters 5
+  through 12 was wrong in both numbers and now reads fourteen at Chapters 5
+  through 18, matching `event_manifest_data.py`. Five focused tests added; all
+  661 repository tests pass and compilation is clean. Open items are recorded
+  under the matching `PLANS.md` entry, the most consequential being that the
+  community record says 5.5.0 left Metal Zones reachable only as All Hail the
+  King while this bundle advertises all fourteen sections and a tester
+  previously confirmed a regular row on hardware. That conflict needs a device
+  check.
+
 - 2026-07-31 chapter-ticket milestone correction in progress: live state at
   Chapter 8-9 confirmed that the account had read the Chapter 5 Metal Ticket x2
   and Chapter 6 Companion Ticket x3 presents, held zero of each, and never

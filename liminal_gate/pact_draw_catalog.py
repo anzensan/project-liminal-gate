@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -10,6 +11,89 @@ import tomllib
 
 class PactDrawCatalogError(ValueError):
     """A user-local ordinary-Pact catalog is invalid."""
+
+
+# The final client's ``rarity`` field carries the seven displayed classes as
+# values 2--8: D, C, B, A, S, SS, Z.  The banding below is *not* read off a
+# class-name string, which the master data does not store; it is corroborated
+# by recovered client behaviour.  ``Character.get_luckMax`` derives its cap
+# from the same field, and across the user's own catalog the non-Lambda caps
+# fall exactly on these three groups: 700 for rarities 2--5, 800 for 6--7, and
+# 1000 for 8.  Two independent client-side rules therefore split the classes
+# in the same places these gains do.
+_RARITY_Z = 8
+_RARITY_SS_S = (6, 7)
+
+# Duplicate gains by class.  These are **local preservation policy from a
+# secondary source**, not recovered service values, and they cannot be made
+# recovered ones: the final client never computed them.  It renders whatever
+# the server sent, through
+# ``UIPactResult.PrepareShow(int _chrId, JsonData _addedLevels,
+# int _addedSkillBoost, int _addedLuck)``, so no table exists inside the APK
+# to cross-validate against.  The community record for the retired service is
+# consistent across both Pact pages, and it is a better archive default than
+# the flat +1 level / +1.0% this bundle previously applied to every class.
+# Skill boost is the client's tenths-of-one-percent wire unit, so 120 is 12.0%.
+_DUPLICATE_GAINS_BY_CLASS = {
+    "z": (6, 120),
+    "ss_s": (5, 100),
+    "a_and_below": (1, 50),
+}
+
+# Pact of Truth class shares, in parts per million of one pull.  Same evidence
+# status as the duplicate gains above: community record, no APK table, since
+# the retired server owned selection entirely.  The client's only rate-related
+# symbol is ``RareSlotEnergy``, the cost this bundle already sends.  Within a
+# class the share is split evenly, which is what the source describes for A/B
+# and the only defensible reading for the rest.  Fellowship keeps uniform
+# selection because no comparable record of its rates was found; inventing a
+# second table to look symmetrical would be worse than an honest uniform one.
+_TRUTH_CLASS_SHARE_PPM = {
+    "z": 40_000,
+    "ss": 100_000,
+    "s": 150_000,
+    "a_and_below": 710_000,
+}
+_WEIGHT_SCALE = 1_000_000
+
+
+def _duplicate_class(rarity: int) -> str:
+    if rarity == _RARITY_Z:
+        return "z"
+    return "ss_s" if rarity in _RARITY_SS_S else "a_and_below"
+
+
+def _truth_rate_class(rarity: int) -> str:
+    if rarity == _RARITY_Z:
+        return "z"
+    if rarity == 7:
+        return "ss"
+    return "s" if rarity == 6 else "a_and_below"
+
+
+def load_character_rarity(path: Path) -> dict[int, int]:
+    """Return ``{character_id: rarity}`` from the user's own character catalog.
+
+    The catalog is derived from the operator's matching APK by
+    :mod:`liminal_gate.character_catalog_importer`, so this reads recovered
+    master data rather than anything bundled here.
+    """
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise PactDrawCatalogError("could not read the local character catalog JSON") from error
+    if not isinstance(document, dict) or document.get("schema_version") != 1 or document.get("provenance") != "user-derived" or not isinstance(document.get("characters"), list):
+        raise PactDrawCatalogError("local character catalog has an invalid schema or provenance")
+    rarities: dict[int, int] = {}
+    for record in document["characters"]:
+        if not isinstance(record, dict) or type(record.get("character_id")) is not int or type(record.get("rarity")) is not int:
+            raise PactDrawCatalogError("each character record requires integer character_id and rarity")
+        if record["character_id"] <= 0 or not 2 <= record["rarity"] <= 8:
+            raise PactDrawCatalogError("character IDs must be positive and rarity must be 2 through 8")
+        rarities[record["character_id"]] = record["rarity"]
+    if not rarities:
+        raise PactDrawCatalogError("local character catalog contains no characters")
+    return rarities
 
 
 @dataclass(frozen=True)
@@ -69,9 +153,58 @@ _TRUTH_IDS = (
 )
 
 
-def build_bundled_pact_policy() -> BundledPactPolicy:
-    """Return the guided-path local Fellowship/Truth Pact policy."""
-    draw = lambda character_id: PactDraw(character_id, 1, 1, 10)
+def _class_weights(character_ids: tuple[int, ...], rarities: Mapping[int, int]) -> dict[int, int]:
+    """Split each class's share evenly across its own members.
+
+    A pool member missing from the local catalog cannot be classified, so it
+    keeps the mean weight of the pool rather than being dropped or silently
+    treated as the commonest class.
+    """
+    members: dict[str, list[int]] = {}
+    for character_id in character_ids:
+        rarity = rarities.get(character_id)
+        if rarity is not None:
+            members.setdefault(_truth_rate_class(rarity), []).append(character_id)
+    weights: dict[int, int] = {}
+    for name, ids in members.items():
+        share = _TRUTH_CLASS_SHARE_PPM[name] * _WEIGHT_SCALE // len(ids)
+        for character_id in ids:
+            weights[character_id] = max(share, 1)
+    unclassified = [character_id for character_id in character_ids if character_id not in weights]
+    if unclassified:
+        mean = sum(weights.values()) // len(weights) if weights else 1
+        for character_id in unclassified:
+            weights[character_id] = max(mean, 1)
+    return weights
+
+
+def build_bundled_pact_policy(character_rarity: Mapping[int, int] | None = None) -> BundledPactPolicy:
+    """Return the guided-path local Fellowship/Truth Pact policy.
+
+    Without ``character_rarity`` every entry keeps a uniform weight and the
+    same flat duplicate gain, which is what this bundle can justify with no
+    master data in hand.  Given the operator's own catalog, duplicate gains
+    follow the recovered rarity bands and Truth selection follows the
+    documented class shares; both are labeled local policy above.
+    """
+    if character_rarity is None:
+        draw = lambda character_id: PactDraw(character_id, 1, 1, 10)
+        fellowship_draws = tuple(draw(character_id) for character_id in _FELLOWSHIP_IDS)
+        truth_draws = tuple(draw(character_id) for character_id in _TRUTH_IDS)
+        return _pact_policy(fellowship_draws, truth_draws)
+
+    def duplicate(character_id: int) -> tuple[int, int]:
+        rarity = character_rarity.get(character_id)
+        # An unclassifiable member keeps the conservative lowest-class gain.
+        return _DUPLICATE_GAINS_BY_CLASS["a_and_below" if rarity is None else _duplicate_class(rarity)]
+
+    truth_weights = _class_weights(_TRUTH_IDS, character_rarity)
+    fellowship_draws = tuple(PactDraw(character_id, 1, *duplicate(character_id)) for character_id in _FELLOWSHIP_IDS)
+    truth_draws = tuple(PactDraw(character_id, truth_weights[character_id], *duplicate(character_id)) for character_id in _TRUTH_IDS)
+    return _pact_policy(fellowship_draws, truth_draws)
+
+
+def _pact_policy(fellowship_draws: tuple[PactDraw, ...], truth_draws: tuple[PactDraw, ...]) -> BundledPactPolicy:
     return BundledPactPolicy(
         coin_cost=3000,
         # The service charged 5 Energy for a single Truth pull.  An earlier
@@ -89,8 +222,8 @@ def build_bundled_pact_policy() -> BundledPactPolicy:
         # absolute 100.0 ceiling and the recovered +5.0 duplicate increment.
         max_luck=1000,
         fate_duplicate_luck=50,
-        fellowship_draws=tuple(draw(character_id) for character_id in _FELLOWSHIP_IDS),
-        truth_draws=tuple(draw(character_id) for character_id in _TRUTH_IDS),
+        fellowship_draws=fellowship_draws,
+        truth_draws=truth_draws,
     )
 
 
