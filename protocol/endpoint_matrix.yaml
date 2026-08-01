@@ -49,13 +49,13 @@ capabilities:
   - family: local_events
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006, Tower 9100-9102, and solo Eidolon 4100-4111; bundled Strikes Back Chapters 8000-8007 and 8012-8017 remain authoritative while 8008-8011 and 8018 stay unsupported; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while other event clears remain pending"
+    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006, the labeled solo Tower adapter for 9010-9013, and solo Eidolon 4100-4111; Donation 9100-9102 is excluded; bundled Strikes Back Chapters 8000-8007 and 8012-8017 remain authoritative while 8008-8011 and 8018 stay unsupported; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while other event clears remain pending"
     transport_tests: true
     restart_tests: true
   - family: tower_solo_archive
     routes: [get_server_status, login, start_quest, clear_quest]
     status: local_policy
-    note: "all 45 BattleData-backed floors in 9100-9102 are projected after Chapter 3 as permanent local policy; final-client static evidence supports the dedicated selector and range; original-client navigation and clear are pending"
+    note: "all 12 BattleData-backed stages in Tower Chapters 9010-9013 are projected after Chapter 3 as a permanent solo-adapter policy; shared HP and staged reward state are not recreated; Donation 9100-9102 remains disabled; original-client navigation and clear are pending"
     transport_tests: true
     restart_tests: true
   - family: eidolon_solo_archive

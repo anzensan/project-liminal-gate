@@ -503,7 +503,7 @@ class EidolonRuntimeTest(unittest.TestCase):
 
 
 class TowerRuntimeTest(unittest.TestCase):
-    """The first Tower floor uses the solo event transport and durable state."""
+    """The first Tower stage uses the solo event transport and durable state."""
 
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -516,10 +516,10 @@ class TowerRuntimeTest(unittest.TestCase):
         self.catalog = EventCatalog((
             EventStage(
                 "tower_of_temptation",
-                "sp_ch_9100",
-                9100,
+                "sp_ch_9010",
+                9010,
                 1,
-                5,
+                15,
                 0,
                 0,
                 (),
@@ -628,7 +628,7 @@ class TowerRuntimeTest(unittest.TestCase):
                 "monsters": [],
                 "summons": [],
                 "luckynum": 0,
-                "chapter": 9100,
+                "chapter": 9010,
                 "unableluckdrop": False,
                 "boostup": [0] * 6,
             }),
@@ -652,7 +652,7 @@ class TowerRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         self.assertEqual([], server_status["constants"]["towerQuestList"])
-        start = b"stamina=5&coins=0&chapter=9100&section=1&lastUpdate=1"
+        start = b"stamina=15&coins=0&chapter=9010&section=1&lastUpdate=1"
         status, refused = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=locked",
             start,
@@ -666,14 +666,15 @@ class TowerRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         constants = server_status["constants"]
-        self.assertEqual(["9100-1"], constants["towerQuestList"])
+        self.assertEqual(["9010-1"], constants["towerQuestList"])
         self.assertEqual(["3003-1"], constants["specialQuestList"])
 
         status, login = self.get(
             f"/gd/login?otk={self.token}&uuid={self.account_id}&requestID=login"
         )
         self.assertEqual(200, status)
-        self.assertIn("sp_ch_9100", login["eventFlags"])
+        self.assertIn("sp_ch_9010", login["eventFlags"])
+        self.assertNotIn("sp_ch_9100", login["eventFlags"])
 
         status, multiplayer = self.get(
             f"/gd/multiplay_enable?otk={self.token}&requestID=multiplayer"
@@ -687,7 +688,7 @@ class TowerRuntimeTest(unittest.TestCase):
             },
         )
 
-        start = b"stamina=5&coins=0&chapter=9100&section=1&lastUpdate=1"
+        start = b"stamina=15&coins=0&chapter=9010&section=1&lastUpdate=1"
         status, started = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=start",
             start,
@@ -697,7 +698,7 @@ class TowerRuntimeTest(unittest.TestCase):
         self.assertGreater(refill_start, 0.0)
         self.assertEqual("generic_story_active", self.account()["tutorial_phase"])
 
-        collision = b"stamina=6&coins=0&chapter=9100&section=1&lastUpdate=1"
+        collision = b"stamina=16&coins=0&chapter=9010&section=1&lastUpdate=1"
         status, refused = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=start",
             collision,
@@ -712,10 +713,17 @@ class TowerRuntimeTest(unittest.TestCase):
         self.assertEqual((200, started), (status, retried))
         self.assertEqual(refill_start, self.account()["userdata"]["refillStartTime"])
 
-        unknown = b"stamina=5&coins=0&chapter=9100&section=2&lastUpdate=1"
+        unknown = b"stamina=15&coins=0&chapter=9010&section=2&lastUpdate=1"
         status, refused = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=unknown",
             unknown,
+        )
+        self.assertEqual((501, "unsupported_start_quest"), (status, refused["error"]))
+
+        donation = b"stamina=5&coins=0&chapter=9100&section=1&lastUpdate=1"
+        status, refused = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=donation",
+            donation,
         )
         self.assertEqual((501, "unsupported_start_quest"), (status, refused["error"]))
 

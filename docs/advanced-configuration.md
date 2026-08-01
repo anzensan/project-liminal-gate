@@ -456,7 +456,7 @@ python3 -m liminal_gate.event_catalog_generator \
 ```
 
 The generator contributes the recovered Archive/Strikes Back identities, all
-45 Tower floors in Chapters 9100--9102, and all 28 solo Eidolon stages in
+12 Tower solo-adapter stages in Chapters 9010--9013, and all 28 solo Eidolon stages in
 Chapters 4100--4111. It takes section economics from your BattleData and
 validates event character grants against your character catalog, omitting a
 grant with a note when its character is missing. The eight allowed first-tier
@@ -474,7 +474,10 @@ an event clear credits no fixed Coins, because BattleData records a start cost
 for these sections but no clear reward -- the same reading that leaves Dragon
 and Machine Road settling at zero. Tower and Eidolon quest availability after
 Chapter 3 is permanent local archive policy, not a recovered historical
-rotation. Original-client acceptance remains a separate validation boundary.
+rotation. Tower exposes only the shipped solo battles; shared HP, staged
+achievements, and rewards are not recreated, and Donation Chapters 9100--9102
+remain disabled. Original-client acceptance remains a separate validation
+boundary.
 
 ### Built-in policies
 

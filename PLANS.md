@@ -1,17 +1,25 @@
 # Execution Plans
 
-## 2026-07-31 complete solo Tower and Eidolon archive
+## 2026-07-31 correct Tower identity and complete the solo adapter
 
-Objective: make every final-client Tower floor and converted solo Eidolon quest
-available through its dedicated selector and durable result lifecycle without
-enabling Arena VS, Co-op, rankings, or retired Eidolon battle/enhancement UI.
+Objective: expose the actual final-client Tower chapters through a bounded solo
+adapter, remove the accidentally exposed Donation chapters, and retain the
+converted solo Eidolon lifecycle without enabling Arena VS, Co-op, rankings,
+or retired Eidolon battle/enhancement UI.
 
 Evidence boundary:
 
+- `ChapterInterface::.cctor` and its predicates identify 9010--9013 as Tower
+  of Temptation and 9100--9102 as Donation. The earlier public mapping of the
+  45 Donation sections to Tower was wrong and must not remain deployed.
 - Final-client static output contains `towerQuestList`, `eidolonQuestList`,
-  selector modes 5 and 4, Tower Chapters 9100--9102, and Eidolon Chapters
-  4100--4111. APK-matched BattleData contains 45 Tower floors and 28 Eidolon
+  selector modes 5 and 4, Tower Chapters 9010--9013, and Eidolon Chapters
+  4100--4111. APK-matched BattleData contains 12 Tower stages and 28 Eidolon
   stages with their entry economics.
+- Tower predicate call sites are confined to selector/title presentation;
+  completed `ChapterBase` stages call ordinary `AppServerUtil.ClearQuest`.
+  The original shared HP, staged achievement, and reward state is unavailable,
+  so this is explicitly a solo adapter rather than historical emulation.
 - `ClearQuest` serializes the pre-result `summonList` and reports drops in
   `battle_result.summons`; its callback does not consume a returned Summon
   list. `ShowSummonGet` calls `UserData.AddSummon`, whose
@@ -28,7 +36,8 @@ Evidence boundary:
 Required proof:
 
 1. Generate every BattleData-backed Tower and Eidolon stage and project them
-   through their dedicated status lists and exact login flags.
+   through their dedicated status lists and exact login flags; generate no
+   Donation row.
 2. Accept only no Eidolon drop or one stage-allowed, previously unowned ID;
    durably store raw value `1` without returning an invented response field.
 3. Refuse unlisted, duplicate, already-owned, or malformed reports without
@@ -39,14 +48,11 @@ Required proof:
 
 Current result:
 
-- Local generation produces 148 total rows across 34 event families: 45 Tower
-  floors, 28 Eidolon stages, and the existing Archive/Counter Descent rows.
-  The eight recovered Eidolon stage/ID pairs are present exactly once.
-- Thirty-four focused tests and all 648 repository tests passed. Commit
-  `8d18c88` is deployed on the Beelink with a regenerated 148-stage catalog;
-  live Chapter 8 status projects all 45 Tower and 28 Eidolon rows, Arena VS is
-  still disabled, loopback returns HTTP 200, and the save hash is unchanged.
-  Original-client Tower/Eidolon acceptance remains open.
+- Manifest, classifier, runtime tests, and documentation now use the four
+  actual Tower chapters and explicitly exclude all three Donation chapters.
+- Focused validation passes, and all 648 warning-strict repository tests pass
+  in 127.822 seconds. Corrective commit/push, Beelink catalog regeneration,
+  live-state proof, and original-client Tower acceptance remain in progress.
 
 ## 2026-07-31 late non-collaboration Counter Descent expansion
 
@@ -192,7 +198,11 @@ Outcome:
 - No APK was built or installed. Original-client Bahl acceptance and its later
   packed level/EXP projection remain the next evidence boundary.
 
-## 2026-07-30 Tower of Temptation 9100-1 vertical slice
+## RETRACTED 2026-07-31 — 2026-07-30 Tower 9100-1 vertical slice
+
+This plan used an incorrect chapter mapping. Chapters 9100--9102 are Donation,
+not Tower; the deployed rows were removed by the corrective plan above. The
+text is retained only as an audit record and is not a current capability claim.
 
 Objective: make the first recovered Tower of Temptation floor visible and
 settleable through the final client's solo Tower selector without enabling

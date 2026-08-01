@@ -23,11 +23,15 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
-- 2026-07-31 complete solo Tower/Eidolon archive implementation: guided setup
-  now derives all 45 Tower floors in Chapters 9100--9102 and all 28 converted
-  solo Eidolon stages in Chapters 4100--4111 from the matching user-local
-  BattleData. The dedicated selector lists are always present and open after a
-  permanent Chapter 3 local gate; Arena VS and multiplayer remain disabled.
+- 2026-07-31 corrected Tower identity and solo-adapter implementation:
+  authoritative final-client range predicates identify Chapters 9010--9013 as
+  Tower of Temptation and 9100--9102 as Donation. The earlier public mapping
+  was wrong. Guided setup now derives all 12 actual Tower stages and all 28
+  converted solo Eidolon stages from matching user-local BattleData, and it
+  explicitly excludes all 45 Donation stages. The dedicated selector lists
+  open after a permanent Chapter 3 local gate; Arena VS and multiplayer remain
+  disabled. Tower is labeled a solo adapter because shared HP, staged
+  achievement, and reward state are unrecovered.
   Final-client native analysis establishes that ClearQuest sends the existing
   16-slot `summonList`, reports drops separately, and lets the result screen
   call `AddSummon`; its constructor establishes raw value `1`. Chapter-program
@@ -35,18 +39,14 @@ machine-readable/current capability boundary.
   collectible each. The server accepts no drop or that one unowned ID, commits
   it atomically, omits an unused response `summonList`, and refuses unlisted,
   duplicate, or already-owned reports without mutation. Exact replay survives
-  restart. A real catalog generated 148 stages across 34 families and retained
+  restart. A real catalog generated 115 stages across 35 families and retained
   the BattleData SHA-256
   `be6fee15b28fd192d12c2ee5c8ac4cce30f25addda3135f77deec3dc65596767`.
-  Thirty-four focused tests and all 648 repository tests passed in 127.844
-  seconds. Commit `8d18c88` is deployed on the Beelink with event-catalog
-  SHA-256
-  `1eb4a565f5fdf80d460dd87585a77f68f8043567f8a7f1ffb0212c890261d26b`.
-  The service restarted under PID 236574 and returned loopback HTTP 200. Its
-  live Chapter 8 status contains 45 Tower and 28 Eidolon rows, while
-  `multiplay_enable` remains false. The durable save stayed byte-identical at
-  SHA-256
-  `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`.
+  Focused generator/runtime validation confirms the exact 12 Tower rows, zero
+  Donation rows, all 28 Eidolon rows, ordinary durable Tower entry/clear/replay,
+  and the disabled multiplayer response. All 648 warning-strict repository
+  tests passed in 127.822 seconds; compilation, structured-file validation, and
+  diff checks passed. Corrective Beelink deployment is in progress.
   Original-client Tower/Eidolon acceptance is still pending.
 - 2026-07-31 late non-collaboration Counter Descent expansion: the bundled
   solo policy now includes Chapters 8012--8017 in addition to 8000--8007.
@@ -80,14 +80,14 @@ machine-readable/current capability boundary.
   warning-strict repository tests passed; compilation, structured-file, and
   diff checks passed. Other Archive families and Strikes Back remain separate
   client-clear boundaries.
-- 2026-07-31 live Archive/Tower catalog deployment: regenerated the local
+- Superseded 2026-07-31 live Archive/Tower catalog deployment: regenerated the local
   event catalog from the retained APK-matched BattleData projection and
   character catalog, producing 58 stages across 14 event families. The
   character catalog hash matches the authority already recorded by the live
   story-outcome catalog. Beelink commit `05d2980` now loads both generated
   files; a real Chapter 8 `get_server_status` response advertised Bahamut,
   Jade Dragon, Money Money Time, three unlocked Strikes Back families, and
-  Tower 9100-1. The service restarted under its existing systemd unit, the
+  what was then mislabeled Tower 9100-1. The service restarted under its existing systemd unit, the
   account state validated, and loopback HTTP returned 200. Arena VS remains
   disabled and the optional converted Eidolon quest lifecycle remains
   unsupported.
@@ -103,7 +103,7 @@ machine-readable/current capability boundary.
   original-client Bahl run remains pending. Thirty-two focused tests and all
   641 warning-strict repository tests passed; compilation, structured-file,
   and diff checks passed.
-- 2026-07-30 Tower of Temptation 9100-1 vertical slice: guided setup now
+- Retracted 2026-07-31 — 2026-07-30 Tower 9100-1 vertical slice: guided setup
   derives one five-stamina, zero-Coin Tower row from the tester's matching
   BattleData and advertises it through `towerQuestList` after Chapter 3. The
   final client statically contains that dedicated list, Tower selector mode,
@@ -114,7 +114,9 @@ machine-readable/current capability boundary.
   retry/refusal, rejected-clear stability, successful clear, restart replay,
   unchanged story progress, and the unchanged disabled Arena VS response.
   The permanent Chapter 3 gate and zero clear Coins are local policy. The
-  warning-strict full suite passed all 638 tests in 120.460 seconds;
+  warning-strict full suite passed all 638 tests in 120.460 seconds. This
+  result is retained as an audit record only: 9100--9102 are Donation, not
+  Tower, and the corrective implementation removes them;
   compilation, profile JSON, endpoint YAML, and diff checks passed.
 - 2026-07-30 Il2CppDumper exit-code defect: a Windows tester's complete dump was
   rejected because Il2CppDumper v6.7.46 ends even a successful run with a
@@ -357,8 +359,9 @@ machine-readable/current capability boundary.
   permanent unlock remains explicit local preservation policy, not a claim
   about the retired event rotation or complete reward rule. Generated Archive
   rows merge with this default; an explicit override replaces only those
-  Archive rows. This was the first Tower 9100-1 slice; all 45 Tower floors and
-  the solo Eidolon archive were completed in the later 2026-07-31 work above.
+  Archive rows. The supposed Tower 9100-1 slice was later retracted; the actual
+  12-stage Tower 9010--9013 solo adapter and solo Eidolon archive are described
+  in the later 2026-07-31 work above.
   Arena VS remains unsupported.
 - 2026-07-28 story Companion drops settle instead of being silently discarded,
   and the outcome catalog stops refusing what it merely cannot evidence. A live
@@ -569,7 +572,7 @@ machine-readable/current capability boundary.
   separately validated APK patch.
 - Canonical original-client certification beyond Chapter 2-1.
 - Exact ordinary-story reward/drop authority and scripted-stage exceptions.
-- Original-client acceptance of Tower Chapters 9100--9102 and converted solo
+- Original-client acceptance of the Tower Chapters 9010--9013 solo adapter and converted solo
   Eidolon Chapters 4100--4111, including before/after collectible state for one
   successful Eidolon drop. Their local selector and durable result lifecycles
   are implemented; Eidolon battle summoning and enhancement are not gaps

@@ -89,7 +89,7 @@ until your account has finished the chapter each row waits for:
 | Lucia archive | Chapter 13 |
 | Odin Descent | Chapter 20 |
 | Strikes Back families | Chapters 5 through 12, one family per chapter |
-| Tower of Temptation — all 45 floors in 9100--9102 | Chapter 3 |
+| Tower of Temptation solo adapter — all 12 stages in 9010--9013 | Chapter 3 |
 | Solo Eidolon Quests — Chapters 4100--4111 | Chapter 3 |
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
 
@@ -109,10 +109,13 @@ non-collaboration Strikes Back families. Little Noah 8008--8011 and Hime Rush
 enabled families' permanent progress gates, zero-Coin clears, and
 first-section associated-character grants are local archive policy rather than
 recovered schedules, probabilities, or complete historical reward tables.
-Tower of Temptation is a separate solo selector. Guided setup derives all 45
-floors in Chapters 9100--9102 from your BattleData and advertises them after
-Chapter 3. Their permanent gate and zero fixed clear-Coin increment are local
-policy; original-client navigation and clear still need a device observation.
+Tower of Temptation is a separate selector. Guided setup derives all 12 shipped
+battles in Chapters 9010--9013 from your BattleData and advertises them after
+Chapter 3 as an explicit solo preservation adapter. The original shared HP,
+staged progression, and achievement/reward state are not recovered. Donation
+Chapters 9100--9102 remain disabled. Permanent availability and a zero fixed
+clear-Coin increment are local policy; original-client navigation and clear
+still need a device observation.
 Arena VS, rankings, and multiplayer remain disabled rather than presenting a
 menu that cannot complete.
 
@@ -796,7 +799,7 @@ Everything below stays under the ignored `user-data/` directory:
 | `derived/native-encounters.json` | Maps the compiled Chapter 8–42 battle programs to the enemies each stage can spawn. Producing it requires the AArch64 disassembler. | No. It is an evidence intermediate used to compose `story-outcomes.json`. |
 | `derived/scenario-encounters.json` | Maps the MoonSharp scenario programs used by Chapters 2–7, which have no equivalent compiled battle program. | No. It is another input to `story-outcomes.json`. |
 | `story-outcomes.json` | Combines the encounter maps, character catalog, master data, and their hashes into bounded per-stage outcome rules. Without it, the server cannot safely persist a story Companion rolled by the client. | **Yes.** The dedicated server loads this final catalog. |
-| `event-catalog.json` | Combines the recovered Archive, all 45 Tower floors, and all 28 solo Eidolon stages with section economics from your BattleData, bounded Eidolon acquisition identities, and character associations validated against your character catalog. | **Yes.** It enables the five Archive families, Tower, and solo Eidolon quests; Strikes Back remains bundled. |
+| `event-catalog.json` | Combines the recovered Archive, all 12 Tower solo-adapter stages, and all 28 solo Eidolon stages with section economics from your BattleData, bounded Eidolon acquisition identities, and character associations validated against your character catalog. | **Yes.** It enables the five Archive families, Tower solo adapter, and solo Eidolon quests; Strikes Back remains bundled. |
 | `companion-equipment.json` | Projects character ancestry, per-job species, and Companion character/species restrictions from the matching APK. It contains no names, skills, descriptions, or assets. `RequiredLevel` is deliberately absent because the final client uses it to activate an equipped Companion's effects, not to prohibit equipping it. | **Yes.** The server needs it to authorize a newly equipped or retargeted Companion; without it, those new links are refused. |
 | `resources.json` | Maps every approved resource URL to a local file and hash. | **Yes.** `server_setup` rebuilds or refreshes it from the matching resource tree when the server starts. |
 | `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
@@ -889,7 +892,7 @@ For a non-interactive repeat of the standard setup, add `--no-configure`.
 
 ### Optional: override the generated event catalog
 
-The five recovered Archive Special Quest families, all 45 Tower floors, all 28
+The five recovered Archive Special Quest families, all 12 Tower solo-adapter stages, all 28
 solo Eidolon stages, and the bundled Strikes Back families are enabled by
 standard guided setup. If you have
 independently prepared a stricter reviewed catalog, add `--event-catalog` to

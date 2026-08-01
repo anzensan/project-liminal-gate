@@ -80,15 +80,13 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual((148,), by_section[1])
         self.assertEqual((), by_section[2])
 
-    def test_tower_projects_every_imported_floor_in_all_three_chapters(self) -> None:
-        battledata = _battledata(9100, 9101, 9102)
-        battledata["stages"][0]["stamina"] = 5
-        battledata["stages"][1]["stamina"] = 10
+    def test_tower_projects_every_imported_stage_and_excludes_donation(self) -> None:
+        battledata = _battledata(9010, 9011, 9012, 9013, 9100, 9101, 9102)
         _, _, loaded = self._generate(battledata, ())
         self.assertEqual(
             [
                 (chapter, section)
-                for chapter in (9100, 9101, 9102)
+                for chapter in (9010, 9011, 9012, 9013)
                 for section in (1, 2)
             ],
             sorted(loaded.by_identity()),
@@ -99,15 +97,18 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual(
             [
                 f"{chapter}-{section}"
-                for chapter in (9100, 9101, 9102)
+                for chapter in (9010, 9011, 9012, 9013)
                 for section in (1, 2)
             ],
             loaded.client_lists(after)["towerQuestList"],
         )
-        stage = loaded.by_identity()[(9100, 1)]
-        self.assertEqual(5, stage.stamina)
+        stage = loaded.by_identity()[(9010, 1)]
+        self.assertEqual(15, stage.stamina)
         self.assertEqual("tower", stage.selector)
         self.assertEqual(TOWER_MANIFEST_ROWS[0][3], stage.unlock_after_chapter)
+        self.assertFalse(
+            {9100, 9101, 9102} & {stage.chapter for stage in loaded.stages}
+        )
 
     def test_eidolon_stages_and_recovered_drop_ceiling_are_projected(self) -> None:
         _, _, loaded = self._generate(_battledata(*range(4100, 4112)), ())

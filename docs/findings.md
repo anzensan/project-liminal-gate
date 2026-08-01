@@ -219,22 +219,23 @@ Private inputs, captures, account state, and original assets remain excluded.
   Its permanent availability is not recovered service behavior; the 1,800
   Coin ceiling is bounded by the Issue 25 final-client result, not a recovered
   historical distribution. Arena VS remains unsupported.
-- **Confirmed final-client static contract, strongly inferred chapter
-  mapping:** `ServerConstants.towerQuestList`,
-  `UISpecialSelect.Mode.TowerQuest`, and
-  `ChapterInterface.IsTowerOfTemptationQuest` establish a dedicated solo
-  Tower selector and chapter range. The same client contains Chapter 9100
-  battle code and fifteen sections for each of Chapters 9100--9102. Matching
-  BattleData records 9100-1 as five battles, five stamina, and zero entry
-  Coins. Together these strongly support, but do not dynamically confirm, the
-  9100 Tower mapping.
-- **Local policy with real-HTTP restart proof:** guided setup advertises all 45
-  BattleData-backed floors in Chapters 9100--9102 through `towerQuestList`
-  after Chapter 3, supplies their chapter flags, and settles them through the
-  normal durable event transaction without advancing story progress.
-  Permanent availability and zero fixed clear Coins are preservation policy.
-  Original-client navigation and clear remain pending. Arena VS remains
-  disabled throughout.
+- **Confirmed final-client static contract:** `ChapterInterface::.cctor` and
+  its predicates identify Chapters 9010--9013 as Tower of Temptation and
+  9100--9102 as Donation. `ServerConstants.towerQuestList` and
+  `UISpecialSelect.Mode.TowerQuest` establish the dedicated selector. Direct
+  ARM64 callers of the Tower predicate are selector/title presentation, while
+  completed `ChapterBase` stages call ordinary `AppServerUtil.ClearQuest`.
+  Matching BattleData contains three one-battle, 15-stamina, zero-entry-Coin
+  stages in each Tower chapter. Donation has separate aggregate-state UI and
+  remains disabled.
+- **Explicit solo-adapter policy with real-HTTP restart proof:** guided setup
+  advertises all 12 BattleData-backed stages in Chapters 9010--9013 through
+  `towerQuestList` after Chapter 3, supplies their chapter flags, and settles
+  them through the normal durable event transaction without advancing story
+  progress. This does not recreate the historical shared HP, staged
+  achievements, or reward state. Permanent availability and zero fixed clear
+  Coins are preservation policy. Original-client navigation and clear remain
+  pending. Arena VS remains disabled throughout.
 - **Confirmed final-client Eidolon result contract with bounded local
   settlement:** `ClearQuest` serializes the existing `summonList` before the
   result UI runs; `battle_result.summons` carries the dropped IDs; and the
@@ -270,8 +271,9 @@ Private inputs, captures, account state, and original assets remain excluded.
   sections at 15/25/40/40 stamina, 2004 has one at 15, 2006 has four at
   30/35/40/40, every Chapter 8000--8007 family has five at
   5/10/15/15/15, and every Chapter 8012--8017 family has three at 5/10/15.
-  Chapters 9100--9102 each contain fifteen five-battle
-  sections; 9100-1 costs five stamina. All record zero entry Coins. This
+  Chapters 9010--9013 each contain three one-battle, 15-stamina sections and
+  zero entry Coins. Chapters 9100--9102 instead contain the 45 Donation
+  sections and are not generated. This
   confirms local section economics, not service-authored clear rewards.
 - **Confirmed by supplied final-APK analysis:** BattleData identifies Chapter
   3004-1 as *Crystal Road* (`クリスタルロード`): three battles and seven stamina.

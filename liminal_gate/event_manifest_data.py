@@ -44,13 +44,15 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
 
 # event_id, flag, chapter, unlock_after_chapter
 #
-# The final client contains dedicated Tower selector/range handling and all
-# three 15-floor chapter programs. Chapter 3 is a permanent local archive gate,
-# not a recovered Tower schedule.
+# The final client defines Chapters 9010--9013 as Tower of Temptation and
+# Chapters 9100--9102 as the separate Donation event. Matching BattleData has
+# three stages in each Tower chapter. Chapter 3 is a permanent local archive
+# gate, not a recovered Tower schedule or shared-progression model.
 TOWER_MANIFEST_ROWS: tuple[tuple[str, str, int, int], ...] = (
-    ("tower_of_temptation_1", "sp_ch_9100", 9100, 3),
-    ("tower_of_temptation_2", "sp_ch_9101", 9101, 3),
-    ("tower_of_temptation_3", "sp_ch_9102", 9102, 3),
+    ("tower_of_temptation_1", "sp_ch_9010", 9010, 3),
+    ("tower_of_temptation_2", "sp_ch_9011", 9011, 3),
+    ("tower_of_temptation_3", "sp_ch_9012", 9012, 3),
+    ("tower_of_temptation_4", "sp_ch_9013", 9013, 3),
 )
 
 # event_id, flag, chapter, unlock_after_chapter, (section, summon_id) drops

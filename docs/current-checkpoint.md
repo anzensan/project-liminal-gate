@@ -48,19 +48,23 @@ focused bootstrap/profile tests and all 641 warning-strict repository tests
 passed; compilation, structured-file, and diff checks passed.
 
 Latest Tower/Eidolon validation: final-client static output contains the
-dedicated Tower and Eidolon lists, selector modes, Chapter 9100--9102 and
-4100--4111 programs, and the distinct result-screen Summon acquisition path.
-Guided setup now projects all 45 Tower floors and all 28 converted solo
-Eidolon stages from matching user-local BattleData behind a permanent Chapter
-3 local gate. Eight first-tier stages carry a single statically recovered
+dedicated Tower and Eidolon lists, selector modes, Tower Chapters 9010--9013,
+Donation Chapters 9100--9102, converted solo Eidolon Chapters 4100--4111, and
+the distinct result-screen Summon acquisition path. Guided setup projects all
+12 Tower solo-adapter stages and all 28 converted solo Eidolon stages from
+matching user-local BattleData behind a permanent Chapter 3 local gate. It
+does not expose Donation. Eight first-tier Eidolon stages carry one statically recovered
 Summon ceiling; the client performs the roll, while the server accepts no drop
 or that one previously unowned ID and durably records raw value `1`. Real-HTTP
 tests cover visibility, entry, accepted clear, exact restart replay, and the
 absence of a synthetic response `summonList`; focused mutation tests refuse an
 unlisted, duplicate, or already-owned report without changing state.
 Original-client Tower/Eidolon selector, battle, and result acceptance remain
-open. Thirty-four focused tests and all 648 warning-strict repository tests
-passed in 127.844 seconds.
+open. The earlier 9100--9102 Tower claim was retracted after the authoritative
+range audit identified those chapters as Donation. The corrected generator
+emits 115 rows across 35 families: exactly 12 Tower rows, no Donation rows, and
+all 28 Eidolon rows. Focused validation passed 106 tests, and all 648
+warning-strict repository tests passed in 127.822 seconds.
 
 Latest clean-onboarding validation: 585 warning-strict tests passed in 112.308
 seconds. A clean public clone with no prior derived output generated IL2CPP and
@@ -122,8 +126,11 @@ the deployed event and character files have SHA-256
 After a clean launcher restart, the real `/gd/get_server_status` transport for
 the active Chapter 8 account returned Bahamut 2000-1 through 2000-4, Jade
 Dragon 2004-1, Money Money Time 3003-1, Strikes Back 8000-1 through 8002-1,
-and every Tower and Eidolon row: 45 identities from 9100-1 through 9102-15 and
-28 identities from 4100-1 through 4111-1. `multiplay_enable` still returned
+and every then-generated Tower and Eidolon row: 45 identities from 9100-1
+through 9102-15 and 28 identities from 4100-1 through 4111-1. That Tower list
+was a deployment error: those 45 identities are Donation and have since been
+removed in favor of the 12 actual Tower identities in 9010--9013.
+`multiplay_enable` still returned
 `enable=false` and `enablemain=false`. The durable account state remained
 byte-identical at SHA-256
 `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`,

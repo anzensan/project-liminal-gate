@@ -278,7 +278,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                     "descent_hunting"
                     if _counter_descent_stamina(chapter) is not None
                     else "tower"
-                    if 9100 <= chapter <= 9102
+                    if 9010 <= chapter <= 9013
                     else "eidolon"
                     if 4100 <= chapter <= 4111
                     else "special"
