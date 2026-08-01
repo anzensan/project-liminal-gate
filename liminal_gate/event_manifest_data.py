@@ -24,8 +24,20 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
     ("bahamut_descent", "sp_ch_2000", 2000, 2, (148,)),
     ("leviathan_descent", "sp_ch_2001", 2001, 10, (144,)),
     ("odin_descent", "sp_ch_2002", 2002, 20, (151,)),
+    ("the_last_story_archive", "sp_ch_2003", 2003, 20, (596, 597)),
     ("jade_dragon_hunt", "sp_ch_2004", 2004, 4, (673,)),
+    ("mobius_final_fantasy_archive", "sp_ch_2005", 2005, 13, (736,)),
     ("lucia_archive", "sp_ch_2006", 2006, 13, ()),
+    ("yamamoto_archive", "sp_ch_2007", 2007, 10, ()),
+    ("captive_golem_archive", "sp_ch_2008", 2008, 15, (805,)),
+    ("dragon_king_one_archive", "sp_ch_2009", 2009, 30, ()),
+    ("dragon_king_two_archive", "sp_ch_2010", 2010, 31, ()),
+    ("dragon_king_three_archive", "sp_ch_2011", 2011, 32, ()),
+    ("vengeful_vision_archive", "sp_ch_2014", 2014, 10, ()),
+    ("final_fantasy_xv_archive", "sp_ch_2015", 2015, 20, (1080,)),
+    ("sun_moon_kings_archive", "sp_ch_2016", 2016, 30, ()),
+    ("mechtula_story_archive", "sp_ch_2017", 2017, 20, ()),
+    ("encounter_with_sarah_archive", "sp_ch_2018", 2018, 20, (1288,)),
     ("spinetrich_kino_strikes_back", "sp_ch_8000", 8000, 5, ()),
     ("kraken_kino_strikes_back", "sp_ch_8001", 8001, 6, ()),
     ("slugosaur_kino_strikes_back", "sp_ch_8002", 8002, 7, ()),
@@ -41,6 +53,24 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
     ("bahamut_kino_strikes_back", "sp_ch_8016", 8016, 17, ()),
     ("leviathan_kino_strikes_back", "sp_ch_8017", 8017, 18, ()),
 )
+
+# Mode 0 of UISpecialSelect uses the nonempty server ``specialQuestList`` and
+# only falls back to its embedded 50-entry array when that server list is null
+# or empty. Some packaged chapters use one folded chapter card while later
+# additions use one explicit card per section. The generator records that
+# presentation identity separately from the start/clear stage identity.
+FOLDED_ARCHIVE_CHAPTERS = frozenset({
+    2000, 2001, 2002, 2006, 2007, 2008, 2009,
+})
+
+# Chapter 2012 consists of three explicitly named attribute-test rows and
+# Chapter 2013 has no SpecialBanner catalog entry; neither is a release-facing
+# archive manifest. Chapter 2015 sections 4--6 are titled ``空き`` (empty), have
+# zero battles, and have no section banners. Keep those placeholders out while
+# retaining the three actual Final Fantasy XV battles.
+ARCHIVE_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
+    2015: (1, 2, 3),
+}
 
 # event_id, flag, chapter, unlock_after_chapter
 #

@@ -38,9 +38,11 @@ from typing import Any
 
 from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.event_manifest_data import (
+    ARCHIVE_SECTION_ALLOWLIST,
     EIDOLON_MANIFEST_ROWS,
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
+    FOLDED_ARCHIVE_CHAPTERS,
     TOWER_MANIFEST_ROWS,
 )
 
@@ -75,6 +77,12 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
     rows: list[dict[str, Any]] = []
     for event_id, flag, chapter, unlock_after, character_ids in EVENT_MANIFEST_ROWS:
         sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
+        allowed_sections = ARCHIVE_SECTION_ALLOWLIST.get(chapter)
+        if allowed_sections is not None:
+            sections = [
+                section for section in sections
+                if section["section"] in allowed_sections
+            ]
         if not sections:
             notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
             continue
@@ -105,6 +113,11 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
                 # This is the permanent archive cadence declared beside the
                 # recovered identities, not a recovered historical schedule.
                 "unlock_after_chapter": unlock_after,
+                "selector_id": (
+                    str(chapter)
+                    if chapter in FOLDED_ARCHIVE_CHAPTERS
+                    else f"{chapter}-{number}"
+                ),
                 # Grants ride the first section only; repeating them per section
                 # would grant the character once per stage rather than once.
                 "character_ids": granted if number == sections[0]["section"] else [],

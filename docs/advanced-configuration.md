@@ -455,9 +455,10 @@ python3 -m liminal_gate.event_catalog_generator \
     --output user-data/event-catalog.json
 ```
 
-The generator contributes the recovered Archive/Strikes Back identities, all
-12 Tower solo-adapter stages in Chapters 9010--9013, and all 28 solo Eidolon stages in
-Chapters 4100--4111. It takes section economics from your BattleData and
+The generator contributes 42 curated Archive stages across Chapters
+2000--2011 and 2014--2018, all 12 Tower solo-adapter stages in Chapters
+9010--9013, and all 28 solo Eidolon stages in Chapters 4100--4111. Strikes
+Back remains bundled separately. It takes section economics from your BattleData and
 validates event character grants against your character catalog, omitting a
 grant with a note when its character is missing. The eight allowed first-tier
 Eidolon acquisitions are bounded by the final client's chapter programs and
@@ -644,8 +645,8 @@ wiki, so these mint at level 1, matching the Companion draw.
 
 ## Local event stages and character grants
 
-Standard guided setup derives the five recovered Archive Special Quest
-families and fourteen recovered non-collaboration Strikes Back identities from
+Standard guided setup derives 42 curated Archive Special Quest stages across
+17 chapters and fourteen recovered non-collaboration Strikes Back identities from
 operator-local master data. The bundled Counter Descent policy remains authoritative for
 the recovered five- or three-tier families, stamina, progress gates, and
 zero-base clears. Little Noah 8008--8011 and Hime Rush 8018 remain excluded.
@@ -666,8 +667,11 @@ Setup writes the derived `user-data/character-catalog.json`, then starts the
 server with both that file and the supplied event catalog. Pass
 `--dummy-dll-dir` as well only to reuse an existing matching IL2CPP dump. A
 stage needs its observed chapter, section, entry stamina/Coins, clear Coins,
-visibility flag, character grant IDs, and optional nonnegative
-`unlock_after_chapter`; do not add a stage merely because it appears in a menu.
+visibility flag, character grant IDs, optional nonnegative
+`unlock_after_chapter`, and optional `selector_id`; do not add a stage merely
+because it appears in a menu. `selector_id` may be the exact stage identity or
+the chapter number for a folded multi-section card. A folded selector requires
+the chapter-wide `sp_ch_<chapter>` flag.
 Older reviewed catalogs without `unlock_after_chapter` remain loadable and are
 treated as always unlocked.
 

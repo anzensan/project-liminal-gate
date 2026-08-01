@@ -108,10 +108,12 @@ version, country, and selector fields. Hunting and Tower selector lists are
 added per account from the enabled Hunting and event catalogs and current
 progress.
 `specialQuestList` merges the generated Archive Special Quest rows with the
-bundled Chapter 3003-1 row whenever their gates are open. Before any real row
-unlocks, a closed recovered entry suppresses the client's fixed 50-entry
-fallback, which would otherwise leak Chapter 3000 rows into Arena -> Special
-Quests. Advertised non-1000-series entries receive exact section flags rather
+bundled Chapter 3003-1 row whenever their gates are open. Dual-ABI
+`UISpecialSelect.SetMode(0)` analysis confirms that this nonempty server list
+owns the selector; the embedded 50-entry array is only its null/empty fallback.
+Before any real row unlocks, a closed recovered entry suppresses that fallback,
+which would otherwise leak Chapter 3000 rows into Arena -> Special Quests.
+Advertised non-1000-series entries receive exact section flags rather
 than one broad chapter flag: this includes Crystal Road (3004-1) in
 `huntingHuntingList`. `descentHuntingList` separately folds each progress-unlocked
 Counter Descent family to its tier-1 identity; login supplies only the matching
@@ -152,11 +154,12 @@ progress, roster, inventory, Summons, and a zero base reward because no
 server-authored reward was recovered. This is preservation policy, not a claim
 about historical event schedules or rewards.
 
-Guided setup also composes Archive Special Quests for recovered Chapters 2000,
-2001, 2002, 2004, and 2006 from the tester's own BattleData and character
-catalog. Their section economics and flags are client-derived. Permanent
-Chapter 2/4/10/13/20 unlocks, zero fixed clear-Coin increments, and granting
-the associated character on the first section are local archive policy. Event
+Guided setup also composes 42 curated Archive Special Quests across Chapters
+2000--2011 and 2014--2018 from the tester's own BattleData and character
+catalog. Their section economics, flags, and folded or explicit selector
+identities are client-derived. Permanent story gates, zero fixed clear-Coin
+increments, and granting associated characters on the first section are local
+archive policy. Event
 clear reconciles the wallet as durable Coins plus that fixed increment plus the
 client-reported battle Coins. The exact Jade Dragon 2004-1 form establishes
 that variable channel and the `itmp0=-1` sentinel; lower sentinels and wallet

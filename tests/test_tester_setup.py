@@ -96,6 +96,7 @@ class TesterSetupTest(unittest.TestCase):
                     "coins": 0,
                     "clear_coins": 0,
                     "unlock_after_chapter": 2,
+                    "selector_id": "2000",
                     "character_ids": [148],
                 },
                 document["stages"][0],

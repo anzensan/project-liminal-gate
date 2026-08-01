@@ -23,9 +23,11 @@ from liminal_gate.event_catalog_generator import (
     build_catalog,
 )
 from liminal_gate.event_manifest_data import (
+    ARCHIVE_SECTION_ALLOWLIST,
     EIDOLON_MANIFEST_ROWS,
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
+    FOLDED_ARCHIVE_CHAPTERS,
     TOWER_MANIFEST_ROWS,
 )
 
@@ -69,9 +71,44 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         )
         progress_after_chapter_4 = 0x01000000 | (5 << 6) | 1
         self.assertEqual(
-            ["2000-1", "2000-2", "2004-1", "2004-2"],
+            ["2000", "2004-1", "2004-2"],
             loaded.client_lists(progress_after_chapter_4)["specialQuestList"],
         )
+
+    def test_curated_archive_uses_folded_and_explicit_selector_rows(self) -> None:
+        chapters = (2000, 2003, 2005, 2007, 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018)
+        battledata = _battledata(*chapters)
+        # The real Chapter 2015 import also contains three empty placeholders.
+        battledata["stages"].extend({
+            "chapter": 2015, "section": section, "stamina": 25,
+            "coins": 0, "battle_count": 0, "has_battle": False,
+        } for section in (4, 5, 6))
+        _, _, loaded = self._generate(
+            battledata,
+            (148, 596, 597, 736, 805, 1080, 1288),
+        )
+        after_story = 0x01000000 | (43 << 6) | 1
+        self.assertEqual(
+            [
+                "2000", "2003-1", "2003-2", "2005-1", "2005-2",
+                "2007", "2008", "2009", "2010-1", "2010-2",
+                "2011-1", "2011-2", "2014-1", "2014-2",
+                "2015-1", "2015-2", "2016-1", "2016-2",
+                "2017-1", "2017-2", "2018-1", "2018-2",
+            ],
+            loaded.client_lists(after_story)["specialQuestList"],
+        )
+        self.assertEqual((1, 2, 3), ARCHIVE_SECTION_ALLOWLIST[2015])
+        self.assertFalse(
+            {(2015, 4), (2015, 5), (2015, 6)} & set(loaded.by_identity())
+        )
+        self.assertEqual((596, 597), loaded.by_identity()[(2003, 1)].character_ids)
+        self.assertEqual((736,), loaded.by_identity()[(2005, 1)].character_ids)
+        self.assertEqual((805,), loaded.by_identity()[(2008, 1)].character_ids)
+        self.assertEqual((1080,), loaded.by_identity()[(2015, 1)].character_ids)
+        self.assertEqual((1288,), loaded.by_identity()[(2018, 1)].character_ids)
+        self.assertEqual((), loaded.by_identity()[(2017, 1)].character_ids)
+        self.assertTrue({2000, 2007, 2008, 2009} <= FOLDED_ARCHIVE_CHAPTERS)
 
     def test_grant_rides_the_first_section_only(self) -> None:
         # Repeating it per section would grant the character once per stage.

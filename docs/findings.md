@@ -202,6 +202,13 @@ Private inputs, captures, account state, and original assets remain excluded.
   Quests. The server now supplies an explicit Special list and exact Metal
   section flags; the relaunched client showed the regular Metal row in Metal
   Zone and no Metal rows in Special Quests.
+- **Confirmed by dual-ABI selector analysis:** `UISpecialSelect.SetMode(0)`
+  first reads `ServerConstants.specialQuestList` (static offset `0x190` on
+  ARM64 and `0x114` on ARMv7), checks that it is nonempty, and only then falls
+  back to the embedded 50-entry array. The server list therefore owns normal
+  Special presentation when supplied. The curated generator preserves the
+  final list's distinction between folded chapter cards and explicit section
+  cards instead of assuming every start/clear identity is its own card.
 - **Confirmed by original-client observation and real-HTTP regressions:** the
   final client requests status before login with a rotated token. A single
   unclaimed migrated account can supply selector progress until login binds
@@ -254,13 +261,16 @@ Private inputs, captures, account state, and original assets remain excluded.
   without mutation. Exact replay survives restart. Chapters 4100--4111 and
   their 28 BattleData rows are exposed through `eidolonQuestList` after the
   Chapter 3 local gate. Original-client acceptance remains pending.
-- **Confirmed by final-client static identities and generated-catalog
-  validation:** guided setup derives Archive Special Quest Chapters 2000,
-  2001, 2002, 2004, and 2006 from the matching local BattleData and character
-  catalog. The selector merges these rows with Chapter 3003-1; bundled
+- **Confirmed by final-client static identities, resources, and
+  generated-catalog validation:** guided setup derives 42 curated Archive
+  Special Quest stages across Chapters 2000--2011 and 2014--2018 from the
+  matching local BattleData and character catalog. Compiled chapter programs,
+  backgrounds, and required explicit banners exist for each selected row.
+  Test Chapter 2012, bannerless Chapter 2013, and empty 2015-4--6 placeholders
+  are excluded. The selector merges these rows with Chapter 3003-1; bundled
   Chapters 8000--8007 and 8012--8017 remain authoritative on
   `descentHuntingList`.
-  **Local policy:** the permanent Chapter 2/4/10/13/20 gates, zero fixed
+  **Local policy:** the permanent story gates, zero fixed
   clear-Coin increment, and first-section associated-character grants are not
   recovered schedules, probabilities, or complete reward tables. Variable
   battle Coins are reconciled from the client result. Jade Dragon 2004-1 clear

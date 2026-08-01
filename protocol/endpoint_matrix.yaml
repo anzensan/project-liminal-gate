@@ -49,7 +49,7 @@ capabilities:
   - family: local_events
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006, the labeled solo Tower adapter for 9010-9013, and solo Eidolon 4100-4111; Donation 9100-9102 is excluded; bundled Strikes Back Chapters 8000-8007 and 8012-8017 remain authoritative while 8008-8011 and 8018 stay unsupported; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while other event clears remain pending"
+    note: "guided setup derives 42 curated Archive stages across Chapters 2000-2011 and 2014-2018, the labeled solo Tower adapter for 9010-9013, and solo Eidolon 4100-4111; test Chapter 2012, bannerless 2013, empty 2015-4 through 2015-6, and Donation 9100-9102 are excluded; bundled Strikes Back Chapters 8000-8007 and 8012-8017 remain authoritative while 8008-8011 and 8018 stay unsupported; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while other event clears remain pending"
     transport_tests: true
     restart_tests: true
   - family: tower_solo_archive

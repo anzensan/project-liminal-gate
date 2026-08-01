@@ -1,6 +1,6 @@
 # Arena and Hunting implementation plan
 
-Status: Hunting, the bounded default Special Quest, the five generated Archive
+Status: Hunting, the bounded default Special Quest, the curated 42-stage Archive
 Special Quest families, bundled Strikes Back, all 12 Tower solo-adapter stages, and all 28
 converted solo Eidolon stages are implemented; Arena VS remains deliberately
 disabled. This
@@ -16,7 +16,7 @@ functional by adding ordinary HTTP responses.
 | 1. Hunting discovery | Static client gates and selector list contract recovered; live historical-service schedule remains unavailable. |
 | 2. Hunting vertical slice | Catalog, selector projection, lifecycle, costs, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py` and `liminal_gate/server_constants.py`). |
 | 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, Crystal Road, and fourteen packaged non-collaboration Counter Descent families with explicit per-stage bounds. |
-| 4. Arena -> Special Quests | Chapter 3003-1 is bundled after Chapter 3. Guided setup also derives Chapters 2000, 2001, 2002, 2004, and 2006 from the tester's matching BattleData and character catalog. |
+| 4. Arena -> Special Quests | Chapter 3003-1 is bundled after Chapter 3. Guided setup also derives 42 curated stages across Archive Chapters 2000--2011 and 2014--2018 from the tester's matching BattleData and character catalog. |
 | 4a. Tower | All 12 BattleData-backed stages in Chapters 9010--9013 use the dedicated selector and normal durable event lifecycle as a labeled solo adapter. |
 | 4b. Eidolon Quests | All 28 converted solo stages use the dedicated selector; eight recovered first-tier collectible ceilings settle through the result-screen contract. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
@@ -31,7 +31,7 @@ it never attempts a one-field partial projection.
 | --- | --- | --- |
 | Hunting | User-local, solo Metal/Hunting stages selected and settled through the normal quest lifecycle. | Recreating retired rotations, paid-entry systems, or unbounded client-authoritative rewards. |
 | Huntland -> Strikes Back | Packaged non-collaboration Counter Descent families, progress-gated and settled through the bounded normal quest lifecycle. | Claiming recovered historical dates, rotations, or rewards. |
-| Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated five-family Archive list and any explicit reviewed override, using the bounded Hunting/event lifecycle. | Treating Special Quests as PvP or a live event schedule. |
+| Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated 42-stage curated Archive and any explicit reviewed override, using the bounded Hunting/event lifecycle. | Treating Special Quests as PvP or a live event schedule. |
 | Tower | All 12 shipped battles, permanently available after a local Chapter 3 gate as a solo adapter. | Shared HP, staged achievements, rankings, historical rotations, or invented fixed rewards. |
 | Eidolon Quests | All 28 converted solo stages with only the statically recovered collectible ceilings. | Retired Co-op, in-battle summoning, enhancement, or server-side rerolling. |
 | Arena VS / ranking | Remain visibly unavailable. | Photon rooms, friends, matchmaking, rankings, co-op, raids, or a simulated service presented as the original Arena. |
@@ -83,8 +83,8 @@ are unrecovered. Original-client selector navigation and Chapter 8000-1 entry
 are confirmed; all Counter Descent clear callbacks and the added families'
 selector acceptance are still outstanding.
 
-Arena -> Special Quests merges recovered Chapter 3003-1 with the generated
-Archive Chapters 2000, 2001, 2002, 2004, and 2006 as their progress gates open.
+Arena -> Special Quests merges recovered Chapter 3003-1 with 42 generated
+Archive stages across Chapters 2000--2011 and 2014--2018 as their progress gates open.
 The archive rows come from matching user-local BattleData and character
 catalogs. Permanent gates, zero fixed clear-Coin increments, and first-section
 associated character grants are local policy; variable battle Coins are

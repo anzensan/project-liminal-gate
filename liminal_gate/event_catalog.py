@@ -32,6 +32,7 @@ class EventStage:
     selector: str = "special"
     unlock_after_chapter: int | None = None
     zero_base: bool = False
+    selector_id: str | None = None
 
     def identity_label(self) -> str:
         return f"{self.chapter}-{self.section}"
@@ -62,11 +63,11 @@ class EventCatalog:
 
     def client_lists(self, progress_code: int | None) -> dict[str, list[str]]:
         """Project Special, Tower, and folded Strikes Back selector rows."""
-        special = [
-            stage.identity_label()
+        special = list(dict.fromkeys(
+            stage.selector_id or stage.identity_label()
             for stage in self.stages
             if stage.selector == "special" and stage.unlocked_at(progress_code)
-        ]
+        ))
         tower = [
             stage.identity_label()
             for stage in self.stages
@@ -202,7 +203,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
             "event_id", "flag", "chapter", "section", "stamina", "coins",
             "clear_coins", "character_ids",
         }
-        optional = {"unlock_after_chapter", "summon_ids"}
+        optional = {"unlock_after_chapter", "summon_ids", "selector_id"}
         if (
             not isinstance(raw, dict)
             or not required.issubset(raw)
@@ -230,6 +231,26 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         ):
             raise EventCatalogError(
                 "event stage unlock_after_chapter must be a nonnegative integer"
+            )
+        selector_id = raw.get("selector_id")
+        identity_label = f"{raw['chapter']}-{raw['section']}"
+        chapter_label = str(raw["chapter"])
+        if (
+            selector_id is not None
+            and (
+                not isinstance(selector_id, str)
+                or selector_id not in {identity_label, chapter_label}
+            )
+        ):
+            raise EventCatalogError(
+                "event selector_id must be its chapter or exact stage identity"
+            )
+        if (
+            selector_id == chapter_label
+            and raw["flag"] != f"sp_ch_{chapter_label}"
+        ):
+            raise EventCatalogError(
+                "a folded chapter selector_id requires its chapter event flag"
             )
         # The client constructs this key and looks it up by exact name. Any
         # other flag is inert: the row disappears without a useful error.
@@ -285,6 +306,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 ),
                 unlock_after_chapter=unlock_after_chapter,
                 zero_base=_counter_descent_stamina(chapter) is not None,
+                selector_id=selector_id,
             )
         )
     if (

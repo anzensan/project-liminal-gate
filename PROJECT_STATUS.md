@@ -23,6 +23,20 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 curated solo Archive expansion: dual-ABI
+  `UISpecialSelect.SetMode(0)` analysis establishes that the server's nonempty
+  `specialQuestList` owns the normal selector and the embedded 50-entry array
+  is only a fallback. Guided setup now derives 42 release-facing stages across
+  17 Archive chapters from matching user-local BattleData and character data,
+  using the final selector's folded or explicit card identities. Native battle
+  programs, archived backgrounds, and required explicit banners are present
+  for every selected row. Test Chapter 2012, bannerless Chapter 2013, and empty
+  2015-4--6 placeholders remain excluded. Historical schedules, complete
+  rewards, and the local story gates/first-section grants are not claimed as
+  recovered service behavior. The retained inputs generated 140 stages across
+  47 families; 139 focused warning-strict tests and all 653 repository tests
+  passed, along with compilation and structured-file checks. See
+  `docs/solo-event-completion-audit.md`.
 - 2026-07-31 corrected Tower identity and solo-adapter implementation:
   authoritative final-client range predicates identify Chapters 9010--9013 as
   Tower of Temptation and 9100--9102 as Donation. The earlier public mapping
@@ -576,9 +590,10 @@ machine-readable/current capability boundary.
   tier navigation, and Chapter 8000-1 entry are confirmed; clear is currently
   covered only by the real-HTTP regression.
 - Original-client Archive Special Quest navigation, Chapter 2000-1 entry,
-  battle clear, associated-character result, and return to free roam. Current
-  proof is static identity/master data plus generated-catalog and real-HTTP
-  regressions.
+  battle clear, associated-character result, and return to free roam, plus one
+  injected late explicit Archive card. Jade Dragon 2004-1 is client-confirmed;
+  the broader curated archive currently has static/master/resource proof plus
+  generated-catalog and real-HTTP regressions.
 - Retired Tavern “Watch Video” controls are client/ad-SDK UI. The server does
   not advertise or implement an ad service; hiding those controls requires a
   separately validated APK patch.
@@ -604,6 +619,7 @@ machine-readable/current capability boundary.
 
 ## Next recommended task
 
-Run the generated archive catalog on the final client and capture Chapter
-2000-1 selector navigation, entry, clear/result, and return to free roam. Then
-repeat the clear boundary for Strikes Back Chapter 8000-1.
+Deploy the 140-stage generated catalog, then capture one folded Archive card
+and one injected late explicit card on the final client. Clear the selected
+Archive stage, Strikes Back Chapter 8000-1, the entered Tower stage, and one
+Eidolon stage through their result screens.

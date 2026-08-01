@@ -20,6 +20,46 @@ def character(character_id: int) -> dict[str, object]:
 
 
 class EventRuntimeTest(unittest.TestCase):
+    def test_folded_archive_selector_opens_every_cataloged_section_over_http(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)
+            state.create_account(token, "account", {"coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 0x01000000 | (21 << 6) | 1, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
+            state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
+            catalog = EventCatalog((
+                EventStage("yamamoto", "sp_ch_2007", 2007, 1, 15, 0, 0, (), unlock_after_chapter=10, selector_id="2007"),
+                EventStage("yamamoto", "sp_ch_2007", 2007, 2, 30, 0, 0, (), unlock_after_chapter=10, selector_id="2007"),
+                EventStage("mechtula", "sp_ch_2017", 2017, 5, 35, 0, 0, (), unlock_after_chapter=20, selector_id="2017-5"),
+            ))
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
+            thread = threading.Thread(target=server.serve_forever); thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("GET", f"/gd/get_server_status?otk={token}&requestID=folded-status")
+                status_response = connection.getresponse(); status_payload = json.loads(status_response.read()); connection.close()
+                connection = HTTPConnection(*server.server_address)
+                connection.request("GET", f"/gd/login?otk={token}&uuid=account&requestID=folded-login")
+                login_response = connection.getresponse(); login_payload = json.loads(login_response.read()); connection.close()
+                body = b"stamina=30&coins=0&chapter=2007&section=2&lastUpdate=1"
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", f"/gd/start_quest?otk={token}&requestID=folded-start", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                start_response = connection.getresponse(); start_payload = json.loads(start_response.read()); connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, status_response.status)
+            self.assertEqual(
+                ["2007", "2017-5"],
+                status_payload["constants"]["specialQuestList"],
+            )
+            self.assertEqual(200, login_response.status)
+            self.assertTrue(login_payload["eventFlags"]["sp_ch_2007"]["value"])
+            self.assertTrue(login_payload["eventFlags"]["sp_ch_2017"]["value"])
+            self.assertEqual((200, True), (start_response.status, start_payload["success"]))
+            self.assertEqual(
+                {"chapter": 2007, "section": 2},
+                server.state.accounts["account"]["active_generic_story"],
+            )
+
     def test_event_start_is_accepted_over_real_http_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)

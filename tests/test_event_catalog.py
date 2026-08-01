@@ -29,6 +29,24 @@ class EventCatalogTest(unittest.TestCase):
    with self.assertRaisesRegex(EventCatalogError, "Summon IDs"):
     load_event_catalog(e,c)
 
+ def test_folded_selector_identity_is_loaded_and_deduplicated(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'folded','flag':'sp_ch_2000','chapter':2000,'section':section,'stamina':15,'coins':0,'clear_coins':0,'character_ids':[],'selector_id':'2000'} for section in (1,2)]}))
+   loaded=load_event_catalog(e,c)
+   self.assertEqual(['2000'],loaded.client_lists(None)['specialQuestList'])
+
+ def test_unrelated_selector_identity_is_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'bad','flag':'sp_ch_2000','chapter':2000,'section':1,'stamina':15,'coins':0,'clear_coins':0,'character_ids':[],'selector_id':'2001'}]}))
+   with self.assertRaisesRegex(EventCatalogError, 'selector_id'):
+    load_event_catalog(e,c)
+
+ def test_folded_selector_with_section_only_flag_is_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'bad-fold','flag':'sp_ch_2000-1','chapter':2000,'section':1,'stamina':15,'coins':0,'clear_coins':0,'character_ids':[],'selector_id':'2000'}]}))
+   with self.assertRaisesRegex(EventCatalogError, 'chapter event flag'):
+    load_event_catalog(e,c)
+
 
 class EventFlagRuleTest(unittest.TestCase):
     """A stage's flag must be one the client will actually ask about."""

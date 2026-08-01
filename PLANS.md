@@ -1,5 +1,54 @@
 # Execution Plans
 
+## 2026-07-31 complete the curated solo Event Archive
+
+Objective: expose every release-facing, packaged solo Chapter 2000--2018 event
+through the final client's server-owned Special Quest list while retaining the
+existing Strikes Back, Tower, and solo Eidolon boundaries and keeping Arena VS
+and multiplayer disabled.
+
+Evidence boundary:
+
+- Dual-ABI `UISpecialSelect.SetMode(0)` reads a nonempty server
+  `specialQuestList` and falls back to the embedded 50-entry array only when the
+  server list is null or empty. The server can therefore publish later packaged
+  rows without a client patch.
+- APK-matched BattleData contains 49 sections in Chapters 2000--2018, and the
+  final binary contains native `Chapter2000` through `Chapter2018` programs.
+- Chapter 2012 is explicitly test content, Chapter 2013 lacks a released
+  selector banner, and 2015-4--6 are empty zero-battle placeholders. The other
+  42 sections form the curated release-facing archive.
+- Every selected chapter background and required explicit section banner is
+  present in the operator's Android resource archive. Historical calendars and
+  complete reward tables remain unrecovered.
+
+Required proof:
+
+1. Generate the 42 curated Archive stages with folded or explicit presentation
+   IDs matching the final selector, and reject impossible selector/flag pairs.
+2. Preserve local-policy progress gates and first-section character grants;
+   derive entry economics only from matching user-local BattleData.
+3. Prove generated-catalog shape, progress projection, folded non-first-section
+   entry, clear, replay, restart, and multiplayer-disabled behavior over real
+   HTTP.
+4. Run the warning-strict full suite, compilation, structured-file checks, and
+   clean-candidate publication gates.
+5. Regenerate and deploy the catalog, then obtain physical-client Archive,
+   Strikes Back, Tower-clear, and Eidolon acceptance without claiming recovered
+   live schedules or multiplayer behavior.
+
+Current result:
+
+- The retained APK-matched inputs generate 140 stages across 47 families:
+  42 curated Archive stages, 58 Counter Descent stages, 12 Tower stages, and
+  28 Eidolon stages. The Archive uses 26 folded/explicit selector cards and
+  excludes Chapters 2012/2013 plus empty 2015-4--6.
+- Focused warning-strict catalog, transport, and setup validation passed all
+  139 tests. The complete warning-strict suite passed all 653 tests in 128.357
+  seconds; compilation, profile JSON, endpoint YAML, and diff checks passed.
+- Commit/push is ready. Deployment and the physical-client acceptance items in
+  `docs/solo-event-completion-audit.md` remain separate completion boundaries.
+
 ## 2026-07-31 correct Tower identity and complete the solo adapter
 
 Objective: expose the actual final-client Tower chapters through a bounded solo

@@ -1,0 +1,114 @@
+# Solo event completion audit
+
+Date: 2026-07-31
+
+Scope: final Android 5.5.7-170 solo content reached from Arena or its Special
+Quest selectors. Arena VS, Photon rooms, rankings, Co-op, Raid, and Donation
+remain deliberately disabled.
+
+## Client selector authority
+
+The normal Special Quest selector is server-driven when the server supplies a
+nonempty list. `UISpecialSelect.SetMode(0)` reads
+`ServerConstants.specialQuestList` at static offset `0x190` on ARM64 and
+`0x114` on ARMv7. It checks for at least one element and only then falls back
+to `UISpecialSelect.specialQuestList`, the embedded 50-entry array. The relevant
+method addresses are ARM64 `0xF84588` and ARMv7 `0xA8DBEC`.
+
+This corrects the earlier interpretation that the embedded array was the only
+possible list. The server can publish additional packaged solo stages without
+patching the client, but it must still use a presentation identity understood
+by the selector:
+
+- a folded chapter card such as `2000`, backed by `sp_ch_2000`; or
+- an explicit section card such as `2005-3`, backed by `sp_ch_2005` or
+  `sp_ch_2005-3`.
+
+The generated catalog now records `selector_id` separately from the exact
+start/clear identity. A folded identity is deduplicated across all of its
+cataloged sections. The loader refuses a folded card with a section-only flag,
+which would render a card the client could not open.
+
+Confidence: **Confirmed, dual ABI**.
+
+## Curated Archive inventory
+
+Guided setup derives 42 playable stages across these 17 Archive chapters from
+the operator's matching BattleData and character catalog:
+
+| Chapters | Presentation | Local story gate | Local first-section character grant |
+| --- | --- | ---: | --- |
+| 2000--2002 | one folded card per chapter | 2 / 10 / 20 | 148 / 144 / 151 |
+| 2003 | explicit section | 20 | 596 and 597 |
+| 2004 | explicit section | 4 | 673 |
+| 2005 | three explicit sections | 13 | 736 |
+| 2006--2009 | one folded card per chapter | 13 / 10 / 15 / 30 | none / none / 805 / none |
+| 2010--2011 | one explicit section each | 31 / 32 | none |
+| 2014 | one explicit section | 10 | none |
+| 2015 | sections 1--3 only | 20 | 1080 |
+| 2016 | two explicit sections | 30 | none |
+| 2017 | five explicit sections | 20 | none |
+| 2018 | one explicit section | 20 | 1288 |
+
+The permanent gates and associated-character grants are explicit local archive
+policy, not recovered production dates or reward transactions. Entry stamina
+and Coins come from the operator's BattleData. No fixed clear-Coin reward is
+invented; the event result reconciles client-reported battle Coins through the
+existing durable transaction.
+
+All selected chapters have compiled `Chapter2000`--`Chapter2018` native battle
+programs in the final client. The matching Android archive inventory records a
+background for every selected chapter and a matched section banner for every
+published explicit section. The otherwise missing root banners for Chapters
+2010 and 2011 are not requested because those entries use their matched
+`sp2010-1` and `sp2011-1` section banners.
+
+The generator deliberately excludes:
+
+- Chapter 2012: three attribute-test stages, not release-facing quests;
+- Chapter 2013: a bannerless memory row absent from the released selector
+  catalog; and
+- Chapter 2015 sections 4--6: titled `空き`, zero battles, and no section
+  banners.
+
+Confidence: **Confirmed** for identities, BattleData economics, native program
+presence, and archived resource coverage; **local policy** for gates and
+grants; **unrecovered** for historical schedules and complete reward tables.
+
+## Other solo selector families
+
+| Family | Implemented boundary | Client proof still required |
+| --- | --- | --- |
+| Money Money Time | Chapter 3003-1, including the observed 1,800-Coin ceiling and successful result-screen retry | no open settlement boundary for the observed result |
+| Strikes Back | 8000--8007 and 8012--8017 through folded Counter Descent cards; 8008--8011 and 8018 remain excluded | one clear/result return, then smoke the added 8012--8017 banners |
+| Tower | all 12 stages in 9010--9013 as a labeled solo adapter; Donation 9100--9102 excluded | first-stage clear and result return; navigation/entry already observed |
+| Solo Eidolon | all 28 stages in 4100--4111 with eight bounded first-tier collectible identities | selector, entry, clear/result, and before/after collectible state |
+
+## Generated result and validation boundary
+
+Against the retained APK-matched local inputs, the generator now produces 140
+stages across 47 event families: 42 Archive stages, 58 bundled Counter Descent
+stages, 12 Tower stages, and 28 solo Eidolon stages. At full story progress the
+normal Special Quest list contains 26 curated Archive cards; the separately
+bundled Money Money Time card is merged by the Hunting policy.
+
+Focused warning-strict validation passed 139 tests covering schema refusal, folded-card deduplication,
+placeholder exclusion, character association, progress gates, real-HTTP list
+projection, folded non-first-section entry, clear mutation, retry, and restart.
+Those tests establish the local transport contract. They do not certify that
+every packaged battle program completes on the physical client. The complete
+warning-strict repository suite passed all 653 tests in 128.357 seconds;
+compilation, profile JSON, endpoint YAML, and diff checks also passed.
+
+## Completion boundary
+
+Before the broader solo event goal can be called complete:
+
+1. regenerate and deploy the 140-stage catalog;
+2. confirm multiplayer remains exactly disabled;
+3. smoke one folded Archive card and one injected late explicit card on the
+   physical client;
+4. clear one Strikes Back stage, the entered Tower stage, and one solo Eidolon
+   stage through their result screens; and
+5. record any family-specific failure as a bounded work packet rather than
+   replacing it with generic success.

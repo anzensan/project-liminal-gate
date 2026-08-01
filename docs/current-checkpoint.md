@@ -18,6 +18,22 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Latest curated Archive validation: dual-ABI `UISpecialSelect.SetMode(0)`
+analysis confirms that a nonempty server `specialQuestList` overrides the
+embedded fallback array. Guided setup now derives 42 release-facing stages
+across 17 chapters, with folded or explicit selector identities matching the
+final client. Matching BattleData, compiled chapter programs, backgrounds, and
+required explicit banners exist for every selected stage. Test Chapter 2012,
+bannerless Chapter 2013, and empty 2015-4--6 placeholders remain excluded.
+The permanent gates and first-section character grants remain labeled local
+policy. The retained inputs generated 140 stages across 47 families with event
+catalog SHA-256
+`364048ce39141cad2712aba16561864bad9ad75a612c18c2f6c79bb2f753a863`.
+Focused warning-strict validation passed 139 tests and the complete suite
+passed all 653 tests in 128.357 seconds; compilation, profile JSON, endpoint
+YAML, and diff checks passed. See `solo-event-completion-audit.md`; deployment
+and broader physical-client acceptance remain separate boundaries.
+
 Latest Archive client validation: the original Android client cleared Jade
 Dragon Chapter 2004-1 and exited its result screen after the server returned
 HTTP 200. The exact preserved form reports 819 battle Coins, 6,851 EXP, and
@@ -84,9 +100,9 @@ Issue 22 tutorial recovery, and the exact hash/byte-guarded Issue 15 ARM64
 constructor replacement. Compilation, profile JSON, endpoint YAML, and diff
 checks pass. An exact clean source candidate passed both publication gates.
 
-Latest guided archive-event validation: setup derives `event-catalog.json`
+Prior guided archive-event validation: setup derives `event-catalog.json`
 from matching local BattleData and character inputs and starts it by default.
-Archive Chapters 2000, 2001, 2002, 2004, and 2006 merge with Chapter 3003-1;
+At that checkpoint, Archive Chapters 2000, 2001, 2002, 2004, and 2006 merged with Chapter 3003-1;
 bundled Counter Descent remains authoritative for Strikes Back Chapters
 8000--8007 and 8012--8017; collaboration/special Chapters 8008--8011 and 8018
 remain unavailable. Archive gates, zero fixed clear-Coin increments, and

@@ -83,11 +83,7 @@ until your account has finished the chapter each row waits for:
 | Metal Zone 1, Dragon Road, Machine Road | Chapter 3 |
 | Crystal Road | Chapter 3 |
 | Metal Zones 2 to 7 | Chapters 8, 12, 17, 21, 26, 30 |
-| Bahamut Descent | Chapter 2 |
-| Jade Dragon Hunt | Chapter 4 |
-| Leviathan Descent | Chapter 10 |
-| Lucia archive | Chapter 13 |
-| Odin Descent | Chapter 20 |
+| Curated Archive — 42 stages across Chapters 2000--2011 and 2014--2018 | Chapters 2 through 32, by family |
 | Strikes Back families | Chapters 5 through 12, one family per chapter |
 | Tower of Temptation solo adapter — all 12 stages in 9010--9013 | Chapter 3 |
 | Solo Eidolon Quests — Chapters 4100--4111 | Chapter 3 |
@@ -102,7 +98,7 @@ account are expected, not a fault.
 server advertises the recovered solo Chapter 3003-1 *Money Money Time* card in
 Arena -> Special Quests. It costs 5 stamina and uses a bounded local Coin
 settlement policy; it is not a claim about the original event rotation or
-rewards. Guided setup also derives the five recovered archive families from
+rewards. Guided setup also derives the curated 42-stage Archive from
 your own BattleData and character catalog, and enables fourteen packaged
 non-collaboration Strikes Back families. Little Noah 8008--8011 and Hime Rush
 8018 remain disabled because their distinct contracts are not recovered. The
@@ -799,7 +795,7 @@ Everything below stays under the ignored `user-data/` directory:
 | `derived/native-encounters.json` | Maps the compiled Chapter 8–42 battle programs to the enemies each stage can spawn. Producing it requires the AArch64 disassembler. | No. It is an evidence intermediate used to compose `story-outcomes.json`. |
 | `derived/scenario-encounters.json` | Maps the MoonSharp scenario programs used by Chapters 2–7, which have no equivalent compiled battle program. | No. It is another input to `story-outcomes.json`. |
 | `story-outcomes.json` | Combines the encounter maps, character catalog, master data, and their hashes into bounded per-stage outcome rules. Without it, the server cannot safely persist a story Companion rolled by the client. | **Yes.** The dedicated server loads this final catalog. |
-| `event-catalog.json` | Combines the recovered Archive, all 12 Tower solo-adapter stages, and all 28 solo Eidolon stages with section economics from your BattleData, bounded Eidolon acquisition identities, and character associations validated against your character catalog. | **Yes.** It enables the five Archive families, Tower solo adapter, and solo Eidolon quests; Strikes Back remains bundled. |
+| `event-catalog.json` | Combines the curated 42-stage Archive, all 12 Tower solo-adapter stages, and all 28 solo Eidolon stages with section economics from your BattleData, bounded Eidolon acquisition identities, and character associations validated against your character catalog. | **Yes.** It enables 17 Archive chapters, the Tower solo adapter, and solo Eidolon quests; Strikes Back remains bundled. |
 | `companion-equipment.json` | Projects character ancestry, per-job species, and Companion character/species restrictions from the matching APK. It contains no names, skills, descriptions, or assets. `RequiredLevel` is deliberately absent because the final client uses it to activate an equipped Companion's effects, not to prohibit equipping it. | **Yes.** The server needs it to authorize a newly equipped or retargeted Companion; without it, those new links are refused. |
 | `resources.json` | Maps every approved resource URL to a local file and hash. | **Yes.** `server_setup` rebuilds or refreshes it from the matching resource tree when the server starts. |
 | `public_data/banners/*.png` | Derives the retired Pact banner images from the operator's own resources. | Only if you want those local banner images served. Pact transactions do not depend on them. |
@@ -892,7 +888,7 @@ For a non-interactive repeat of the standard setup, add `--no-configure`.
 
 ### Optional: override the generated event catalog
 
-The five recovered Archive Special Quest families, all 12 Tower solo-adapter stages, all 28
+The curated 42-stage Archive, all 12 Tower solo-adapter stages, all 28
 solo Eidolon stages, and the bundled Strikes Back families are enabled by
 standard guided setup. If you have
 independently prepared a stricter reviewed catalog, add `--event-catalog` to
