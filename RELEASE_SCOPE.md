@@ -1,5 +1,23 @@
 # Release Scope
 
+## What 1.0 claims
+
+> Every single-player system the retired client had is present, playable, and
+> restart-safe, with reward settlement explicitly labeled local preservation
+> policy.
+
+That is the whole claim. 1.0 is **not** a fidelity or parity claim: it does not
+assert that any reward, rate, or drop matches what the retired service paid out.
+Where the service computed a value and the client only rendered it, this project
+either labels its own choice as local policy or refuses the outcome. Several
+such values are permanently unrecoverable and are recorded as closed questions
+in `PARITY_ROADMAP.md`, not as remaining work.
+
+The canonical original-client proof remains Chapter 2-1. Everything past it is
+ordered local progression policy.
+
+## The project
+
 This repository is an unofficial, noncommercial, source-available local
 compatibility project. It does not distribute or host an original client,
 original game resources, raw traffic captures, private account data, or

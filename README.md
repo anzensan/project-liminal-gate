@@ -243,4 +243,6 @@ resources, captures, account saves, tokens, digests, or keys.
 - [Server protocol](docs/server-protocol.md) and [current checkpoint](docs/current-checkpoint.md) — transport, persistence, evidence labels, and the verified client boundary.
 - [Reconstruction architecture](docs/reconstruction-architecture.md) and [distribution architecture](DISTRIBUTION_ARCHITECTURE.md) — runtime modules and the source-only public/private separation.
 - [Compatibility scope](COMPATIBILITY_SCOPE.md) — supported operations and refusals.
+- [Parity roadmap](PARITY_ROADMAP.md) — what is implemented, what is permanently unrecoverable, and what is still open.
+- [Changelog](CHANGELOG.md) — what each release claims, and what it does not.
 - [Contributing](CONTRIBUTING.md) — reporting network errors, and what never to attach.

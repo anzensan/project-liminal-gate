@@ -109,6 +109,25 @@ open one at a time. They award nothing — a clear that reports Companions, EXP,
 or items is refused, because the original drop rule was never captured and a
 plausible invented one is worse than an honest refusal.
 
+### Three areas cost stamina and pay nothing
+
+**Dragon Road, Machine Road, and the two world-map Lambda routes are playable
+but award nothing at all** — no Coins, no EXP, no items, no Companions. The
+Roads charge 15 stamina a run and the world-map battles charge 25.
+
+This is not a bug and not an oversight. Your own copy of the game carries no
+reward table for them: the retired server decided what these paid out, the
+client only displayed the result, and no recording of one survives. Every other
+area here settles from a ceiling recovered from your APK's own data. For these,
+there is nothing to recover, so the server pays zero and refuses a clear that
+claims otherwise rather than inventing a number and presenting it as the real
+one.
+
+If you want the content, play them; if you want rewards, everything else in the
+table pays. The same reasoning explains why some story stages refuse reported
+item and character drops — see [The evidence
+checkpoint](#the-evidence-checkpoint).
+
 ## Special Quests are separate from Arena VS
 
 After Chapter 3, the guided server advertises the recovered solo Chapter 3003-1
