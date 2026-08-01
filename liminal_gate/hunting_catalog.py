@@ -259,9 +259,9 @@ def hunting_settlement_within_bounds(stage: HuntingStage, result: dict[str, Any]
     not declare is refused rather than settled generously: a success response
     that accepts an unbounded claim is worse than a visible refusal.  Metal Zone
     declares Companion drops and an EXP ceiling; the Hunting families declare
-    items or Coins; Dragon and Machine Road declare nothing at all and so must
-    settle at zero.  Battle Summons and recruited monsters are refused
-    everywhere: no Huntland family grants either.
+    items or Coins; Dragon and Machine Road declare EXP alone, because their own
+    sections switch every other channel off.  Battle Summons and recruited
+    monsters are refused everywhere: no Huntland family grants either.
     """
     if result["coins"] > stage.max_coins or result["exp"] > stage.max_exp:
         return False
@@ -302,12 +302,29 @@ _METAL_EXP_CEILING = (750_000, 920_000, 1_560_000, 2_270_000, 2_550_000, 4_400_0
 # The Metal Zone ticket.  Held tickets are spent instead of stamina.
 METAL_TICKET_ITEM_ID = 50
 # Dragon Road and Machine Road are ordinary entries in the client's Metal
-# selector, not the Chapter 1300 time-attack family.  BattleData gives them no
-# Coins, items, EXP, or Companion drops, so they settle at zero until a real
-# clear proves otherwise.  Their historical availability gate is not preserved;
-# they appear with Metal Zone 1.
+# selector, not the Chapter 1300 time-attack family.  Their historical
+# availability gate is not preserved; they appear with Metal Zone 1.
+#
+# Their own BattleData sections say, affirmatively, that they drop nothing:
+# `dropBuddies` is empty, `allowLucky` is 0 so no Luck chest is ever offered,
+# and `doNotDropExchangeItem` is 1.  That is a declaration, not missing
+# evidence, and it is why Coins, items, and Companions settle at zero here.
+#
+# EXP is a different channel and must not be zero.  Both sections are
+# species-locked training zones -- `species` 128 (Dragon) and 256 (Machine) at
+# `assumedLevel` 35 -- so gaining EXP is the entire purpose of entering one.  A
+# zero ceiling refused the clear outright with `invalid_local_hunting_result`,
+# meaning 15 stamina bought a battle the player won and the server then
+# rejected.
 _ROAD_CHAPTERS = (1200, 1201)
 _ROAD_STAMINA = 15
+# Derived on the same basis as `_METAL_EXP_CEILING`, from the same selector's
+# own tiers: the Roads' assumed level 35 falls between Metal Zone 3 (level 30)
+# and 4 (level 40), and the higher neighbour is taken.  Erring high is
+# deliberate. A ceiling exists to stop an arbitrary client-authored claim, so an
+# over-generous bound costs nothing a player would notice, while a tight one
+# refuses honest clears -- which is the failure this value replaces.
+_ROAD_EXP_CEILING = 2_270_000
 
 
 def _tier(section: int) -> tuple[int, int]:
@@ -425,13 +442,14 @@ def _bundled_metal_stages() -> list[HuntingStage]:
 
 
 def _bundled_road_stages() -> list[HuntingStage]:
-    """Return Dragon and Machine Road, which reward nothing that is recovered."""
+    """Return Dragon and Machine Road: species-locked EXP, and nothing else."""
     return [
         HuntingStage(
             family="road", chapter=chapter, section=1, stamina=_ROAD_STAMINA, coins=0,
             entry_item_id=0, entry_item_count=0,
             unlock_chapter=_METAL_UNLOCK_AFTER_CHAPTER[0] + 1, unlock_section=1,
-            max_coins=0, max_exp=0, max_items_total=0, item_maxima={}, selector="metal",
+            max_coins=0, max_exp=_ROAD_EXP_CEILING, max_items_total=0, item_maxima={},
+            selector="metal",
         )
         for chapter in _ROAD_CHAPTERS
     ]
