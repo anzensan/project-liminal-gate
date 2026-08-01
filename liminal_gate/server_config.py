@@ -25,7 +25,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict"}
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,7 @@ class ServerConfig:
     core_story: bool = False
     pacts: bool = False
     hunting: bool = False
+    daily_quests: bool = False
     jobs: bool = False
     rebirth: bool = False
     status_items: bool = False
@@ -92,6 +93,7 @@ def load_server_config(path: Path) -> ServerConfig:
     core_story = document.get("core_story", False)
     pacts = document.get("pacts", False)
     hunting = document.get("hunting", False)
+    daily_quests = document.get("daily_quests", False)
     jobs = document.get("jobs", False)
     rebirth = document.get("rebirth", False)
     status_items = document.get("status_items", False)
@@ -112,6 +114,7 @@ def load_server_config(path: Path) -> ServerConfig:
         "core_story": core_story,
         "pacts": pacts,
         "hunting": hunting,
+        "daily_quests": daily_quests,
         "jobs": jobs,
         "rebirth": rebirth,
         "status_items": status_items,
@@ -128,7 +131,7 @@ def load_server_config(path: Path) -> ServerConfig:
     for field, value in boolean_values.items():
         if type(value) is not bool:
             raise ServerConfigError(f"{field} must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, **paths)
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, daily_quests=daily_quests, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:

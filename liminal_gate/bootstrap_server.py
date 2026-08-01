@@ -5223,7 +5223,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     flag_fields = (
-        "core_story", "pacts", "hunting", "jobs", "rebirth", "status_items",
+        "core_story", "pacts", "hunting", "daily_quests", "jobs", "rebirth", "status_items",
         "companion_draw", "companion_sale", "companion_strengthen",
         "companion_evolution", "trading_post", "drop_eligibility",
         "achievements", "summon_skills", "outcome_strict",
@@ -5258,6 +5258,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         event_catalog=args.event_catalog, character_catalog=args.character_catalog,
         drop_eligibility=getattr(args, 'drop_eligibility', False),
         hunting_catalog=args.hunting_catalog, hunting=getattr(args, 'hunting', False),
+        daily_quests=getattr(args, 'daily_quests', False),
         jobs=getattr(args, 'jobs', False),
         rebirth=getattr(args, 'rebirth', False),
         status_items=getattr(args, 'status_items', False),
