@@ -234,8 +234,11 @@ Private inputs, captures, account state, and original assets remain excluded.
   them through the normal durable event transaction without advancing story
   progress. This does not recreate the historical shared HP, staged
   achievements, or reward state. Permanent availability and zero fixed clear
-  Coins are preservation policy. Original-client navigation and clear remain
-  pending. Arena VS remains disabled throughout.
+  Coins are preservation policy. The maintainer opened the corrected Tower
+  selector on the physical final client and its first entry loaded the battle
+  after a retry. This is operator-observed navigation/entry acceptance without
+  a preserved transport trace; clear and result-screen return remain pending.
+  Arena VS remains disabled throughout.
 - **Confirmed final-client Eidolon result contract with bounded local
   settlement:** `ClearQuest` serializes the existing `summonList` before the
   result UI runs; `battle_result.summons` carries the dropped IDs; and the

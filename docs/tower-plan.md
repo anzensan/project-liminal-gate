@@ -1,8 +1,9 @@
 # Tower of Temptation preservation boundary
 
 Status: all 12 packaged stages in Chapters 9010--9013 are implemented as a
-bounded solo archive adapter. Original-client navigation and clear remain
-unverified. Arena VS, Raid, and Donation remain disabled.
+bounded solo archive adapter. Physical-client navigation and first-stage battle
+loading are operator-confirmed; clear/result return remains unverified. Arena
+VS, Raid, and Donation remain disabled.
 
 ## Evidence and confidence
 
@@ -74,13 +75,13 @@ is invented.
 ## Validation boundary
 
 Local generation, schema validation, selector projection, entry, refusal,
-clear, exact replay, and restart persistence are covered over real HTTP. The
-remaining acceptance test is on the surviving final client:
+clear, exact replay, and restart persistence are covered over real HTTP. On the
+surviving final client, the maintainer has completed navigation and entry; the
+first entry loaded its battle after a retry. That observation was not preserved
+as a transport trace. The remaining acceptance steps are:
 
-1. open Arena, then Tower;
-2. confirm the first row loads as Chapter 9010-1;
-3. enter and clear it;
-4. confirm the result returns to free roam without a network error.
+1. clear the entered first stage;
+2. confirm the result returns to free roam without a network error.
 
-Until that succeeds, the implementation is locally transport-certified but
-not original-client accepted.
+Until those succeed, navigation and entry are operator-accepted, while the
+complete Tower result lifecycle remains only locally transport-certified.

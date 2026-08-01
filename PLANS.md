@@ -54,8 +54,11 @@ Current result:
   in 127.822 seconds. Corrective commit `99a6143` is pushed and deployed. The
   regenerated Beelink catalog has 115 rows: the exact 12 Tower identities, no
   Donation identity, and all 28 Eidolon identities. The service is healthy,
-  Arena VS remains disabled, and the save hash is unchanged. Original-client
-  Tower/Eidolon acceptance remains in progress.
+  Arena VS remains disabled, and the save hash is unchanged. The maintainer
+  opened Tower on the physical final client and the corrected first entry
+  loaded its battle after a retry, confirming navigation and entry. Tower
+  clear/result return and all Eidolon original-client acceptance remain in
+  progress.
 
 ## 2026-07-31 late non-collaboration Counter Descent expansion
 

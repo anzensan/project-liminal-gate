@@ -55,7 +55,7 @@ capabilities:
   - family: tower_solo_archive
     routes: [get_server_status, login, start_quest, clear_quest]
     status: local_policy
-    note: "all 12 BattleData-backed stages in Tower Chapters 9010-9013 are projected after Chapter 3 as a permanent solo-adapter policy; shared HP and staged reward state are not recreated; Donation 9100-9102 remains disabled; original-client navigation and clear are pending"
+    note: "all 12 BattleData-backed stages in Tower Chapters 9010-9013 are projected after Chapter 3 as a permanent solo-adapter policy; shared HP and staged reward state are not recreated; Donation 9100-9102 remains disabled; physical-client navigation and first-stage battle loading are operator-confirmed without a preserved trace, while clear/result return remains pending"
     transport_tests: true
     restart_tests: true
   - family: eidolon_solo_archive

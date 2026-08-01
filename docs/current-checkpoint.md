@@ -59,8 +59,12 @@ or that one previously unowned ID and durably records raw value `1`. Real-HTTP
 tests cover visibility, entry, accepted clear, exact restart replay, and the
 absence of a synthetic response `summonList`; focused mutation tests refuse an
 unlisted, duplicate, or already-owned report without changing state.
-Original-client Tower/Eidolon selector, battle, and result acceptance remain
-open. The earlier 9100--9102 Tower claim was retracted after the authoritative
+The maintainer subsequently opened the corrected Tower selector on the
+physical final client and its first entry loaded the battle after a retry.
+That confirms Tower navigation and entry at the operator-observation level;
+no preserved request trace or successful Tower clear/result return is claimed.
+Eidolon selector, battle, and result acceptance remain open. The earlier
+9100--9102 Tower claim was retracted after the authoritative
 range audit identified those chapters as Donation. The corrected generator
 emits 115 rows across 35 families: exactly 12 Tower rows, no Donation rows, and
 all 28 Eidolon rows. Focused validation passed 106 tests, and all 648
@@ -132,8 +136,9 @@ byte-identical at SHA-256
 `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`,
 and the loopback news request returned HTTP 200 after the systemd-owned service
 restarted under PID 241704. Jade Dragon card rendering and clear are
-client-confirmed; Tower and Eidolon navigation/clear remain to be observed on
-the physical device.
+client-confirmed. Tower navigation and first-entry battle loading are now
+operator-confirmed on the physical device; Tower clear/result return and all
+Eidolon client acceptance remain to be observed.
 
 Publication lane:
 

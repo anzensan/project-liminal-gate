@@ -94,6 +94,11 @@ Archive rows but not Chapter 3003-1 or bundled Strikes Back.
 
 Arena VS stays explicitly disabled.
 
+The corrected Tower selector and first-stage battle load are operator-confirmed
+on the physical final client. A Tower clear/result return and every Eidolon
+client path remain outstanding; local real-HTTP replay/restart coverage does
+not replace those observations.
+
 No HTTP implementation work is planned for `start_vs_quest`, `clear_vs_quest`,
 ranking, or opponent routes. They depend on Photon room lifecycle, peer turns,
 shared state, and multiplayer result handling.

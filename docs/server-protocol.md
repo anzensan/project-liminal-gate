@@ -127,7 +127,9 @@ advance story progress. The permanent gate and zero fixed clear Coins are
 local policy. This is a solo adapter, not a recreation of the original shared
 HP and staged achievement state. Donation Chapters 9100--9102 remain disabled
 because their community aggregate and reward state are unrecovered.
-Original-client Tower navigation and clear remain unverified.
+Physical-client Tower navigation and first-stage battle loading are
+operator-confirmed. A preserved transport trace and the clear/result return
+remain unverified.
 
 `eidolonQuestList` is likewise always present. After Chapter 3, it advertises
 all 28 BattleData-backed stages in Chapters 4100--4111. The clear request's

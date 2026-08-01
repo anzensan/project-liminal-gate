@@ -55,7 +55,11 @@ machine-readable/current capability boundary.
   loopback news returns HTTP 200. The durable save remained byte-identical at
   SHA-256
   `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`.
-  Original-client Tower/Eidolon acceptance is still pending.
+  The maintainer then opened the corrected Tower selector on the physical
+  final client and retried its first entry; the battle loaded successfully.
+  That is operator acceptance of Tower navigation and entry, not yet a
+  preserved trace or a Tower clear/result certification. Eidolon client
+  acceptance and Tower result-screen return remain pending.
 - 2026-07-31 late non-collaboration Counter Descent expansion: the bundled
   solo policy now includes Chapters 8012--8017 in addition to 8000--8007.
   Final-client static identities and the retained APK-matched BattleData
@@ -580,11 +584,12 @@ machine-readable/current capability boundary.
   separately validated APK patch.
 - Canonical original-client certification beyond Chapter 2-1.
 - Exact ordinary-story reward/drop authority and scripted-stage exceptions.
-- Original-client acceptance of the Tower Chapters 9010--9013 solo adapter and converted solo
+- Original-client Tower clear/result return and acceptance of converted solo
   Eidolon Chapters 4100--4111, including before/after collectible state for one
-  successful Eidolon drop. Their local selector and durable result lifecycles
-  are implemented; Eidolon battle summoning and enhancement are not gaps
-  because Version 5.5.0 retired them with multiplayer.
+  successful Eidolon drop. Tower navigation and first-stage battle loading are
+  operator-confirmed on the physical final client; their local durable result
+  lifecycles are implemented. Eidolon battle summoning and enhancement are not
+  gaps because Version 5.5.0 retired them with multiplayer.
 - End-to-end original-client certification of the combined Companion
   equipment/party transport. Master-backed selection restrictions are covered
   statically and over real HTTP; `RequiredLevel` is client-side effect
