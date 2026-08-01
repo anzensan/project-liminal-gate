@@ -115,3 +115,29 @@ Before the broader solo event goal can be called complete:
    stage through their result screens; and
 5. record any family-specific failure as a bounded work packet rather than
    replacing it with generic success.
+
+## Physical-client certification sequence
+
+Run these from the current Chapter 8 save without editing progression or
+inventory. Preserve the server event tail and before/after save hash for every
+clear.
+
+1. Reopen Arena -> Special Quests and open the single folded Bahamut card
+   (`2000`). It must reveal all four cataloged sections rather than one card per
+   section or a loading failure.
+2. Clear Bahamut 2000-1. The result must return to free roam, release the active
+   quest, and grant character 148 no more than once.
+3. Clear Strikes Back 8000-1. Its result must return to free roam with a zero
+   base reward and no second settlement on retry.
+4. Clear Tower 9010-1. Its result must return to free roam without creating
+   shared-HP, ranking, Donation, or story-progression state.
+5. Record the owned-Eidolon vector, clear 4100-1, and record it again. The only
+   accepted outcomes are no new collectible or one newly owned Summon 4; retry
+   and restart must not add it twice.
+6. After normal story progress reaches Chapter 10, open injected explicit card
+   2014-1. This distinguishes server-list ownership from the embedded fallback;
+   earlier Archive cards alone cannot prove that boundary.
+
+Selector navigation without a matching start/clear/result cycle proves only
+presentation. A local HTTP replay without the final client proves only the
+server transaction. Keep both claims separate.

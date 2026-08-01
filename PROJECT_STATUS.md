@@ -629,7 +629,8 @@ machine-readable/current capability boundary.
 
 ## Next recommended task
 
-Deploy the 140-stage generated catalog, then capture one folded Archive card
-and one injected late explicit card on the final client. Clear the selected
-Archive stage, Strikes Back Chapter 8000-1, the entered Tower stage, and one
-Eidolon stage through their result screens.
+On the final client, open the folded Bahamut card and clear 2000-1 through its
+result screen. Then certify Strikes Back 8000-1, Tower 9010-1, and Eidolon
+4100-1 one at a time with before/after state and restart proof. After normal
+story progress reaches Chapter 10, smoke injected explicit card 2014-1 to prove
+the server-owned list beyond the embedded fallback.
