@@ -27,7 +27,7 @@ from liminal_gate.bootstrap_server import (
 
 # (parser, bare body, expected value)
 FORMS = (
-    (_parse_change_uname, b"name=Ianderse", "Ianderse"),
+    (_parse_change_uname, b"name=Wanderer", "Wanderer"),
     (_parse_continue, b"cost=10", 10),
     (_parse_refill_stamina, b"cost=50", 50),
     (_parse_statusup_item, b"targetChrID=3&useItemID=41&useAmount=1", (3, 41, 1)),
@@ -67,7 +67,7 @@ class TrailingLastUpdateTest(unittest.TestCase):
     def test_leading_last_update_is_not_accepted(self) -> None:
         # The helper strips a trailing pair only, so positional fields survive.
         self.assertIsNone(_parse_refill_stamina(b"lastUpdate=1&cost=50"))
-        self.assertIsNone(_parse_change_uname(b"lastUpdate=1&name=Ianderse"))
+        self.assertIsNone(_parse_change_uname(b"lastUpdate=1&name=Wanderer"))
 
     def test_value_validation_still_applies_with_the_trailing_field(self) -> None:
         self.assertIsNone(_parse_summon_skill_unlock(b"targetID=99&lastUpdate=1"))
