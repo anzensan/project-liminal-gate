@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 from liminal_gate.bootstrap_server import load_launch_config, parse_args
 from liminal_gate.server_config import ServerConfig
+from liminal_gate.server_setup import STANDARD_POLICY_FLAGS
 from liminal_gate.tester_setup import server_arguments
 
 
@@ -75,11 +76,45 @@ class LaunchConfigTest(unittest.TestCase):
                 Path(directory).resolve() / "companion-equipment.json",
                 config.companion_equipment_catalog,
             )
-        for name in ("core_story", "pacts", "hunting", "jobs", "rebirth", "status_items",
+        for name in ("core_story", "pacts", "hunting", "daily_quests", "jobs", "rebirth", "status_items",
                      "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution",
                      "trading_post"):
             with self.subTest(name):
                 self.assertTrue(getattr(config, name), f"{name} was not enabled by the guided flags")
+
+    def test_both_launchers_enable_the_same_gameplay_policies(self) -> None:
+        """A feature enabled for testers must also be enabled on a dedicated host.
+
+        These two lists are built independently -- guided setup composes flags
+        from `LocalServerOptions`, the dedicated server carries a literal tuple
+        -- so a feature added to one and forgotten in the other silently reaches
+        only half the operators.  That is how Daily Quests shipped complete and
+        unreachable: implemented, tested, documented, and passed by neither
+        launcher.  Flags that are genuinely one-sided are named here with the
+        reason, so the exemption is a decision rather than an omission.
+        """
+        one_sided = {
+            # Guided setup only: an interactive tester can be offered a
+            # user-local catalog the always-on host has no operator to choose.
+            "--event-catalog", "--character-catalog", "--story-outcome-catalog",
+            "--companion-equipment-catalog", "--resource-manifest", "--resource-root",
+            "--public-data-root", "--profile", "--state-file", "--event-log",
+            "--host", "--port",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            guided = {
+                argument for argument in server_arguments(Path("resources"), Path(directory), 8696)
+                if argument.startswith("--")
+            }
+        dedicated = set(STANDARD_POLICY_FLAGS)
+        self.assertEqual(
+            set(), (guided - dedicated) - one_sided,
+            "guided setup enables gameplay policies the dedicated server does not",
+        )
+        self.assertEqual(
+            set(), dedicated - guided,
+            "the dedicated server enables gameplay policies guided setup does not",
+        )
 
     def test_each_bundled_policy_refuses_its_catalog_counterpart(self) -> None:
         pairs = (

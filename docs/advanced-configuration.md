@@ -662,6 +662,10 @@ two independent assets agreeing on the same stage set.
 
 ### Enabling Daily Quests
 
+Guided setup and the dedicated server both enable Daily Quests already; nothing
+below is needed for a normal install. It is described here for a server run
+with individually chosen flags.
+
 `bootstrap_server --daily-quests` turns the category on. It sends the client's
 own `enableDailyQuest` gate plus a `sp_ch_<chapter>-<section>` flag for each of
 the fourteen stages, and accepts a start and clear on any of them with bounded

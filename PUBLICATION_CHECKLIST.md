@@ -16,6 +16,11 @@ Run this checklist from the independent `project-liminal-gate` repository.
       endpoint matrix match the implementation.
 - [ ] New mutations have real-HTTP success, denial, retry, collision/body
       identity, restart, and durable-state coverage.
+- [ ] New gameplay features are enabled by **both** launchers — guided setup and
+      the dedicated server — and named in the setup output. A feature reachable
+      only through an explicit `bootstrap_server` flag reaches no operator.
+- [ ] `python3 -m liminal_gate.setup_rehearsal` matches its baseline, or its
+      differences are understood and accepted.
 - [ ] Local policy and recovered behavior remain visibly distinguished.
 - [ ] `PROJECT_STATUS.md`, `PLANS.md`, and `docs/current-checkpoint.md` record
       the actual verified boundary and unresolved risks.
