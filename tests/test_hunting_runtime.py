@@ -51,6 +51,16 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "companion_maxima": {"11": 2}, "companion_drop_levels": {"11": 1},
                 },
                 {
+                    # A Road: EXP plus one declared battle-recruited monster,
+                    # the Dragon Road Steel Dragon shape.
+                    "family": "road", "chapter": 1200, "section": 1,
+                    "stamina": 2, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
+                    "selector": "metal",
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 0, "max_exp": 1000,
+                    "max_items_total": 0, "item_maxima": {},
+                    "monster_recruit_maxima": {"9002": 1},
+                },
+                {
                     "family": "money_money_time", "chapter": 3003, "section": 1,
                     "stamina": 5, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
                     "selector": "special",
@@ -176,7 +186,8 @@ class HuntingRuntimeTest(unittest.TestCase):
 
     def clear(self, request_id: str, chapter: int, section: int, *, coins: int = 0,
               items: dict | None = None, item_list: list | None = None, exp: int = 0,
-              buddies: list | None = None, snapshot: dict | None = None) -> tuple[int, dict]:
+              buddies: list | None = None, monsters: list | None = None,
+              snapshot: dict | None = None) -> tuple[int, dict]:
         # A real retry resends the body it sent the first time.  Rebuilding it
         # from live userdata would instead echo the Energy the first clear
         # granted, producing a different body and so a cache miss rather than
@@ -194,7 +205,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             ("summonList", json.dumps(userdata["summonList"])),
             ("battle_result", json.dumps({
                 "chapter": chapter, "section": section, "coins": coins, "exp": exp,
-                "items": items or {}, "buddies": buddies or [], "monsters": [], "summons": [],
+                "items": items or {}, "buddies": buddies or [], "monsters": monsters or [], "summons": [],
                 "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
             })),
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
@@ -227,7 +238,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             self.server.state._persist_locked()
         constants = self.server_status("rotated-before-login")["constants"]
         self.assertEqual(
-            ["1001-1", "1003-1", "3000-11", "3004-1"],
+            ["1001-1", "1003-1", "1200-1", "3000-11", "3004-1"],
             sorted(
                 constants["huntingHuntingList"]
                 + constants["metalHuntingList"]
@@ -242,7 +253,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             self.server.state._persist_locked()
         constants = self.server_status("rotated-after-login")["constants"]
         self.assertEqual(["1001-1", "1003-1", "3004-1"], sorted(constants["huntingHuntingList"]))
-        self.assertEqual(["3000-11"], constants["metalHuntingList"])
+        self.assertEqual(["1200-1", "3000-11"], sorted(constants["metalHuntingList"]))
         self.assertEqual(["3003-1"], constants["specialQuestList"])
         self.assertIsNone(
             self.server.state.progress_for_status(
@@ -255,6 +266,10 @@ class HuntingRuntimeTest(unittest.TestCase):
         login = self.login("login-token")
         self.assertEqual(
             {
+                "sp_ch_1200-1": {
+                    "name": "sp_ch_1200-1",
+                    "value": True,
+                },
                 "sp_ch_3000-11": {
                     "name": "sp_ch_3000-11",
                     "value": True,
@@ -325,6 +340,33 @@ class HuntingRuntimeTest(unittest.TestCase):
                 item_list=[2, 2, 0, 0, 4, 0, 0, 0],
             )[0],
         )
+
+    def test_a_road_recruit_settles_once_and_a_duplicate_changes_nothing(self) -> None:
+        status, started = self.start("road-start", 1200, 1, 2)
+        self.assertEqual((200, True), (status, started["success"]))
+        snapshot = copy.deepcopy(self.userdata())
+        status, cleared = self.clear("road-clear", 1200, 1, exp=500, monsters=[9002], snapshot=snapshot)
+        self.assertEqual((200, True), (status, cleared["success"]))
+        roster_ids = {row["id"] for row in self.userdata()["chrdata"]}
+        self.assertIn(9002, roster_ids)
+        self.assertEqual("free_roam", self.phase())
+
+        # A second recruit of the same monster settles but grants nothing new:
+        # no duplicate rule survives, so none is invented.
+        status, started = self.start("road-again", 1200, 1, 2)
+        self.assertEqual((200, True), (status, started["success"]))
+        before = copy.deepcopy(self.userdata()["chrdata"])
+        status, cleared = self.clear("road-clear-again", 1200, 1, monsters=[9002])
+        self.assertEqual((200, True), (status, cleared["success"]))
+        self.assertEqual(before, self.userdata()["chrdata"])
+
+        # An undeclared monster, or a second copy at once, is refused outright.
+        status, started = self.start("road-third", 1200, 1, 2)
+        self.assertEqual((200, True), (status, started["success"]))
+        for label, claim in (("undeclared", [9003]), ("two-at-once", [9002, 9002])):
+            with self.subTest(label):
+                status, refused = self.clear(f"road-{label}", 1200, 1, monsters=claim)
+                self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
 
     def test_entry_item_is_consumed_and_a_missing_one_refuses_entry(self) -> None:
         self.assertEqual(2, self.userdata()["itemList"][4])

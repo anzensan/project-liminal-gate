@@ -60,6 +60,11 @@ class HuntingStage:
     companion_maxima: dict[int, int] = field(default_factory=dict)
     #: Companion id to the level a dropped copy arrives at.
     companion_drop_levels: dict[int, int] = field(default_factory=dict)
+    #: Character id to the most battle-recruited copies one settlement may
+    #: report through `battle_result.monsters`. Empty everywhere except Dragon
+    #: Road, whose community-documented Steel Dragon recruit is the only
+    #: bundled use; see the label beside the Road tables.
+    monster_recruit_maxima: dict[int, int] = field(default_factory=dict)
     #: Character IDs a clear grants server-side, rather than as a reported
     #: drop. The Daily Quest that awards Joker Λ is the only user: the client's
     #: result screen shows a character, which is neither an item nor a
@@ -159,7 +164,7 @@ _STAGE_FIELDS = {
 # Optional so that catalogs written before the client-facing zone lists existed
 # still load; omitting it advertises the stage on the ordinary Hunting selector,
 # which is what every such catalog described.
-_OPTIONAL_STAGE_FIELDS = {"selector", "ticket_optional", "companion_maxima", "companion_drop_levels"}
+_OPTIONAL_STAGE_FIELDS = {"selector", "ticket_optional", "companion_maxima", "companion_drop_levels", "monster_recruit_maxima"}
 
 
 def load_hunting_catalog(path: Path) -> HuntingCatalog:
@@ -222,6 +227,9 @@ def _parse_stage(raw: object, item_slots: int, max_stack: int) -> HuntingStage:
         selector=raw.get("selector", "hunting"),
         ticket_optional=raw.get("ticket_optional", False),
         companion_maxima=companions, companion_drop_levels=levels,
+        monster_recruit_maxima=_parse_companion_counts(
+            raw.get("monster_recruit_maxima", {}), "monster_recruit_maxima",
+        ),
     )
 
 
@@ -259,13 +267,17 @@ def hunting_settlement_within_bounds(stage: HuntingStage, result: dict[str, Any]
     not declare is refused rather than settled generously: a success response
     that accepts an unbounded claim is worse than a visible refusal.  Metal Zone
     declares Companion drops and an EXP ceiling; the Hunting families declare
-    items or Coins; Dragon and Machine Road declare EXP alone, because their own
-    sections switch every other channel off.  Battle Summons and recruited
-    monsters are refused everywhere: no Huntland family grants either.
+    items or Coins; the Roads declare EXP, plus the one bounded channel each
+    that the labels beside their tables justify.  Battle Summons are refused
+    everywhere, and battle-recruited monsters are refused everywhere except
+    within a stage's declared `monster_recruit_maxima`.
     """
     if result["coins"] > stage.max_coins or result["exp"] > stage.max_exp:
         return False
-    if result["summons"] or result["monsters"]:
+    if result["summons"]:
+        return False
+    recruits = Counter(result["monsters"])
+    if any(count > stage.monster_recruit_maxima.get(character_id, 0) for character_id, count in recruits.items()):
         return False
     companions = Counter(result["buddies"])
     if any(count > stage.companion_maxima.get(companion_id, 0) for companion_id, count in companions.items()):
@@ -305,14 +317,23 @@ METAL_TICKET_ITEM_ID = 50
 # selector, not the Chapter 1300 time-attack family.  Their historical
 # availability gate is not preserved; they appear with Metal Zone 1.
 #
-# Their own BattleData sections say, affirmatively, that they drop nothing:
-# `dropBuddies` is empty, `allowLucky` is 0 so no Luck chest is ever offered,
-# and `doNotDropExchangeItem` is 1.  That is a declaration, not missing
-# evidence, and it is why Coins, items, and Companions settle at zero here.
-# The community record describes retired-service rewards for both Roads (a
-# Steel Dragon recruit; Star drops and a Messages-borne Mech Skill Drop); it
-# is recorded in the external reference ledger and deliberately not applied,
-# because the recovered sections' own declarations outrank an external table.
+# What their own BattleData sections declare, channel by channel.  Empty
+# `dropBuddies` rules out Companion drops, and `allowLucky` 0 rules out the
+# Luck chest; both stay refused on the game's own authority.  The third flag,
+# `doNotDropExchangeItem` 1, governs -- by its own name -- exchange items;
+# whether it suppresses every item drop is an interpretation, not a recovered
+# declaration.  The community record (Machine Road, terrabattle.fandom.com,
+# edited while the final version was live) documents three to five of one
+# random Star per defeated machine, so Chapter 1201 accepts the four recovered
+# Star IDs under a generous local ceiling: the bound is inert if the client
+# never rolls an item there, and it stops a won battle being refused if it
+# does.  The record's Messages-borne Mech Skill Drop has no recovered item
+# identity or transport and stays out.  None of the three flags addresses
+# battle-recruited monsters, and the record documents Dragon Road's Steel
+# Dragon -- a 25% spawn whose defeat recruits it -- so Chapter 1200 accepts at
+# most one reported Steel Dragon recruit per clear.  Character 1090 is
+# resolved from the operator's own decoded name catalog, not bundled by name;
+# a duplicate recruit changes nothing, because no duplicate rule survives.
 #
 # EXP is a different channel and must not be zero.  Both sections are
 # species-locked training zones -- `species` 128 (Dragon) and 256 (Machine) at
@@ -322,6 +343,13 @@ METAL_TICKET_ITEM_ID = 50
 # rejected.
 _ROAD_CHAPTERS = (1200, 1201)
 _ROAD_STAMINA = 15
+# Dark, Evanescent, Shooting and Binary Star: the same recovered item IDs the
+# Daily Quest policy uses.  The enemy population is not recovered, so the
+# ceiling bounds a generous run rather than asserting one.
+_STAR_ITEM_IDS = (118, 119, 120, 121)
+_MACHINE_ROAD_STAR_CEILING = 30
+#: Steel Dragon, resolved from the operator's own decoded name catalog.
+_STEEL_DRAGON_CHARACTER_ID = 1090
 # Derived on the same basis as `_METAL_EXP_CEILING`, from the same selector's
 # own tiers: the Roads' assumed level 35 falls between Metal Zone 3 (level 30)
 # and 4 (level 40), and the higher neighbour is taken.  Erring high is
@@ -449,13 +477,26 @@ def _bundled_metal_stages() -> list[HuntingStage]:
 
 
 def _bundled_road_stages() -> list[HuntingStage]:
-    """Return Dragon and Machine Road: species-locked EXP, and nothing else."""
+    """Return Dragon and Machine Road: species-locked EXP plus one bounded channel each.
+
+    Dragon Road (1200) accepts at most one reported Steel Dragon recruit;
+    Machine Road (1201) accepts the community-documented Star drops.  The
+    labels beside `_ROAD_CHAPTERS` carry the evidence for both.
+    """
+    per_road = {
+        1200: {"monster_recruit_maxima": {_STEEL_DRAGON_CHARACTER_ID: 1}},
+        1201: {
+            "item_maxima": {item_id: _MACHINE_ROAD_STAR_CEILING for item_id in _STAR_ITEM_IDS},
+            "max_items_total": _MACHINE_ROAD_STAR_CEILING,
+        },
+    }
     return [
         HuntingStage(
             family="road", chapter=chapter, section=1, stamina=_ROAD_STAMINA, coins=0,
             entry_item_id=0, entry_item_count=0,
             unlock_chapter=_METAL_UNLOCK_AFTER_CHAPTER[0] + 1, unlock_section=1,
-            max_coins=0, max_exp=_ROAD_EXP_CEILING, max_items_total=0, item_maxima={},
+            max_coins=0, max_exp=_ROAD_EXP_CEILING,
+            **({"max_items_total": 0, "item_maxima": {}} | per_road[chapter]),
             selector="metal",
         )
         for chapter in _ROAD_CHAPTERS
