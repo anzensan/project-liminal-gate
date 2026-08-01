@@ -50,7 +50,13 @@ from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, 
 from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
 from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_pact_draw_catalog
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
-from liminal_gate.message_catalog import MessageCatalog, MessageCatalogError, load_message_catalog
+from liminal_gate.message_catalog import (
+    MessageCatalog,
+    MessageCatalogError,
+    build_bundled_chapter_message_policy,
+    eligible_chapter_messages,
+    load_message_catalog,
+)
 from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, active_week_index, build_bundled_exchange_policy, load_exchange_catalog
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
@@ -707,6 +713,7 @@ class BootstrapState:
                     "claimed_achievements": [],
                     "achievement_requests": {},
                     "messages": _initial_messages(message_catalog),
+                    "chapter_milestones_issued": [],
                     "message_requests": {},
                     "exchange_remaining": _initial_exchange_remaining(exchange_catalog),
                     "exchange_total": 0,
@@ -1079,10 +1086,16 @@ class BootstrapState:
             self._persist_locked()
             return "success", payload
 
-    def login_messages(self, account_id: str) -> list[dict[str, Any]]:
+    def login_messages(self, account_id: str, chapter_milestones: bool = False) -> list[dict[str, Any]]:
         with self.lock:
             account = self.accounts.get(account_id)
-            return [] if account is None else [_message_wire(message) for _, message in sorted(account.setdefault("messages", {}).items())]
+            if account is None:
+                return []
+            if chapter_milestones and _synchronize_chapter_milestone_messages(account):
+                # Commit before exposing the gift. A restart between login and
+                # read must retain both the message and its issued sentinel.
+                self._persist_locked()
+            return [_message_wire(message) for _, message in sorted(account.setdefault("messages", {}).items())]
 
     def read_messages(self, token: str, request_id: str, body: bytes, catalog: MessageCatalog | None) -> tuple[str, dict[str, Any] | None]:
         with self.lock:
@@ -2719,6 +2732,7 @@ class BootstrapState:
             account.setdefault("claimed_achievements", [])
             account.setdefault("achievement_requests", {})
             account.setdefault("messages", {})
+            account.setdefault("chapter_milestones_issued", [])
             account.setdefault("message_requests", {})
             if (
                 not isinstance(account["tutorial_phase"], str)
@@ -2740,6 +2754,9 @@ class BootstrapState:
                 or account["claimed_achievements"] != sorted(set(account["claimed_achievements"]))
                 or not isinstance(account["achievement_requests"], dict)
                 or not isinstance(account["messages"], dict)
+                or not isinstance(account["chapter_milestones_issued"], list)
+                or any(not isinstance(value, str) or not value for value in account["chapter_milestones_issued"])
+                or account["chapter_milestones_issued"] != sorted(set(account["chapter_milestones_issued"]))
                 or not isinstance(account["message_requests"], dict)
             ):
                 raise ProfileError("local bootstrap state contains invalid tutorial state")
@@ -2860,6 +2877,7 @@ class BootstrapServer(ThreadingHTTPServer):
         public_data_root: Path | None = None,
         outcome_strict: bool = False,
         companion_equipment_catalog: CompanionEquipmentCatalog | None = None,
+        chapter_milestones: bool = False,
     ) -> None:
         self.profile = profile
         self.state = state
@@ -2884,7 +2902,12 @@ class BootstrapServer(ThreadingHTTPServer):
         self.companion_draw_catalog = companion_draw_catalog
         self.pact_draw_catalog = pact_draw_catalog
         self.achievement_catalog = achievement_catalog
-        self.message_catalog = message_catalog
+        self.message_catalog = (
+            build_bundled_chapter_message_policy()
+            if chapter_milestones and message_catalog is None
+            else message_catalog
+        )
+        self.chapter_milestones = chapter_milestones
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
         self.hunting_catalog = hunting_catalog
@@ -3016,7 +3039,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # the country-selection modal when nothing is stored.
             payload |= dict(LOCAL_LOGIN_COUNTRY_FIELDS)
             payload["name"] = self.server.state.accounts[account_id].get("username", payload.get("name", "Player"))
-            payload["messageList"] = self.server.state.login_messages(account_id)
+            payload["messageList"] = self.server.state.login_messages(
+                account_id, self.server.chapter_milestones,
+            )
             event_flags: dict[str, Any] = {}
             progress = self.server.state.accounts[account_id].get(
                 "userdata", {}
@@ -4512,13 +4537,49 @@ def _initial_messages(catalog: MessageCatalog | None) -> dict[str, dict[str, Any
     if catalog is None:
         return {}
     return {
-        message.message_id: {
-            "id": message.message_id, "date": message.date, "read": False, "days_last": message.days_last,
-            "messages": copy.deepcopy(message.texts), "coins": message.coins, "free_energy": message.free_energy,
-            "items": {str(item_id): amount for item_id, amount in message.items.items()},
-        }
+        message.message_id: _message_state(message)
         for message in catalog.messages
     }
+
+
+def _message_state(message: Any) -> dict[str, Any]:
+    return {
+        "id": message.message_id,
+        "date": message.date,
+        "read": False,
+        "days_last": message.days_last,
+        "messages": copy.deepcopy(message.texts),
+        "coins": message.coins,
+        "free_energy": message.free_energy,
+        "items": {str(item_id): amount for item_id, amount in message.items.items()},
+    }
+
+
+def _synchronize_chapter_milestone_messages(account: dict[str, Any]) -> bool:
+    """Issue each earned chapter present once, even after inbox deletion."""
+    messages = account.setdefault("messages", {})
+    issued = account.setdefault("chapter_milestones_issued", [])
+    progress = account.get("userdata", {}).get("progressCode", 0)
+    eligible = eligible_chapter_messages(progress, time.time())
+    eligible_ids = {message.message_id for message in eligible}
+    changed = False
+
+    # Saves predating the sentinel may already contain read or unread milestone
+    # messages. Adopt those IDs before backfilling so an upgrade cannot issue a
+    # second copy of an earlier reward.
+    for message_id in sorted(eligible_ids.intersection(messages)):
+        if message_id not in issued:
+            issued.append(message_id)
+            changed = True
+    for message in eligible:
+        if message.message_id in issued:
+            continue
+        messages[message.message_id] = _message_state(message)
+        issued.append(message.message_id)
+        changed = True
+    if changed:
+        issued.sort()
+    return changed
 
 
 def _restock_exchange_week(account: dict[str, Any], catalog: ExchangeCatalog) -> dict[int, Any]:
@@ -5168,7 +5229,15 @@ def main() -> int:
         if args.achievements and args.achievement_catalog is not None:
             raise ProfileError("--achievements cannot be combined with --achievement-catalog")
         achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))
-        messages = None if args.message_catalog is None else load_message_catalog(args.message_catalog)
+        messages = (
+            build_bundled_chapter_message_policy()
+            if args.core_story and args.message_catalog is None
+            else (None if args.message_catalog is None else load_message_catalog(args.message_catalog))
+        )
+        if args.core_story and messages is not None and messages.item_slots < 112:
+            raise ProfileError(
+                "--core-story chapter milestones require a message catalog with at least 112 item slots"
+            )
         if args.trading_post and args.exchange_catalog is not None:
             raise ProfileError("--trading-post cannot be combined with --exchange-catalog")
         exchanges = build_bundled_exchange_policy() if args.trading_post else (None if args.exchange_catalog is None else load_exchange_catalog(args.exchange_catalog))
@@ -5201,6 +5270,7 @@ def main() -> int:
             public_data_root=args.public_data_root,
             outcome_strict=getattr(args, "outcome_strict", False),
             companion_equipment_catalog=companion_equipment,
+            chapter_milestones=getattr(args, "core_story", False),
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error

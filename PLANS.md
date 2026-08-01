@@ -1,5 +1,46 @@
 # Execution Plans
 
+## 2026-07-31 restore chapter milestone tickets
+
+Objective: restore the retail Chapter 5/7 Metal Ticket and Chapter 6/8/10
+Companion Ticket presents as durable, replay-safe inbox rewards, including a
+safe retroactive grant for accounts already past a milestone.
+
+Evidence boundary:
+
+- The retained account at Chapter 8-9 contains read Chapter 5 Item 50 x2 and
+  Chapter 6 Item 112 x3 messages, but no Chapter 7 message and zero of both
+  ticket balances.
+- The documented retail milestones are Metal Ticket x2 after Chapters 5 and 7,
+  and Companion Ticket x3/x3/x4 after Chapters 6, 8, and 10 respectively.
+- The server already has an exact inbox read/delete transport. The missing
+  boundary is progress-gated message issuance and durable issued-state, not a
+  new direct inventory mutation.
+
+Required proof:
+
+1. Issue only milestones strictly below the currently unlocked story chapter.
+2. Record issued message IDs separately from the inbox so deleting a claimed
+   message cannot recreate or duplicate its reward.
+3. Backfill existing eligible accounts at login, persist before responding,
+   and prove read retry, deletion, restart, and the Chapter 8 boundary over the
+   real HTTP path.
+4. Run focused and full validation, publish, deploy, and verify the live
+   account receives only its missing Chapter 7 present.
+
+Current result:
+
+- Chapter 8-9 login creates Chapters 5, 6, and 7 but not Chapter 8; the exact
+  Chapter 7 read credits two Item 50, an identical replay credits nothing, and
+  deletion plus restart does not recreate the message. Entering Chapter 9 then
+  creates Chapter 8 Item 112 x3.
+- A migration run against a copy of the live save adopted its existing read
+  Chapter 5/6 messages, added only the missing Chapter 7 message, and left the
+  zero ticket balances unchanged until read.
+- Twenty-one focused tests and all 656 repository tests pass warning-strict;
+  compilation and diff checks pass. Publication, Beelink deployment, and
+  original-client inbox acceptance remain pending.
+
 ## 2026-07-31 correct the solo Eidolon selector catalog
 
 Objective: replace the over-broad 28-row Eidolon selector with the twelve

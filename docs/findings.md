@@ -3,6 +3,20 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Chapter ticket presents
+
+- **Confirmed local gap and retail-backed correction:** the retained Chapter
+  8-9 account had read Chapter 5 Item 50 x2 and Chapter 6 Item 112 x3 messages,
+  but no Chapter 7 message and zero of both ticket balances. Retail
+  documentation records Metal Ticket x2 after Chapters 5 and 7 and Companion
+  Ticket x3/x3/x4 after Chapters 6, 8, and 10. The guided core-story path now
+  creates each eligible inbox message once, backfills a missed milestone on
+  login, and retains a separate issued sentinel after inbox deletion. Exact
+  client item IDs and limits are Confirmed; milestone quantities are
+  community-documented historical behavior. Sources checked 2026-07-31:
+  [Metal Ticket](https://terrabattle.fandom.com/wiki/Metal_Ticket) and
+  [Companion Ticket](https://terrabattle.fandom.com/wiki/Companion_Ticket).
+
 ## First tutorial Pact outcome
 
 - **Confirmed transport and existing client boundary:** the surviving client

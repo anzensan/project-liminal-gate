@@ -33,6 +33,23 @@ class MessageCatalog:
     messages: tuple[LocalMessage, ...]
 
 
+# Retail first-clear chapter presents. These are progress-gated inbox messages,
+# not unconditional startup gifts: the next unlocked chapter must be strictly
+# greater than the completed chapter. Item IDs are decoded by the final client
+# as Metal Ticket (50) and Companion Ticket (112).
+CHAPTER_MILESTONES: tuple[tuple[int, int, int, str], ...] = (
+    (5, 50, 2, "Metal Ticket"),
+    (6, 112, 3, "Companion Ticket"),
+    (7, 50, 2, "Metal Ticket"),
+    (8, 112, 3, "Companion Ticket"),
+    (10, 112, 4, "Companion Ticket"),
+)
+BUNDLED_ITEM_SLOTS = 181
+BUNDLED_MAX_FREE_ENERGY = 9_999
+BUNDLED_MAX_COINS = 99_999_999
+BUNDLED_MAX_STACK = 999
+
+
 def load_message_catalog(path: Path) -> MessageCatalog:
     try:
         document = tomllib.loads(path.read_text(encoding="utf-8")) if path.suffix.lower() == ".toml" else json.loads(path.read_text(encoding="utf-8"))
@@ -76,3 +93,46 @@ def _message(value: object, item_slots: int) -> LocalMessage:
             raise MessageCatalogError("message items require in-range decimal IDs and positive amounts")
         parsed[int(raw_id)] = amount
     return LocalMessage(value["id"], float(value["date"]), value["days_last"], dict(texts), value["coins"], value["free_energy"], parsed)
+
+
+def build_bundled_chapter_message_policy() -> MessageCatalog:
+    """Return reward limits for the progress-gated retail chapter presents.
+
+    The messages themselves are created only when an account has completed the
+    relevant chapter. Keeping this catalog empty prevents a new Chapter 1
+    account from seeing later presents while still giving the existing inbox
+    settlement path its recovered client limits.
+    """
+    return MessageCatalog(
+        BUNDLED_ITEM_SLOTS,
+        BUNDLED_MAX_FREE_ENERGY,
+        BUNDLED_MAX_COINS,
+        BUNDLED_MAX_STACK,
+        (),
+    )
+
+
+def eligible_chapter_messages(progress_code: int, issued_at: float) -> tuple[LocalMessage, ...]:
+    """Build every retail chapter present earned by ``progress_code``."""
+    if type(progress_code) is not int or progress_code < 0:
+        return ()
+    unlocked_chapter = (progress_code & 0xFFFF) >> 6
+    messages: list[LocalMessage] = []
+    for chapter, item_id, count, item_name in CHAPTER_MILESTONES:
+        if unlocked_chapter <= chapter:
+            continue
+        title = "Chapter milestone reward"
+        messages.append(LocalMessage(
+            message_id=f"chapter:{chapter}:item:{item_id}",
+            date=issued_at,
+            days_last=36_500,
+            texts={
+                "default": f"{title}.\nReward: {item_name} x{count}",
+                "ja": title,
+                "en": title,
+            },
+            coins=0,
+            free_energy=0,
+            items={item_id: count},
+        ))
+    return tuple(messages)

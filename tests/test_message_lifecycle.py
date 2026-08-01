@@ -9,10 +9,107 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-from liminal_gate.message_catalog import load_message_catalog
+from liminal_gate.message_catalog import (
+    build_bundled_chapter_message_policy,
+    eligible_chapter_messages,
+    load_message_catalog,
+)
 
 
 class MessageLifecycleTest(unittest.TestCase):
+    def test_retail_chapter_milestones_backfill_once_and_survive_deletion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.json"
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            catalog = build_bundled_chapter_message_policy()
+
+            def start() -> tuple[BootstrapServer, threading.Thread]:
+                server = BootstrapServer(
+                    ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                    message_catalog=catalog, chapter_milestones=True,
+                )
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                return server, thread
+
+            def get(server: BootstrapServer) -> tuple[int, dict[str, object]]:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("GET", "/gd/login?otk=token&uuid=account")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                return response.status, payload
+
+            def post(server: BootstrapServer, route: str, request_id: str, message_id: str) -> tuple[int, dict[str, object]]:
+                body = urlencode({"idlist": json.dumps([message_id]), "lastUpdate": "1"})
+                connection = HTTPConnection(*server.server_address)
+                connection.request("POST", f"/gd/{route}?otk=token&requestID={request_id}", body=body)
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                return response.status, payload
+
+            server, thread = start()
+            try:
+                seed = {
+                    "progressCode": (8 << 6) | 9,
+                    "chrdata": [], "buddyInfo": {"list": [], "record": []},
+                    "summonList": [0] * 16, "itemList": [0] * 181,
+                    "coins": 0, "freeEnergy": 0, "energy": 0,
+                    "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+                }
+                server.state.create_account("signup", "account", seed, catalog)
+                status, login = get(server)
+                self.assertEqual(200, status)
+                self.assertEqual(
+                    ["chapter:5:item:50", "chapter:6:item:112", "chapter:7:item:50"],
+                    sorted(message["id"] for message in login["messageList"]),
+                )
+                self.assertNotIn("chapter:8:item:112", {message["id"] for message in login["messageList"]})
+                self.assertEqual(
+                    ["chapter:5:item:50", "chapter:6:item:112", "chapter:7:item:50"],
+                    server.state.accounts["account"]["chapter_milestones_issued"],
+                )
+
+                status, read = post(server, "read_messages", "read-seven", "chapter:7:item:50")
+                self.assertEqual((200, 2), (status, read["itemList"][49]))
+                self.assertEqual((status, read), post(server, "read_messages", "read-seven", "chapter:7:item:50"))
+                status, deleted = post(server, "delete_messages", "delete-seven", "chapter:7:item:50")
+                self.assertEqual((200, ["chapter:7:item:50"]), (status, deleted["deletelist"]))
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+            restarted, thread = start()
+            try:
+                status, login = get(restarted)
+                self.assertEqual(200, status)
+                self.assertNotIn("chapter:7:item:50", {message["id"] for message in login["messageList"]})
+                self.assertEqual(2, restarted.state.accounts["account"]["userdata"]["itemList"][49])
+                with restarted.state.lock:
+                    restarted.state.accounts["account"]["userdata"]["progressCode"] = (9 << 6) | 1
+                    restarted.state._persist_locked()
+                status, login = get(restarted)
+                self.assertEqual(200, status)
+                self.assertIn("chapter:8:item:112", {message["id"] for message in login["messageList"]})
+                status, read = post(restarted, "read_messages", "read-eight", "chapter:8:item:112")
+                self.assertEqual((200, 3), (status, read["itemList"][111]))
+            finally:
+                restarted.shutdown(); thread.join(); restarted.server_close()
+
+    def test_retail_chapter_message_table_is_exact(self) -> None:
+        messages = eligible_chapter_messages((11 << 6) | 1, 123.0)
+        self.assertEqual(
+            [
+                ("chapter:5:item:50", {50: 2}),
+                ("chapter:6:item:112", {112: 3}),
+                ("chapter:7:item:50", {50: 2}),
+                ("chapter:8:item:112", {112: 3}),
+                ("chapter:10:item:112", {112: 4}),
+            ],
+            [(message.message_id, message.items) for message in messages],
+        )
+
     def test_login_read_delete_collision_and_restart_replay(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -23,6 +23,21 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 chapter-ticket milestone correction in progress: live state at
+  Chapter 8-9 confirmed that the account had read the Chapter 5 Metal Ticket x2
+  and Chapter 6 Companion Ticket x3 presents, held zero of each, and never
+  received the earned Chapter 7 Metal Ticket x2 present. The guided core-story
+  path now issues the retail Chapter 5/7 Metal and Chapter 6/8/10 Companion
+  Ticket milestones through the existing inbox. Eligibility is based on the
+  next unlocked chapter; issued IDs persist separately from messages so a
+  read/delete/relogin/restart cannot duplicate a reward. Focused real-HTTP
+  validation covers Chapter 8-9 backfill, early Chapter 8 exclusion, read
+  replay, deletion, restart, and later Chapter 8 issuance. A migration run on a
+  copy of the live save adopted Chapters 5/6, added only Chapter 7, and changed
+  no inventory balance before read. All 656 warning-strict repository tests,
+  compilation, and diff checks pass. Publication, deployment, and
+  physical-client acceptance remain pending.
+
 - 2026-07-31 solo Eidolon selector correction in progress: the maintainer's
   physical client showed the flaw in the 28-row projection because sixteen
   cards lacked banners. APK-matched BattleData has exactly twelve nonzero-battle

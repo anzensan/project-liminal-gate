@@ -408,7 +408,7 @@ catalog is passed at launch:
 | Launcher option | Local feature |
 | --- | --- |
 | `--achievement-catalog` | achievement claim thresholds and rewards (see `--achievements` for the bundled policy) |
-| `--message-catalog` | local inbox messages and bounded rewards |
+| `--message-catalog` | additional local inbox messages and bounded rewards; guided core story already includes retail chapter-ticket presents |
 | `--exchange-catalog` | Trading Post offers and exchanges |
 | `--statusup-catalog` | status-item use rules |
 | `--job-catalog` | ordered job-unlock costs |

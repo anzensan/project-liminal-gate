@@ -18,6 +18,20 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Latest chapter-ticket validation: the live Chapter 8-9 account retained read
+Chapter 5 Metal Ticket x2 and Chapter 6 Companion Ticket x3 messages but lacked
+the already-earned Chapter 7 Metal Ticket x2 present. Guided core story now
+issues the retail Chapter 5/7 Metal and Chapter 6/8/10 Companion Ticket presents
+through the inbox. Progress must have entered the following chapter. A durable
+issued-ID sentinel is committed before login exposes a message and survives
+read/delete, so neither relog nor restart can recreate a claimed reward. On a
+copy of the live save the migration adopted the two existing messages, created
+only Chapter 7, left both inventory balances unchanged until read, and did not
+issue Chapter 8 early. Real-HTTP tests cover read replay, deletion, restart, and
+Chapter 8 issuance after entering Chapter 9. All 656 warning-strict repository
+tests pass; compilation and diff checks pass. Publication, Beelink deployment,
+and original-client inbox acceptance remain pending.
+
 Latest curated Archive validation: dual-ABI `UISpecialSelect.SetMode(0)`
 analysis confirms that a nonempty server `specialQuestList` overrides the
 embedded fallback array. Guided setup now derives 42 release-facing stages
