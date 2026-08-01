@@ -102,8 +102,10 @@ server advertises the recovered solo Chapter 3003-1 *Money Money Time* card in
 Arena -> Special Quests. It costs 5 stamina and uses a bounded local Coin
 settlement policy; it is not a claim about the original event rotation or
 rewards. Guided setup also derives the five recovered archive families from
-your own BattleData and character catalog, and enables the eight packaged
-Strikes Back families. Their permanent progress gates, zero-Coin clears, and
+your own BattleData and character catalog, and enables fourteen packaged
+non-collaboration Strikes Back families. Little Noah 8008--8011 and Hime Rush
+8018 remain disabled because their distinct contracts are not recovered. The
+enabled families' permanent progress gates, zero-Coin clears, and
 first-section associated-character grants are local archive policy rather than
 recovered schedules, probabilities, or complete historical reward tables.
 The first Tower of Temptation floor is a separate bounded compatibility slice:

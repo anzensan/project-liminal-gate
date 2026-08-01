@@ -650,7 +650,10 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             "accounts"
         ][self.account_id]
 
-    def clear_body(self, *, experience: int = 0) -> bytes:
+    def clear_body(
+        self, *, chapter: int = 8000, section: int = 5,
+        experience: int = 0,
+    ) -> bytes:
         userdata = self.account()["userdata"]
         return urlencode({
             "progressCode": userdata["progressCode"],
@@ -671,11 +674,11 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 "buddies": [],
                 "items": {},
                 "exp": experience,
-                "section": 5,
+                "section": section,
                 "monsters": [],
                 "summons": [],
                 "luckynum": 0,
-                "chapter": 8000,
+                "chapter": chapter,
                 "unableluckdrop": False,
                 "boostup": [0] * 6,
             }),
@@ -763,6 +766,69 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             (status, cleared),
             self.post(
                 f"/gd/clear_quest?otk={self.token}&requestID=clear",
+                clear,
+            ),
+        )
+
+    def test_late_families_settle_and_collaboration_rows_remain_refused(self) -> None:
+        self.stop_server()
+        state = BootstrapState(self.state_path)
+        state.accounts[self.account_id]["userdata"]["progressCode"] = (
+            0x01000000 | (19 << 6) | 1
+        )
+        state._persist_locked()
+        state.close()
+        self.start_server()
+
+        status, server_status = self.get(
+            f"/gd/get_server_status?otk={self.token}&requestID=late-status"
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(
+            [
+                *(f"{chapter}-1" for chapter in range(8000, 8008)),
+                *(f"{chapter}-1" for chapter in range(8012, 8018)),
+            ],
+            server_status["constants"]["descentHuntingList"],
+        )
+
+        for chapter in (8008, 8011, 8018):
+            body = (
+                f"stamina=5&coins=0&chapter={chapter}&section=1&lastUpdate=1"
+            ).encode()
+            refused_status, refused = self.post(
+                f"/gd/start_quest?otk={self.token}&requestID=refuse-{chapter}",
+                body,
+            )
+            self.assertEqual(
+                (501, "unsupported_start_quest"),
+                (refused_status, refused["error"]),
+            )
+
+        start = b"stamina=15&coins=0&chapter=8017&section=3&lastUpdate=1"
+        status, started = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=late-start",
+            start,
+        )
+        self.assertEqual((200, True), (status, started["success"]))
+        active = self.account()["active_generic_story"]
+        self.assertEqual({"chapter": 8017, "section": 3}, active)
+
+        self.restart()
+        clear = self.clear_body(chapter=8017, section=3)
+        status, cleared = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=late-clear",
+            clear,
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+        self.assertIsNone(self.account()["active_generic_story"])
+
+        self.restart()
+        self.assertEqual(
+            (status, cleared),
+            self.post(
+                f"/gd/clear_quest?otk={self.token}&requestID=late-clear",
                 clear,
             ),
         )

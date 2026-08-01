@@ -636,10 +636,11 @@ wiki, so these mint at level 1, matching the Companion draw.
 ## Local event stages and character grants
 
 Standard guided setup derives the five recovered Archive Special Quest
-families and the eight recovered Strikes Back identities from operator-local
-master data. The bundled Counter Descent policy remains authoritative for
-Strikes Back's five tiers, stamina, progress gates, and zero-base clears. These
-runtime catalogs and their character IDs are validated against a matching
+families and fourteen recovered non-collaboration Strikes Back identities from
+operator-local master data. The bundled Counter Descent policy remains authoritative for
+the recovered five- or three-tier families, stamina, progress gates, and
+zero-base clears. Little Noah 8008--8011 and Hime Rush 8018 remain excluded.
+These runtime catalogs and their character IDs are validated against a matching
 catalog derived from your own APK; neither catalog belongs in Git.
 
 An explicit event catalog is now an expert override, not a requirement for

@@ -49,7 +49,7 @@ capabilities:
   - family: local_events
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006 plus bounded Tower 9100-1; bundled Strikes Back Chapters 8000-8007 remain authoritative; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while other event clears remain pending"
+    note: "guided setup derives Archive Chapters 2000, 2001, 2002, 2004, and 2006 plus bounded Tower 9100-1; bundled Strikes Back Chapters 8000-8007 and 8012-8017 remain authoritative while 8008-8011 and 8018 stay unsupported; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while other event clears remain pending"
     transport_tests: true
     restart_tests: true
   - family: tower_vertical_slice

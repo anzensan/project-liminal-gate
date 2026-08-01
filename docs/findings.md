@@ -236,7 +236,8 @@ Private inputs, captures, account state, and original assets remain excluded.
   validation:** guided setup derives Archive Special Quest Chapters 2000,
   2001, 2002, 2004, and 2006 from the matching local BattleData and character
   catalog. The selector merges these rows with Chapter 3003-1; bundled
-  Chapters 8000--8007 remain authoritative on `descentHuntingList`.
+  Chapters 8000--8007 and 8012--8017 remain authoritative on
+  `descentHuntingList`.
   **Local policy:** the permanent Chapter 2/4/10/13/20 gates, zero fixed
   clear-Coin increment, and first-section associated-character grants are not
   recovered schedules, probabilities, or complete reward tables. Variable
@@ -249,8 +250,9 @@ Private inputs, captures, account state, and original assets remain excluded.
   SHA-256 `f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`.
   `jq` grouped the recovered rows by chapter: 2000/2001/2002 each have four
   sections at 15/25/40/40 stamina, 2004 has one at 15, 2006 has four at
-  30/35/40/40, and every Chapter 8000--8007 family has five at
-  5/10/15/15/15. Chapters 9100--9102 each contain fifteen five-battle
+  30/35/40/40, every Chapter 8000--8007 family has five at
+  5/10/15/15/15, and every Chapter 8012--8017 family has three at 5/10/15.
+  Chapters 9100--9102 each contain fifteen five-battle
   sections; 9100-1 costs five stamina. All record zero entry Coins. This
   confirms local section economics, not service-authored clear rewards.
 - **Confirmed by supplied final-APK analysis:** BattleData identifies Chapter
@@ -262,10 +264,10 @@ Private inputs, captures, account state, and original assets remain excluded.
   not implemented or claimed; original-client acceptance is still unverified.
 - **Confirmed by static client analysis, live transport, and original-client
   observation:** Strikes Back reads `descentHuntingList`. One folded tier-1 row
-  per unlocked Chapter 8000--8007 family plus its matching chapter flag opens
-  that family's five-tier card. Spinetrich Kino and Kraken Kino rendered for
-  the current progress, and Chapter 8000-1 reached `start_quest` and loaded its
-  battle resources.
+  per unlocked Chapter 8000--8007 or 8012--8017 family plus its matching
+  chapter flag opens that family's card. Spinetrich Kino and Kraken Kino
+  rendered for the current progress, and Chapter 8000-1 reached `start_quest`
+  and loaded its battle resources.
 - **Local policy:** the country roster and large character/Companion box sizes
   are compatibility fixtures, not recovered production-service values.
 - **Local policy with confirmed client meter semantics:** a successful
@@ -363,10 +365,13 @@ Private inputs, captures, account state, and original assets remain excluded.
   hashes, optional baseline hash, tool identity, and verified/unverified
   calibration label.
 - **Local policy with recovered static costs:** packaged Counter Descent
-  Chapters 8000--8007 unlock permanently after local Chapter 5--12 gates.
-  Their five tiers cost 5/10/15/15/15 stamina. No recovered base reward is
-  granted, so clear accepts only a zero-base result and unchanged
-  server-owned state.
+  Chapters 8000--8007 unlock permanently after local Chapter 5--12 gates and
+  their five tiers cost 5/10/15/15/15 stamina. Chapters 8012--8017 unlock
+  after local Chapter 13--18 gates and their three tiers cost 5/10/15. No
+  recovered base reward is granted, so clear accepts only a zero-base result
+  and unchanged server-owned state. Chapters 8008--8011 and 8018 remain
+  unavailable because their distinct progression/reward contracts are not
+  recovered.
 
 ## Public-release boundary
 

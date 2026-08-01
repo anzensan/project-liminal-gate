@@ -127,8 +127,10 @@ Tower navigation and clear are not yet confirmed, so Chapters 9100-2 through
 9102-15 remain unavailable.
 
 Counter Descent starts use the ordinary `start_quest` route. The bundled policy
-accepts only Chapters 8000--8007, sections 1--5, with exact stamina costs of
-5/10/15/15/15. A successful entry commits the debit and active stage together;
+accepts Chapters 8000--8007, sections 1--5, at 5/10/15/15/15 stamina and
+Chapters 8012--8017, sections 1--3, at 5/10/15 stamina. It explicitly excludes
+Little Noah 8008--8011 and Hime Rush 8018 because their distinct contracts are
+unrecovered. A successful entry commits the debit and active stage together;
 retry or restart cannot debit it again. `clear_quest` requires unchanged
 progress, roster, inventory, Summons, and a zero base reward because no
 server-authored reward was recovered. This is preservation policy, not a claim

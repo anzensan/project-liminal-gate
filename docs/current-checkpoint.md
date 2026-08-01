@@ -78,9 +78,10 @@ Latest guided archive-event validation: setup derives `event-catalog.json`
 from matching local BattleData and character inputs and starts it by default.
 Archive Chapters 2000, 2001, 2002, 2004, and 2006 merge with Chapter 3003-1;
 bundled Counter Descent remains authoritative for Strikes Back Chapters
-8000--8007. Archive gates, zero fixed clear-Coin increments, and first-section
-associated character grants are labeled local policy; variable battle Coins
-come from the client result. Focused real-HTTP tests cover
+8000--8007 and 8012--8017; collaboration/special Chapters 8008--8011 and 8018
+remain unavailable. Archive gates, zero fixed clear-Coin increments, and
+first-section associated character grants are labeled local policy; variable
+battle Coins come from the client result. Focused real-HTTP tests cover
 selector projection, start, body-scoped same-ID/different-body handling,
 bounded clear, replay, and restart. The warning-strict full suite passed all
 635 tests in 118.402 seconds; compilation, profile JSON, endpoint YAML, and

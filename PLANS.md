@@ -1,5 +1,43 @@
 # Execution Plans
 
+## 2026-07-31 late non-collaboration Counter Descent expansion
+
+Objective: complete the ordinary solo Strikes Back tranche that shares the
+recovered Counter Descent contract without enabling collaboration-specific
+progression, unrecovered reward systems, or Arena VS.
+
+Evidence boundary:
+
+- The final client's fixed Arena catalog identifies Chapters 8012--8017 as six
+  non-collaboration Counter Descent families.
+- The APK-matched BattleData projection records three sections per family,
+  exact stamina costs of 5/10/15, and zero entry Coins.
+- Permanent Chapter 13--18 availability and zero-base settlement are local
+  preservation policy. No historical schedule or base reward was recovered.
+- Little Noah Chapters 8008--8011 and Hime Rush 8018 use distinct unrecovered
+  progression/reward contracts and remain deliberately unavailable.
+
+Required proof:
+
+1. Add only Chapters 8012--8017 to the bundled solo Counter Descent policy and
+   retain the existing five-tier economics for Chapters 8000--8007.
+2. Fold each unlocked family to one `descentHuntingList` row and emit only its
+   matching flag.
+3. Refuse 8008--8011 and 8018, exercise exact entry for 8017-3, restart before
+   clear, and prove durable settlement plus exact replay after another restart.
+4. Keep all multiplayer Arena routes disabled and update the public capability
+   boundary without claiming original-client acceptance.
+
+Outcome:
+
+- The bundled policy contains fourteen families and 58 stages: forty five-tier
+  stages across 8000--8007 and eighteen three-tier stages across 8012--8017.
+- Generated matching rows retain the bundled `descent_hunting` selector and
+  zero-base contract; collaboration/special chapters remain excluded.
+- Focused catalog/generator/runtime tests cover selector ordering, stamina,
+  exclusions, restart settlement, and replay. Original-client acceptance is
+  still required before describing Chapters 8012--8017 as client-certified.
+
 ## 2026-07-31 Jade Dragon original-client settlement recovery
 
 Objective: accept the exact final-client Chapter 2004-1 result without relaxing

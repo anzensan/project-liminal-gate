@@ -34,6 +34,12 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
     ("eight_bit_spinetrich_strikes_back", "sp_ch_8005", 8005, 10, ()),
     ("eight_bit_golem_strikes_back", "sp_ch_8006", 8006, 11, ()),
     ("eight_bit_hiso_alien_strikes_back", "sp_ch_8007", 8007, 12, ()),
+    ("lich_kino_strikes_back", "sp_ch_8012", 8012, 13, ()),
+    ("marilith_kino_strikes_back", "sp_ch_8013", 8013, 14, ()),
+    ("mechanic_kino_strikes_back", "sp_ch_8014", 8014, 15, ()),
+    ("odin_kino_strikes_back", "sp_ch_8015", 8015, 16, ()),
+    ("bahamut_kino_strikes_back", "sp_ch_8016", 8016, 17, ()),
+    ("leviathan_kino_strikes_back", "sp_ch_8017", 8017, 18, ()),
 )
 
 # event_id, flag, chapter, section, unlock_after_chapter

@@ -14,7 +14,7 @@ functional by adding ordinary HTTP responses.
 | 0. Certify account and resource stability | Done. The account lifecycle and the whole Chapter 2--42 story are now certified by the public suite. |
 | 1. Hunting discovery | Static client gates and selector list contract recovered; live historical-service schedule remains unavailable. |
 | 2. Hunting vertical slice | Catalog, selector projection, lifecycle, costs, bounds, replay, and restart are implemented (`liminal_gate/hunting_catalog.py` and `liminal_gate/server_constants.py`). |
-| 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, Crystal Road, and eight packaged Counter Descent families with explicit per-stage bounds. |
+| 3. Expand by family | Bundled local policy declares the recovered Hunting, Metal, Crystal Road, and fourteen packaged non-collaboration Counter Descent families with explicit per-stage bounds. |
 | 4. Arena -> Special Quests | Chapter 3003-1 is bundled after Chapter 3. Guided setup also derives Chapters 2000, 2001, 2002, 2004, and 2006 from the tester's matching BattleData and character catalog. |
 | 5. Keep Arena VS disabled | Unchanged; no work planned or done. |
 
@@ -70,10 +70,13 @@ behavior; a future private capture may refine historical unlock schedules or
 stage-specific bounds without changing that architecture.
 
 Strikes Back reuses the same lifecycle through the event catalog. The bundled
-Counter Descent policy declares Chapters 8000--8007 with five tiers each,
-folds each unlocked family to one selector row, and validates a zero-base
-clear. Original-client selector navigation and Chapter 8000-1 entry are
-confirmed; the client clear callback is still outstanding.
+Counter Descent policy declares Chapters 8000--8007 with five tiers each and
+Chapters 8012--8017 with three tiers each, folds every unlocked family to one
+selector row, and validates a zero-base clear. Little Noah 8008--8011 and Hime
+Rush 8018 remain excluded because their distinct progression/reward contracts
+are unrecovered. Original-client selector navigation and Chapter 8000-1 entry
+are confirmed; all Counter Descent clear callbacks and the added families'
+selector acceptance are still outstanding.
 
 Arena -> Special Quests merges recovered Chapter 3003-1 with the generated
 Archive Chapters 2000, 2001, 2002, 2004, and 2006 as their progress gates open.

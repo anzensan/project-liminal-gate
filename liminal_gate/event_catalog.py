@@ -93,21 +93,34 @@ class EventCatalog:
         return self.client_lists(None)["specialQuestList"]
 
 
-_COUNTER_DESCENT_STAMINA = (5, 10, 15, 15, 15)
+_FIVE_TIER_COUNTER_DESCENT_STAMINA = (5, 10, 15, 15, 15)
+_THREE_TIER_COUNTER_DESCENT_STAMINA = (5, 10, 15)
+
+
+def _counter_descent_stamina(chapter: int) -> tuple[int, ...] | None:
+    if 8000 <= chapter <= 8007:
+        return _FIVE_TIER_COUNTER_DESCENT_STAMINA
+    if 8012 <= chapter <= 8017:
+        return _THREE_TIER_COUNTER_DESCENT_STAMINA
+    return None
 
 
 def build_bundled_counter_descent_policy() -> EventCatalog:
-    """Return the eight packaged non-collaboration Strikes Back families.
+    """Return the fourteen packaged non-collaboration Strikes Back families.
 
-    Chapter identities, flags, five sections, and stamina are recovered from
-    the final client. Permanent Chapter 5--12 unlocks and zero-base settlement
+    Chapter identities, flags, section counts, and stamina are recovered from
+    the final client. Permanent Chapter 5--18 unlocks and zero-base settlement
     are explicit preservation policy because the historical schedule and
-    retired result service were not captured.
+    retired result service were not captured. Little Noah 8008--8011 and Hime
+    Rush 8018 are deliberately excluded because their progression/reward
+    contracts are distinct and unrecovered.
     """
     manifests = [
-        row for row in EVENT_MANIFEST_ROWS if 8000 <= row[2] <= 8007
+        row
+        for row in EVENT_MANIFEST_ROWS
+        if _counter_descent_stamina(row[2]) is not None
     ]
-    if len(manifests) != 8:
+    if len(manifests) != 14:
         raise EventCatalogError("bundled Counter Descent manifest is incomplete")
     stages = tuple(
         EventStage(
@@ -115,7 +128,7 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
             flag=flag,
             chapter=chapter,
             section=section,
-            stamina=_COUNTER_DESCENT_STAMINA[section - 1],
+            stamina=stamina,
             coins=0,
             clear_coins=0,
             character_ids=(),
@@ -124,7 +137,9 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
             zero_base=True,
         )
         for event_id, flag, chapter, unlock_after_chapter, _character_ids in manifests
-        for section in range(1, 6)
+        for section, stamina in enumerate(
+            _counter_descent_stamina(chapter) or (), start=1
+        )
     )
     return EventCatalog(stages)
 
@@ -243,12 +258,13 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 tuple(grants),
                 selector=(
                     "descent_hunting"
-                    if 8000 <= chapter <= 8007
+                    if _counter_descent_stamina(chapter) is not None
                     else "tower"
                     if 9100 <= chapter <= 9102
                     else "special"
                 ),
                 unlock_after_chapter=unlock_after_chapter,
+                zero_base=_counter_descent_stamina(chapter) is not None,
             )
         )
     if (

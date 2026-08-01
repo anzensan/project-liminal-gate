@@ -23,6 +23,22 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-07-31 late non-collaboration Counter Descent expansion: the bundled
+  solo policy now includes Chapters 8012--8017 in addition to 8000--8007.
+  Final-client static identities and the retained APK-matched BattleData
+  establish three sections per added family with exact stamina costs of
+  5/10/15 and zero entry Coins. Permanent Chapter 13--18 gates and zero-base
+  settlement remain explicit local policy because the retired schedule and
+  reward service were not captured. Little Noah Chapters 8008--8011 and Hime
+  Rush 8018 remain unavailable rather than being forced through the ordinary
+  event lifecycle. Real-HTTP coverage proves projection, explicit exclusion,
+  exact entry, restart before clear, durable settlement, and exact replay
+  after another restart. Arena VS remains disabled. Original-client selector,
+  battle, and result acceptance for the added families remain pending. Thirty
+  focused event tests and all 644 warning-strict repository tests passed; a
+  fresh local catalog generated 76 stages across 20 families with all 18 added
+  rows and none of the excluded chapters. Compilation, profile JSON, endpoint
+  YAML, and diff checks passed.
 - 2026-07-31 Jade Dragon original-client settlement: an exact Chapter 2004-1
   clear showed that Archive results use the client's reported battle Coins in
   addition to any cataloged fixed clear increment, and that the final client
@@ -87,9 +103,10 @@ machine-readable/current capability boundary.
   Chapters 2000, 2001, 2002, 2004, and 2006 automatically, merges their
   Special Quest rows with bounded Chapter 3003-1, and retains the bundled
   five-tier policy as the authoritative owner of Strikes Back Chapters
-  8000--8007. The Chapter 2/4/10/13/20 archive gates, zero fixed clear-Coin
-  increment, and first-section associated-character grants are explicitly
-  local policy; variable battle Coins are reconciled from the client result.
+  8000--8007 at that checkpoint. The Chapter 2/4/10/13/20 archive gates, zero
+  fixed clear-Coin increment, and first-section associated-character grants
+  are explicitly local policy; variable battle Coins are reconciled from the
+  client result.
   Older explicit catalogs without an unlock gate still load. Generated
   catalogs are atomic and hash-bound to the matching character catalog;
   server-only setup discovers both together or fails clearly. Affected-domain
@@ -392,8 +409,8 @@ machine-readable/current capability boundary.
   unchanged and covered by test: an unidentified LAN host is still refused once
   any client has identified itself. `RotatedTokenReadTest` closes the gap that
   hid this, where every exchange test reused the literal signup token.
-- 2026-07-27 Strikes Back vertical slice: the standard Hunting policy now
-  exposes the eight packaged non-collaboration Counter Descent families through
+- 2026-07-27 Strikes Back vertical slice: the standard Hunting policy exposed
+  the eight then-packaged non-collaboration Counter Descent families through
   the dedicated, progress-gated `descentHuntingList`, with five startable tiers
   per family and exact recovered stamina costs. Start and zero-base clear are
   bounded, replay-safe, and restart-safe. The live client displayed Spinetrich

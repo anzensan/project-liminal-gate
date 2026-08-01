@@ -71,12 +71,16 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
     def progress_at(chapter: int) -> int:
         return 0x01000000 | (chapter << 6) | 1
 
-    def test_declares_all_eight_families_and_five_sections(self) -> None:
+    def test_declares_all_fourteen_non_collaboration_families(self) -> None:
         self.assertEqual(
             [
                 (chapter, section)
-                for chapter in range(8000, 8008)
-                for section in range(1, 6)
+                for chapters, section_count in (
+                    (range(8000, 8008), 5),
+                    (range(8012, 8018), 3),
+                )
+                for chapter in chapters
+                for section in range(1, section_count + 1)
             ],
             sorted(self.catalog.by_identity()),
         )
@@ -94,6 +98,28 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
                     for section in range(1, 6)
                 )
             )
+        for chapter in range(8012, 8018):
+            self.assertEqual(
+                [5, 10, 15],
+                [
+                    self.catalog.by_identity()[(chapter, section)].stamina
+                    for section in range(1, 4)
+                ],
+            )
+            self.assertTrue(
+                all(
+                    self.catalog.by_identity()[(chapter, section)].zero_base
+                    for section in range(1, 4)
+                )
+            )
+        self.assertFalse(
+            {
+                (chapter, section)
+                for chapter in (*range(8008, 8012), 8018)
+                for section in range(1, 4)
+            }
+            & set(self.catalog.by_identity())
+        )
 
     def test_projects_one_folded_row_per_unlocked_family(self) -> None:
         self.assertEqual(
@@ -109,6 +135,15 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         self.assertEqual(
             ["sp_ch_8000", "sp_ch_8001"],
             sorted(self.catalog.flags(self.progress_at(7))),
+        )
+        self.assertEqual(
+            [
+                *(f"{chapter}-1" for chapter in range(8000, 8008)),
+                *(f"{chapter}-1" for chapter in range(8012, 8018)),
+            ],
+            self.catalog.client_lists(self.progress_at(19))[
+                "descentHuntingList"
+            ],
         )
 
     def test_bundled_zero_base_rows_own_generated_duplicates(self) -> None:
