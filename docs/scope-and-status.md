@@ -108,20 +108,22 @@ The last row is the exception: the two world-map points after Chapter 34 are the
 client's own gate, not a policy this project chose, and their five battles each
 open one at a time.
 
-### The Roads give EXP and nothing else
+### The Roads give EXP plus one documented channel each
 
-**Dragon Road and Machine Road pay experience only** — no Coins, no items, no
-Companions.
+**Dragon Road and Machine Road pay experience** — no Coins, no Companion
+drops, no Luck chest. Those refusals are the game's own: each section declares
+an empty Companion drop list and sets `allowLucky` to 0 in your copy of its
+data.
 
-That is not a limitation this project chose. Both switch the other channels off
-in your own copy of the game's data: each declares an empty Companion drop
-list, sets `allowLucky` to 0 so no Luck chest is ever offered, and sets
-`doNotDropExchangeItem`. The game itself says these stages drop nothing. A
-clear that claims otherwise is refused rather than settled, because the claim
-would have to come from somewhere other than the game. The community record
-describes retired-service rewards for both (a Steel Dragon recruit; Star
-drops); those claims are recorded in the reference ledger and deliberately not
-applied, because the recovered declarations outrank an external table.
+Each Road also settles the one reward its contemporaneous community record
+documents, bounded rather than reproduced. Machine Road accepts up to a
+generous ceiling of the four Star items — its `doNotDropExchangeItem` flag
+governs exchange items by name, and reading it as "no items ever" would risk
+refusing a won battle. Dragon Road accepts at most one Steel Dragon recruit
+per clear, the record's 25%-spawn guaranteed recruit; none of the recovered
+flags addresses battle-recruited monsters, and the character identity resolves
+from your own decoded name catalog. A duplicate recruit changes nothing,
+because no duplicate rule survives.
 
 Experience is the whole point of the Roads: both are species-locked training
 zones, Dragon and Machine respectively, and your party keeps the levels it

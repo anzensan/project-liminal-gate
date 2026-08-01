@@ -481,13 +481,21 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   drops, story-progress/UTC-hour difficulty schedule, and the battle-4
   character recruit remain unimplemented; a clear claiming any of those is
   still refused.
-- **Recorded and deliberately not applied — the two Roads (1200-1/1201-1):**
-  the record documents a Steel Dragon recruit on Dragon Road and Star drops
-  plus a Messages-borne Mech Skill Drop on Machine Road. Both are outranked
-  by the recovered sections' own declarations — empty `dropBuddies`,
-  `allowLucky` 0, `doNotDropExchangeItem` 1 — so the Roads keep their
-  client-declared EXP-only settlement and the external claims are recorded in
-  the reference ledger for comparison only.
+- **Applied as bounded policy — the two Roads (1200-1/1201-1), channel by
+  channel against the recovered flags.** Empty `dropBuddies` rules out
+  Companion drops and `allowLucky` 0 rules out the Luck chest; both stay
+  refused on the game's own authority. `doNotDropExchangeItem` 1 governs, by
+  its own name, exchange items — whether it suppresses every item drop is an
+  interpretation, not a recovered declaration — so Machine Road accepts the
+  contemporaneously documented Star drops (recovered items 118-121) under a
+  generous ceiling: inert if the client never rolls an item there, and it
+  stops a won battle being refused if it does. None of the three flags
+  addresses battle-recruited monsters, so Dragon Road accepts at most one
+  reported Steel Dragon recruit per clear (character 1090, resolved from the
+  operator's own decoded name catalog); a duplicate recruit changes nothing
+  because no duplicate rule survives. The Messages-borne Mech Skill Drop has
+  no recovered identity or transport and stays out. A real-client Road run's
+  refused-write shapes would settle the item-flag semantics empirically.
 - **Applied as bounded policy — Daily Quests:** Crystal Roundelay's documented
   guaranteed power-up now bounds the four recovered power-up IDs (53-56), and
   Rarity Rumble's documented 10% Fellowship Ticket bounds Item 81. Its

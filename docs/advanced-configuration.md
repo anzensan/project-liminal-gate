@@ -812,10 +812,10 @@ real-time board has no cumulative spawn counter to recover a true cap from.
 **Metal Zone is bounded, not unrestricted.** Its ticket-or-stamina entries,
 EXP ceilings, and Companion manifests are declared by the bundled policy; an
 undeclared result is refused. Dragon and Machine Road settle their
-client-declared EXP channel and nothing else: their own sections declare the
-absence of every other reward, and the community record's Steel Dragon and
-Star claims are recorded in the reference ledger without being applied,
-because a recovered declaration outranks an external table. The default
+client-declared EXP channel plus one bounded community-documented reward
+each — a single Steel Dragon recruit on Dragon Road, Star items under a
+generous ceiling on Machine Road — while Companion drops and the Luck chest
+stay refused on their sections' own declarations. The default
 Special Quest is also bounded: Chapter 3003-1 accepts up to 1,800 Coins and no
 EXP, items, or Companions. Crystal Road (3004-1) is a permanent local Huntland
 route after Chapter 3: its seven-stamina entry and three-battle client record

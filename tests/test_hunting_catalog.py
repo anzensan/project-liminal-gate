@@ -148,21 +148,23 @@ class BundledHuntingPolicyTest(unittest.TestCase):
                     self.assertEqual(expected, stage.companion_maxima)
                     self.assertTrue(set(stage.companion_maxima) <= set(stage.companion_drop_levels))
 
-    def test_the_two_roads_pay_experience_and_nothing_else(self) -> None:
+    def test_the_two_roads_pay_experience_plus_one_documented_channel_each(self) -> None:
         """Training is the whole point of a species-locked Road.
 
-        Their BattleData sections switch every other channel off themselves --
-        empty `dropBuddies`, `allowLucky` 0, `doNotDropExchangeItem` 1 -- so
-        Coins, items, and Companions settle at zero on the client's own say-so.
-        EXP is not one of those channels, and a zero ceiling there refused the
-        clear outright, so 15 stamina bought a won battle the server rejected.
+        Coins, Companion drops, and the Luck chest stay refused on the client's
+        own say-so (empty `dropBuddies`, `allowLucky` 0).  Each Road also
+        carries the one bounded channel its community record documents: Dragon
+        Road a single Steel Dragon recruit, Machine Road its Star drops.
         """
         for chapter in (1200, 1201):
             road = self.stages[(chapter, 1)]
             with self.subTest(chapter=chapter):
                 self.assertEqual((15, 0, 0), (road.stamina, road.coins, road.max_coins))
-                self.assertEqual(({}, {}, {}), (road.item_maxima, road.companion_maxima, road.entry_items()))
+                self.assertEqual(({}, {}), (road.companion_maxima, road.entry_items()))
                 self.assertGreater(road.max_exp, 0)
+        dragon, machine = self.stages[(1200, 1)], self.stages[(1201, 1)]
+        self.assertEqual(({1090: 1}, {}, 0), (dragon.monster_recruit_maxima, dragon.item_maxima, dragon.max_items_total))
+        self.assertEqual(({}, {118: 30, 119: 30, 120: 30, 121: 30}, 30), (machine.monster_recruit_maxima, machine.item_maxima, machine.max_items_total))
 
     def test_a_road_accepts_a_won_battles_experience_and_still_refuses_the_rest(self) -> None:
         road = self.stages[(1200, 1)]
@@ -181,6 +183,34 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         ):
             with self.subTest(channel):
                 self.assertFalse(hunting_settlement_within_bounds(road, result(**{channel: value})))
+
+    def test_dragon_road_accepts_one_steel_dragon_recruit_and_no_more(self) -> None:
+        dragon, machine = self.stages[(1200, 1)], self.stages[(1201, 1)]
+
+        def result(**overrides: object) -> dict[str, object]:
+            return {
+                "coins": 0, "exp": 0, "items": {}, "buddies": [],
+                "summons": [], "monsters": [],
+            } | overrides
+
+        self.assertTrue(hunting_settlement_within_bounds(dragon, result(monsters=[1090])))
+        # One per clear: the record's spawn is single, and no duplicate rule survives.
+        self.assertFalse(hunting_settlement_within_bounds(dragon, result(monsters=[1090, 1090])))
+        # The bound is per-stage: Machine Road declares no recruit at all.
+        self.assertFalse(hunting_settlement_within_bounds(machine, result(monsters=[1090])))
+
+    def test_machine_road_accepts_only_its_documented_star_drops(self) -> None:
+        machine = self.stages[(1201, 1)]
+
+        def result(**overrides: object) -> dict[str, object]:
+            return {
+                "coins": 0, "exp": 0, "items": {}, "buddies": [],
+                "summons": [], "monsters": [],
+            } | overrides
+
+        self.assertTrue(hunting_settlement_within_bounds(machine, result(items={"118": 5})))
+        self.assertFalse(hunting_settlement_within_bounds(machine, result(items={"50": 1})))
+        self.assertFalse(hunting_settlement_within_bounds(machine, result(items={"118": 31})))
 
     def test_the_road_ceiling_sits_on_its_own_selectors_tier_above_it(self) -> None:
         """The ceiling is derived, not chosen: Metal's tier above level 35."""

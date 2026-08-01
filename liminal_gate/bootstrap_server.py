@@ -2258,6 +2258,8 @@ class BootstrapState:
             })
             if stage.character_grants:
                 _apply_hunting_character_grants(userdata, stage)
+            if result["monsters"]:
+                _apply_monster_recruits(userdata, result["monsters"])
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
             account["tutorial_phase"] = "free_roam"
@@ -3800,6 +3802,29 @@ def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> Non
             current["luck"] = min(
                 int(current.get("luck", 0)) + stage.duplicate_grant_luck, 1000,
             )
+
+
+def _apply_monster_recruits(userdata: dict[str, Any], recruited: list[int]) -> None:
+    """Ensure each accepted battle-recruited monster is on the roster.
+
+    The reported recruits have already been checked against the stage's
+    declared `monster_recruit_maxima`.  A client that rolled the recruit
+    normally submits the new roster row itself, and the merged roster already
+    carries it; this backstop adds the row when the report and the submitted
+    roster disagree.  A duplicate recruit changes nothing: no record of a
+    duplicate rule survives for these, so none is invented.
+    """
+    rows = userdata.get("chrdata")
+    if not isinstance(rows, list):
+        return
+    known = {row.get("id") for row in rows if isinstance(row, dict)}
+    for character_id in recruited:
+        if character_id not in known:
+            rows.append({
+                "id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [],
+                "isNew": True, "levelAdded": 1, "skillBoost": 0,
+            })
+            known.add(character_id)
 
 
 # The Chapter-1100 settlement shares the Hunting grant path below and the same
