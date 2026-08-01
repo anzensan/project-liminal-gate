@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
@@ -75,7 +75,8 @@ from liminal_gate.event_catalog import (
     merge_event_catalogs,
 )
 from liminal_gate.event_log import EventRecorder, refused_write_shapes, safe_form_diagnostics
-from liminal_gate.hunting_catalog import HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
+from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
+from liminal_gate.daily_quest_data import build_bundled_daily_quest_stages, daily_quest_event_flags
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 from liminal_gate.world_map_special import (
@@ -2873,6 +2874,7 @@ class BootstrapServer(ThreadingHTTPServer):
         event_catalog: EventCatalog | None = None,
         drop_eligibility: bool = False,
         hunting_catalog: HuntingCatalog | None = None,
+        daily_quests: bool = False,
         world_map_special_catalog: WorldMapSpecialCatalog | None = None,
         public_data_root: Path | None = None,
         outcome_strict: bool = False,
@@ -2911,6 +2913,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
         self.hunting_catalog = hunting_catalog
+        self.daily_quests = daily_quests
         # The client draws both Chapter-1100 map points itself once the story
         # has passed Chapter 34, so the route is bundled and always accepted
         # rather than advertised behind a flag.
@@ -3055,6 +3058,11 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                     event_flags |= self.server.hunting_catalog.client_event_flags(
                         progress
                     )
+            if self.server.daily_quests:
+                # The client owns the Daily Quest schedule and asks the server
+                # only whether the category is on, so these flags never depend
+                # on story progress.
+                event_flags |= daily_quest_event_flags()
             if event_flags:
                 payload["eventFlags"] = event_flags
             if self.server.drop_eligibility:
@@ -5089,6 +5097,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pacts", action="store_true", help="enable the bundled local Fellowship and Truth Pact policy")
     parser.add_argument("--hunting-catalog", type=Path, help="user-local Hunting stage catalog; cannot be combined with --hunting")
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
+    parser.add_argument("--daily-quests", action="store_true", help="enable the fourteen recovered Daily Quest stages with bounded local settlement")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
     parser.add_argument("--rebirth", action="store_true", help="enable the bundled local Rebirth recipe policy")
     parser.add_argument("--status-items", action="store_true", help="enable the bundled local status-up item policy")
@@ -5230,6 +5239,15 @@ def main() -> int:
                 build_bundled_counter_descent_policy(),
                 events,
             )
+        if args.daily_quests:
+            # Daily Quests reuse the Hunting settlement path but are never
+            # advertised, so they extend whichever catalog is active rather
+            # than needing one of their own. Without any Hunting catalog they
+            # still need a container to live in.
+            if hunts is None:
+                hunts = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
+            else:
+                hunts = replace(hunts, stages=hunts.stages + build_bundled_daily_quest_stages())
         if args.achievements and args.achievement_catalog is not None:
             raise ProfileError("--achievements cannot be combined with --achievement-catalog")
         achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))
@@ -5271,6 +5289,7 @@ def main() -> int:
             event_catalog=events,
             drop_eligibility=getattr(args, 'drop_eligibility', False),
             hunting_catalog=hunts,
+            daily_quests=args.daily_quests,
             public_data_root=args.public_data_root,
             outcome_strict=getattr(args, "outcome_strict", False),
             companion_equipment_catalog=companion_equipment,

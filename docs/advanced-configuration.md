@@ -660,13 +660,44 @@ stages, Chapters 6000 through 6012 plus section 2 of 6011. That set matches the
 6000-block rows in a real BattleData tree exactly, in both directions, which is
 two independent assets agreeing on the same stage set.
 
-**Nothing consumes this catalog yet.** Thirteen of those fourteen stages carry
-no battle program, no stamina and no coins in BattleData, so what a Daily Quest
-clear should award is still unrecovered, and the server neither advertises nor
-settles them. The rotation is recorded now because it is the part that *is*
-recoverable, and because the day-to-index rule never has to be reproduced: the
-client computes today's entries itself and the server only ever needs to know
-which stages are legitimately Daily Quests.
+### Enabling Daily Quests
+
+`bootstrap_server --daily-quests` turns the category on. It sends the client's
+own `enableDailyQuest` gate plus a `sp_ch_<chapter>-<section>` flag for each of
+the fourteen stages, and accepts a start and clear on any of them with bounded
+settlement.
+
+The stages are deliberately **not advertised**. They use the `hidden` selector,
+because the client builds its own Daily Quest list from its own copy of
+`questOrder` and never asks the server which stages exist; listing them in a
+Hunting or Special selector would duplicate them into the wrong menu. Entry is
+free, which the operator's own BattleData agrees with — all fourteen rows carry
+zero stamina.
+
+Which stage is which quest is settled. Each of the fourteen banner textures in
+the APK was matched pixel-wise against the community record's banner images;
+every one matched a distinct quest, eleven essentially identically, with the
+nearest rival about fifty times further away. Three assignments were predicted
+before that match and confirmed by it — 6006 from the client's own
+`EnergyGetChapter`, the two 6011 sections from being the only two-section
+chapter, and 6010 from the rotation's frequency classes.
+
+The **settlement bounds are local policy from a secondary source** and cannot
+become recovered values, for the same reason the Pact tables cannot: the retired
+server owned Daily Quest rewards and the client only rendered them. The ceilings
+bound a client-reported clear the way the Hunting families do, and are
+deliberately generous — their job is to refuse an absurd claim, not to reproduce
+a drop rate. Item identities came from the community record and were resolved to
+IDs through your own master data, which is what makes them checkable: `Energy`
+resolves to 80, the number the client's own `EnergyItemId` carries, and the two
+tickets resolve to the 50 and 81 used elsewhere in this project.
+
+Two things are deliberately left unsettled. **The Hunt For Joker awards
+nothing** — Joker Λ is character 1018, a character grant that bounded item
+settlement cannot express, so the stage is startable and clearable but pays out
+nothing until a real result capture defines it. And the three
+`lastDailyQuestPlayTime` save fields are still not persisted, so the client's
+once-a-day limit is not enforced server-side.
 
 ### The Trading Post is the one that is not from the client
 

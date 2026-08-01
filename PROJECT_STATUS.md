@@ -23,6 +23,30 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-01 Daily Quests implemented: the chapter-to-quest mapping was resolved
+  by matching all fourteen APK banner textures pixel-wise against the community
+  record's own banner images, giving a clean bijection — eleven matched at a
+  distance under 1.1 where the nearest rival sat near 50. Three assignments had
+  been predicted independently beforehand and are confirmed by it: 6006-1 Sweet
+  Temptation from the client's `EnergyGetChapter`, 6011-1/2 as the two Yamamoto
+  variants from being the only two-section chapter, and 6010-1 Lucky Orbling
+  forced by the rotation's frequency classes. Those classes are separate
+  evidence: each quest appears in the 41-day schedule exactly twice as often as
+  its stage appears in `questOrder`, so both records partition identically.
+  `bootstrap_server --daily-quests` now enables the category, sending
+  `enableDailyQuest` plus a per-stage flag and accepting free entry and bounded
+  clears on all fourteen. Stages use the `hidden` selector because the client
+  lists Daily Quests from its own asset and never asks the server which exist.
+  Reward ceilings are secondary-source local policy and cannot become recovered
+  values, since the retired server owned rewards and the client only rendered
+  them; item identities resolved through the operator's own master data and
+  cross-check, with `Energy` landing on 80, exactly the client's `EnergyItemId`.
+  Twelve focused tests added; 683 repository tests pass, compilation clean.
+  Two gaps stay open and are recorded: The Hunt For Joker awards nothing,
+  because Joker Λ is character 1018 and bounded settlement cannot express a
+  character grant, and the three `lastDailyQuestPlayTime` fields are still
+  unpersisted so the once-a-day limit is not enforced server-side.
+
 - 2026-08-01 Daily Quest rotation recovered: `liminal_gate/daily_quest_importer.py`
   reads `DailyQuestData.questOrder` out of `assets/bin/Data/data.unity3d` in the
   operator's own APK, which is where the client keeps the schedule it computes

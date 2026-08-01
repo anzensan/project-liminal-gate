@@ -81,21 +81,67 @@ The day-to-index rule was deliberately not reproduced and does not need to be.
 The client owns it, computes today's three entries itself, and the server only
 ever needs to know which stages are legitimate Daily Quests.
 
+### The stage identities are settled, and the category is implemented
+
+The chapter-to-quest mapping was resolved by matching all fourteen APK banner
+textures pixel-wise against the community record's own banner images. The result
+is a clean bijection: every wiki banner matched a distinct stage, eleven of them
+at a distance under 1.1 where the nearest rival sat near 50, the Hunt For Joker
+at 7.1 against a nearest rival of 64, and the two Yamamoto banners at 27-28
+against rivals near 58. No assignment is ambiguous.
+
+Three assignments had been predicted independently before the match and are
+confirmed by it: 6006-1 is Sweet Temptation, because the client's own
+`EnergyGetChapter` is 6006 and Sweet Temptation is the one-Energy quest; 6011-1
+and 6011-2 are the two Yamamoto variants, because 6011 is the only two-section
+chapter and the record lists exactly two; and 6010-1 is Lucky Orbling, forced by
+the rotation's frequency classes once 6006 is fixed. The frequency argument is
+itself independent evidence: every quest name appears in the wiki's 41-day
+schedule exactly twice as often as its stage appears in `questOrder`, so both
+records partition into identical classes.
+
+| Stage | Quest | Stage | Quest |
+| --- | --- | --- | --- |
+| 6000-1 | Metal Runner Rampage | 6007-1 | Tropical Haze |
+| 6001-1 | Puppet Pandemonium | 6008-1 | Tearjerker Time |
+| 6002-1 | Crystal Roundelay | 6009-1 | Hidden Stars |
+| 6003-1 | Hedgehog Hullabaloo | 6010-1 | Lucky Orbling |
+| 6004-1 | Particle Hoarder Horde? | 6011-1 | Yamamoto's Puzzle Quest |
+| 6005-1 | Rarity Rumble | 6011-2 | Yamamoto's Puzzle Quest II |
+| 6006-1 | Sweet Temptation | 6012-1 | The Hunt For Joker |
+
+`bootstrap_server --daily-quests` implements the category. The stages reuse the
+Hunting bounded-settlement path with the `hidden` selector, since the client
+lists Daily Quests itself and never asks the server which exist. Entry is free,
+matching all fourteen zero-stamina BattleData rows. The server sends
+`enableDailyQuest` plus a per-stage `sp_ch_` flag.
+
+Reward ceilings are local policy from a secondary source and cannot become
+recovered values: the retired server owned Daily Quest rewards and the client
+only rendered them. Item identities were resolved to IDs through the operator's
+own master data, which cross-checks: `Energy` resolves to 80, exactly the
+client's `EnergyItemId`, and the tickets to the 50 and 81 already used here.
+
 ### What is still missing
 
-Thirteen of the fourteen stages carry no battle program, no stamina and no
-coins; only 6007-1 has battles, three of them. So the rotation is known and the
-settlement is not. Nothing consumes the catalog yet: the server does not
-advertise these stages, does not persist the three `lastDailyQuestPlayTime`
-fields, and does not implement `DeleteDailyQuestPlayTime`.
+Two gaps remain, both recorded rather than papered over.
 
-Wiring those four things is small and safe once a clear has a defined outcome.
-Until then the same rule as the empty Eidolon tiers applies — a zero-battle row
-with an invented reward is worse than an absent one. The community record names
-only two Daily Quests, Yamamoto's Puzzle Quest and The Hunt For Joker, against
-fourteen recovered stages, so the relationship between the named quests and the
-stage set is itself unresolved and worth settling before any settlement rule is
-written.
+**The Hunt For Joker pays nothing.** Joker Λ is character 1018, a character
+grant, and the bounded settlement path this reuses expresses items, Coins, EXP
+and Companions but not characters. The stage starts and clears; it simply awards
+nothing until a real result capture defines the grant. An invented character
+award would be worse than an absent one.
+
+**The once-a-day limit is not enforced server-side.** The three
+`lastDailyQuestPlayTime` save fields are still unpersisted and
+`DeleteDailyQuestPlayTime` is still unimplemented, so nothing stops a client
+from replaying a Daily Quest within the same day. The bounded ceilings still
+apply per clear, so this inflates pace rather than admitting an unbounded claim.
+
+Also unresolved, though it no longer blocks anything: the client's day-to-index
+rule. The `DailyQuestManager` code region contains no modulo or array indexing,
+so the schedule is computed elsewhere. It was never needed — the client owns the
+schedule and the server only needs to know which stages are legitimate.
 
 ## 2026-07-31 secondary-source audit of the bundled local policies
 
