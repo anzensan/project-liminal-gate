@@ -2,7 +2,28 @@
 
 ## 1.0.3 — 2026-08-01
 
+### Added
+
+- **Chapter 1100 now settles a Companion.** Each section's own recovered
+  `dropBuddies` manifest admits at most one reported Companion per clear, minted
+  at level 1, alongside the bounded experience. The community record's
+  per-battle candidate lists match the manifests exactly; its roll weights, item
+  drops, difficulty schedule, and the battle-4 character recruit remain refused.
+- **Dragon Road grants its Steel Dragon recruit.** Re-reading the three
+  recovered Road flags channel by channel found the earlier "drops nothing"
+  reading too broad: empty `dropBuddies` rules out Companion drops and
+  `allowLucky` 0 rules out the Luck chest, but `doNotDropExchangeItem` governs
+  exchange items by its own name, and none of the three addresses
+  battle-recruited monsters. Recruits are now bounded per stage through a
+  declared `monster_recruit_maxima` rather than refused everywhere.
+- The Trading Post rotation is anchored to a dated real-world Friday rather than
+  to the epoch, and further external-reference findings are applied as labeled
+  bounded policy.
+
 ### Fixed
+
+- The setup rehearsal handled `--reuse-il2cpp` and resource roots given above
+  `data_u2017/android`, both of which failed an otherwise successful run.
 
 - **A changed IP address emptied the entire world.** Tower, Eidolon, Strikes
   Back, Archive, Metal Zone, and Hunting would all vanish from the client's
