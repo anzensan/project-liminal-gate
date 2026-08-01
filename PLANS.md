@@ -75,8 +75,9 @@ Required proof:
 
 Outcome:
 
-- The original client exited the Jade Dragon result screen after receiving
-  HTTP 200 from `POST /gd/clear_quest`.
+- After deployment, the maintainer retried the retained Jade Dragon result.
+  The original client received HTTP 200 from `POST /gd/clear_quest`, exited the
+  result screen, and did not show another network error.
 - The durable account returned to `free_roam` with no active quest, 11,824
   Coins, 27 free Energy, 78 characters including one Jade Dragon (673), and
   the submitted item counts. A service restart changed the PID while preserving

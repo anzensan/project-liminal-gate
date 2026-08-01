@@ -44,10 +44,12 @@ machine-readable/current capability boundary.
   addition to any cataloged fixed clear increment, and that the final client
   can send the observed `itmp0=-1` sentinel. The server now accepts that
   bounded shape, rejects a stale wallet and sentinels below `-1`, and retains
-  Counter Descent's separate zero-base restriction. The physical client exited
-  the result screen after HTTP 200. Durable state returned to `free_roam` with
-  11,824 Coins, 27 free Energy, 78 characters including Jade Dragon, and the
-  submitted item counts; its SHA-256 remained byte-identical after the service
+  Counter Descent's separate zero-base restriction. After deployment, the
+  maintainer retried the retained result and the physical client exited the
+  result screen after HTTP 200 without another network error. Durable state
+  returned to `free_roam` with 11,824 Coins, 27 free Energy, 78 characters
+  including Jade Dragon, and the submitted item counts; its SHA-256 remained
+  byte-identical after the service
   restarted under a new PID. Real-HTTP tests cover refusal, settlement, exact
   replay, and restart replay. Thirty-six focused tests and all 642
   warning-strict repository tests passed; compilation, structured-file, and

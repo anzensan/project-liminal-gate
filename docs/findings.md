@@ -40,10 +40,12 @@ Private inputs, captures, account state, and original assets remain excluded.
   login, the client submitted a wallet of 11,824, exactly the durable 11,005
   plus those 819 Coins; the earlier 12,124 wallet was stale and remained
   correctly refused.
-- **Confirmed client acceptance and durable behavior:** the bounded settlement
-  returned HTTP 200 and the client exited the result screen. The save returned
-  to `free_roam` with no active quest, 11,824 Coins, 27 free Energy, 78
-  characters including one Jade Dragon (673), and the submitted items. Its
+- **Confirmed client acceptance and durable behavior:** after deployment, the
+  maintainer retried the retained result. The bounded settlement returned HTTP
+  200, the client exited the result screen, and no further network error was
+  shown. The save returned to `free_roam` with no active quest, 11,824 Coins,
+  27 free Energy, 78 characters including one Jade Dragon (673), and the
+  submitted items. Its
   SHA-256 remained byte-identical across a service restart. A real-HTTP
   regression covers stale-wallet and below-`-1` sentinel refusal, successful
   settlement, immediate replay, and restart replay.
