@@ -853,20 +853,25 @@ class BootstrapState:
 
         The final client fetches server status before login and rotates its OTK,
         so a direct token lookup misses resumed accounts. A known client host
-        can use its existing ownership, while a legacy or freshly migrated
-        single-account save may expose its active account until the first login
-        establishes host ownership. Once any host is owned, an unrelated host
-        gets no account-derived availability.
+        uses its existing ownership.
+
+        A save holding exactly one account falls back to it whatever the host.
+        This used to require that *no* host had ever been bound, and that made
+        the whole world vanish on a router lease: the address changes, the
+        pre-login status request resolves nothing, and the client builds its
+        menus from empty Tower, Eidolon, Strikes Back, Metal, and Hunting lists.
+        The login that follows re-binds the host, but the menus were already
+        drawn, so the player sees a server that appears to support none of it.
+        Guarding on the account count is what actually matters: with one account
+        there is no second player to expose, and these lists say which stages
+        exist, not anything about the account. Reaching the account still needs
+        its UUID.
         """
         with self.lock:
             account_id = self.tokens.get(token)
             if account_id not in self.accounts and isinstance(client_host, str):
                 account_id = self.client_hosts.get(client_host)
-            if (
-                account_id not in self.accounts
-                and not self.client_hosts
-                and len(self.accounts) == 1
-            ):
+            if account_id not in self.accounts and len(self.accounts) == 1:
                 account_id = (
                     self.active_account_id
                     if self.active_account_id in self.accounts

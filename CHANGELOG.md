@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.3 — 2026-08-01
+
+### Fixed
+
+- **A changed IP address emptied the entire world.** Tower, Eidolon, Strikes
+  Back, Archive, Metal Zone, and Hunting would all vanish from the client's
+  menus at once, leaving a server that appeared to support none of them.
+
+  The client fetches `get_server_status` *before* it logs in, and that response
+  carries every stage list. Resolving which account is asking fell back to "the
+  only account on this save" — but only while no client host had ever been
+  bound. After the first login bound one, a device arriving on a new address
+  resolved nothing, and the lists came back empty. The login immediately
+  afterwards re-bound the address, so the save was never wrong and gameplay kept
+  working; the menus for that session were simply built from nothing. A router
+  lease renewal was enough to trigger it.
+
+  The fallback now depends only on the save holding exactly one account, which
+  is the condition that was doing the real work: with one account there is no
+  second player to expose, these lists say only which stages exist, and reaching
+  an account still requires its UUID. With two or more accounts an unrelated
+  address resolves nothing, exactly as before.
+
+  Relaunching the client was always enough to recover, because by then the login
+  had bound the new address — which is also why this could look intermittent.
+
 ## 1.0.2 — 2026-08-01
 
 ### Changed

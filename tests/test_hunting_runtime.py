@@ -255,11 +255,41 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.assertEqual(["1001-1", "1003-1", "3004-1"], sorted(constants["huntingHuntingList"]))
         self.assertEqual(["1200-1", "3000-11"], sorted(constants["metalHuntingList"]))
         self.assertEqual(["3003-1"], constants["specialQuestList"])
+
+    def test_a_new_address_still_sees_the_world_when_one_account_exists(self) -> None:
+        """A router lease must not empty every selector the client draws.
+
+        Status is fetched *before* login, so on the first launch from a new
+        address nothing resolves; the client then builds its menus from empty
+        Tower, Eidolon, Strikes Back, Metal, and Hunting lists and looks like a
+        server that supports none of them. The login that follows re-binds the
+        host, but the menus are already drawn.
+        """
+        with self.server.state.lock:
+            self.server.state.tokens.clear()
+            self.server.state.client_hosts = {"127.0.0.1": self.account_id}
+            self.server.state._persist_locked()
+        self.assertEqual(
+            PROGRESS,
+            self.server.state.progress_for_status("unbound", "192.0.2.10"),
+        )
+
+    def test_a_second_account_stops_an_unrelated_address_resolving(self) -> None:
+        """The guard that matters: with two players, neither leaks to a stranger."""
+        with self.server.state.lock:
+            self.server.state.tokens.clear()
+            self.server.state.client_hosts = {"127.0.0.1": self.account_id}
+            self.server.state.accounts["second-account"] = {
+                "userdata": {"progressCode": PROGRESS}, "tutorial_phase": "free_roam",
+            }
+            self.server.state._persist_locked()
         self.assertIsNone(
-            self.server.state.progress_for_status(
-                "unbound",
-                "192.0.2.10",
-            )
+            self.server.state.progress_for_status("unbound", "192.0.2.10")
+        )
+        # The bound host keeps resolving to its own account, not the newcomer.
+        self.assertEqual(
+            PROGRESS,
+            self.server.state.progress_for_status("unbound", "127.0.0.1"),
         )
 
     def test_login_pairs_advertised_metal_rows_with_required_flags(self) -> None:
