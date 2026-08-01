@@ -632,6 +632,42 @@ rate table beyond the `RareSlotEnergy` cost. Pass `--pact-draw-catalog` to
 substitute your own. Without `--character-catalog`, `--pacts` falls back to the
 old uniform weights and a flat duplicate gain.
 
+### Recovering the Daily Quest rotation
+
+The final client schedules Daily Quests itself. `DailyQuestManager` picks up to
+three a day from `DailyQuestData.questOrder` and its own clock, so the rotation
+is a client asset rather than something the retired service sent. It lives in a
+`MonoBehaviour` inside `assets/bin/Data/data.unity3d`, which is why it appears
+in neither BattleData nor the master trees the other importers read.
+
+This recovers it from your own APK:
+
+```sh
+python3 -m liminal_gate.daily_quest_importer \
+  --apk local-input/terra-battle-5.5.7-170.apk \
+  --output user-data/daily-quests.json
+```
+
+It needs UnityPy, the same optional dependency the Pact banners use. An IL2CPP
+build strips field names, so the object cannot be read through a type tree; it
+does not need one, because `DailyQuestData` declares a single string array and a
+parse that consumes the object exactly is self-validating. The importer requires
+that exact consumption and refuses anything else, refuses a rotation naming a
+chapter outside the Daily Quest block, and records the APK digest.
+
+On the reviewed 5.5.7-170 client this recovers a 41-entry rotation across 14
+stages, Chapters 6000 through 6012 plus section 2 of 6011. That set matches the
+6000-block rows in a real BattleData tree exactly, in both directions, which is
+two independent assets agreeing on the same stage set.
+
+**Nothing consumes this catalog yet.** Thirteen of those fourteen stages carry
+no battle program, no stamina and no coins in BattleData, so what a Daily Quest
+clear should award is still unrecovered, and the server neither advertises nor
+settles them. The rotation is recorded now because it is the part that *is*
+recoverable, and because the day-to-index rule never has to be reproduced: the
+client computes today's entries itself and the server only ever needs to know
+which stages are legitimately Daily Quests.
+
 ### The Trading Post is the one that is not from the client
 
 Every other built-in policy is recovered from the APK. The Trading Post cannot

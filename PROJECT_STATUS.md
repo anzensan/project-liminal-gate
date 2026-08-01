@@ -23,6 +23,26 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-01 Daily Quest rotation recovered: `liminal_gate/daily_quest_importer.py`
+  reads `DailyQuestData.questOrder` out of `assets/bin/Data/data.unity3d` in the
+  operator's own APK, which is where the client keeps the schedule it computes
+  itself. The downloaded resource pack does not carry it. An IL2CPP build leaves
+  no type tree, and none is needed: the class declares one field, so the payload
+  after the 28-byte header is a single length-prefixed string array and a parse
+  that consumes the object exactly is self-validating. On 5.5.7-170 this
+  recovers a 41-entry rotation across 14 stages, Chapters 6000--6012 plus
+  section 2 of 6011, consuming 528 of 528 bytes, and that stage set matches the
+  6000-block BattleData rows exactly in both directions. Nine focused tests use
+  synthetic objects and need no APK; 671 repository tests pass. The day-to-index
+  rule was not reproduced and does not need to be, since the client owns it.
+  **Daily Quests remain unimplemented at runtime.** Thirteen of the fourteen
+  stages have no battle program, stamina or coins, so a clear has no recovered
+  outcome; nothing consumes the catalog, the three `lastDailyQuestPlayTime`
+  fields are still unpersisted, and `DeleteDailyQuestPlayTime` is still absent.
+  The community record names only two Daily Quests against fourteen recovered
+  stages, which is unresolved and should be settled before any settlement rule
+  is written. See the matching `PLANS.md` entry.
+
 - 2026-07-31 Pact pool cap covered, Daily Quests blocked: removal from the pool
   at 100% Skill Boost turned out to be already implemented — the draw path
   filters on the catalog cap, `skillBoost` for an ordinary pull and `luck` for

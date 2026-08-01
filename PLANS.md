@@ -50,13 +50,52 @@ empty Eidolon tier placeholders and all 45 Donation stages, and it applies here
 with less recovered material than either.
 
 Unblock condition: recover `DailyQuestData.questOrder` from the operator's own
-Unity assets. It is a MonoBehaviour string array, so it lives in a scene or
-prefab in the resource tree rather than in BattleData or master data, and
-UnityPy — already an optional dependency for Pact banner extraction — can read
-it. With the real rotation in hand, the three save fields, the flag, the reset
-endpoint and a 6007-only slice become a bounded and honest piece of work. Until
-then Daily Quests stay absent rather than invented, and the Huntland menu is
-short one category.
+Unity assets. **Done, see below.** The rotation is recovered; the reward
+question is not, so Daily Quests stay absent rather than invented and the
+Huntland menu is still short one category.
+
+### The rotation is recovered
+
+`liminal_gate/daily_quest_importer.py` reads `DailyQuestData` out of
+`assets/bin/Data/data.unity3d` in the operator's own APK. The asset is not in
+the downloaded resource pack at all — that tree carries only the nine media
+categories — so it had to come from the APK's own Unity data.
+
+An IL2CPP build strips field names, so there is no type tree to read the
+`MonoBehaviour` with. It does not need one. `DailyQuestData` declares exactly
+one field, so the payload after the standard 28-byte header is a single
+length-prefixed string array, and a parse that consumes the object *exactly*
+is self-validating. The importer requires that, and additionally refuses a
+rotation naming a chapter outside the 6000-block, disagreeing instances, and a
+catalog without an APK digest.
+
+Result on the reviewed 5.5.7-170 client: a 41-entry rotation across 14 stages,
+Chapters 6000--6012 plus section 2 of 6011, consuming 528 of 528 bytes. That
+stage set matches the 6000-block rows in a real BattleData tree exactly in both
+directions, no extras on either side. Two independent assets, one a Unity
+scene object and the other the master battle tree, agree on the same fourteen
+stages. Nine focused tests cover the parser and the catalog's refusals using
+synthetic objects, so none of them needs an APK.
+
+The day-to-index rule was deliberately not reproduced and does not need to be.
+The client owns it, computes today's three entries itself, and the server only
+ever needs to know which stages are legitimate Daily Quests.
+
+### What is still missing
+
+Thirteen of the fourteen stages carry no battle program, no stamina and no
+coins; only 6007-1 has battles, three of them. So the rotation is known and the
+settlement is not. Nothing consumes the catalog yet: the server does not
+advertise these stages, does not persist the three `lastDailyQuestPlayTime`
+fields, and does not implement `DeleteDailyQuestPlayTime`.
+
+Wiring those four things is small and safe once a clear has a defined outcome.
+Until then the same rule as the empty Eidolon tiers applies — a zero-battle row
+with an invented reward is worse than an absent one. The community record names
+only two Daily Quests, Yamamoto's Puzzle Quest and The Hunt For Joker, against
+fourteen recovered stages, so the relationship between the named quests and the
+stage set is itself unresolved and worth settling before any settlement rule is
+written.
 
 ## 2026-07-31 secondary-source audit of the bundled local policies
 
