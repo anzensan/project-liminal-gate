@@ -309,6 +309,10 @@ METAL_TICKET_ITEM_ID = 50
 # `dropBuddies` is empty, `allowLucky` is 0 so no Luck chest is ever offered,
 # and `doNotDropExchangeItem` is 1.  That is a declaration, not missing
 # evidence, and it is why Coins, items, and Companions settle at zero here.
+# The community record describes retired-service rewards for both Roads (a
+# Steel Dragon recruit; Star drops and a Messages-borne Mech Skill Drop); it
+# is recorded in the external reference ledger and deliberately not applied,
+# because the recovered sections' own declarations outrank an external table.
 #
 # EXP is a different channel and must not be zero.  Both sections are
 # species-locked training zones -- `species` 128 (Dragon) and 256 (Machine) at
@@ -339,9 +343,12 @@ def _span(first: int, last: int, maximum: int) -> dict[int, int]:
 # `クリスタルロード`, with three battles and a seven-stamina entry.  The source
 # page approved by the operator describes one material drop (the original
 # species/weapon/attribute materials, Items 1--17), then either a Metal Ticket
-# or a power-up item.  The final client exposes the two ratio fields but the
-# retired service never supplied a settlement capture, so this is a bounded
-# local acceptance policy rather than a server-side random-roll implementation.
+# or a power-up item.  Its complete published table: one material at 100%, a
+# Metal Ticket at 20%, and -- only when the ticket did not drop -- one power-up
+# at 13%.  The final client exposes the two ratio fields but the retired
+# service never supplied a settlement capture, so this is a bounded local
+# acceptance policy rather than a server-side random-roll implementation; the
+# recorded percentages are retained here for audit, not rolled.
 _CRYSTAL_ROAD_ITEM_MAXIMA = _span(1, 17, 1) | {METAL_TICKET_ITEM_ID: 1} | _span(53, 56, 1)
 
 

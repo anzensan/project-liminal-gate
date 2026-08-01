@@ -70,6 +70,10 @@ _WEAPON_ITEMS = (9, 10, 11, 12)
 _METAL_TICKET, _FELLOWSHIP_TICKET, _COMPANION_TICKET = 50, 81, 112
 _ENERGY_ITEM = 80
 
+#: EXP Boost, Coin Boost, Time Extension and Disarmer: the recovered power-up
+#: IDs this project already accepts on Crystal Road.
+_POWER_UP_ITEMS = (53, 54, 55, 56)
+
 #: A clear may report at most this many of any chest item. The chests are
 #: bounded per run rather than per enemy, so a small ceiling is the honest one.
 _CHEST_CEILING = 2
@@ -87,13 +91,19 @@ def _chest(extra: dict[int, int] | None = None) -> dict[int, int]:
 _DAILY_QUEST_ROWS: tuple[tuple[int, int, str, int, dict[int, int], int], ...] = (
     (6000, 1, "metal_runner_rampage", 0, _chest(), 20),
     (6001, 1, "puppet_pandemonium", 0, _chest({item: 30 for item in _SPECIES_ITEMS}), 60),
-    (6002, 1, "crystal_roundelay", 0, _chest(), 20),
+    # The community record gives Crystal Roundelay one guaranteed power-up per
+    # run (EXP Boost, Coin Boost, Time Extension, or Disarmer): the same four
+    # recovered power-up IDs Crystal Road accepts.
+    (6002, 1, "crystal_roundelay", 0, _chest({item: 2 for item in _POWER_UP_ITEMS}), 20),
     # 300 Coins per enemy defeated is the only per-enemy Coin rule recorded for
     # any Daily Quest. The enemy count is not recovered, so the ceiling bounds a
     # generous run rather than asserting a population.
     (6003, 1, "hedgehog_hullabaloo", 15_000, _chest(), 20),
     (6004, 1, "particle_hoarder_horde", 0, _chest({item: 4 for item in _PARTICLE_ITEMS}), 24),
-    (6005, 1, "rarity_rumble", 0, _chest(), 20),
+    # Rarity Rumble's documented drops are one guaranteed Ore plus a ten-percent
+    # Fellowship Ticket from Gormandette.  The Ore identities are not resolved
+    # against recovered master data, so only the ticket is bounded here.
+    (6005, 1, "rarity_rumble", 0, _chest({_FELLOWSHIP_TICKET: 2}), 20),
     (6006, 1, "sweet_temptation", 0, _chest({_ENERGY_ITEM: 1}), 20),
     (6007, 1, "tropical_haze", 0, _chest({
         _METAL_TICKET: 10, _FELLOWSHIP_TICKET: 10, _COMPANION_TICKET: 10,

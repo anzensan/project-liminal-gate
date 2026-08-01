@@ -83,8 +83,10 @@ from liminal_gate.world_map_special import (
     WORLD_MAP_SPECIAL_CHAPTER,
     WORLD_MAP_SPECIAL_EXP_CEILING,
     WorldMapSpecialCatalog,
+    WorldMapSpecialStage,
     build_bundled_world_map_special_policy,
     initial_route_progress,
+    world_map_special_companions_within_bounds,
 )
 
 
@@ -2340,13 +2342,18 @@ class BootstrapState:
     def apply_world_map_special_clear(
         self, token: str, request_id: str, body: bytes, catalog: WorldMapSpecialCatalog,
     ) -> tuple[str, dict[str, Any] | None]:
-        """Settle a Chapter-1100 clear without minting an unrecovered reward.
+        """Settle a Chapter-1100 clear inside its bounded reward policy.
 
-        Two things this route must never do: move the core `progressCode`, which
-        belongs to the ordinary story and would be corrupted by a World-0
-        special claiming it, and grant a Companion from the `dropBuddies`
-        manifest, whose roll rule was never captured.  Both are refusals here,
-        not silent corrections.
+        This route must never move the core `progressCode`, which belongs to
+        the ordinary story and would be corrupted by a World-0 special claiming
+        it; that stays a refusal, not a silent correction.  Two channels pay:
+        the battle's own experience within `WORLD_MAP_SPECIAL_EXP_CEILING`, and
+        at most one reported Companion from the stage's own recovered
+        `dropBuddies` manifest -- the bounded acceptance the community record
+        supports; see :mod:`liminal_gate.world_map_special`.  Every other
+        reward channel, including the record's documented item drops and the
+        battle-4 character recruit, remains refused for lack of recovered
+        identities.
         """
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
@@ -2377,16 +2384,27 @@ class BootstrapState:
                 or clear["valuables"].get("coins") != int(userdata.get("coins", 0))
             ):
                 return "tutorial_state_conflict", None
-            if not _zero_base_event_matches(userdata, clear, WORLD_MAP_SPECIAL_EXP_CEILING):
+            if not _zero_base_event_matches(
+                userdata, clear, WORLD_MAP_SPECIAL_EXP_CEILING, allow_bounded_buddies=True,
+            ):
+                return "invalid_local_world_map_special_result", None
+            result = clear["battle_result"]
+            if not world_map_special_companions_within_bounds(stage, result["buddies"]):
                 return "invalid_local_world_map_special_result", None
             # Paying EXP means the roster changes, because levels live in it, so
             # this can no longer require the roster back unchanged. It does
-            # require the same *characters*: this chapter mints nobody, and
-            # accepting an arbitrary roster would let the id list become a
-            # grant channel for the stage whose reported Companions are refused
-            # two lines above.
+            # require the same *characters*: this chapter mints no character,
+            # and accepting an arbitrary roster would let the id list become a
+            # grant channel alongside the bounded Companion box grant below.
             if not _same_roster_membership(userdata.get("chrdata"), clear["chrdata"]):
                 return "invalid_local_world_map_special_result", None
+            companions = None
+            if result["buddies"]:
+                companions = _granted_hunting_companions(
+                    userdata, stage, result, _WORLD_MAP_SPECIAL_COMPANION_BOX,
+                )
+                if companions is None:
+                    return "invalid_local_world_map_special_result", None
             # The battle really was fought, so the levels it produced are kept
             # the way every other EXP-bearing clear keeps them: as a trusted
             # local client report, merged so a stale client cannot delete a
@@ -2409,6 +2427,11 @@ class BootstrapState:
                 "chrdata": copy.deepcopy(userdata.get("chrdata", [])),
                 "itemList": copy.deepcopy(userdata.get("itemList", [])),
             })
+            # Only a settlement that actually granted a Companion touches the
+            # box or reports it, matching the Hunting clear's contract.
+            if companions is not None:
+                userdata["buddyInfo"] = companions
+                payload = _canonical_payload(payload | {"buddyInfo": copy.deepcopy(companions)})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -3779,8 +3802,13 @@ def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> Non
             )
 
 
+# The Chapter-1100 settlement shares the Hunting grant path below and the same
+# 1000-Companion box ceiling every bundled Companion policy uses.
+_WORLD_MAP_SPECIAL_COMPANION_BOX = 1000
+
+
 def _granted_hunting_companions(
-    userdata: dict[str, Any], stage: HuntingStage, result: dict[str, Any], box_capacity: int,
+    userdata: dict[str, Any], stage: HuntingStage | WorldMapSpecialStage, result: dict[str, Any], box_capacity: int,
 ) -> dict[str, Any] | None:
     """Project a Metal Zone clear's Companion drops onto the account's box.
 
@@ -4871,12 +4899,16 @@ def _parse_message_ids(body: bytes) -> list[str] | None:
 
 def _zero_base_event_matches(
     userdata: dict[str, Any], clear: dict[str, Any], max_exp: int = 0,
+    *, allow_bounded_buddies: bool = False,
 ) -> bool:
     """Require a Counter Descent clear to grant nothing unrecovered.
 
     `max_exp` above zero additionally permits the battle's own experience, and
-    with it the roster the client reports back. Only Chapter 1100 uses that: it
-    is a real level-90 battle, and refusing its EXP made a won fight fail.
+    with it the roster the client reports back. ``allow_bounded_buddies``
+    leaves only the ``buddies`` channel to a caller that bounds it separately.
+    Only Chapter 1100 uses either: it is a real level-90 battle whose EXP a won
+    fight must keep, and its Companion channel is a bounded acceptance against
+    the stage's own recovered manifest.
     """
     result = clear["battle_result"]
     if max_exp:
@@ -4884,7 +4916,7 @@ def _zero_base_event_matches(
             result["coins"] == 0
             and result["exp"] <= max_exp
             and result["items"] == {}
-            and result["buddies"] == []
+            and (allow_bounded_buddies or result["buddies"] == [])
             and result["monsters"] == []
             and result["summons"] == []
             and result["luckynum"] == 0
@@ -4896,7 +4928,7 @@ def _zero_base_event_matches(
         result["coins"] == 0
         and result["exp"] == 0
         and result["items"] == {}
-        and result["buddies"] == []
+        and (allow_bounded_buddies or result["buddies"] == [])
         and result["monsters"] == []
         and result["summons"] == []
         and result["luckynum"] == 0

@@ -36,6 +36,12 @@ from typing import Any
 #: ``ServerConstants.maxFreeEnergy``, as advertised to the client.
 MAX_FREE_ENERGY = 9_999
 #: Local policy: the award for a stage's first accepted clear.
+# For comparison, not reproduction: the community record documents the
+# retired service's chapter income as one Energy per chapter first-clear plus
+# daily login bonuses (five on day one), neither of which this archive
+# reimplements.  The larger local rates below are sized for an environment
+# with no login bonuses, campaigns, gifts, or commerce, and stay labeled as
+# such.
 FIRST_CLEAR_FREE_ENERGY = 2
 #: Local policy: the award for any later clear of a stage already cleared.
 REPEAT_CLEAR_FREE_ENERGY = 1
