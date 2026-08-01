@@ -10,6 +10,7 @@ invocation died with `AttributeError` before serving a single request.
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 import re
 import sys
@@ -18,6 +19,7 @@ import unittest
 from unittest.mock import patch
 
 from liminal_gate.bootstrap_server import load_launch_config, parse_args
+from liminal_gate.server_config import ServerConfig
 from liminal_gate.tester_setup import server_arguments
 
 
@@ -43,6 +45,23 @@ class LaunchConfigTest(unittest.TestCase):
         with patch.object(sys, "argv", ["bootstrap_server", *_arguments("--state-file", "s.json")]):
             defined = set(vars(parse_args()))
         self.assertEqual(set(), referenced - defined, "launcher reads options the parser never defines")
+
+    def test_the_launch_config_carries_every_option_main_reads_from_it(self) -> None:
+        """The same structural check one level further along.
+
+        `load_launch_config` returns a `ServerConfig`, not the parsed namespace,
+        so a flag the parser defines and the launcher forwards can still be
+        dropped in between -- and `main` then reads an attribute that does not
+        exist.  That is exactly how `--daily-quests` broke every command-line
+        launch: defined, handled by `main`, absent from `ServerConfig`.
+        """
+        tail = SOURCE[SOURCE.index("def main("):]
+        referenced = set(re.findall(r"args\.([a-z_]+)", tail))
+        referenced |= set(re.findall(r"getattr\(args, ['\"]([a-z_]+)['\"]", tail))
+        carried = {field.name for field in fields(ServerConfig)}
+        self.assertEqual(
+            set(), referenced - carried, "main reads launch options the configuration does not carry",
+        )
 
     def test_the_guided_setup_command_line_launches(self) -> None:
         """The exact command `tester_setup` builds must parse and resolve."""
