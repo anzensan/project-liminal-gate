@@ -70,7 +70,8 @@ class DailyQuestDataTest(unittest.TestCase):
         """Joker Λ is character 1018: a character grant, not an item or Companion."""
         stage = next(s for s in build_bundled_daily_quest_stages() if (s.chapter, s.section) == (6012, 1))
         self.assertEqual((1018,), stage.character_grants)
-        self.assertEqual((100, 100), (stage.duplicate_grant_skill_boost, stage.duplicate_grant_luck))
+        # 10% Skill Boost and 1 Luck, both in the client's tenths.
+        self.assertEqual((100, 10), (stage.duplicate_grant_skill_boost, stage.duplicate_grant_luck))
         self.assertEqual({}, stage.companion_maxima)
 
     def test_only_the_joker_quest_grants_a_character(self) -> None:
@@ -138,10 +139,10 @@ class DailyQuestGrantTest(unittest.TestCase):
         userdata = {"chrdata": [{"id": 1018, "skillBoost": 50, "luck": 20}]}
         _apply_hunting_character_grants(userdata, self.stage())
         self.assertEqual(1, len(userdata["chrdata"]), "a duplicate must not add a second row")
-        self.assertEqual((150, 120), (userdata["chrdata"][0]["skillBoost"], userdata["chrdata"][0]["luck"]))
+        self.assertEqual((150, 30), (userdata["chrdata"][0]["skillBoost"], userdata["chrdata"][0]["luck"]))
 
     def test_duplicate_gains_stop_at_the_clients_ceiling(self) -> None:
-        userdata = {"chrdata": [{"id": 1018, "skillBoost": 960, "luck": 990}]}
+        userdata = {"chrdata": [{"id": 1018, "skillBoost": 960, "luck": 995}]}
         _apply_hunting_character_grants(userdata, self.stage())
         self.assertEqual((1000, 1000), (userdata["chrdata"][0]["skillBoost"], userdata["chrdata"][0]["luck"]))
 

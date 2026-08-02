@@ -81,6 +81,14 @@ from liminal_gate.daily_quest_data import (
     daily_quest_event_flags,
     daily_quest_rotation,
 )
+from liminal_gate.luck_runtime import (
+    apply_luck_up_table,
+    chest_coins,
+    chest_items,
+    party_team_luck,
+    roll_luck_result,
+    roll_luck_up_table,
+)
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 from liminal_gate.world_map_special import (
@@ -2571,8 +2579,23 @@ class BootstrapState:
             userdata["coins"] = int(userdata.get("coins", 0)) - coin_cost
             _synchronize_wallet_projection(userdata)
             payload = {"success": True, "refillStartTime": origin}
+            # The Luck Treasure Chest is decided here, not at clear: the client
+            # holds no chest table and renders whatever this names. Seeded from
+            # the request identity so a retry cannot re-roll a better chest.
+            luck_slots = roll_luck_result(
+                stage.chapter, stage.section, party_team_luck(userdata),
+                request_id, body_hash,
+            )
+            luck_up = roll_luck_up_table(userdata, stamina_cost, request_id, body_hash)
+            if any(luck_slots) or any(luck_up):
+                payload["luckResult"] = list(luck_slots)
+                payload["luckUpTable"] = list(luck_up)
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity
+            # Retained because the client folds the chest into the balances it
+            # reports at clear; settlement has to know what it handed out.
+            account["active_luck_result"] = list(luck_slots)
+            account["active_luck_up"] = list(luck_up)
             requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -2627,10 +2650,18 @@ class BootstrapState:
             # post-battle increment represented by EventStage.clear_coins. The
             # wallet must reconcile both. Counter Descent remains zero-base and
             # is additionally constrained by _zero_base_event_matches below.
+            # The Luck chest is a second reward layer, and an invisible one: a
+            # real captured clear shows chest rewards absent from
+            # `battle_result` (`luckynum=0`) while already inside the balances
+            # the client submits. Settling without expecting them reads a
+            # legitimate chest as an over-claim and refuses a won battle.
+            authored_chest = account.get("active_luck_result")
+            authored_chest = authored_chest if isinstance(authored_chest, list) else []
             expected_coins = (
                 int(userdata.get("coins", 0))
                 + fixed_clear_coins
                 + (reported_battle_coins if event else 0)
+                + chest_coins(authored_chest)
             )
             checks = (
                 ("phase", account.setdefault("tutorial_phase", "initial") == "generic_story_active"),
@@ -2657,7 +2688,10 @@ class BootstrapState:
                 )
                 if eidolon_summons is None:
                     return "invalid_local_event_result", None
-            if settlement_catalog is not None and not _settlement_matches(userdata, clear, identity, settlement_catalog):
+            if settlement_catalog is not None and not _settlement_matches(
+                userdata, clear, identity, settlement_catalog,
+                extra_item_rewards=chest_items(authored_chest),
+            ):
                 return "invalid_local_settlement", None
             if clear_state_catalog is not None and not _clear_state_matches(userdata, clear, clear_state_catalog):
                 return "invalid_local_clear_state", None
@@ -2709,6 +2743,12 @@ class BootstrapState:
                     if character_id not in by_id:
                         row = {"id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": True, "levelAdded": 1}
                         userdata["chrdata"].append(row); by_id[character_id] = row
+            # The Luck gain rolled at start is committed here, after the roster
+            # merge, so a stale client's chrdata cannot overwrite it -- the same
+            # ordering `_preserved_roster` exists to guarantee for grants.
+            active_luck_up = account.get("active_luck_up")
+            if isinstance(active_luck_up, list):
+                apply_luck_up_table(userdata, active_luck_up)
             payload = {
                 "success": True,
                 "lastupdate": 1.0,
@@ -2722,6 +2762,8 @@ class BootstrapState:
                 payload["buddyInfo"] = copy.deepcopy(buddy_info)
             account["tutorial_phase"] = "free_roam"
             account["active_generic_story"] = None
+            account["active_luck_result"] = []
+            account["active_luck_up"] = []
             payload = _canonical_payload(payload)
             requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -5082,7 +5124,13 @@ def _eidolon_summon_projection(
     return projected
 
 
-def _settlement_matches(userdata: dict[str, Any], clear: dict[str, Any], identity: tuple[int, int], catalog: SettlementCatalog) -> bool:
+def _settlement_matches(
+    userdata: dict[str, Any], clear: dict[str, Any], identity: tuple[int, int],
+    catalog: SettlementCatalog, extra_item_rewards: dict[int, int] | None = None,
+) -> bool:
+    """Check a clear against its declared rewards, plus any chest this battle
+    was handed at start. The chest is not in the catalog and never can be: the
+    server authored it per battle, so it is passed in rather than looked up."""
     rule = catalog.rules.get(identity)
     current = userdata.get("chrdata", [])
     submitted = clear["chrdata"]
@@ -5092,7 +5140,10 @@ def _settlement_matches(userdata: dict[str, Any], clear: dict[str, Any], identit
     submitted_ids = {row["id"] for row in submitted}
     if len(submitted_ids) != len(submitted) or not current_ids <= submitted_ids or submitted_ids - current_ids != rule.character_rewards or not submitted_ids <= catalog.character_ids:
         return False
-    return _projected_list(userdata.get("itemList", []), clear["itemList"], rule.item_rewards, catalog.item_slots, catalog.max_stack) and _projected_list(userdata.get("summonList", []), clear["summonList"], rule.summon_rewards, catalog.summon_slots, catalog.max_stack)
+    item_rewards = dict(rule.item_rewards)
+    for item_id, count in (extra_item_rewards or {}).items():
+        item_rewards[item_id] = item_rewards.get(item_id, 0) + count
+    return _projected_list(userdata.get("itemList", []), clear["itemList"], item_rewards, catalog.item_slots, catalog.max_stack) and _projected_list(userdata.get("summonList", []), clear["summonList"], rule.summon_rewards, catalog.summon_slots, catalog.max_stack)
 
 
 def _clear_state_matches(userdata: dict[str, Any], clear: dict[str, Any], catalog: ClearStateCatalog) -> bool:

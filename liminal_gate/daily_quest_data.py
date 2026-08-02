@@ -182,10 +182,20 @@ def daily_quest_rotation(utc_day: int) -> tuple[str, str]:
 #: Resolved from the operator's own master data rather than bundled by name.
 JOKER_LAMBDA_CHARACTER_ID = 1018
 
-#: A further Joker Λ recruit adds 10% Skill Boost and 10 Luck, both in the
-#: client's tenths-of-one-percent wire unit.
+#: A further Joker Λ recruit adds 10% Skill Boost and 1 Luck, both in the
+#: client's tenths wire unit.
+#:
+#: The Luck figure was 100, i.e. 10.0 Luck, which is ten times what a duplicate
+#: pays. Both sources agree on the rule and neither is stage-specific: the
+#: community record's Luck page says an already-owned Lambda dropping from a
+#: quest gains Luck "by 1 for each duplicate character recruited", and
+#: Mistwalker's own Ver 4.2.0 announcement lists receiving an already-owned
+#: character from a quest drop as a Luck source without exception. Ten Luck a
+#: clear would carry a character from nothing to the 100.0 ceiling in ten
+#: repeats of one Daily Quest, which is the length of the whole Luck grind.
+#: The Skill Boost figure is unchanged: no source contradicts it.
 _JOKER_DUPLICATE_SKILL_BOOST = 100
-_JOKER_DUPLICATE_LUCK = 100
+_JOKER_DUPLICATE_LUCK = 10
 
 
 def build_bundled_daily_quest_stages() -> tuple[HuntingStage, ...]:
