@@ -87,6 +87,7 @@ network error](#reporting-a-network-error) at the end.
 | What you see | What to do |
 | --- | --- |
 | A `\` at the end of a line is rejected in PowerShell | The multi-line commands use a Unix shell convention. Use a backtick (`` ` ``) instead, or put the whole command on one line. [Manual setup](setup-manual.md#2-create-a-local-test-signing-key) gives PowerShell versions of both signing-key commands. |
+| `Permission denied: 'user-data'` from `account_state` | Fixed; update your clone. Nothing was wrong with the folder or the save, and nothing was changed: publishing a save flushes the directory it was written into, which Windows refuses to open, and the refusal was treated as a failure. Every writing command — `adopt`, `restore`, `link`, `unlink`, `switch`, `apply` — stopped this way on Windows; `inspect`, `snapshot`, and `validate` were unaffected. |
 | `grep` is not recognized in PowerShell | `grep` is a Unix tool. Use `Select-String` with the same pattern: `adb logcat -d \| Select-String "OpenSLES\|AudioTrack"`. When a filter is the problem rather than the point, capture the whole log with `adb logcat -d > full-log.txt` and attach that instead. |
 
 ## Reporting a network error

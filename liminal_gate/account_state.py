@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from liminal_gate.bootstrap_server import ACCOUNT_STATE_BACKUP_COUNT, _lock_exclusive
+from liminal_gate.bootstrap_server import ACCOUNT_STATE_BACKUP_COUNT, _fsync_directory, _lock_exclusive
 from liminal_gate.save_validation import validate_document
 
 
@@ -144,11 +144,7 @@ def write_document(state: Path, data: bytes) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, state)
-        directory = os.open(state.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        _fsync_directory(state.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -166,11 +162,7 @@ def preserve(state: Path, label: str) -> Path | None:
                     destination.write(chunk)
                 destination.flush()
                 os.fsync(destination.fileno())
-            directory = os.open(state.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            _fsync_directory(state.parent)
             return preserved
         except FileExistsError:
             suffix += 1

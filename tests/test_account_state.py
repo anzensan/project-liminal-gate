@@ -3,6 +3,7 @@ from __future__ import annotations
 from liminal_gate import account_state
 
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -107,6 +108,40 @@ class AccountStateToolTest(unittest.TestCase):
         self.assertEqual({NEW_DEVICE}, set(reloaded.tokens.values()))
         self.assertEqual({NEW_DEVICE}, set(reloaded.client_hosts.values()))
         self.assertEqual(NEW_DEVICE, reloaded.active_account_id)
+
+    def test_adopt_survives_a_platform_that_cannot_open_a_directory(self) -> None:
+        """Windows refuses `os.open` on a directory, which is not our failure.
+
+        Publishing a save fsyncs the directory the rename went through.  That
+        handle does not exist on Windows, and taking the refusal as an error
+        made every command that writes -- adopt, restore, link, switch, apply --
+        die with a bare `Permission denied: 'user-data'` naming the save's own
+        folder, which reads like a file the operator has to go fix.
+        """
+        real_open = os.open
+
+        def windows_open(path, flags, *args, **kwargs):
+            if Path(path).is_dir():
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, flags, *args, **kwargs)
+
+        self.reinstall()
+        self.state.close()
+        with patch("os.open", windows_open):
+            result = adopt(self.state_path, OLD_DEVICE, NEW_DEVICE, confirmed=True, force=False)
+        self.assertEqual("adopted", result["status"])
+        # The backup preserved before the write is the operator's undo; it is
+        # written through the same directory fsync and must survive too.
+        self.assertEqual(50000, json.loads(Path(result["preservedPrimary"]).read_text())["accounts"][OLD_DEVICE]["userdata"]["coins"])
+        reloaded = BootstrapState(self.state_path)
+        self.addCleanup(reloaded.close)
+        self.assertEqual([NEW_DEVICE], sorted(reloaded.accounts))
+        self.assertEqual(50000, reloaded.accounts[NEW_DEVICE]["userdata"]["coins"])
+        # The server writes through the same path and must also keep playing.
+        with patch("os.open", windows_open), reloaded.lock:
+            reloaded.accounts[NEW_DEVICE]["userdata"]["coins"] = 60000
+            reloaded._persist_locked()
+        self.assertEqual(60000, json.loads(self.state_path.read_text())["accounts"][NEW_DEVICE]["userdata"]["coins"])
 
     def test_adopt_will_not_quietly_discard_a_played_account(self) -> None:
         self.reinstall()
