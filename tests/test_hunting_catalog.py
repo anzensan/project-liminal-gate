@@ -151,8 +151,11 @@ class BundledHuntingPolicyTest(unittest.TestCase):
     def test_the_two_roads_pay_experience_plus_one_documented_channel_each(self) -> None:
         """Training is the whole point of a species-locked Road.
 
-        Coins, Companion drops, and the Luck chest stay refused on the client's
-        own say-so (empty `dropBuddies`, `allowLucky` 0).  Each Road also
+        Coins and Companion drops stay refused on the client's own say-so
+        (empty `dropBuddies`).  The Luck chest is refused too, but no longer on
+        `allowLucky` 0, which every story chapter sets while still producing
+        chests: Dragon Road is named in the record's own no-chest list, and
+        Machine Road is undetermined and refused as local policy.  Each Road also
         carries the one bounded channel its community record documents: Dragon
         Road a single Steel Dragon recruit, Machine Road its Star drops.
         """

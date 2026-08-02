@@ -21,7 +21,10 @@ on the title numbering plus the level agreement, not on a recovered gate.
 
 Confirmed from the final client's embedded `BattleData`: the ten identities,
 25 stamina, zero entry Coins, `allowLucky=0`, the assumed levels, and the
-packed Companion candidate manifests.  Local preservation policy: nothing.
+packed Companion candidate manifests.  `allowLucky=0` is recorded here as a
+fact and carries no conclusion about the Luck chest: every story chapter sets
+it while still producing chests, so it does not mean what it looks like.  See
+`hunting_catalog`'s Road note.  Local preservation policy: nothing.
 The entry gate is the native map gate above, not a threshold this project chose.
 
 The Companion payout is a bounded acceptance, not a reproduction.  The

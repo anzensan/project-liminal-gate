@@ -111,9 +111,13 @@ open one at a time.
 ### The Roads give EXP plus one documented channel each
 
 **Dragon Road and Machine Road pay experience** — no Coins, no Companion
-drops, no Luck chest. Those refusals are the game's own: each section declares
-an empty Companion drop list and sets `allowLucky` to 0 in your copy of its
-data.
+drops, no Luck chest. The Companion refusal is the game's own: each section
+declares an empty Companion drop list in your copy of its data. The Luck chest
+refusal used to rest on those sections setting `allowLucky` to 0, and no longer
+does — every story chapter sets that flag while still producing chests, so it
+does not mean "no chest". Dragon Road stays refused because the community
+record's own no-chest list names it; Machine Road is undetermined and refused
+as local policy.
 
 Each Road also settles the one reward its contemporaneous community record
 documents, bounded rather than reproduced. Machine Road accepts up to a
@@ -137,7 +141,7 @@ recovered non-empty `dropBuddies` manifests, and the community record
 documents one exclusive Companion roll per battle whose candidate lists match
 those manifests exactly. A clear may therefore settle at most one Companion
 the stage's own manifest names, minted at level 1. Everything else — Coins,
-items, the Luck chest their own `allowLucky` 0 rules out, and the documented
+items, the Luck chest, and the documented
 battle-4 character recruit — is still refused, because those channels have no
 recovered identities or captures and a plausible invented rule is worse than
 an honest refusal.

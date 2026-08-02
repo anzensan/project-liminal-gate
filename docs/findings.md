@@ -483,8 +483,9 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   still refused.
 - **Applied as bounded policy — the two Roads (1200-1/1201-1), channel by
   channel against the recovered flags.** Empty `dropBuddies` rules out
-  Companion drops and `allowLucky` 0 rules out the Luck chest; both stay
-  refused on the game's own authority. `doNotDropExchangeItem` 1 governs, by
+  Companion drops, which stays refused on the game's own authority. The Luck
+  chest was refused on `allowLucky` 0; that reading is **withdrawn**, see the
+  2026-08-02 entry below. `doNotDropExchangeItem` 1 governs, by
   its own name, exchange items — whether it suppresses every item drop is an
   interpretation, not a recovered declaration — so Machine Road accepts the
   contemporaneously documented Star drops (recovered items 118-121) under a
@@ -543,3 +544,39 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   explicitly says otherwise.
 - Historical schedules, reward odds, social/multiplayer systems, and commerce
   remain unsupported or unknown.
+
+## 2026-08-02: `allowLucky` does not gate the Luck Treasure Chest
+
+- **Withdrawn:** three places in this repository refused a stage's Luck chest
+  because its `BattleData` section sets `allowLucky` to 0. That inference does
+  not hold and the refusals it supported have been re-derived.
+- **Disproof, from data already on disk.** All forty-two story chapters set
+  `allowLucky` 0. Mistwalker's own Ver 4.2.0 announcement states that a Luck
+  Treasure Chest's "spawn rate and contents depend on your team's average Luck
+  value" and lists only *some* quests as excluded, and the community record
+  documents chest contents for twelve story chapters by name -- every one of
+  which is `allowLucky` 0 in the operator's own data. A flag that is 0 on
+  content that demonstrably produces chests cannot be the chest's gate.
+- **What it tracks instead, Strongly inferred.** Exactly five chapters set it
+  to 1: 2006 Lucia, 3003 Money Money Time, 3004 Crystal Road, 6010 Lucky
+  Orbling, and 7010 Eidolon Forest. The community record independently places
+  the Luck-granting "Lucky" enemies -- Lucky Orbling and Lucky Runner, which
+  raise party Luck when pincered -- in the Lucky Orbling daily quest and in
+  Lucia the Explorer IV. The flag therefore reads as "Lucky-type enemies may
+  spawn here", which is a Luck *source*, not a Luck *reward*. Two details keep
+  this short of Confirmed: the record also names Coin Creeps Lv. 35 as an
+  Orbling stage and that chapter does not set the flag, and Crystal Road sets
+  it while appearing on the record's own no-chest list.
+- **The chest curve is not in the client.** `Character.get_luckRate` (ARM64
+  `0xD08B74`) loads the float at `0x2056F48`, which is `0.1`, and multiplies:
+  it converts stored tenths to displayed Luck and nothing more. The client
+  carries the stat, the per-class caps, the Companion modifiers and the display
+  maths, and no chest table or spawn rule at all. The retired service owned
+  that decision, which is consistent with `luckResult` arriving on
+  `start_quest` rather than being computed at clear.
+- **Consequence.** Dragon Road's chest refusal survives on other evidence: the
+  community record's explicit no-chest list names it, alongside Crystal Road,
+  Hunting Zones, Metal Zones, Orbling Cavern and The Hunt For Joker. Machine
+  Road and Chapter 1100 are not on that list, so their chests are now
+  *undetermined* rather than declared absent, and stay refused as labeled local
+  policy rather than on the game's authority.

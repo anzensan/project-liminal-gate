@@ -318,8 +318,22 @@ METAL_TICKET_ITEM_ID = 50
 # availability gate is not preserved; they appear with Metal Zone 1.
 #
 # What their own BattleData sections declare, channel by channel.  Empty
-# `dropBuddies` rules out Companion drops, and `allowLucky` 0 rules out the
-# Luck chest; both stay refused on the game's own authority.  The third flag,
+# `dropBuddies` rules out Companion drops, and stays refused on the game's own
+# authority.
+#
+# `allowLucky` 0 was read here as ruling out the Luck chest.  That reading is
+# wrong and is withdrawn.  All forty-two story chapters carry `allowLucky` 0,
+# and story quests demonstrably do produce Luck Treasure Chests: Mistwalker's
+# own Ver 4.2.0 announcement says chests follow team Luck, and the community
+# record documents their contents for twelve story chapters, every one of them
+# `allowLucky` 0.  The flag is 1 on exactly five chapters -- Lucia, Money Money
+# Time, Crystal Road, Lucky Orbling and Eidolon Forest -- which tracks the
+# "Lucky"-type enemies that grant Luck when pincered, not chests; Crystal Road
+# carries `allowLucky` 1 while the record lists it as having no chest at all.
+# Dragon Road's chest refusal survives on other evidence, because the record's
+# own no-chest list names it.  Machine Road is not on that list, so its chest
+# is now simply undetermined rather than declared absent, and stays refused as
+# local policy until the Luck runtime settles it.  The third flag,
 # `doNotDropExchangeItem` 1, governs -- by its own name -- exchange items;
 # whether it suppresses every item drop is an interpretation, not a recovered
 # declaration.  The community record (Machine Road, terrabattle.fandom.com,
