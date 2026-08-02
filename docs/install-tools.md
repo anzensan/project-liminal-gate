@@ -1,12 +1,57 @@
 # Installing the tools
 
-Work through the section for **your** operating system, then return to the
-[README](../README.md#2-check-your-setup) and run the `--check` command. You do
-not have to read the other two sections.
+**Most people should not read this page.** Run the doctor instead:
+
+```sh
+python3 -m liminal_gate.doctor --install-missing
+```
+
+It installs the JDK, the Android SDK packages, and Il2CppDumper, and records
+where they are so nothing below about `PATH` or `JAVA_HOME` applies to you. Read
+on only if you want to install a tool yourself, if the doctor could not cover
+your platform, or if you want to know what it is doing on your behalf.
 
 These are shell commands. Use **Terminal** on macOS, **PowerShell** on Windows,
 or your usual shell on Linux — not the Python prompt, and not an Android Studio
 code window.
+
+## What the doctor does and does not do
+
+| It installs | It does not install |
+| --- | --- |
+| A Temurin JDK 17, for `keytool` and for Gradle | **Android Studio**, which you still need for the emulator |
+| Android SDK Platform-Tools, Build-Tools, and Platform 35, through Google's own `sdkmanager` | **An emulator system image or AVD** — create those in Android Studio |
+| Il2CppDumper v6.7.46, pinned | **An AArch64 disassembler** — it finds one you have and tells you how to get one otherwise |
+| A private .NET runtime, only where Il2CppDumper needs one | **Anything of Terra Battle's** — you still supply the APK and resources |
+
+Everything it downloads is checked against a published checksum before it is
+used, and everything lands under `user-data/`, which Git ignores. It never edits
+a shell profile, the registry, or anything outside that directory.
+
+Google's Android development tools do not support ARM-based Windows or Linux
+hosts. The doctor refuses those SDK installs before downloading anything and
+names the supported host choices; macOS supports both Intel and Apple silicon.
+
+It will not accept the [Android SDK licences](https://developer.android.com/studio/terms)
+for you. It prints them and asks; `--accept-android-sdk-licenses` answers in
+advance if you have already read them.
+
+### Where it put things
+
+`user-data/toolchain.json` records the location of every tool the doctor found
+or installed. Every setup command reads it at startup and puts those locations
+into its own environment, which is why you do not need to export anything.
+
+A variable you set yourself always wins. If you export `JAVA_HOME`, that is the
+JDK setup uses, whatever the file says. To make the doctor's copy authoritative
+again, unset yours. To start over, delete the file and run the doctor again.
+
+## Installing the tools by hand
+
+The rest of this page covers doing it yourself. Work through the section for
+**your** operating system, then return to the
+[README](../README.md#2-check-your-setup) and run the `--check` command. You do
+not have to read the other two sections.
 
 ## What has to be installed
 
@@ -19,6 +64,7 @@ code window.
 | A JDK | Provides `keytool`, which creates the local test signing key. Android Studio's bundled JDK is sufficient if its `bin` directory is on your `PATH`. |
 | [Il2CppDumper](https://github.com/Perfare/Il2CppDumper) | Recovers the master-data layout that an IL2CPP build strips. Without it a story clear cannot award a Companion. Setup runs it for you against your own APK. |
 | An AArch64 disassembler | **LLVM** (`llvm-objdump`) on macOS and Windows, or `binutils-multiarch` on Linux. The Chapter 8–42 encounter map only exists as compiled code inside your APK, so reading it needs one. |
+| Pinned Gradle 8.11.1 and Java 17–23 (on-device build only) | Builds the Android host. Setup verifies Gradle against its published SHA-256, caches it only below ignored `user-data/work/`, repairs its local launcher mode, and automatically uses a compatible Android Studio JDK when available. Do not commit a wrapper binary. |
 
 You also need a local Terra Battle Android 5.5.7-170 APK and matching Android
 resources. See [Files you supply](../README.md#files-you-supply).
@@ -205,3 +251,15 @@ Return to the [README](../README.md#2-check-your-setup) and run:
 ```sh
 python3 -m liminal_gate.tester_setup --check
 ```
+
+## Optional: private on-device APK
+
+Check the on-device route before it downloads/builds/installs anything:
+
+```sh
+python3 -m liminal_gate.on_device_setup --check
+```
+
+It requires the normal Android SDK/JDK tools, a complete `android-host/` source
+tree, a reviewed local APK/resources, and (for installation) API 24+, at least
+one supported Android ABI, and 4 GiB free in `/data`.

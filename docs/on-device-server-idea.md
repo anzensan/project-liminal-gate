@@ -1,76 +1,90 @@
-# Possible Future: On-Device Compatibility Server
+# Private on-device compatibility server
 
-Status: deferred idea, not implemented or verified.
+Status: build path implemented; physical-client acceptance is pending.
 
 ## Reported approach
 
-One community report described patching the Android client so that opening a
-single APK starts a bundled compatibility server and then launches the game
-client. This is an architecture lead only. No source, patch, APK hash, runtime
-capture, or reproducible build instructions have been reviewed.
+The local build path creates one privately signed APK from a tester-owned,
+reviewed Terra Battle APK and matching Android resource tree. It starts its
+compatibility server at `http://127.0.0.1:8002`, verifies a matching `/healthz`
+build ID over real HTTP, and only then starts Unity. This is build evidence, not
+yet physical-client acceptance evidence.
 
 If practical, this could remove the current requirement for a separate
 computer running Python and a stable LAN address. The client would instead
 connect to a server bound only to Android loopback, such as
 `http://127.0.0.1:8002`.
 
-## Possible architecture
+## Build path
 
-1. A replacement launcher activity starts an embedded server process or
-   service.
-2. The launcher waits for a positive readiness check rather than using a fixed
-   delay.
-3. The launcher starts the original Unity activity.
-4. The existing guarded APK routing patch points API and resource requests at
-   the loopback origin.
-5. Account state, retry records, diagnostics, and locally supplied resources
-   use application-owned storage.
+1. The reviewed literal patch redirects API and resource traffic to fixed
+   Android loopback only; it never exposes a LAN listener.
+2. The replacement launcher starts embedded Python in the app process and
+   blocks Unity on a matching health response, with retry/diagnostics on error.
+3. The complete tester-owned resource tree is packaged in the private artifact;
+   resources stream from the signed APK rather than a second extracted copy.
+4. Durable state is app-private. `--seed-state` embeds an optional first-install
+   seed only; it never replaces an existing save.
 
-The public project would continue to distribute source and build tooling only.
-A tester would supply the original APK and resources locally and generate the
-combined APK for personal preservation use.
+The public project distributes source/build logic only. APKs, resources,
+signing keys, state, Gradle cache, and generated packages stay ignored and
+private.
 
-## Unknowns
+## Build and install
 
-- Whether the reported server uses embedded Python, Java/Kotlin, or native
-  code.
-- Whether it runs in the Unity process or an isolated Android process.
-- How it remains alive for the complete client session.
-- Whether “single APK” includes the downloaded resource set or only the client
-  and server runtime.
-- How resources are installed, extracted, updated, and integrity-checked.
-- Which Android versions and ARM ABIs have been exercised.
-- How cold start, force-stop, crash recovery, low-memory process death, retry,
-  and durable commit behavior are handled.
-- The size and compatibility cost of embedding CPython if the existing server
-  is reused without a rewrite.
+```sh
+python3 -m liminal_gate.on_device_setup --check
+python3 -m liminal_gate.on_device_setup --device YOUR_ADB_SERIAL
+```
 
-## Evidence to request
+`--check` changes nothing and validates the same inputs used by the real build.
+The combined APK contains `arm64-v8a` and `armeabi-v7a`; the device must be API
+24+, support at least one of those ABIs, and have at least 4 GiB free before
+installation. `--prepare-only` creates no device
+changes. `--replace-existing` may uninstall a mismatched local signature and
+therefore clears that app's data.
 
-Before treating this as an implementation plan, obtain:
+## Current evidence
 
-- SHA-256 hashes for the exact source and generated APKs;
-- the launcher, manifest, service, DEX/smali, and native-library changes;
-- the embedded runtime and version;
-- the loopback address and port;
-- the resource and account-state storage layout;
-- tested Android versions, devices, and ABIs;
-- cold-start, relaunch, and force-stop logs; and
-- reproducible local build instructions that do not redistribute original game
-  material.
+- The immutable final APK is accepted only at SHA-256
+  `f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`.
+- The private assembler changes the launcher activity and minimum SDK, removes
+  obsolete signatures, retains the reviewed client payload, and adds host DEX,
+  Chaquopy 17/Python 3.11, and both ARM ABIs before local alignment/signing.
+- The server and Unity share one Android process. The host invokes Python,
+  polls real loopback HTTP for the same payload-bound 64-hex build ID, and
+  constructs `UnityPlayer` only after service, status, and build ID all match.
+- The packaged resource manifest records exact member names, sizes, and
+  SHA-256 values. Resource members are `ZIP_STORED` and streamed from the
+  signed APK; only small generated catalogs/configuration are copied into app
+  storage.
+- Save state, replay records, event diagnostics, and backups remain under the
+  app's private files directory. A seed uses atomic create-if-absent behavior.
+- JVM and Python lifecycle/resource tests cover readiness, extraction, retry,
+  seed preservation, direct streaming, and server close behavior.
+- The complete local build packaged 11,806 resources (940,138,388 bytes),
+  passed ZIP-header, alignment, and v2/v3 signature verification. The final
+  source-exact APK is SHA-256
+  `aeba11eade3b507d62403ee806b3e7390bb3a2abced03a0219e3ec4633685ef0`
+  with payload ID
+  `53d043cbb585337d19a749ef1a1735b31c5499bbe00c1376123d9600900fff93`.
+  A preceding full-resource payload launched on API 34 ARM64: real loopback
+  HTTP returned its matching build ID and one selected resource's exact 129,018
+  bytes/SHA-256 before and after force-stop relaunch. The exact component
+  launcher also returned `Status: ok`. Large packages use ADB
+  `--no-incremental`; incremental install falsely reported success during
+  validation without leaving the package installed. The final APK did not
+  replace that validation build because the emulator had only 1.2 GiB free,
+  so its device acceptance remains pending.
 
-## Smallest future proof
+## Remaining acceptance boundary
 
-Do not begin by porting the complete server. First produce a private,
-hash-guarded test build that:
-
-1. starts a minimal server on loopback;
-2. waits until it is ready before launching Unity;
-3. handles the first real client bootstrap request through the actual transport
-   path;
-4. serves one manifest-approved local resource;
-5. preserves one mutation across force-stop and relaunch; and
-6. fails visibly if server startup or storage initialization fails.
-
-Only after that proof should the project choose between embedding the existing
-Python server and implementing an Android-native runtime.
+- Install the full-resource artifact on physical ARM64 hardware and an
+  `armeabi-v7a` emulator or device.
+- On each lane, record cold start, force-stop/relaunch, low-memory/process-death
+  recovery, and a resource response through the real client transport.
+- On physical hardware, complete signup/login, the tutorial Pact, and Chapter
+  2-1 with before/after state plus exact retry and restart proof.
+- Record generated APK hash, package/SDK/ABI/launcher inspection, signing and
+  alignment verification, and device logs together. A successful build or
+  health response alone does not certify gameplay.

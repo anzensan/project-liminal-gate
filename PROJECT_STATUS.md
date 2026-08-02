@@ -36,6 +36,49 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-02 toolchain doctor: `liminal_gate.doctor` reports the build tools
+  this machine has and, with `--install-missing`, fetches a Temurin JDK, the
+  Android SDK Platform-Tools, Build-Tools, and Platform 35 through Google's own
+  `sdkmanager`, pinned Il2CppDumper
+  v6.7.46, and a private .NET runtime where the managed dumper build needs one.
+  Each download, including pinned Gradle for the on-device host, is verified
+  against a published checksum and unpacked with
+  member-path and executable-bit handling; each success is recorded in
+  `user-data/toolchain.json` as it happens, so an interrupted run keeps what it
+  installed. `tester_setup` and `on_device_setup` replay that record into their
+  own environment before resolving anything, which retires the per-OS `PATH`
+  and `JAVA_HOME` setup that `docs/install-tools.md` used to lead with. A
+  variable the operator exported still wins. Verified on macOS/arm64 with
+  `PATH` reduced to `/usr/bin:/bin` and no `ANDROID_*` or `JAVA_HOME` set:
+  `tester_setup --check` resolved adb, build tools, Il2CppDumper, and the
+  disassembler from the record alone. Android Studio, emulator system images,
+  and an LLVM toolchain remain the operator's to install, and Google's SDK
+  licences are never accepted without an explicit answer.
+
+- 2026-08-02 private on-device server package: the reviewed source hash now
+  drives one local command which repeats the complete guided derivations,
+  redirects the client to fixed Android loopback, builds a dual-ABI
+  Chaquopy/Python 3.11 host, embeds the full tester-owned resource tree, signs,
+  and optionally installs/launches one APK. The replacement activity waits for
+  a matching `/healthz` build ID before constructing Unity; app-private state
+  retains the existing atomic/replay behavior and an optional seed cannot
+  overwrite it. Schema-v2 resources stream from stored APK members while small
+  catalogs/configuration are digest-checked and extracted atomically. The full
+  retained tree produced 11,806 packaged resources (940,138,388 bytes) in a
+  1.0-GiB APK; the final private artifact is
+  `aeba11eade3b507d62403ee806b3e7390bb3a2abced03a0219e3ec4633685ef0`
+  with payload ID
+  `53d043cbb585337d19a749ef1a1735b31c5499bbe00c1376123d9600900fff93`.
+  Package/SDK/launcher/dual-ABI inspection, new ZIP-header consistency,
+  alignment, and v2/v3 signature verification passed. A preceding full-resource
+  payload on API 34 ARM64 returned its matching health identity, initialized
+  Unity, streamed a 129,018-byte resource with the exact manifest hash, and
+  recovered after force-stop in a new process. The final payload could not
+  replace it because that emulator had only 1.2 GiB free; its physical/device
+  acceptance remains pending rather than inferred from the preceding build. ADB
+  incremental install falsely reported success for this size and was replaced
+  with a regression-tested non-incremental install. Physical-device, ARMv7
+  runtime, and Chapter 2-1 acceptance are still separate pending evidence.
 - 2026-08-01 repeatable setup rehearsal: guided setup is the path every operator
   takes and the one path the unit suite cannot reach, because it replaces the
   IL2CPP dump, the master-data import, the catalog derivations, the APK patch,
@@ -787,6 +830,9 @@ machine-readable/current capability boundary.
 
 ## Blockers and unresolved fidelity
 
+- Full-resource combined-APK acceptance on physical ARM64 hardware and an
+  ARMv7 runtime, including cold start, force-stop/relaunch, one exact resource,
+  tutorial Pact, and Chapter 2-1 state/retry/restart proof.
 - Hunting selector flashing/loading after its rows render. Live diagnostics
   show no associated banner/resource request or 404, so a client runtime
   capture is still needed before changing server behavior.
@@ -824,8 +870,10 @@ machine-readable/current capability boundary.
 
 ## Next recommended task
 
-On the final client, clear Bahamut 2000-1 through its result screen. Then
-certify Strikes Back 8000-1, Tower 9010-1, and Eidolon
-4100-3 one at a time with before/after state and restart proof. After normal
-story progress reaches Chapter 10, smoke injected explicit card 2014-1 to prove
-the server-owned list beyond the embedded fallback.
+Install the full-resource on-device artifact on physical ARM64 hardware. Record
+cold start, one manifest-approved resource, signup/login, tutorial Pact, and a
+Chapter 2-1 clear with exact retry plus force-stop/relaunch state proof. Repeat
+the startup/resource boundary on an ARMv7 runtime. Then, on the final client,
+clear Bahamut 2000-1 through its result screen and certify Strikes Back 8000-1,
+Tower 9010-1, and Eidolon 4100-3 one at a time with before/after state and
+restart proof.

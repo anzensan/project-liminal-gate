@@ -102,6 +102,15 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertTrue(self.state_path.is_file())
         self.assertEqual(0, json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"]["local-account"]["userdata"]["coins"])
 
+    def test_healthz_is_unsigned_and_names_the_running_build(self) -> None:
+        self.server.build_id = "combined-test-build"
+        status, health = self.request("/healthz")
+        self.assertEqual(200, status)
+        self.assertEqual(
+            {"service": "project-liminal-gate", "status": "ok", "build_id": "combined-test-build"},
+            health,
+        )
+
     def test_unknown_account_and_route_fail_explicitly(self) -> None:
         status, response = self.request("/local/userdata?otk=unknown")
         self.assertEqual(401, status)

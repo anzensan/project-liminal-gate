@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+import zipfile
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
 from liminal_gate.resource_catalog import ResourceCatalogError, load_resource_catalog
@@ -94,3 +95,55 @@ class ResourceCatalogTest(unittest.TestCase):
         self.manifest.write_text(json.dumps(stale), encoding="utf-8")
         with self.assertRaises(ResourceCatalogError):
             load_resource_catalog(self.manifest, self.resource_root)
+
+    def test_schema_v2_streams_a_zip_stored_apk_member_and_releases_it_on_close(self) -> None:
+        apk = self.root / "combined.apk"
+        member = "assets/liminal_gate/resources/packs/entry.bin"
+        with zipfile.ZipFile(apk, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr(member, self.payload)
+        self.manifest.write_text(json.dumps({"schema_version": 2, "resources": [{
+            "path": "/resources/packs/entry.bin", "member": member,
+            "sha256": hashlib.sha256(self.payload).hexdigest(),
+            "size": len(self.payload),
+            "content_type": "application/x-local-resource",
+        }]}), encoding="utf-8")
+        catalog = load_resource_catalog(self.manifest, apk)
+        server = BootstrapServer(
+            ("127.0.0.1", 0), self.server.profile, BootstrapState(self.root / "apk-state.json"), resource_catalog=catalog,
+        )
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            connection = HTTPConnection(*server.server_address)
+            connection.request("GET", "/resources/packs/entry.bin")
+            response = connection.getresponse()
+            self.assertEqual(200, response.status)
+            self.assertEqual(str(len(self.payload)), response.getheader("Content-Length"))
+            self.assertEqual(self.payload, response.read())
+            connection.close()
+            connection = HTTPConnection(*server.server_address)
+            connection.request("HEAD", "/resources/packs/entry.bin")
+            response = connection.getresponse()
+            self.assertEqual(200, response.status)
+            self.assertEqual(str(len(self.payload)), response.getheader("Content-Length"))
+            self.assertEqual(b"", response.read())
+            connection.close()
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+        with self.assertRaises(ResourceCatalogError):
+            catalog.open(catalog.resolve("/resources/packs/entry.bin"))
+
+    def test_schema_v2_refuses_compressed_or_unmapped_apk_members(self) -> None:
+        apk = self.root / "compressed.apk"
+        member = "assets/liminal_gate/resources/packs/entry.bin"
+        with zipfile.ZipFile(apk, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(member, self.payload)
+        self.manifest.write_text(json.dumps({"schema_version": 2, "resources": [{
+            "path": "/resources/packs/entry.bin", "member": member,
+            "sha256": hashlib.sha256(self.payload).hexdigest(),
+            "size": len(self.payload),
+        }]}), encoding="utf-8")
+        with self.assertRaisesRegex(ResourceCatalogError, "ZIP_STORED"):
+            load_resource_catalog(self.manifest, apk)
