@@ -625,6 +625,28 @@ def _lock_exclusive(stream: Any) -> None:
         msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
 
 
+def _fsync_directory(directory: Path) -> None:
+    """Flush a rename or a fresh link, where the platform allows it at all.
+
+    Writing a file durably is two steps: fsync the contents, then fsync the
+    directory the rename published them through.  Windows has no handle for the
+    second step -- opening a directory there fails with `Permission denied` --
+    and neither does every network filesystem, so a refusal means this platform
+    does not offer the guarantee, not that the caller did anything wrong.  The
+    data is already fsynced either way; only the ordering promise is lost.
+    """
+    try:
+        handle = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(handle)
+    except OSError:
+        pass
+    finally:
+        os.close(handle)
+
+
 class BootstrapState:
     """Atomic local account state for the extracted bootstrap sequence."""
 
@@ -2929,16 +2951,7 @@ class BootstrapState:
         # them is only a directory update.  Without this the save can still be
         # lost to a hard emulator kill or power cut, which reads to a player as
         # progress that silently rolled back.
-        try:
-            directory = os.open(self.path.parent, os.O_RDONLY)
-        except OSError:
-            return
-        try:
-            os.fsync(directory)
-        except OSError:
-            pass
-        finally:
-            os.close(directory)
+        _fsync_directory(self.path.parent)
 
 
 class BootstrapServer(ThreadingHTTPServer):

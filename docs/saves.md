@@ -95,6 +95,22 @@ Start the server and launch the app; your progress is back. `adopt` refuses to
 overwrite an account that has been played unless you add `--force`, and it
 preserves the file first either way.
 
+**Pick `--to` by which ID the app is sending now, not by which looks newest.** A
+save collects an account per reinstall, and after a few of them none of the
+candidates is recognisably empty. `inspect` marks the one that logged in most
+recently `"active": true`, and its `clientHosts` is the address that client
+reached the server from — your device's LAN address, or `127.0.0.1` for an
+emulator or a phone forwarded with `adb reverse`. Launch the app once, run
+`inspect` again, and the account that just became active is the one to adopt
+onto. Getting this wrong points your save at an ID nothing sends, so the app
+still shows a stranger's progress and the account you meant to keep is now the
+one holding your save.
+
+That is also what the played-account refusal is for: if `adopt` says the target
+has its own progress, the answer is usually a different `--to`, not `--force`.
+Reach for `--force` only once you know the account it names is one you want
+gone.
+
 ## Two players on one server
 
 Each device is routed by its own network address, so two phones or tablets on your
