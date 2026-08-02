@@ -76,7 +76,11 @@ from liminal_gate.event_catalog import (
 )
 from liminal_gate.event_log import EventRecorder, refused_write_shapes, safe_form_diagnostics
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
-from liminal_gate.daily_quest_data import build_bundled_daily_quest_stages, daily_quest_event_flags
+from liminal_gate.daily_quest_data import (
+    build_bundled_daily_quest_stages,
+    daily_quest_event_flags,
+    daily_quest_rotation,
+)
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 from liminal_gate.world_map_special import (
@@ -2177,12 +2181,16 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             if not stage.unlocked_at(int(userdata.get("progressCode", 0))):
                 return "hunting_stage_locked", None
-            # A Daily Quest pays out once per UTC day. The client would
-            # normally grey a played one out from its own save fields, which
-            # this server does not send, so the refusal happens here instead.
-            # It uses the soft shape rather than an error, so a player who
-            # tries anyway sees the client's own refusal, not a Network Error.
-            if stage.once_per_utc_day and _daily_quest_played_today(account, stage, now):
+            # A Daily Quest pays out once per UTC day, and only the two quests
+            # the day's rotation names can be entered at all. The client greys
+            # both cases out from the fields login sends, so reaching either
+            # refusal means the client asked for something it was not offering.
+            # They use the soft shape rather than an error, so a player who gets
+            # here anyway sees the client's own refusal, not a Network Error.
+            if stage.once_per_utc_day and (
+                stage.identity_label() not in daily_quest_rotation(_utc_day(now))
+                or _daily_quest_played_today(account, stage, now)
+            ):
                 return "success", _canonical_payload({"success": False, "errorCode": 1})
             items = userdata.get("itemList")
             if not isinstance(items, list) or len(items) != catalog.item_slots or any(type(value) is not int for value in items):
@@ -2210,6 +2218,13 @@ class BootstrapState:
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "hunting_active"
             account["active_hunt"] = identity
+            if stage.once_per_utc_day:
+                # The day is consumed at accepted start, not at clear: the
+                # retired service updated `lastDailyQuestPlayTime` from
+                # start_quest, so an abandoned run spent the attempt. The clear
+                # stamps again, which is a no-op on the same day and keeps a run
+                # started before this behaviour existed coherent.
+                _stamp_daily_quest_clear(account, stage, now)
             # The final client does not remove a Metal Ticket from its local
             # item list at start. Its later clear therefore repeats the
             # pre-entry count even though the server has already committed the
@@ -3160,6 +3175,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             payload["messageList"] = self.server.state.login_messages(
                 resolved, self.server.chapter_milestones,
             )
+            # Reads as an ordinary login statistic and is not one. The client
+            # stores it as `UserData.lastLoginTime`, and `DailyQuestManager`
+            # opens a slot only when that time is newer than the slot's last
+            # play. Left unsent it stays zero, no slot ever opens, and the
+            # Huntland button is disabled even with the category flag on and
+            # today's two quests named.
+            payload["lastLogin"] = time.time()
             event_flags: dict[str, Any] = {}
             progress = self.server.state.accounts[resolved].get(
                 "userdata", {}
@@ -3174,10 +3196,16 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                         progress
                     )
             if self.server.daily_quests:
-                # The client owns the Daily Quest schedule and asks the server
-                # only whether the category is on, so these flags never depend
-                # on story progress.
+                # The flags open the category; they never depend on story
+                # progress, because Daily Quests carry no recovered story gate.
                 event_flags |= daily_quest_event_flags()
+                # The flags alone leave every entry drawn and greyed out. These
+                # six fields are what the client's DailyQuestManager actually
+                # reads to know which two quests today offers and whether they
+                # are still playable.
+                payload |= daily_quest_login_fields(
+                    self.server.state.accounts[resolved], time.time(),
+                )
             if event_flags:
                 payload["eventFlags"] = event_flags
             if self.server.drop_eligibility:
@@ -3790,6 +3818,48 @@ def _stamp_daily_quest_clear(account: dict[str, Any], stage: Any, now: float) ->
     played = account.setdefault("daily_quest_clears", {})
     if isinstance(played, dict):
         played[stage.identity_label()] = _utc_day(now)
+    # The exact moment is what the client greys the entry out from, so it is
+    # kept beside the day rather than reconstructed from it.
+    times = account.setdefault("daily_quest_play_times", {})
+    if isinstance(times, dict):
+        times[stage.identity_label()] = float(now)
+
+
+def _daily_quest_play_time(account: dict[str, Any], quest_id: str, now: float) -> float:
+    """The moment this quest was played today, or 0.0 if it has not been.
+
+    A stamp from an earlier day reports as zero rather than as itself: the
+    client compares the value against its own clock, and yesterday's timestamp
+    left in place is how a quest stays greyed out after it should have reset.
+    """
+    played = account.get("daily_quest_clears")
+    times = account.get("daily_quest_play_times")
+    if not isinstance(played, dict) or played.get(quest_id) != _utc_day(now):
+        return 0.0
+    stamp = times.get(quest_id) if isinstance(times, dict) else None
+    # A save written before play times were recorded still knows the day, which
+    # is enough to keep a quest played today greyed out.
+    return float(stamp) if isinstance(stamp, (int, float)) else float(_utc_day(now) * 86_400)
+
+
+def daily_quest_login_fields(account: dict[str, Any], now: float) -> dict[str, Any]:
+    """Return the six Daily Quest fields the client's login callback reads.
+
+    ``DailyQuestManager`` stores ``dailyQuest``/``1``/``2`` as its
+    ``todaysQuest`` strings and decides playability from them together with the
+    matching ``lastDailyQuestPlayTime``. Slot zero is deliberately empty: the
+    final schedule serves two quests a day and the client's legacy first slot
+    went unused.
+    """
+    slot1, slot2 = daily_quest_rotation(_utc_day(now))
+    return {
+        "dailyQuest": "",
+        "dailyQuest1": slot1,
+        "dailyQuest2": slot2,
+        "lastDailyQuestPlayTime": 0.0,
+        "lastDailyQuestPlayTime1": _daily_quest_play_time(account, slot1, now),
+        "lastDailyQuestPlayTime2": _daily_quest_play_time(account, slot2, now),
+    }
 
 
 def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> None:
