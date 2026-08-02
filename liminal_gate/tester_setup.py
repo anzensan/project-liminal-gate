@@ -101,6 +101,7 @@ class LocalServerOptions:
     pacts: bool = True
     hunting: bool = True
     daily_quests: bool = True
+    secondary_worlds: bool = True
     jobs: bool = True
     rebirth: bool = True
     status_items: bool = True
@@ -1283,6 +1284,7 @@ def server_arguments(
     core_story: bool = True, drop_eligibility: bool = True, achievements: bool = True, summon_skills: bool = False, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True, companion_sale: bool = True,
     companion_strengthen: bool = True, companion_evolution: bool = True,
     trading_post: bool = True, daily_quests: bool = True,
+    secondary_worlds: bool = True,
 ) -> list[str]:
     arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
@@ -1304,6 +1306,8 @@ def server_arguments(
         arguments.append("--hunting")
     if daily_quests:
         arguments.append("--daily-quests")
+    if secondary_worlds:
+        arguments.append("--secondary-worlds")
     if jobs:
         arguments.append("--jobs")
     if rebirth:
@@ -1363,7 +1367,7 @@ def choose_local_server_options(
     print("\nLocal setup")
     print(
         "Story, Archive Special Quests, Tower, solo Eidolon quests, Strikes Back, Hunting zones, "
-        "Daily Quests, Pacts, and Companions are all enabled."
+        "Daily Quests, BreaSoul, the Five Emperors, Pacts, and Companions are all enabled."
     )
     print("Custom drop-rate controls are not available yet.")
     if event_catalog is not None:
@@ -1687,7 +1691,7 @@ def main() -> int:
             args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
             options.core_story, options.drop_eligibility, options.achievements, options.summon_skills, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
             options.companion_strengthen, options.companion_evolution, options.trading_post,
-            options.daily_quests,
+            options.daily_quests, options.secondary_worlds,
         ))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error

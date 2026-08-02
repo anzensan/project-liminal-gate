@@ -47,6 +47,7 @@ STANDARD_POLICY_FLAGS = (
     "--pacts",
     "--hunting",
     "--daily-quests",
+    "--secondary-worlds",
     "--jobs",
     "--rebirth",
     "--status-items",
