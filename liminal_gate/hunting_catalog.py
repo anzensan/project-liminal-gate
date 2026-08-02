@@ -58,6 +58,13 @@ class HuntingStage:
     ticket_optional: bool = False
     #: Companion id to the most copies one settlement may report.
     companion_maxima: dict[int, int] = field(default_factory=dict)
+    #: The most Companions one settlement may report in total, across every id
+    #: its manifest names. A manifest that proves *candidates* rather than a
+    #: roll needs this as well as the per-id bound: without it a stage naming
+    #: two candidates would accept both, which is a second Companion the
+    #: evidence never showed. Unbounded by default, as the per-id maxima are
+    #: the whole rule wherever a manifest is a plain allowance.
+    max_companions_total: int | None = None
     #: Companion id to the level a dropped copy arrives at.
     companion_drop_levels: dict[int, int] = field(default_factory=dict)
     #: Character id to the most battle-recruited copies one settlement may
@@ -281,6 +288,8 @@ def hunting_settlement_within_bounds(stage: HuntingStage, result: dict[str, Any]
         return False
     companions = Counter(result["buddies"])
     if any(count > stage.companion_maxima.get(companion_id, 0) for companion_id, count in companions.items()):
+        return False
+    if stage.max_companions_total is not None and sum(companions.values()) > stage.max_companions_total:
         return False
     gained = {int(item_id): count for item_id, count in result["items"].items()}
     if sum(gained.values()) > stage.max_items_total:

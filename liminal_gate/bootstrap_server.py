@@ -81,6 +81,11 @@ from liminal_gate.daily_quest_data import (
     daily_quest_event_flags,
     daily_quest_rotation,
 )
+from liminal_gate.secondary_world_data import (
+    build_bundled_breasoul_stages,
+    build_bundled_five_emperors_stages,
+    secondary_world_event_flags,
+)
 from liminal_gate.luck_runtime import (
     apply_luck_up_table,
     chest_coins,
@@ -3040,6 +3045,7 @@ class BootstrapServer(ThreadingHTTPServer):
         drop_eligibility: bool = False,
         hunting_catalog: HuntingCatalog | None = None,
         daily_quests: bool = False,
+        secondary_worlds: bool = False,
         world_map_special_catalog: WorldMapSpecialCatalog | None = None,
         public_data_root: Path | None = None,
         outcome_strict: bool = False,
@@ -3079,6 +3085,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.clear_state_catalog = clear_state_catalog
         self.hunting_catalog = hunting_catalog
         self.daily_quests = daily_quests
+        self.secondary_worlds = secondary_worlds
         # The client draws both Chapter-1100 map points itself once the story
         # has passed Chapter 34, so the route is bundled and always accepted
         # rather than advertised behind a flag.
@@ -3237,6 +3244,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                     event_flags |= self.server.hunting_catalog.client_event_flags(
                         progress
                     )
+            if self.server.secondary_worlds and type(progress) is int and progress >= 0:
+                # Unlike the Daily Quests these do carry a story gate: the
+                # client's own map predicates check a section threshold before
+                # offering the swap, and the flag is the half the server owns.
+                event_flags |= secondary_world_event_flags(
+                    (progress & 0xFFFF) >> 6, progress & 0x3F,
+                )
             if self.server.daily_quests:
                 # The flags open the category; they never depend on story
                 # progress, because Daily Quests carry no recovered story gate.
@@ -5546,6 +5560,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hunting-catalog", type=Path, help="user-local Hunting stage catalog; cannot be combined with --hunting")
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--daily-quests", action="store_true", help="enable the fourteen recovered Daily Quest stages with bounded local settlement")
+    parser.add_argument("--secondary-worlds", action="store_true", help="enable the BreaSoul and Five Emperors secondary world maps with bounded local settlement")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
     parser.add_argument("--rebirth", action="store_true", help="enable the bundled local Rebirth recipe policy")
     parser.add_argument("--status-items", action="store_true", help="enable the bundled local status-up item policy")
@@ -5572,7 +5587,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     flag_fields = (
-        "core_story", "pacts", "hunting", "daily_quests", "jobs", "rebirth", "status_items",
+        "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "jobs", "rebirth", "status_items",
         "companion_draw", "companion_sale", "companion_strengthen",
         "companion_evolution", "trading_post", "drop_eligibility",
         "achievements", "summon_skills", "outcome_strict",
@@ -5608,6 +5623,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         drop_eligibility=getattr(args, 'drop_eligibility', False),
         hunting_catalog=args.hunting_catalog, hunting=getattr(args, 'hunting', False),
         daily_quests=getattr(args, 'daily_quests', False),
+        secondary_worlds=getattr(args, 'secondary_worlds', False),
         jobs=getattr(args, 'jobs', False),
         rebirth=getattr(args, 'rebirth', False),
         status_items=getattr(args, 'status_items', False),
@@ -5697,6 +5713,15 @@ def main() -> int:
                 hunts = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
             else:
                 hunts = replace(hunts, stages=hunts.stages + build_bundled_daily_quest_stages())
+        if args.secondary_worlds:
+            # The two secondary world maps are hidden for the same reason the
+            # Daily Quests are: the client draws their map points itself and
+            # never asks a selector which stages exist.
+            secondary = build_bundled_breasoul_stages() + build_bundled_five_emperors_stages()
+            if hunts is None:
+                hunts = HuntingCatalog(secondary, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
+            else:
+                hunts = replace(hunts, stages=hunts.stages + secondary)
         if args.achievements and args.achievement_catalog is not None:
             raise ProfileError("--achievements cannot be combined with --achievement-catalog")
         achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))
@@ -5739,6 +5764,7 @@ def main() -> int:
             drop_eligibility=getattr(args, 'drop_eligibility', False),
             hunting_catalog=hunts,
             daily_quests=args.daily_quests,
+            secondary_worlds=args.secondary_worlds,
             public_data_root=args.public_data_root,
             outcome_strict=getattr(args, "outcome_strict", False),
             companion_equipment_catalog=companion_equipment,
