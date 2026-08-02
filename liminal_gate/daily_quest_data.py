@@ -38,13 +38,22 @@ master data. The community record puts the drop at 100% and a further recruit at
 secondary-source policy as the ceilings.
 
 Every Daily Quest pays out **once per UTC day**, the boundary the record gives
-for the rotation switching over. The retired client greyed a played quest out
-from its own ``lastDailyQuestPlayTime`` save fields, which this server does not
-send, so the limit is enforced server-side instead: a second entry the same day
-is refused with the client's own soft refusal rather than an error.
+for the rotation switching over. The client greys a played quest out from the
+``lastDailyQuestPlayTime`` fields the login response carries, and the same limit
+is enforced server-side as well, so a client that asks anyway is refused with
+the client's own soft refusal rather than an error.
+
+**Which two quests are today's is the server's answer, not the client's.**
+``DailyQuestManager`` holds ``todaysQuest``/``todaysQuest1``/``todaysQuest2`` and
+fills them from the login response's ``dailyQuest``/``dailyQuest1``/
+``dailyQuest2``; ``IsDailyQuestPlayable1``/``2`` gate entry on those strings.
+Sending the category flag without them leaves the menu drawn and every entry
+greyed out, which is the shape of the defect this rotation exists to fix.
 """
 
 from __future__ import annotations
+
+from datetime import date
 
 from liminal_gate.hunting_catalog import HuntingStage
 
@@ -124,6 +133,51 @@ _DAILY_QUEST_ROWS: tuple[tuple[int, int, str, int, dict[int, int], int], ...] = 
 #: The client's own gate for the whole Huntland category.
 DAILY_QUEST_EVENT_FLAG = "enableDailyQuest"
 
+#: **Recovered.** ``DailyQuestData.questOrder`` verbatim, in asset order. This is
+#: the same asset :mod:`liminal_gate.daily_quest_importer` reads out of the
+#: operator's own APK, and running that importer against a matching APK is the
+#: check that this bundled copy is still the right one: it must reproduce these
+#: forty-one entries exactly. It is bundled for the same reason the stage set
+#: above is -- the rotation is a client asset, identical for every operator on
+#: the same build -- and refusing to bundle it would only mean the category
+#: cannot work without an optional UnityPy install.
+DAILY_QUEST_ROTATION: tuple[str, ...] = (
+    "6010-1", "6011-1", "6009-1", "6006-1", "6001-1", "6007-1",
+    "6008-1", "6002-1", "6012-1", "6004-1", "6000-1", "6005-1",
+    "6003-1", "6011-2", "6006-1", "6010-1", "6011-1", "6002-1",
+    "6009-1", "6005-1", "6012-1", "6008-1", "6010-1", "6004-1",
+    "6003-1", "6000-1", "6011-2", "6007-1", "6006-1", "6005-1",
+    "6009-1", "6000-1", "6001-1", "6010-1", "6006-1", "6003-1",
+    "6004-1", "6007-1", "6011-2", "6002-1", "6012-1",
+)
+
+#: **Local policy from a secondary source**, on the same footing as the reward
+#: ceilings. The rotation asset says which stages exist and in what order; it
+#: does not say which day the ring started on. Anchoring index nine to
+#: 2018-10-10 UTC reproduces the community record's published final schedule
+#: over its whole run, which is the strongest check available now that the
+#: service that owned the answer is gone. Two quests are served a day, so the
+#: ring advances by two.
+DAILY_QUEST_EPOCH_DAY = (date(2018, 10, 10) - date(1970, 1, 1)).days
+DAILY_QUEST_EPOCH_INDEX = 9
+DAILY_QUEST_SLOTS_PER_DAY = 2
+
+
+def daily_quest_rotation(utc_day: int) -> tuple[str, str]:
+    """Return the two ``chapter-section`` quests a UTC day offers.
+
+    ``utc_day`` is a whole day count since the Unix epoch, the same unit the
+    server stamps a played quest with, so no timezone participates.
+    """
+    offset = (
+        DAILY_QUEST_EPOCH_INDEX
+        + DAILY_QUEST_SLOTS_PER_DAY * (utc_day - DAILY_QUEST_EPOCH_DAY)
+    ) % len(DAILY_QUEST_ROTATION)
+    return (
+        DAILY_QUEST_ROTATION[offset],
+        DAILY_QUEST_ROTATION[(offset + 1) % len(DAILY_QUEST_ROTATION)],
+    )
+
 #: Joker Λ, the wild-card Recode DNA material The Hunt For Joker awards.
 #: Resolved from the operator's own master data rather than bundled by name.
 JOKER_LAMBDA_CHARACTER_ID = 1018
@@ -137,12 +191,14 @@ _JOKER_DUPLICATE_LUCK = 100
 def build_bundled_daily_quest_stages() -> tuple[HuntingStage, ...]:
     """Return the fourteen Daily Quests as bounded, unadvertised stages.
 
-    They use the ``hidden`` selector deliberately. The client schedules Daily
-    Quests itself from its own copy of ``questOrder`` and shows today's entries
-    without asking the server which exist, so advertising them in a Hunting or
-    Special list would duplicate them into the wrong menu. ``hidden`` is exactly
-    the case this project already has for a stage the server honours when asked
-    but never lists.
+    They use the ``hidden`` selector deliberately. The client draws the Daily
+    Quest menu from the two quests login names, not from a selector list, so
+    advertising them in a Hunting or Special list would duplicate them into the
+    wrong menu. ``hidden`` is exactly the case this project already has for a
+    stage the server honours when asked but never lists.
+
+    All fourteen are built, because the rotation reaches all fourteen; which two
+    a given day offers is :func:`daily_quest_rotation`'s answer.
 
     Entry is free. Every recorded Daily Quest costs no stamina, which the
     operator's own BattleData agrees with -- all fourteen rows carry zero.

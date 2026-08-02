@@ -3,14 +3,18 @@ from __future__ import annotations
 import unittest
 
 from liminal_gate.daily_quest_data import (
+    DAILY_QUEST_EPOCH_DAY,
     DAILY_QUEST_EVENT_FLAG,
+    DAILY_QUEST_ROTATION,
     build_bundled_daily_quest_stages,
     daily_quest_event_flags,
+    daily_quest_rotation,
 )
 from liminal_gate.bootstrap_server import (
     _apply_hunting_character_grants,
     _daily_quest_played_today,
     _stamp_daily_quest_clear,
+    daily_quest_login_fields,
 )
 from liminal_gate.hunting_catalog import HuntingCatalog, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, hunting_settlement_within_bounds
 
@@ -165,6 +169,82 @@ class DailyQuestGrantTest(unittest.TestCase):
         self.assertFalse(_daily_quest_played_today(account, stages["sweet_temptation"], now))
 
 
+class DailyQuestRotationTest(unittest.TestCase):
+    """Which two quests a day offers is the server's answer to give."""
+
+    def test_the_rotation_is_the_recovered_asset(self) -> None:
+        """41 entries over exactly the fourteen stages, as questOrder has it.
+
+        `liminal_gate.daily_quest_importer` run against a matching APK must
+        reproduce this tuple; that is what makes the bundled copy checkable.
+        """
+        self.assertEqual(41, len(DAILY_QUEST_ROTATION))
+        named = {tuple(int(part) for part in entry.split("-")) for entry in DAILY_QUEST_ROTATION}
+        self.assertEqual(set(ROTATION_STAGES), named)
+
+    def test_the_epoch_day_anchors_the_published_schedule(self) -> None:
+        """2018-10-10 UTC is index nine, the record's first published day."""
+        self.assertEqual((DAILY_QUEST_ROTATION[9], DAILY_QUEST_ROTATION[10]),
+                         daily_quest_rotation(DAILY_QUEST_EPOCH_DAY))
+
+    def test_the_ring_advances_by_two_a_day_and_wraps(self) -> None:
+        """Two quests a day means the 41-entry ring realigns every 41 days."""
+        for offset in range(0, 41):
+            day = DAILY_QUEST_EPOCH_DAY + offset
+            first, second = daily_quest_rotation(day)
+            self.assertEqual(DAILY_QUEST_ROTATION[(9 + 2 * offset) % 41], first)
+            self.assertEqual(DAILY_QUEST_ROTATION[(10 + 2 * offset) % 41], second)
+        # 41 is odd, so two-a-day only returns to the same pair after 41 days.
+        self.assertEqual(daily_quest_rotation(DAILY_QUEST_EPOCH_DAY),
+                         daily_quest_rotation(DAILY_QUEST_EPOCH_DAY + 41))
+
+    def test_a_day_before_the_epoch_still_resolves(self) -> None:
+        """An operator's clock set behind the anchor must not crash the login."""
+        first, second = daily_quest_rotation(DAILY_QUEST_EPOCH_DAY - 1)
+        self.assertIn(first, DAILY_QUEST_ROTATION)
+        self.assertIn(second, DAILY_QUEST_ROTATION)
+
+
+class DailyQuestPlayTimeTest(unittest.TestCase):
+    """The client greys an entry out from the play times login carries."""
+
+    def test_an_unplayed_day_offers_both_quests_at_zero(self) -> None:
+        now = 1_754_000_000.0
+        fields = daily_quest_login_fields({}, now)
+        self.assertEqual("", fields["dailyQuest"])
+        self.assertEqual(daily_quest_rotation(int(now // 86_400)),
+                         (fields["dailyQuest1"], fields["dailyQuest2"]))
+        self.assertEqual(0.0, fields["lastDailyQuestPlayTime1"])
+        self.assertEqual(0.0, fields["lastDailyQuestPlayTime2"])
+
+    def test_playing_one_slot_greys_only_that_slot(self) -> None:
+        now = 1_754_000_000.0
+        account: dict = {}
+        played = daily_quest_rotation(int(now // 86_400))[0]
+        stage = next(s for s in build_bundled_daily_quest_stages() if s.identity_label() == played)
+        _stamp_daily_quest_clear(account, stage, now)
+        fields = daily_quest_login_fields(account, now)
+        self.assertEqual(now, fields["lastDailyQuestPlayTime1"])
+        self.assertEqual(0.0, fields["lastDailyQuestPlayTime2"])
+
+    def test_yesterdays_stamp_does_not_grey_todays_quest(self) -> None:
+        """A stale timestamp left in place is how a quest never resets."""
+        yesterday = 1_754_000_000.0
+        account: dict = {}
+        for stage in build_bundled_daily_quest_stages():
+            _stamp_daily_quest_clear(account, stage, yesterday)
+        fields = daily_quest_login_fields(account, yesterday + 86_400)
+        self.assertEqual(0.0, fields["lastDailyQuestPlayTime1"])
+        self.assertEqual(0.0, fields["lastDailyQuestPlayTime2"])
+
+    def test_a_save_without_play_times_still_greys_out(self) -> None:
+        """Saves written before play times were recorded know only the day."""
+        now = 1_754_000_000.0
+        played = daily_quest_rotation(int(now // 86_400))[0]
+        account = {"daily_quest_clears": {played: int(now // 86_400)}}
+        self.assertGreater(daily_quest_login_fields(account, now)["lastDailyQuestPlayTime1"], 0.0)
+
+
 class DailyQuestLoginTest(unittest.TestCase):
     """The category is useless unless the client is told it is on."""
 
@@ -201,6 +281,19 @@ class DailyQuestLoginTest(unittest.TestCase):
                 self.assertTrue(flags[DAILY_QUEST_EVENT_FLAG]["value"])
                 for chapter, section in ROTATION_STAGES:
                     self.assertIn(f"sp_ch_{chapter}-{section}", flags)
+                # The flags alone drew the menu and greyed every entry out.
+                # DailyQuestManager fills todaysQuest1/2 from these, and
+                # IsDailyQuestPlayable1/2 refuse an empty string, so omitting
+                # them makes the whole category unreachable.
+                self.assertIn(payload["dailyQuest1"], DAILY_QUEST_ROTATION)
+                self.assertIn(payload["dailyQuest2"], DAILY_QUEST_ROTATION)
+                self.assertEqual("", payload["dailyQuest"])
+                self.assertEqual(0.0, payload["lastDailyQuestPlayTime"])
+                self.assertEqual(0.0, payload["lastDailyQuestPlayTime1"])
+                self.assertEqual(0.0, payload["lastDailyQuestPlayTime2"])
+                # UserData.lastLoginTime gates a slot opening at all, so a zero
+                # here disables the Huntland button whatever else is sent.
+                self.assertGreater(payload["lastLogin"], 0.0)
             finally:
                 server.shutdown(); thread.join(); server.server_close()
 
@@ -229,5 +322,9 @@ class DailyQuestLoginTest(unittest.TestCase):
                 get("/gd/signup?uuid=acct&otk=sig&requestID=s1")
                 _, payload = get("/gd/login?uuid=acct&otk=tok&requestID=l1")
                 self.assertNotIn(DAILY_QUEST_EVENT_FLAG, payload.get("eventFlags", {}))
+                # Naming today's quests to a client whose category is off would
+                # advertise a menu it must not open.
+                self.assertNotIn("dailyQuest1", payload)
+                self.assertNotIn("lastDailyQuestPlayTime1", payload)
             finally:
                 server.shutdown(); thread.join(); server.server_close()

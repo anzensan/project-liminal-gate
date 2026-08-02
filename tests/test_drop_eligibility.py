@@ -99,9 +99,11 @@ class DropEligibilityTest(unittest.TestCase):
 
     def test_enabling_it_changes_nothing_else_on_login(self) -> None:
         off, on = _login(drop_eligibility=False), _login(drop_eligibility=True)
-        # `digest` is over the payload, so it is expected to differ.
+        # `digest` is over the payload, so it is expected to differ, and
+        # `lastLogin` is the wall clock at the moment each login was answered.
         for body in (off, on):
             body.pop("digest", None)
+            body.pop("lastLogin", None)
         on.pop("chrBuddyData")
         self.assertEqual(off, on)
 
