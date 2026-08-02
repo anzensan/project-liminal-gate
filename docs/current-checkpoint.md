@@ -1,8 +1,8 @@
 # Current Checkpoint
 
-Date: 2026-07-31
+Date: 2026-08-02
 
-Mode: public-release implementation hardening.
+Mode: public-release implementation hardening and private on-device packaging.
 
 Deepest verified client path: clean local setup played through Chapter 9 on a
 physical device without a client-visible failure.
@@ -17,6 +17,23 @@ Fast validation lane:
 PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
+
+On-device checkpoint: the source-hash-guarded private builder, dual-ABI
+Chaquopy host, packaged resource catalog, loopback health gate, app-private
+state bootstrap, signing, and installation path are implemented. The real
+5.5.7-170 full build packaged all 11,806 retained resources (940,138,388 bytes),
+passed alignment/signature/package/SDK/launcher/dual-ABI inspection, and
+the immediately preceding full-resource payload launched on an API 34 ARM64
+emulator. It returned its matching build ID over `127.0.0.1:8002/healthz`,
+initialized Unity only after that boundary, served a manifest-selected resource
+with exact size/SHA-256, and recovered after force-stop/relaunch in a new
+process. The final source-exact artifact is SHA-256
+`aeba11eade3b507d62403ee806b3e7390bb3a2abced03a0219e3ec4633685ef0`,
+payload ID `53d043cbb585337d19a749ef1a1735b31c5499bbe00c1376123d9600900fff93`;
+it passed offline package/signature/transport inspection but the validation
+emulator lacked space to replace the prior 1-GiB install. Final-artifact
+physical ARM64, ARMv7 runtime, and combined-APK Chapter 2-1 acceptance remain
+pending and do not change the canonical gameplay boundary above.
 
 Latest chapter-ticket validation: the live Chapter 8-9 account retained read
 Chapter 5 Metal Ticket x2 and Chapter 6 Companion Ticket x3 messages but lacked

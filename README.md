@@ -37,7 +37,8 @@ Python 3.11+, Android Studio (Emulator and SDK tools), Android SDK Platform-Tool
 and Build-Tools, a JDK, [Il2CppDumper](https://github.com/Perfare/Il2CppDumper),
 and an AArch64 disassembler (LLVM, or `binutils-multiarch` on Linux).
 
-Step 1 below walks through installing these on your operating system.
+Step 1 below installs most of these for you. You supply Android Studio, for the
+emulator, and the disassembler.
 
 ### Files you supply
 
@@ -62,9 +63,31 @@ subdirectory, or from another project.
 
 ### 1. Install the tools
 
-Follow the section for your operating system in **[Installing the
-tools](docs/install-tools.md)**, then come back here. It covers the Android SDK
-components, per-OS `PATH` setup, and Il2CppDumper.
+Let the doctor do it. It reports what this machine is missing and, with
+`--install-missing`, downloads the rest from each vendor into `user-data/`:
+
+```sh
+python3 -m liminal_gate.doctor --install-missing
+```
+
+It fetches a JDK, the Android SDK packages, and Il2CppDumper, then records where
+everything landed in `user-data/toolchain.json`. **Setup reads that file, so you
+never have to set `PATH` or `JAVA_HOME`** — in this terminal or any later one.
+
+Three things it deliberately leaves to you:
+
+- **The Android SDK licences.** It prints the agreement and asks; it will not
+  accept Google's terms on your behalf. Answer `y`, or pass
+  `--accept-android-sdk-licenses`.
+- **An AArch64 disassembler.** It finds one you already have — on macOS the
+  Command Line Tools usually provide it — but installing LLVM is your package
+  manager's job. It prints the exact command for your OS.
+- **An emulator.** You still need Android Studio, or a physical device, to have
+  something to install onto.
+
+Prefer to install everything yourself, or want to know what the doctor is doing?
+**[Installing the tools](docs/install-tools.md)** covers each tool by hand, per
+operating system.
 
 ### 2. Check your setup
 
@@ -246,3 +269,4 @@ resources, captures, account saves, tokens, digests, or keys.
 - [Parity roadmap](PARITY_ROADMAP.md) — what is implemented, what is permanently unrecoverable, and what is still open.
 - [Changelog](CHANGELOG.md) — what each release claims, and what it does not.
 - [Contributing](CONTRIBUTING.md) — reporting network errors, and what never to attach.
+- [Private on-device compatibility server](docs/on-device-server-idea.md) — one local APK build path and its unverified client boundary.

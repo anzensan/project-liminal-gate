@@ -181,6 +181,15 @@ class TesterSetupTest(unittest.TestCase):
             install_apk("adb", "emulator-5556", Path("built.apk"), replace_existing=True)
         self.assertIn("uninstall", run.call_args_list[1].args[0])
 
+    def test_large_apk_install_can_disable_adb_incremental_mode(self) -> None:
+        success = subprocess.CompletedProcess((), 0, stdout="Success", stderr="")
+        with patch("liminal_gate.tester_setup.subprocess.run", return_value=success) as run:
+            install_apk(
+                "adb", "emulator-5556", Path("built.apk"),
+                no_incremental=True,
+            )
+        self.assertIn("--no-incremental", run.call_args.args[0])
+
     def test_other_install_failures_are_reported_verbatim(self) -> None:
         failure = subprocess.CompletedProcess((), 1, stdout="", stderr="Failure [INSTALL_FAILED_NO_MATCHING_ABIS]")
         with patch("liminal_gate.tester_setup.subprocess.run", return_value=failure):

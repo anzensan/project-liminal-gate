@@ -580,3 +580,61 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   Road and Chapter 1100 are not on that list, so their chests are now
   *undetermined* rather than declared absent, and stay refused as labeled local
   policy rather than on the game's authority.
+
+## 2026-08-02: one-process Android host and packaged server transport
+
+- **Confirmed, static/build:** the reviewed 5.5.7-170 Android package names
+  `com.unity3d.player.UnityPlayerActivity` as its launcher, carries one client
+  DEX, targets API 28, declares minimum API 16, and contains both ARM64 and
+  ARMv7 Unity/IL2CPP libraries. The activity name is 38 bytes, exactly matching
+  `org.liminalgate.android.HostedActivity`; the private assembler therefore
+  makes a bounded binary-string replacement and changes the typed minimum SDK
+  from 16 to 24 without rebuilding the original resource table.
+- **Confirmed, build:** the Android host builds with Gradle 8.11.1, AGP 8.9.2,
+  Chaquopy 17.0.0, and Python 3.11. Its payload contains three host DEX files
+  and Python native/runtime members for both `arm64-v8a` and `armeabi-v7a`.
+  The combined structural artifact preserved the client package/version/target,
+  exposed the replacement launcher, retained both ABIs, aligned successfully,
+  and verified with APK signature schemes v2 and v3.
+- **Confirmed, full-resource ARM64 emulator transport:** the one-command build
+  inventoried all 11,806 resource files (940,138,388 bytes) and produced a
+  locally signed 1.0-GiB final APK (1,064,591,384 bytes) with SHA-256
+  `aeba11eade3b507d62403ee806b3e7390bb3a2abced03a0219e3ec4633685ef0`
+  and payload-bound build ID
+  `53d043cbb585337d19a749ef1a1735b31c5499bbe00c1376123d9600900fff93`.
+  Its signer certificate SHA-256 is
+  `01625a63bced5d45c7fb545d2bf2ef8d7660669e8db7a34a9638adf9e5d6e09f`.
+  Every new/changed local ZIP header agrees with its central-directory flags,
+  compression, and timestamp; all packaged resources are stored.
+- **Confirmed, preceding full-payload ARM64 transport:** an emulator-only copy
+  of the preceding full-resource payload was signed with the already-installed
+  validation key; the installed APK SHA-256 is
+  `23f6fc9f913c92ad3457352fd9014c294fffdee44c1e1fab178bdd81bca7faae`.
+  On API 34, that reviewed client started Chaquopy in the app process, returned
+  build ID `0f075b3c3a9cce9427d14bea17f5967b9a07e6c304f663e276e76bcaf4d9f211`
+  from real `127.0.0.1:8002/healthz`, and only then initialized Unity
+  2017.4.37f1. The server returned a 129,018-byte packaged BG member whose
+  SHA-256 exactly matched the manifest. After force-stop, a new process
+  returned the same health identity. The exact component launcher returned
+  Android `Status: ok`; this replaced a one-event `monkey` launch which could
+  exit without starting the activity. This proves the full packaging,
+  readiness, direct resource transport, deterministic launcher, and relaunch
+  design on ARM64. The source-exact final payload could not replace it because
+  emulator-5580 had only 1.2 GiB free, so final-artifact device acceptance and
+  any physical playthrough remain unverified.
+- **Confirmed, regression:** schema-v1 filesystem catalogs still hash and serve
+  explicit local files. Schema-v2 validates stored APK-member metadata and
+  streams resources without extracting them. Small runtime/catalog members are
+  size/digest checked before atomic extraction; seed state uses create-if-absent
+  and a retry does not replace an existing save.
+- **Confirmed, installer:** ADB incremental mode falsely reported success for
+  the 1-GiB update while leaving no installed package. The on-device installer
+  now requires `--no-incremental`; streamed installation then installed and
+  launched the same full artifact, with focused regression coverage.
+- **Unverified:** a full-resource physical-device playthrough, an ARMv7 runtime
+  launch, and Chapter 2-1 mutation/restart certification from the combined APK.
+  None may be inferred from build, signing, health, or Unity-start evidence.
+- **Validation:** all 875 Python tests passed in 142.654 seconds with
+  `ResourceWarning` promoted to an error. The three Android JVM tests passed
+  under pinned Gradle 8.11.1 and Java 21. A clean committed source candidate
+  passed release material preflight and independent-history audit.

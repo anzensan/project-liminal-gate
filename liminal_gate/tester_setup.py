@@ -48,7 +48,7 @@ from liminal_gate.setup_progress import (
     run_with_heartbeat as _run_with_heartbeat,
 )
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
-from liminal_gate import account_state
+from liminal_gate import account_state, toolchain
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
 from liminal_gate.event_catalog import (
     DEFAULT_EVENT_CATALOG,
@@ -239,7 +239,13 @@ def build_server_origin(device_host: str, port: int) -> str:
         raise TesterSetupError(str(error)) from error
 
 
-def install_apk(adb: str, device: str, apk: Path, replace_existing: bool = False) -> None:
+def install_apk(
+    adb: str,
+    device: str,
+    apk: Path,
+    replace_existing: bool = False,
+    no_incremental: bool = False,
+) -> None:
     """Install the signed local APK, explaining a signing-key conflict.
 
     A build made from a different checkout carries a different local test key,
@@ -247,9 +253,11 @@ def install_apk(adb: str, device: str, apk: Path, replace_existing: bool = False
     The only remedy is uninstalling first, which also clears that app's local
     data, so it is never done implicitly.
     """
-    result = subprocess.run(
-        (adb, "-s", device, "install", "-r", str(apk)), text=True, capture_output=True,
-    )
+    install = [adb, "-s", device, "install"]
+    if no_incremental:
+        install.append("--no-incremental")
+    install.extend(("-r", str(apk)))
+    result = subprocess.run(tuple(install), text=True, capture_output=True)
     if result.returncode == 0:
         return
     output = f"{result.stdout}\n{result.stderr}"
@@ -261,11 +269,12 @@ def install_apk(adb: str, device: str, apk: Path, replace_existing: bool = False
             f"local key, so Android refused to replace it. Rerun with --replace-existing to uninstall "
             f"it first, or uninstall it yourself with: "
             f"{adb} -s {device} uninstall {PACKAGE_NAME}. Either way the app's local data on that "
-            f"device is cleared, so it downloads resources again and starts a new local account."
+            f"device is cleared, so the next launch recreates its per-install data and starts a "
+            f"new local account."
         )
     print(f"Uninstalling the differently signed {PACKAGE_NAME} from {device} before installing.")
     subprocess.run((adb, "-s", device, "uninstall", PACKAGE_NAME), check=True)
-    subprocess.run((adb, "-s", device, "install", "-r", str(apk)), check=True)
+    subprocess.run(tuple(install), check=True)
 
 
 def check_device_host_suits_device(device: str, device_host: str) -> None:
@@ -1652,6 +1661,11 @@ def _progress_label(progress: object) -> str:
 
 def main() -> int:
     args = parse_args()
+    # Ahead of every resolver, including the ones --check runs. Each of them
+    # reads the environment, and this is what puts the locations a previous
+    # `liminal_gate.doctor` run recorded back into it, so a tester who ran the
+    # doctor never has to set PATH or JAVA_HOME in this terminal.
+    toolchain.load_and_apply(args.data_dir)
     if args.check:
         # Deliberately ahead of every prompt and every check that can raise: the
         # point of this mode is to answer "is this machine ready" without asking

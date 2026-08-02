@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+    id 'com.chaquo.python'
+}
+
+def hostBuildId = providers.gradleProperty('liminalGateBuildId').orNull
+
+android {
+    namespace 'org.liminalgate.android'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'org.liminalgate.android'
+        minSdk 24
+        targetSdk 28
+        versionCode 1
+        versionName '1.0'
+        buildConfigField 'String', 'HOST_BUILD_ID', '"' + (hostBuildId ?: '') + '"'
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = '3.11'
+    }
+}
+
+if (hostBuildId == null || !(hostBuildId ==~ /[0-9a-f]{64}/)) {
+    throw new GradleException('Pass -PliminalGateBuildId=<64 lowercase hex characters>.')
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}

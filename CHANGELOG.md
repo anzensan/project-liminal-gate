@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **A toolchain doctor removes the `PATH` and `JAVA_HOME` step.**
+  `python3 -m liminal_gate.doctor` reports which build tools this machine has;
+  `--install-missing` fetches a Temurin JDK, the Android SDK packages through
+  Google's own `sdkmanager`, Il2CppDumper v6.7.46, and — only where the managed
+  dumper build needs one — a private .NET runtime. Every download is verified
+  against a published checksum — including the on-device builder's pinned
+  Gradle distribution — and lands under ignored `user-data/`. Locations
+  are recorded in `user-data/toolchain.json` and replayed into the environment
+  by `tester_setup` and `on_device_setup`, so no shell variable has to be
+  exported in any terminal. A variable the operator set themselves still wins.
+  The Android SDK licences are never accepted without being asked, and Android
+  Studio, emulator images, and an LLVM toolchain remain the operator's own.
+
+- A source-only private on-device build path packages the tester's reviewed
+  client, complete local resources, dual-ABI Python compatibility server, and
+  readiness-gated launcher into one locally signed APK. Readiness identity is
+  bound to the patched client, packaged content, and embedded host sources; the
+  installer starts the exact replacement activity instead of relying on a
+  one-event `monkey` command. Generated packages,
+  resources, keys, state, and Android build products remain private/ignored;
+  full physical-client and ARMv7 acceptance are still pending.
+
 ## 1.0.3 — 2026-08-01
 
 ### Added

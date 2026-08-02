@@ -6,9 +6,12 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
+import zipfile
 
 
 RESOURCE_MANIFEST_SCHEMA_VERSION = 1
+APK_RESOURCE_MANIFEST_SCHEMA_VERSION = 2
 
 
 class ResourceCatalogError(ValueError):
@@ -18,15 +21,23 @@ class ResourceCatalogError(ValueError):
 @dataclass(frozen=True)
 class ResourceEntry:
     path: str
-    file: Path
     content_type: str
+    size: int
+    file: Path | None = None
+    member: str | None = None
 
 
 class ResourceCatalog:
-    """Immutable, hash-validated mapping from URL paths to local files."""
+    """Immutable manifest mapping backed by files or stored APK members.
 
-    def __init__(self, entries: dict[str, ResourceEntry]) -> None:
+    The catalog retains the APK handle for schema-v2 entries.  Call ``close``
+    when its server stops so Android can immediately replace its package during
+    a development reinstall.
+    """
+
+    def __init__(self, entries: dict[str, ResourceEntry], archive: zipfile.ZipFile | None = None) -> None:
         self.entries = entries
+        self._archive = archive
         self.casefolded_entries: dict[str, ResourceEntry | None] = {}
         for entry in entries.values():
             key = entry.path.casefold()
@@ -38,34 +49,69 @@ class ResourceCatalog:
     def resolve(self, path: str) -> ResourceEntry | None:
         return self.entries.get(path) or self.casefolded_entries.get(path.casefold())
 
+    def open(self, entry: ResourceEntry) -> BinaryIO:
+        """Open one validated resource without materializing it in memory."""
+        if entry.file is not None:
+            return entry.file.open("rb")
+        if self._archive is None or entry.member is None:
+            raise ResourceCatalogError("resource catalog is closed")
+        return self._archive.open(entry.member, "r")
+
+    def close(self) -> None:
+        """Release a retained APK archive; safe to call more than once."""
+        if self._archive is not None:
+            self._archive.close()
+            self._archive = None
+
 
 def load_resource_catalog(manifest: Path, resource_root: Path) -> ResourceCatalog:
-    """Load an explicit local manifest without discovering or exporting files."""
+    """Load an explicit v1 filesystem or v2 APK-member manifest.
+
+    For v1, ``resource_root`` is the user-owned resource directory.  For v2 it
+    is the final APK itself; every referenced member must be ZIP_STORED, so the
+    server can stream it directly rather than extracting another resource copy.
+    """
     try:
         document = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ResourceCatalogError("could not read local resource manifest") from error
-    if not isinstance(document, dict) or document.get("schema_version") != RESOURCE_MANIFEST_SCHEMA_VERSION:
-        raise ResourceCatalogError(f"resource manifest schema_version must be {RESOURCE_MANIFEST_SCHEMA_VERSION}")
+    return load_resource_catalog_document(document, resource_root)
+
+
+def load_resource_catalog_document(document: object, resource_root: Path) -> ResourceCatalog:
+    """Load a parsed manifest supplied by a signed package member."""
+    if not isinstance(document, dict):
+        raise ResourceCatalogError("resource manifest must be a JSON object")
+    schema_version = document.get("schema_version")
+    if schema_version not in {RESOURCE_MANIFEST_SCHEMA_VERSION, APK_RESOURCE_MANIFEST_SCHEMA_VERSION}:
+        raise ResourceCatalogError("resource manifest schema_version must be 1 or 2")
     resources = document.get("resources")
     if not isinstance(resources, list) or not resources:
         raise ResourceCatalogError("resource manifest must contain a nonempty resources list")
     try:
         root = resource_root.resolve(strict=True)
     except OSError as error:
-        raise ResourceCatalogError("resource root is unavailable") from error
-    if not root.is_dir():
-        raise ResourceCatalogError("resource root must be a directory")
+        raise ResourceCatalogError("resource source is unavailable") from error
+    if schema_version == RESOURCE_MANIFEST_SCHEMA_VERSION:
+        if not root.is_dir():
+            raise ResourceCatalogError("resource root must be a directory")
+        return _load_filesystem_catalog(resources, root)
+    if not root.is_file():
+        raise ResourceCatalogError("APK resource source must be a regular file")
+    return _load_apk_catalog(resources, root)
+
+
+def _load_filesystem_catalog(resources: list[object], root: Path) -> ResourceCatalog:
     entries: dict[str, ResourceEntry] = {}
     for resource in resources:
-        entry = _load_entry(resource, root)
+        entry = _load_file_entry(resource, root)
         if entry.path in entries:
             raise ResourceCatalogError("resource manifest has duplicate URL paths")
         entries[entry.path] = entry
     return ResourceCatalog(entries)
 
 
-def _load_entry(resource: object, root: Path) -> ResourceEntry:
+def _load_file_entry(resource: object, root: Path) -> ResourceEntry:
     if not isinstance(resource, dict):
         raise ResourceCatalogError("every resource manifest entry must be an object")
     path = resource.get("path")
@@ -85,7 +131,62 @@ def _load_entry(resource: object, root: Path) -> ResourceEntry:
         raise ResourceCatalogError("resource file is unavailable")
     if _sha256_file(candidate) != expected_hash:
         raise ResourceCatalogError("resource file hash does not match local manifest")
-    return ResourceEntry(path, candidate, content_type)
+    return ResourceEntry(path, content_type, candidate.stat().st_size, file=candidate)
+
+
+def _load_apk_catalog(resources: list[object], apk: Path) -> ResourceCatalog:
+    try:
+        archive = zipfile.ZipFile(apk)
+    except (OSError, zipfile.BadZipFile) as error:
+        raise ResourceCatalogError("could not read APK resource archive") from error
+    try:
+        entries: dict[str, ResourceEntry] = {}
+        for resource in resources:
+            entry = _load_apk_entry(resource, archive)
+            if entry.path in entries:
+                raise ResourceCatalogError("resource manifest has duplicate URL paths")
+            entries[entry.path] = entry
+        return ResourceCatalog(entries, archive)
+    except BaseException:
+        archive.close()
+        raise
+
+
+def _load_apk_entry(resource: object, archive: zipfile.ZipFile) -> ResourceEntry:
+    if not isinstance(resource, dict):
+        raise ResourceCatalogError("every resource manifest entry must be an object")
+    path = resource.get("path")
+    member = resource.get("member")
+    expected_hash = resource.get("sha256")
+    expected_size = resource.get("size")
+    content_type = resource.get("content_type", "application/octet-stream")
+    if not isinstance(path, str) or not path.startswith("/resources/") or path == "/resources/":
+        raise ResourceCatalogError("resource path must start with /resources/")
+    if not isinstance(member, str) or not _safe_zip_member(member):
+        raise ResourceCatalogError("APK resource member must be a safe relative path")
+    if not isinstance(expected_hash, str) or len(expected_hash) != 64 or any(char not in "0123456789abcdef" for char in expected_hash):
+        raise ResourceCatalogError("resource sha256 must be lowercase hexadecimal")
+    if type(expected_size) is not int or expected_size < 0:
+        raise ResourceCatalogError("APK resource size must be a nonnegative integer")
+    if not isinstance(content_type, str) or not content_type or "\r" in content_type or "\n" in content_type:
+        raise ResourceCatalogError("resource content_type is invalid")
+    try:
+        info = archive.getinfo(member)
+    except KeyError as error:
+        raise ResourceCatalogError("APK resource member is unavailable") from error
+    if (
+        info.is_dir()
+        or info.compress_type != zipfile.ZIP_STORED
+        or info.flag_bits & (0x1 | 0x8)
+        or info.file_size != info.compress_size
+    ):
+        raise ResourceCatalogError("APK resource member must use ZIP_STORED")
+    if info.file_size != expected_size:
+        raise ResourceCatalogError("APK resource size does not match local manifest")
+    # The full digest is verified by the source-hash-guarded package build and
+    # APK signature.  Re-reading a ~900 MiB resource payload here would delay
+    # the app's readiness gate and defeat the direct-streaming design.
+    return ResourceEntry(path, content_type, info.file_size, member=member)
 
 
 def _safe_relative_path(value: str) -> bool:
@@ -93,9 +194,20 @@ def _safe_relative_path(value: str) -> bool:
     return not path.is_absolute() and bool(path.parts) and ".." not in path.parts and "." not in path.parts
 
 
+def _safe_zip_member(value: str) -> bool:
+    return _safe_relative_path(value) and "\\" not in value
+
+
 def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
     with path.open("rb") as stream:
+        return _sha256_stream(stream)
+
+
+def _sha256_stream(stream: BinaryIO) -> str:
+    digest = hashlib.sha256()
+    try:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
+    finally:
+        stream.close()
     return digest.hexdigest()

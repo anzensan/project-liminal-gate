@@ -16,6 +16,7 @@ master-import = ["UnityPy==1.25.2", "TypeTreeGeneratorAPI==0.0.10"]
 
 [project.scripts]
 liminal-gate = "liminal_gate.server:main"
+liminal-gate-doctor = "liminal_gate.doctor:main"
 liminal-gate-release-preflight = "liminal_gate.release_preflight:main"
 liminal-gate-release-audit = "liminal_gate.release_audit:main"
 liminal-gate-apply-apk-plan = "liminal_gate.apk_patcher:main"
@@ -37,4 +38,5 @@ liminal-gate-bootstrap-server = "liminal_gate.bootstrap_server:main"
 liminal-gate-server-setup = "liminal_gate.server_setup:main"
 liminal-gate-import-bootstrap-profile = "liminal_gate.bootstrap_profile_importer:main"
 liminal-gate-tester-setup = "liminal_gate.tester_setup:main"
+liminal-gate-on-device-setup = "liminal_gate.on_device_setup:main"
 liminal-gate-setup-rehearsal = "liminal_gate.setup_rehearsal:main"
