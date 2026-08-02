@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import json
+from http.client import HTTPConnection
+from pathlib import Path
+import tempfile
+import threading
 import unittest
+from unittest import mock
+from urllib.parse import urlencode
 
 from liminal_gate.daily_quest_data import (
     DAILY_QUEST_EPOCH_DAY,
@@ -11,10 +18,13 @@ from liminal_gate.daily_quest_data import (
     daily_quest_rotation,
 )
 from liminal_gate.bootstrap_server import (
+    BootstrapServer,
+    BootstrapState,
     _apply_hunting_character_grants,
     _daily_quest_played_today,
     _stamp_daily_quest_clear,
     daily_quest_login_fields,
+    load_profile,
 )
 from liminal_gate.hunting_catalog import HuntingCatalog, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, hunting_settlement_within_bounds
 
@@ -103,9 +113,18 @@ class DailyQuestSettlementTest(unittest.TestCase):
         stage = self.stage(6006, 1)
         self.assertFalse(hunting_settlement_within_bounds(stage, result({80: 99})))
 
-    def test_an_unlisted_item_is_refused(self) -> None:
+    def test_an_incidental_item_outside_the_chest_settles(self) -> None:
+        """The same `drop_eligibility` roll every ordinary battle gets can hand
+        back an item outside a Daily Quest's own themed chest; refusing the
+        whole clear over that unrelated item was the bug -- see the greyed-out
+        Daily Quest menu reported from a real device."""
         stage = self.stage(6006, 1)
-        self.assertFalse(hunting_settlement_within_bounds(stage, result({1: 1})))
+        self.assertTrue(hunting_settlement_within_bounds(stage, result({80: 1, 1: 1})))
+
+    def test_the_chests_own_ceiling_still_refuses_regardless_of_incidental_items(self) -> None:
+        """Trusting an incidental item must not loosen the chest's own bound."""
+        stage = self.stage(6006, 1)
+        self.assertFalse(hunting_settlement_within_bounds(stage, result({80: 99, 1: 1})))
 
     def test_tropical_haze_settles_its_tickets(self) -> None:
         stage = self.stage(6007, 1)
@@ -329,3 +348,118 @@ class DailyQuestLoginTest(unittest.TestCase):
                 self.assertNotIn("lastDailyQuestPlayTime1", payload)
             finally:
                 server.shutdown(); thread.join(); server.server_close()
+
+
+class DailyQuestClearRuntimeTest(unittest.TestCase):
+    """A real clear over HTTP, reproducing the reported-from-device rejection.
+
+    A device reported a Daily Quest clearing with an extra item drop outside
+    its own recovered themed chest and getting `409
+    invalid_local_hunting_result` -- the same ordinary `drop_eligibility` roll
+    every other battle gets, refused here only because the chest's own bound
+    used to apply to every reported item rather than just its own.
+
+    `time.time` is patched to a fixed moment whose rotation is known (day
+    17816 offers Sweet Temptation, 6006-1) so entry does not depend on the day
+    the suite happens to run.
+    """
+
+    NOW = 1_539_302_400.0  # UTC day 17816; daily_quest_rotation(17816) includes 6006-1.
+
+    def setUp(self) -> None:
+        self.time_patcher = mock.patch("liminal_gate.bootstrap_server.time.time", return_value=self.NOW)
+        self.time_patcher.start()
+        self.addCleanup(self.time_patcher.stop)
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary_directory.name)
+        self.token, self.account_id = "daily-token", "daily-account"
+        self.character = {
+            "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+            "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+        }
+        self.profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        catalog = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
+        self.server = BootstrapServer(
+            ("127.0.0.1", 0), self.profile, BootstrapState(self.root / "state.json"),
+            hunting_catalog=catalog, daily_quests=True,
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+        self.server.state.create_account(self.token, self.account_id, {
+            "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
+            "progressCode": 0x01000000 | (2 << 6) | 1, "chrdata": [self.character],
+            "itemList": [0] * BUNDLED_ITEM_SLOTS, "summonList": [0, 0],
+        })
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            self.server.state._persist_locked()
+
+    def tearDown(self) -> None:
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+        self.temporary_directory.cleanup()
+
+    def post(self, route: str, request_id: str, fields: list) -> tuple:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "POST", f"{route}?otk={self.token}&requestID={request_id}",
+            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    def userdata(self) -> dict:
+        return json.loads((self.root / "state.json").read_text(encoding="utf-8"))["accounts"][self.account_id]["userdata"]
+
+    def start(self, request_id: str, chapter: int, section: int) -> tuple:
+        return self.post("/gd/start_quest", request_id, [
+            ("stamina", "0"), ("coins", "0"), ("chapter", str(chapter)),
+            ("section", str(section)), ("lastUpdate", "1"),
+        ])
+
+    def clear(self, request_id: str, chapter: int, section: int, *, items: dict) -> tuple:
+        userdata = self.userdata()
+        item_list = list(userdata["itemList"])
+        for item_id, count in items.items():
+            item_list[int(item_id) - 1] += count
+        return self.post("/gd/clear_quest", request_id, [
+            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"],
+            })),
+            ("chrdata", json.dumps([self.character])),
+            ("itemList", json.dumps(item_list)),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": chapter, "section": section, "coins": 0, "exp": 0,
+                "items": {str(k): v for k, v in items.items()}, "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ]), item_list
+
+    def test_an_incidental_drop_no_longer_blocks_the_clear(self) -> None:
+        """Sweet Temptation (6006-1) clears with its own Energy plus a stray item."""
+        status, started = self.start("daily-start", 6006, 1)
+        self.assertEqual((200, True), (status, started["success"]))
+
+        (status, cleared), item_list = self.clear("daily-clear", 6006, 1, items={80: 1, 1: 1})
+        self.assertEqual((200, True), (status, cleared["success"]), cleared)
+        self.assertEqual(item_list, self.userdata()["itemList"])
+
+    def test_the_chests_own_ceiling_still_refuses_over_http(self) -> None:
+        """The incidental item must not loosen Sweet Temptation's own bound."""
+        status, started = self.start("daily-over-start", 6006, 1)
+        self.assertEqual((200, True), (status, started["success"]))
+        before = self.userdata()
+
+        (status, refused), _ = self.clear("daily-over-clear", 6006, 1, items={80: 99, 1: 1})
+        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual(before, self.userdata())

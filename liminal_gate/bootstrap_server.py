@@ -5450,6 +5450,14 @@ def _projected_hunting_items(
     retain whether a ticket was actually spent; ``None`` is limited to an
     already-active battle loaded from a pre-fix save. In every accepted case the
     returned inventory keeps the server's lower, already-charged ticket count.
+
+    A stage with ``allow_incidental_items`` (a Daily Quest) reaches here with
+    ``rewards`` that can include item IDs outside its own ``item_maxima`` --
+    ``hunting_settlement_within_bounds`` already let those through. Its own
+    declared items still project exactly, as below; every other slot instead
+    trusts the client the way an ordinary story clear's item list already does
+    (``_preserved_counts``): the reported count must be no lower than what is
+    already held, and is taken as-is rather than computed.
     """
     if not (
         isinstance(current, list)
@@ -5463,7 +5471,20 @@ def _projected_hunting_items(
     for item_id, count in rewards.items():
         if item_id > slots:
             return None
+        if stage.allow_incidental_items and item_id not in stage.item_maxima:
+            continue
         expected[item_id - 1] = min(maximum, expected[item_id - 1] + count)
+    if stage.allow_incidental_items:
+        declared_indices = {item_id - 1 for item_id in stage.item_maxima}
+        merged = list(expected)
+        for index in range(slots):
+            if index in declared_indices:
+                continue
+            reported = submitted[index]
+            if type(reported) is not int or not (0 <= reported <= maximum) or reported < merged[index]:
+                return None
+            merged[index] = reported
+        return merged if submitted == merged else None
     if submitted == expected:
         return expected
     if not stage.ticket_optional or ticket_spent is False:

@@ -225,6 +225,12 @@ def build_bundled_daily_quest_stages() -> tuple[HuntingStage, ...]:
             max_items_total=max_items_total, item_maxima=dict(item_maxima),
             selector="hidden",
             once_per_utc_day=True,
+            # The same `drop_eligibility` roll every ordinary battle uses can
+            # hand back an item outside this quest's own themed reward chest.
+            # Only the chest itself is recovered and bounded below; an
+            # unrelated incidental item is trusted the way an ordinary story
+            # clear already trusts one, rather than refusing the whole clear.
+            allow_incidental_items=True,
             character_grants=(JOKER_LAMBDA_CHARACTER_ID,) if family == "the_hunt_for_joker" else (),
             duplicate_grant_skill_boost=_JOKER_DUPLICATE_SKILL_BOOST if family == "the_hunt_for_joker" else 0,
             duplicate_grant_luck=_JOKER_DUPLICATE_LUCK if family == "the_hunt_for_joker" else 0,

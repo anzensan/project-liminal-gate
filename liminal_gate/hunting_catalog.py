@@ -84,6 +84,15 @@ class HuntingStage:
     #: greyed a played Daily Quest out using its own `lastDailyQuestPlayTime`
     #: fields; this server does not send those, so it enforces the limit itself.
     once_per_utc_day: bool = False
+    #: When true, an item outside `item_maxima` is accepted rather than
+    #: refusing the whole clear. Metal Zone, the Roads, and ordinary Hunting
+    #: have a fully recovered loot table, so an undeclared item there is
+    #: suspect and rejected. A Daily Quest only has its own themed reward
+    #: chest recovered; the same `drop_eligibility` roll that grants ordinary
+    #: story battles their incidental items applies here too, and rejecting an
+    #: otherwise-valid clear over one unrelated item is a worse answer than
+    #: trusting it the way an ordinary story clear already does.
+    allow_incidental_items: bool = False
 
     def identity_label(self) -> str:
         """The `chapter-section` string the client's selector lists expect."""
@@ -278,6 +287,14 @@ def hunting_settlement_within_bounds(stage: HuntingStage, result: dict[str, Any]
     that the labels beside their tables justify.  Battle Summons are refused
     everywhere, and battle-recruited monsters are refused everywhere except
     within a stage's declared `monster_recruit_maxima`.
+
+    Items are the one channel a `stage.allow_incidental_items` relaxes.  Every
+    stage's own declared items still bound to `item_maxima` and `max_items_total`
+    exactly as before; an item outside that declaration is refused unless the
+    stage opts in, which only a Daily Quest does.  Coins, EXP, Summons,
+    monsters, and Companions stay fully strict everywhere, Daily Quests
+    included, since those channels were never observed to carry an ordinary
+    battle's incidental reward the way items can.
     """
     if result["coins"] > stage.max_coins or result["exp"] > stage.max_exp:
         return False
@@ -292,9 +309,12 @@ def hunting_settlement_within_bounds(stage: HuntingStage, result: dict[str, Any]
     if stage.max_companions_total is not None and sum(companions.values()) > stage.max_companions_total:
         return False
     gained = {int(item_id): count for item_id, count in result["items"].items()}
-    if sum(gained.values()) > stage.max_items_total:
+    declared = {item_id: count for item_id, count in gained.items() if item_id in stage.item_maxima}
+    if not stage.allow_incidental_items and len(declared) != len(gained):
         return False
-    return all(item_id in stage.item_maxima and count <= stage.item_maxima[item_id] for item_id, count in gained.items())
+    if sum(declared.values()) > stage.max_items_total:
+        return False
+    return all(count <= stage.item_maxima[item_id] for item_id, count in declared.items())
 
 
 # The client's own inventory shape: 181 item counts, stacking to 999.
