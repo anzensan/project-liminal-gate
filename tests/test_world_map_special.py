@@ -338,9 +338,21 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         status, second = self.start("retry-two", SHINEN_FIRST)
         self.assertEqual((200, first["refillStartTime"]), (status, second["refillStartTime"]))
 
-    def test_the_same_request_id_with_a_different_body_collides(self) -> None:
+    def test_a_spent_request_id_with_a_different_body_is_judged_on_its_merits(self) -> None:
+        """The replay key carries the body, so this is not a collision at all.
+
+        It used to answer 409, but by way of the one-active-battle refusal
+        rather than anything about the request id. Now that a start for a
+        different stage releases the battle still open, what this proves is the
+        keying: a fresh body under a spent id is a new request, not a replay of
+        the first stage's answer.
+        """
         self.assertEqual(200, self.start("shared", SHINEN_FIRST)[0])
-        self.assertEqual(409, self.start("shared", MUTOH_FIRST)[0])
+        self.assertEqual(200, self.start("shared", MUTOH_FIRST)[0])
+        self.assertEqual(
+            {"chapter": WORLD_MAP_SPECIAL_CHAPTER, "section": MUTOH_FIRST},
+            self.account()["active_world_map_special"],
+        )
 
     def test_entry_is_refused_before_the_native_chapter_34_gate(self) -> None:
         self.stop_server()
@@ -363,9 +375,21 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual((200, True, 1), (status, refused["success"], refused["cmdError"]))
         self.assertEqual("free_roam", self.phase())
 
-    def test_a_battle_cannot_start_while_another_is_active(self) -> None:
+    def test_starting_a_different_battle_releases_the_one_left_open(self) -> None:
+        """The client runs one battle, so this is the player having left it.
+
+        Refusing instead is what left an account unable to start anything after
+        an ordinary game over: nothing the client sends on the way out of a lost
+        battle released the stage, and a Daily Quest could not be re-entered to
+        release it either, because the day is spent at accepted start.
+        """
         self.assertEqual(200, self.start("busy", SHINEN_FIRST)[0])
-        self.assertEqual(409, self.start("second", MUTOH_FIRST)[0])
+        self.assertEqual(200, self.start("second", MUTOH_FIRST)[0])
+        self.assertEqual("world_map_special_active", self.phase())
+        self.assertEqual(
+            {"chapter": WORLD_MAP_SPECIAL_CHAPTER, "section": MUTOH_FIRST},
+            self.account()["active_world_map_special"],
+        )
 
 
 if __name__ == "__main__":

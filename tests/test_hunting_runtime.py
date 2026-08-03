@@ -160,8 +160,11 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.assertEqual(200, response.status)
         return payload
 
+    def account(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]
+
     def phase(self) -> str:
-        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]["tutorial_phase"]
+        return self.account()["tutorial_phase"]
 
     def start(self, request_id: str, chapter: int, section: int, stamina: int) -> tuple[int, dict]:
         return self.post("/gd/start_quest", request_id, [
@@ -449,19 +452,27 @@ class HuntingRuntimeTest(unittest.TestCase):
                 self.assertEqual("hunting_active", self.phase())
                 self.assertEqual(200, self.clear(f"settle-{label}", 1001, 1)[0])
 
-    def test_a_locked_stage_and_a_second_battle_are_both_refused(self) -> None:
+    def test_a_locked_stage_is_refused_and_a_second_battle_releases_the_first(self) -> None:
         status, locked = self.start("locked", *LOCKED_STAGE, 1)
         self.assertEqual((409, "hunting_stage_locked"), (status, locked["error"]))
         self.assertEqual("free_roam", self.phase())
 
         self.assertEqual(200, self.start("first", 1001, 1, 3)[0])
-        status, second = self.start("second", 1003, 1, 1)
-        self.assertEqual((409, "tutorial_state_conflict"), (status, second["error"]))
-        # A story stage cannot displace an active hunt either.
+        # A different stage is the player having left the first one. Refusing
+        # instead stranded the account: nothing the client sends on the way out
+        # of a lost battle releases the stage.
+        self.assertEqual(200, self.start("second", 1003, 1, 1)[0])
+        self.assertEqual({"chapter": 1003, "section": 1}, self.account()["active_hunt"])
+        # A story stage out of progression order is still refused, and by its
+        # own gate: `expected_clear_progress` rejects 2-1 for this account
+        # before any battle state is consulted. This clause used to sit under a
+        # comment claiming it proved a hunt could not be displaced, which it
+        # never did -- both refusals answered `tutorial_state_conflict`.
         status, story = self.post("/gd/start_quest", "story", [
             ("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "1"), ("lastUpdate", "1"),
         ])
-        self.assertEqual(409, status, story)
+        self.assertEqual((409, "tutorial_state_conflict"), (status, story["error"]))
+        self.assertEqual({"chapter": 1003, "section": 1}, self.account()["active_hunt"])
 
     def test_declining_the_resume_prompt_abandons_a_hunt_rather_than_stranding_it(self) -> None:
         """The client's party save after a declined resume must free the account."""

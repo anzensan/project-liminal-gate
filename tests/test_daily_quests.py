@@ -542,3 +542,160 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
         # path a wedged account takes: replay the same stage and finish it.
         self.assertEqual(200, self.clear("recover", buddies=[self.GLASSY_MINION])[0])
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+
+class DailyQuestGameOverContinueTest(unittest.TestCase):
+    """The Network Error a tester hit retrying Rarity Rumble after a game over.
+
+    The client offers Continue when a Daily Quest ends in a game over, and posts
+    `/gd/continue` for it. The server accepted Continue only in the generic-story
+    phase, so a Hunting battle -- which every Daily Quest is -- answered
+    `continue_unavailable` at 409, and the client showed a transport failure
+    with no way past it. Four identical 409s sit in the server's own event log.
+
+    The account was left worse than the one error: the day is spent at accepted
+    start, so the client greys out the one stage whose re-entry would have
+    released the battle, and until a start for a different stage counted as
+    abandonment every other quest answered 409 too.
+
+    The clock is pinned to UTC day 17819, whose rotation offers 6005-1.
+    """
+
+    #: UTC day 17819, whose two quests are 6005-1 and 6012-1.
+    NOW = 17819 * 86400.0
+    CONTINUE_COINS = 100
+
+    def setUp(self) -> None:
+        patcher = mock.patch("liminal_gate.bootstrap_server.time.time", return_value=self.NOW)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.token, self.account_id = "rumble-token", "rumble-account"
+        self.character = {
+            "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+            "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+        }
+        profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        catalog = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
+        self.server = BootstrapServer(
+            ("127.0.0.1", 0), profile, BootstrapState(self.state_path),
+            hunting_catalog=catalog, daily_quests=True,
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+        self.addCleanup(self.stop_server)
+        self.server.state.create_account(self.token, self.account_id, {
+            "coins": 14_722, "energy": 0, "freeEnergy": 19, "worldMapNo": 0,
+            "progressCode": (1 << 24) | (3 << 6) | 1, "chrdata": [self.character],
+            "itemList": [0] * BUNDLED_ITEM_SLOTS, "summonList": [0, 0],
+        })
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            self.server.state._persist_locked()
+
+    def stop_server(self) -> None:
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+
+    def post(self, route: str, request_id: str, fields: list) -> tuple:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "POST", f"{route}?otk={self.token}&requestID={request_id}",
+            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    def account(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]
+
+    def userdata(self) -> dict:
+        return self.account()["userdata"]
+
+    def start(self, request_id: str, chapter: int = 6005, section: int = 1) -> tuple:
+        return self.post("/gd/start_quest", request_id, [
+            ("stamina", "0"), ("coins", "0"), ("chapter", str(chapter)),
+            ("section", str(section)), ("lastUpdate", "1"),
+        ])
+
+    def resume(self, request_id: str) -> tuple:
+        return self.post("/gd/continue", request_id, [("cost", "1")])
+
+    def test_a_game_over_in_a_daily_quest_can_be_continued(self) -> None:
+        self.assertEqual(200, self.start("rumble-start")[0])
+        coins = self.userdata()["coins"]
+
+        status, continued = self.resume("rumble-continue")
+
+        self.assertEqual(200, status, continued)
+        self.assertTrue(continued["success"])
+        self.assertEqual(coins - self.CONTINUE_COINS, self.userdata()["coins"])
+        # The battle is still the one being played, so the clear that follows
+        # settles it the way an uninterrupted run would.
+        self.assertEqual("hunting_active", self.account()["tutorial_phase"])
+        self.assertEqual({"chapter": 6005, "section": 1}, self.account()["active_hunt"])
+
+    def test_the_clients_four_retries_charge_for_one_continue(self) -> None:
+        """What the tester's client actually sent, once the answer is not 409."""
+        self.assertEqual(200, self.start("rumble-start")[0])
+        coins = self.userdata()["coins"]
+        for attempt in range(4):
+            status, continued = self.resume("rumble-continue")
+            self.assertEqual((200, True), (status, continued["success"]), attempt)
+        self.assertEqual(coins - self.CONTINUE_COINS, self.userdata()["coins"])
+
+    def test_a_continue_with_no_battle_open_refuses_softly_rather_than_erroring(self) -> None:
+        """A refusal the client can show beats a transport error it cannot.
+
+        The refusal rides `cmdError` on an accepted success, which is the field
+        the endpoint's own callback reads; `_endpoint_refusal_envelope` puts it
+        there. A 409 reached no callback at all -- it showed the transport
+        error dialog, which is the Network Error the tester saw.
+        """
+        status, refused = self.resume("idle-continue")
+        self.assertEqual((200, 1), (status, refused["cmdError"]))
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_a_continue_beyond_the_players_coins_refuses_softly(self) -> None:
+        self.assertEqual(200, self.start("broke-start")[0])
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["userdata"]["coins"] = self.CONTINUE_COINS - 1
+            self.server.state._persist_locked()
+        status, refused = self.resume("broke-continue")
+        self.assertEqual((200, 1), (status, refused["cmdError"]))
+        self.assertEqual(self.CONTINUE_COINS - 1, self.userdata()["coins"])
+
+    def test_walking_away_from_the_game_over_does_not_strand_the_account(self) -> None:
+        """The other half: a player who declines Continue and plays something else.
+
+        Nothing the client sends on the way out of a lost battle releases the
+        stage, and this one cannot be re-entered to release it -- the day was
+        spent at accepted start. Starting the day's other quest is the proof
+        the player left.
+        """
+        self.assertEqual(200, self.start("rumble-start")[0])
+        self.assertEqual("hunting_active", self.account()["tutorial_phase"])
+
+        status, other = self.start("other-start", chapter=6012, section=1)
+
+        self.assertEqual(200, status, other)
+        self.assertEqual({"chapter": 6012, "section": 1}, self.account()["active_hunt"])
+
+    def test_the_spent_day_still_stands_after_the_battle_is_released(self) -> None:
+        """Releasing an abandoned battle must not hand back the attempt.
+
+        The day is consumed at accepted start, which is recovered behaviour;
+        the abandonment policy is local and has no business overturning it.
+        """
+        self.assertEqual(200, self.start("rumble-start")[0])
+        self.assertEqual(200, self.start("other-start", chapter=6012, section=1)[0])
+        self.assertEqual(17819, self.account()["daily_quest_clears"]["6005-1"])
+        status, again = self.start("rumble-again")
+        self.assertEqual((200, 1), (status, again["cmdError"]))
