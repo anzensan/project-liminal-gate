@@ -36,6 +36,25 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-03 setup review pass, two defects fixed and the launcher checks made
+  structural. Guided setup started the server against the operator's own
+  `--resource-root` while the manifest had been built against the
+  `data_u2017/android` directory detected inside it, so any accepted parent
+  form built and installed the APK and then died on `resource file is
+  unavailable`; the detected directory is now resolved once and used for both.
+  The setup rehearsal gave setup an empty data directory and therefore never
+  saw the tool locations `doctor --install-missing` records in
+  `user-data/toolchain.json`, failing its own prerequisite check on an
+  Il2CppDumper the machine had; the record is now carried into the run
+  (`--toolchain`). Three hand-kept policy lists were replaced by checks derived
+  from `LocalServerOptions` and compared across all three launchers — guided,
+  dedicated, and the Android on-device runtime, which was previously unchecked
+  and whose config feeds `ServerConfig` where every policy defaults off. The
+  old lists already omitted `daily_quests` and `secondary_worlds`. Complete
+  suite: 907 tests. A full rehearsal against the working tree was identical to
+  the baseline in every compared field. Setup prerequisites and the guided
+  launch path only; no protocol behavior or verified-boundary change.
+
 - 2026-08-02 doctor-managed AArch64 disassembler: `doctor --install-missing`
   now installs Google's pinned side-by-side Android NDK r27d
   (`ndk;27.3.13750724`) below ignored `user-data/` when no existing objdump can

@@ -1691,8 +1691,14 @@ def main() -> int:
             adb = resolve_adb(args.adb)
             device = select_device(adb, args.device)
             check_device_host_suits_device(device, args.device_host)
+        # Detected once here and used for both the build and the launch.
+        # `--resource-root` accepts any of the enclosing directories, and the
+        # manifest is written with paths relative to the `data_u2017/android`
+        # directory found inside whichever one was given, so the server has to
+        # be started against that same directory rather than the argument.
+        resource_root = resolve_resource_root(args.resource_root)
         signed = prepare_local_tester(
-            args.apk, args.resource_root, args.data_dir, args.port, args.build_tools,
+            args.apk, resource_root, args.data_dir, args.port, args.build_tools,
             args.dummy_dll_dir, options.event_catalog, args.device_host,
             dump_cs=args.dump_cs, prompt_for_key_password=args.prompt_key_password,
         )
@@ -1704,7 +1710,7 @@ def main() -> int:
             offer_account_switch(args.data_dir)
         print(f"\nInstalled on {device}. Starting the local server; press Control-C when finished.")
         run_server(server_arguments(
-            args.resource_root.resolve(), args.data_dir, args.port, options.event_catalog,
+            resource_root, args.data_dir, args.port, options.event_catalog,
             options.core_story, options.drop_eligibility, options.achievements, options.summon_skills, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
             options.companion_strengthen, options.companion_evolution, options.trading_post,
             options.daily_quests, options.secondary_worlds,

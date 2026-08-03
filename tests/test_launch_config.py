@@ -11,6 +11,7 @@ invocation died with `AttributeError` before serving a single request.
 from __future__ import annotations
 
 from dataclasses import fields
+import json
 from pathlib import Path
 import re
 import sys
@@ -18,6 +19,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from liminal_gate import on_device_setup
 from liminal_gate.bootstrap_server import load_launch_config, parse_args
 from liminal_gate.server_config import ServerConfig
 from liminal_gate.server_setup import STANDARD_POLICY_FLAGS
@@ -114,6 +116,38 @@ class LaunchConfigTest(unittest.TestCase):
         self.assertEqual(
             set(), dedicated - guided,
             "the dedicated server enables gameplay policies guided setup does not",
+        )
+
+    def test_the_on_device_runtime_enables_the_same_gameplay_policies(self) -> None:
+        """The Android host is a third launcher, and the quietest of the three.
+
+        The other two compose a command line, so a forgotten policy at least
+        shows up in a printed argument list.  This one writes a config document
+        that `android_entrypoint` hands straight to `ServerConfig`, where every
+        policy defaults to False -- so a feature the two command-line launchers
+        enable and this document omits reaches on-device players turned off,
+        with nothing anywhere reporting it.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory) / "server.json"
+            on_device_setup.write_server_runtime(
+                runtime, "a" * 64,
+                {name: Path(directory) / name for name in on_device_setup.REQUIRED_CATALOGS},
+            )
+            config = json.loads(runtime.read_text(encoding="utf-8"))["config"]
+
+        enabled = {name for name, value in config.items() if isinstance(value, bool) and value}
+        dedicated = {flag.removeprefix("--").replace("-", "_") for flag in STANDARD_POLICY_FLAGS}
+        self.assertEqual(
+            dedicated, enabled,
+            "the Android host and the dedicated server disagree about which policies are on",
+        )
+        # Every key it writes must be a field `ServerConfig` actually carries;
+        # the entrypoint refuses the whole document otherwise, on the device,
+        # where the failure costs a rebuild rather than a test run.
+        self.assertEqual(
+            set(), set(config) - {field.name for field in fields(ServerConfig)},
+            "the Android runtime document names configuration the server does not accept",
         )
 
     def test_each_bundled_policy_refuses_its_catalog_counterpart(self) -> None:

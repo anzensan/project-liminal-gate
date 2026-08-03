@@ -199,9 +199,6 @@ class AccountStateToolTest(unittest.TestCase):
             self.assertEqual({}, document["accounts"][OLD_DEVICE][field])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class SwitchTest(unittest.TestCase):
     """Choosing a save must be reversible; `adopt` is not.
@@ -409,3 +406,7 @@ class LinkTest(unittest.TestCase):
         self.addCleanup(reloaded.close)
         self.assertTrue(reloaded.bind_login_token("tablet-login", NEW_DEVICE, "10.0.0.6"))
         self.assertEqual(reinstalled, reloaded.tokens["tablet-login"])
+
+
+if __name__ == "__main__":
+    unittest.main()

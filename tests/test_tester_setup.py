@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest import mock
 
 import contextlib
+from dataclasses import fields
 import io
 import json
 from liminal_gate import tester_setup
@@ -17,22 +18,68 @@ from unittest.mock import patch
 from liminal_gate.tester_setup import DEFAULT_EVENT_CATALOG, EMULATOR_LOOPBACK_HOST, MINIMUM_KEY_PASSWORD_LENGTH, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, derive_archive_event_catalog, ensure_keystore, find_build_tools, find_keytools, install_apk, prepare_local_tester, prompt_key_password, resolve_adb, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
+#: Policies guided setup deliberately leaves off, each with the reason. Named
+#: here so the structural checks below read an exemption as a decision rather
+#: than as a policy someone forgot to wire up.
+DELIBERATELY_OFF = {
+    # Unlocked by play rather than granted at launch; enabling it hands the
+    # client skills the save has not earned.
+    "summon_skills": "granted by progression, not by the launcher",
+}
+
+
+def _policy_fields() -> dict[str, bool]:
+    """Every gameplay policy `LocalServerOptions` carries, and its default.
+
+    Selected by the declared type rather than by name, so a policy added to the
+    dataclass is covered without this helper being touched. The annotation is a
+    string here because the module postpones evaluation.
+    """
+    return {
+        field.name: field.default
+        for field in fields(tester_setup.LocalServerOptions)
+        if field.type in (bool, "bool")
+    }
+
+
 class GuidedServerPolicyTest(unittest.TestCase):
-    """The guided path must actually be able to reach each bundled policy."""
+    """The guided path must actually be able to reach each bundled policy.
+
+    These checks are derived from `LocalServerOptions` rather than written out,
+    because a hand-kept list is exactly what let Daily Quests ship complete and
+    unreachable: the field existed, the server honoured it, and the list that
+    was supposed to prove the launcher passed it had never been extended. A new
+    policy field now fails here until `server_arguments` forwards it or it is
+    named in `DELIBERATELY_OFF`.
+    """
 
     def arguments(self, **options) -> list[str]:
         return server_arguments(Path("resources"), Path("data"), 8696, **options)
 
-    def test_recommended_mode_enables_current_solo_policies(self) -> None:
+    def test_every_policy_option_defaults_on_unless_deliberately_off(self) -> None:
+        for name, default in _policy_fields().items():
+            with self.subTest(policy=name):
+                if name in DELIBERATELY_OFF:
+                    self.assertFalse(default, f"{name}: {DELIBERATELY_OFF[name]}")
+                else:
+                    self.assertTrue(default, f"{name} is off by default in guided setup")
+
+    def test_every_policy_that_is_on_reaches_the_server_as_a_flag(self) -> None:
         arguments = self.arguments()
-        for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth", "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements"):
-            self.assertIn(flag, arguments)
+        for name, default in _policy_fields().items():
+            flag = "--" + name.replace("_", "-")
+            with self.subTest(policy=name):
+                if default:
+                    self.assertIn(flag, arguments, f"{name} is on but the launcher never passes {flag}")
+                else:
+                    self.assertNotIn(flag, arguments)
+
+    def test_the_companion_equipment_catalog_is_passed_from_the_data_directory(self) -> None:
+        arguments = self.arguments()
         self.assertEqual(
             str((Path("data") / "companion-equipment.json").resolve()),
             arguments[arguments.index("--companion-equipment-catalog") + 1],
         )
-        self.assertNotIn("--summon-skills", arguments)
 
     def choose(self):
         """The standard setup has no feature-selection prompt."""
@@ -45,17 +92,9 @@ class GuidedServerPolicyTest(unittest.TestCase):
         # preservation build, and isolating a feature is a bootstrap_server
         # job, not a setup question.
         options = self.choose()
-        self.assertEqual(
-            (True,) * 11,
-            (options.core_story, options.pacts, options.hunting, options.jobs,
-             options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
-             options.companion_strengthen, options.companion_evolution, options.trading_post),
-        )
-        for flag in ("--core-story", "--pacts", "--hunting", "--jobs", "--rebirth",
-                     "--status-items", "--companion-draw", "--companion-sale",
-                     "--companion-strengthen", "--companion-evolution", "--trading-post", "--drop-eligibility", "--achievements"):
-            self.assertIn(flag, self.arguments())
-        self.assertNotIn("--summon-skills", self.arguments())
+        for name, default in _policy_fields().items():
+            with self.subTest(policy=name):
+                self.assertEqual(default, getattr(options, name))
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -210,6 +249,38 @@ class TesterSetupTest(unittest.TestCase):
             self.assertEqual(root.resolve(), resolve_resource_root(root.parents[2]))
             with self.assertRaisesRegex(TesterSetupError, "data_u2017/android"):
                 resolve_resource_root(root.parent / "datau2017")
+
+    def test_the_server_is_started_against_the_detected_resource_root(self) -> None:
+        """The build and the launch must agree about which directory is the root.
+
+        `--resource-root` accepts an enclosing directory, and the manifest names
+        every file relative to the `data_u2017/android` directory found inside
+        it. Starting the server against the operator's argument instead looked
+        up every mapped file a level too high, so setup built and installed the
+        APK and then died on `resource file is unavailable`.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary) / "gdresources"
+            detected = parent / "data_u2017" / "android"
+            for category in REQUIRED_RESOURCE_CATEGORIES:
+                (detected / category).mkdir(parents=True)
+            arguments = ["tester_setup", "--resource-root", str(parent), "--data-dir", str(Path(temporary) / "data")]
+            with patch.object(sys, "argv", arguments), \
+                 patch.object(tester_setup, "toolchain"), \
+                 patch.object(tester_setup, "resolve_adb", return_value="adb"), \
+                 patch.object(tester_setup, "select_device", return_value="emulator-5570"), \
+                 patch.object(tester_setup, "check_device_host_suits_device"), \
+                 patch.object(tester_setup, "prepare_local_tester", return_value=Path("built.apk")), \
+                 patch.object(tester_setup, "install_apk"), \
+                 patch.object(tester_setup, "report_existing_accounts"), \
+                 patch.object(tester_setup, "run_server") as launch, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, tester_setup.main())
+        started = launch.call_args.args[0]
+        self.assertEqual(
+            str(detected.resolve()), started[started.index("--resource-root") + 1],
+            "the server was started against a directory the manifest is not relative to",
+        )
 
     def test_finds_supplied_build_tools_and_writes_private_password_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
