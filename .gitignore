@@ -10,6 +10,9 @@ logs/*
 !logs/tooling.md
 build/
 dist/
+android-host/.gradle/
+android-host/**/build/
+user-data/work/
 # Local branding source material. The release preflight prohibits image types
 # in a source tree, so these are kept beside the project rather than in it.
 docs/assets/

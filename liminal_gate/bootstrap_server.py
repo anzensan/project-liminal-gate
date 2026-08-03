@@ -3051,11 +3051,15 @@ class BootstrapServer(ThreadingHTTPServer):
         outcome_strict: bool = False,
         companion_equipment_catalog: CompanionEquipmentCatalog | None = None,
         chapter_milestones: bool = False,
+        build_id: str = "development",
     ) -> None:
         self.profile = profile
         self.state = state
         self.events = EventRecorder(event_log)
         self.resource_catalog = resource_catalog
+        if not isinstance(build_id, str) or not build_id:
+            raise ProfileError("build_id must be a nonempty string")
+        self.build_id = build_id
         self.public_data_root = public_data_root.resolve() if public_data_root is not None else None
         self.story_catalog = story_catalog
         self.story_progression_catalog = story_progression_catalog
@@ -3096,13 +3100,23 @@ class BootstrapServer(ThreadingHTTPServer):
         try:
             super().__init__(address, BootstrapHandler)
         except BaseException:
-            state.close()
+            try:
+                if resource_catalog is not None:
+                    resource_catalog.close()
+            finally:
+                state.close()
             raise
 
     def server_close(self) -> None:
         """Hand the save back so a replacement server can start immediately."""
-        super().server_close()
-        self.state.close()
+        try:
+            super().server_close()
+        finally:
+            try:
+                if self.resource_catalog is not None:
+                    self.resource_catalog.close()
+            finally:
+                self.state.close()
 
 
 class BootstrapHandler(BaseHTTPRequestHandler):
@@ -3169,6 +3183,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         target = urlsplit(self.path)
+        if target.path == "/healthz":
+            self._json(
+                HTTPStatus.OK,
+                {"service": "project-liminal-gate", "status": "ok", "build_id": self.server.build_id},
+            )
+            return
         if self._serve_local_content(target.path):
             return
         query = dict(parse_qsl(target.query, keep_blank_values=True))
@@ -3719,6 +3739,11 @@ class BootstrapHandler(BaseHTTPRequestHandler):
 
     def do_HEAD(self) -> None:
         target = urlsplit(self.path)
+        if target.path == "/healthz":
+            self._head(HTTPStatus.OK, "application/json", len(
+                (json.dumps({"service": "project-liminal-gate", "status": "ok", "build_id": self.server.build_id}, separators=(",", ":")) + "\n").encode("utf-8")
+            ))
+            return
         resource = self.server.resource_catalog.resolve(target.path) if self.server.resource_catalog else None
         if resource is None:
             self._json(HTTPStatus.NOT_FOUND, {"error": "resource_not_found"})
@@ -3761,15 +3786,23 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _head(self, status: HTTPStatus, content_type: str, size: int) -> None:
+        self.server.events.record(self.command, self.path, status)
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(size))
+        self.end_headers()
+
     def _resource(self, status: HTTPStatus, resource: Any, *, include_body: bool = True) -> None:
-        body = resource.file.read_bytes()
         self.server.events.record(self.command, self.path, status)
         self.send_response(status)
         self.send_header("Content-Type", resource.content_type)
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(resource.size))
         self.end_headers()
-        if include_body:
-            self.wfile.write(body)
+        if not include_body:
+            return
+        with self.server.resource_catalog.open(resource) as stream:
+            shutil.copyfileobj(stream, self.wfile, length=1024 * 1024)
 
     def _file(self, status: HTTPStatus, path: Path, content_type: str) -> None:
         body = path.read_bytes()
@@ -5639,13 +5672,24 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     )
 
 
-def main() -> int:
-    args = parse_args()
+def build_server(
+    args: ServerConfig,
+    *,
+    resource_catalog: ResourceCatalog | None = None,
+    build_id: str = "development",
+) -> BootstrapServer:
+    """Construct the compatibility server for either CLI or embedded hosts.
+
+    This deliberately performs the same catalog/policy validation as the CLI;
+    an Android host may only replace the resource source with its already-opened
+    APK-backed catalog and must not gain a separate gameplay configuration.
+    """
+    resources = resource_catalog
     try:
-        args = load_launch_config(args)
         if (args.resource_root is None) != (args.resource_manifest is None):
             raise ProfileError("--resource-root and --resource-manifest must be supplied together")
-        resources = None if args.resource_root is None else load_resource_catalog(args.resource_manifest, args.resource_root)
+        if resources is None and args.resource_root is not None:
+            resources = load_resource_catalog(args.resource_manifest, args.resource_root)
         stories = None if args.story_catalog is None else load_story_catalog(args.story_catalog)
         if args.core_story and args.story_progression_catalog is not None:
             raise ProfileError("--core-story cannot be combined with --story-progression-catalog")
@@ -5769,8 +5813,20 @@ def main() -> int:
             outcome_strict=getattr(args, "outcome_strict", False),
             companion_equipment_catalog=companion_equipment,
             chapter_milestones=getattr(args, "core_story", False),
+            build_id=build_id,
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
+        if resources is not None:
+            resources.close()
+        raise ProfileError(f"bootstrap server failed: {error}") from error
+    return server
+
+
+def main() -> int:
+    try:
+        args = load_launch_config(parse_args())
+        server = build_server(args)
+    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError) as error:
         raise SystemExit(f"bootstrap server failed: {error}") from error
     print(f"bootstrap compatibility server listening on http://{args.host}:{args.port}")
     try:

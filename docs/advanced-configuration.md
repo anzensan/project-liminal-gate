@@ -695,6 +695,26 @@ IDs through your own master data, which is what makes them checkable: `Energy`
 resolves to 80, the number the client's own `EnergyItemId` carries, and the two
 tickets resolve to the 50 and 81 used elsewhere in this project.
 
+A ceiling here is only ever safely too generous, never too tight. A refused
+settlement is not a refused reward: it leaves the account's battle active, so
+every unrelated stage is then refused too until that same quest is replayed and
+accepted — which reads to a player as a corrupted installation rather than as
+one lost drop. Bounds in this family are set with that asymmetry in mind.
+
+**Both Yamamoto Puzzle Quests may drop a Companion**, and they are the only two
+Daily Quests that can. This one *is* recovered: 6011-1 and 6011-2 are the only
+fourteen whose own `BattleData` section carries a non-empty `dropBuddies`, and
+their single packed codes decode to Companion 267 and Companion 140, one copy
+each, in the same packing every other manifest in this project uses. The
+community record agrees independently, naming them Glassy Minion Λ and Golden
+Minion Λ behind a 60% Ancient Key roll. A dropped copy arrives at level 1. The
+odds stay the client's to roll; this server only bounds the outcome, and the
+other twelve quests still refuse a reported Companion outright.
+
+**A Daily Quest pays ordinary battle EXP**, bounded by one generous ceiling
+rather than a per-stage table, none of which is recovered. Metal Runner Rampage
+is the stage that makes this visible: it pays nothing *but* EXP.
+
 **The Hunt For Joker grants Joker Λ**, character 1018, resolved from your own
 master data. It is neither an item nor a Companion, so it travels through a
 dedicated server-side grant rather than the reported-drop channel: a first clear

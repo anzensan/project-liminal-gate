@@ -60,6 +60,17 @@ ls README.md liminal_gate
 Do not run them from your home directory, from inside the `liminal_gate/`
 subdirectory, or from another project.
 
+There are two local deployment layouts:
+
+- **Separate server and client:** the computer runs Python while the Android
+  client connects to it. This is the most extensively verified path; continue
+  with the numbered steps below.
+- **One self-hosted APK:** a physical device or emulator starts the server
+  inside the app before Unity. No computer or LAN server is needed while
+  playing. Physical-device and ARMv7 acceptance remain pending; follow
+  [Run the server inside the Android APK](docs/on-device-setup.md) instead of
+  the numbered steps below.
+
 ### 1. Install the tools
 
 Let the doctor do it. It reports what this machine is missing and, with
@@ -266,3 +277,5 @@ resources, captures, account saves, tokens, digests, or keys.
 - [Parity roadmap](PARITY_ROADMAP.md) — what is implemented, what is permanently unrecoverable, and what is still open.
 - [Changelog](CHANGELOG.md) — what each release claims, and what it does not.
 - [Contributing](CONTRIBUTING.md) — reporting network errors, and what never to attach.
+- [Self-hosted single-APK setup](docs/on-device-setup.md) — build, install, verify, update, and protect the app-private save.
+- [Private on-device compatibility-server evidence](docs/on-device-server-idea.md) — architecture, validation, and the remaining client boundary.

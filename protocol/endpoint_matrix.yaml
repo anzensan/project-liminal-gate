@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-07-31"
+updated: "2026-08-02"
 canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -7,6 +7,12 @@ statuses:
   local_policy: "implemented preservation behavior, not a historical-service claim"
   unsupported: "fails explicitly rather than returning generic success"
 capabilities:
+  - family: on_device_host_readiness
+    routes: [healthz, resources]
+    status: local_policy
+    note: "private combined APK only: fixed 127.0.0.1:8002, matching build-id gate before Unity, schema-v2 stored-member resource streaming; all 11,806 retained resources packaged, API 34 ARM64 full-payload startup, exact resource response, and force-stop relaunch confirmed; physical and ARMv7 acceptance pending"
+    transport_tests: true
+    restart_tests: true
   - family: bootstrap
     routes: [get_current_time, get_server_status, signup, login, userdata, userdata_after_close]
     status: confirmed

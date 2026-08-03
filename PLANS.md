@@ -1,39 +1,119 @@
 # Execution Plans
 
-## 2026-08-02 toolchain doctor with managed AArch64 disassembler
+## 2026-08-02 doctor-managed AArch64 disassembler
 
 Status: completed 2026-08-02; live Google NDK licence acceptance and download
 remain a tester action.
 
-Objective: make every command-line prerequisite for guided setup installable
-and reusable without editing a shell profile or requiring Android Studio.
+Objective: make the Chapter 8–42 disassembler a real one-command prerequisite
+instead of the last mandatory system-package instruction left by the doctor.
 
 Execution boundaries:
 
-1. Keep all vendor tools and the atomic location record below ignored
-   `user-data/`; never edit a shell profile, registry, or global tool directory.
-2. Preserve operator-set environment variables. Recorded locations fill gaps;
-   only the doctor's immediate post-install verification may override a broken
-   existing value.
-3. Require explicit Android SDK licence acceptance and let Google's
-   `sdkmanager` retrieve and verify SDK/NDK packages.
-4. Reuse an existing AArch64-capable disassembler before installing pinned
-   side-by-side NDK r27d (`ndk;27.3.13750724`). Record its `llvm-objdump` only
-   after the same capability probe used by guided derivation passes.
-5. Bring only the doctor, installer, tool record, guided-setup integration,
-   focused tests, and generic setup documentation to `main`; exclude the
-   self-hosted APK and gameplay commits from the feature branch.
+1. Keep Android Studio optional. The physical-device path needs SDK command-line
+   tools, not an IDE or emulator image.
+2. Install only under `--data-dir`, using Google's pinned side-by-side Android
+   NDK r27d package and its host `llvm-objdump`.
+3. Reuse an installed AArch64-capable disassembler before downloading the large
+   NDK package.
+4. Require explicit Android SDK licence acceptance and let Google's
+   `sdkmanager` perform repository package verification.
+5. Record and replay the exact executable through the existing atomic
+   `toolchain.json` mechanism. A partial NDK failure may retain a completed SDK
+   install, but must never record an unusable disassembler.
 
 Result:
 
-- `doctor --install-missing` can install the JDK, Android SDK, NDK
-  disassembler, Il2CppDumper, required Python packages, and a private .NET
-  runtime in dependency order while recording each completed step.
-- Retry after an interrupted SDK/NDK install keeps completed records but never
-  records an absent or incapable disassembler.
-- The warning-strict focused suite passed 111 tests and the complete main suite
-  passed 858 tests. Compilation, diff hygiene, release preflight, and the
-  independent repository audit passed against the clean committed candidate.
+- A missing disassembler is now fixable by `doctor --install-missing`.
+- The doctor appends pinned `ndk;27.3.13750724` even when an advanced caller
+  overrides the other SDK packages, locates the supported host tool, executes
+  the existing AArch64 capability probe, and records it only after that probe.
+- Missing package members, unsupported hosts, licence refusal, failed capability
+  probes, and interrupted post-SDK validation remain explicit failures.
+- The warning-strict focused suite passed 113 tests and the complete suite
+  passed 895 tests. Compilation, diff hygiene, documentation links, and both
+  release gates passed against a clean committed candidate.
+
+## 2026-08-02 self-hosted APK operator documentation
+
+Status: completed 2026-08-02; physical/ARMv7 acceptance remains pending.
+
+Objective: make the implemented on-device path usable without combining the
+README's separate-server instructions with the architecture evidence note.
+
+Execution boundaries:
+
+1. Document only behavior present in `liminal_gate.on_device_setup`, the Android
+   startup gate, and the validated package evidence.
+2. Keep separate-server LAN guidance intact but label its deployment scope so
+   its loopback warning cannot be applied to the self-hosted package.
+3. Make save loss explicit. The app-private state currently has no supported
+   export/import path, so documentation must not imply the workstation save
+   commands protect it.
+4. Preserve the pending physical ARM64, ARMv7, and Chapter 2-1 acceptance
+   boundary.
+
+Result:
+
+- `docs/on-device-setup.md` now covers private inputs, tools, exact preflight,
+  device selection, build/install output, startup verification, restart,
+  updates, first-install seeding, generated files, and save limitations.
+- The README presents separate-server and self-hosted deployment as explicit
+  alternatives, and the LAN device guide is labeled accordingly.
+- Troubleshooting has self-hosted Gradle, storage, large-install, signature,
+  readiness, Unity, and later Network Error paths.
+- The save guide states that its workstation commands do not manage the
+  app-private copy and routes users to the destructive-action warning.
+
+## 2026-08-02 Toolchain doctor
+
+Status: completed 2026-08-02.
+
+Objective: stop asking a tester to configure their shell. Every tool resolver
+reads the environment, so `docs/install-tools.md` spent most of its length
+teaching three shells to export the same four variables — a step that is
+invisible when it works, undone by opening a new terminal, and the most common
+reason a correctly equipped machine reported missing tools.
+
+Execution boundaries:
+
+1. Record tool locations rather than rewrite the resolvers. The record is
+   replayed into the process's own environment at startup, so the existing
+   discovery logic — which already handles a broken `keytool`, Android Studio's
+   bundled runtime, and build-tools version ordering — keeps working untouched.
+2. Never modify anything outside `--data-dir`. No shell profile, no registry,
+   no global install.
+3. A variable the operator exported always wins. The record fills gaps; it does
+   not overrule a deliberate choice. The single exception is the doctor's own
+   verification pass immediately after installing a tool, which only ran
+   because the existing value failed to provide one.
+4. Verify every download against a published checksum before using it, and
+   pin exactly where the project reasons about a version. Il2CppDumper is
+   pinned to v6.7.46 because `tester_setup` documents a workaround specific to
+   that release's exit behavior.
+5. Do not accept a third party's licence on the operator's behalf.
+6. Do not claim to solve what it cannot. Android Studio, an emulator image, and
+   an LLVM toolchain stay the operator's job, and are named as such rather than
+   quietly omitted.
+
+Result:
+
+- `liminal_gate/toolchain.py` records locations in `user-data/toolchain.json`
+  and overlays them onto the environment; `tester_setup` and `on_device_setup`
+  apply it before resolving anything.
+- `liminal_gate/tool_install.py` fetches a Temurin JDK, Google's command line
+  tools plus Platform-Tools, Build-Tools, and Platform 35, Il2CppDumper, and a
+  private .NET runtime.
+- `liminal_gate/doctor.py` surveys, reports, and with `--install-missing`
+  installs, in dependency order, recording each success as it happens.
+- Proven on macOS/arm64: with `PATH` reduced to `/usr/bin:/bin` and no
+  `ANDROID_*` or `JAVA_HOME` set, `tester_setup --check` resolves adb, build
+  tools, Il2CppDumper, and the disassembler from the record alone.
+
+Not done, and deliberately: no packaged executable, and no GUI. Both were
+considered and deferred — signing a distributable binary would expose the
+owning identity, and neither removes the emulator or the operator-supplied
+inputs, which are the actual remaining friction.
 
 ## 2026-08-01 Repeatable setup rehearsal
 
@@ -1823,3 +1903,85 @@ Result:
   clean-candidate repository audit checks passed.
 - Ignored local `user-data/` and `build/` contents were neither modified nor
   copied into the clean candidate.
+
+## 2026-08-02 on-device APK and compatibility-server bundle
+
+Status: implementation completed 2026-08-02; physical/ARMv7 acceptance pending.
+
+Objective: generate one private, locally signed Android package which starts
+the compatibility server on `127.0.0.1:8002`, proves readiness over real HTTP,
+and only then starts the reviewed Unity client. The final local artifact carries
+the complete tester-owned `data_u2017/android` resource tree and supports both
+`arm64-v8a` and `armeabi-v7a` on API 24 or newer.
+
+Evidence and boundaries:
+
+- Reviewed source APK SHA-256:
+  `f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15`.
+- The existing literal patch, local resource transport, bootstrap through
+  Chapter 2-1, atomic state, retry, collision, and restart behavior are the
+  compatibility baseline. On-device Python and combined-APK assembly are not
+  yet client-confirmed.
+- `input/`, raw captures, original resources, local state, generated APKs,
+  signing material, Gradle downloads, and Android build products are forbidden
+  from source control.
+- The public tree distributes source/build logic only. Every combined APK is a
+  private artifact made from inputs the tester already owns.
+
+Writable scope:
+
+- Android host source and pinned build metadata.
+- Packaged-resource, server-startup, and combined-APK assembly modules.
+- Focused tests, public command registration, and setup/status documentation.
+
+Required proof:
+
+1. A source-hash-guarded manifest/ZIP merger preserves original members except
+   declared compatibility edits, adds no unsafe/duplicate/ZIP64 members, and
+   passes alignment, signing, package, SDK, ABI, and launcher checks.
+2. The Android host shows a status gate, starts embedded Python in the same app
+   process, and does not initialize Unity before a matching `/healthz` response.
+3. Filesystem resource manifests remain compatible while a signed-APK manifest
+   streams exact resources without extracting a second server copy.
+4. Fresh state, optional first-install-only seed state, exact retry, collision,
+   interruption, force-stop, and relaunch behavior remain durable.
+5. `python3 -m liminal_gate.on_device_setup --check` mirrors the real build;
+   the normal command prepares, signs, optionally installs, and launches one
+   combined APK or fails before installation with an actionable error.
+6. Focused and full warning-strict suites, compilation, publication gates, and
+   all available Android build/device lanes pass. Physical Chapter 2-1 proof
+   remains explicitly pending unless it is actually observed.
+
+Result:
+
+- The one-command full build packaged 11,806 resource members totaling
+  940,138,388 bytes and produced a 1.0-GiB locally signed APK. Its package,
+  version, API 24 minimum, API 28 target, replacement launcher, both ABIs, four
+  DEX files, alignment, and v2/v3 signatures were inspected directly.
+- API 34 ARM64 started embedded Python, returned the exact package build ID over
+  real loopback HTTP, then initialized Unity. A selected 129,018-byte resource
+  matched the schema-v2 SHA-256, and force-stop/relaunch started a new process
+  with the same health identity.
+- ADB incremental installation falsely reported success for the 1-GiB package
+  while leaving no installed app. The dedicated path now forces streamed
+  non-incremental install and has a regression test. A one-event `monkey`
+  launch could likewise exit without starting the app; installation now starts
+  the exact replacement activity and requires Android `Status: ok`.
+- The source-exact final artifact is 1,064,591,384 bytes, SHA-256
+  `aeba11eade3b507d62403ee806b3e7390bb3a2abced03a0219e3ec4633685ef0`,
+  with payload ID
+  `53d043cbb585337d19a749ef1a1735b31c5499bbe00c1376123d9600900fff93`.
+  It passed offline package, dual-ABI, ZIP-header, alignment, v2/v3 signature,
+  and stored-resource inspection. The final device update was refused for
+  insufficient emulator space without replacing the preceding working payload.
+- Full review added published-checksum verification for Gradle, provisioned the
+  compile SDK the host actually consumes, made tool-location commits atomic,
+  refused unsupported ARM Windows/Linux Android SDK installs before download,
+  hardened Python 3.11 archive extraction, and prevented a failed embedded
+  serving thread from stranding Retry.
+- All 875 Python tests passed in 142.654 seconds with `ResourceWarning`
+  promoted to an error. The three Android JVM tests passed with pinned Gradle
+  8.11.1/Java 21, compilation and diff checks passed, and a clean committed
+  candidate passed release preflight plus independent repository audit.
+  Physical ARM64, ARMv7 runtime, and combined-APK Chapter 2-1
+  state/retry/restart acceptance remain pending.

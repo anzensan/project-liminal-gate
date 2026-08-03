@@ -115,6 +115,17 @@ def survey(host: Host) -> list[ToolStatus]:
         zipalign, _ = tester_setup.find_build_tools(None)
         return str(zipalign.parent)
 
+    def android_platform() -> str:
+        zipalign, _ = tester_setup.find_build_tools(None)
+        sdk_root = zipalign.parent.parent.parent
+        platform = sdk_root / "platforms" / f"android-{tool_install.ANDROID_PLATFORM_API}" / "android.jar"
+        if not platform.is_file():
+            raise tester_setup.TesterSetupError(
+                f"Android SDK platform {tool_install.ANDROID_PLATFORM_API} is unavailable below "
+                f"{sdk_root}; the on-device host build requires it"
+            )
+        return str(platform.parent)
+
     def master_import() -> str:
         missing = tester_setup.find_missing_master_import()
         if missing:
@@ -151,6 +162,7 @@ def survey(host: Host) -> list[ToolStatus]:
         _probe("java", java),
         _probe("platform tools", android_platform_tools),
         _probe("build tools", android_build_tools),
+        _probe("SDK platform", android_platform),
         _probe("UnityPy", master_import),
         _probe("Il2CppDumper", il2cpp_dumper),
         _probe("disassembler", disassembler),
@@ -244,7 +256,7 @@ def install_missing(
 
     needs_sdk = any(
         _missing(statuses, name)
-        for name in ("platform tools", "build tools", "disassembler")
+        for name in ("platform tools", "build tools", "SDK platform", "disassembler")
     )
     if needs_sdk:
         tool_install.require_supported_android_sdk_host(host)
@@ -370,7 +382,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         accept = args.accept_licences
         needs_sdk = any(
             _missing(statuses, name)
-            for name in ("platform tools", "build tools", "disassembler")
+            for name in ("platform tools", "build tools", "SDK platform", "disassembler")
         )
         if needs_sdk and not accept and sys.stdin.isatty():
             accept = confirm_android_licences()

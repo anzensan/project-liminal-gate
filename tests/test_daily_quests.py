@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from http.client import HTTPConnection
+import json
+from pathlib import Path
+import tempfile
+import threading
 import unittest
+from unittest import mock
+from urllib.parse import urlencode
 
 from liminal_gate.daily_quest_data import (
     DAILY_QUEST_EPOCH_DAY,
@@ -11,10 +18,13 @@ from liminal_gate.daily_quest_data import (
     daily_quest_rotation,
 )
 from liminal_gate.bootstrap_server import (
+    BootstrapServer,
+    BootstrapState,
     _apply_hunting_character_grants,
     _daily_quest_played_today,
     _stamp_daily_quest_clear,
     daily_quest_login_fields,
+    load_profile,
 )
 from liminal_gate.hunting_catalog import HuntingCatalog, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, hunting_settlement_within_bounds
 
@@ -116,10 +126,72 @@ class DailyQuestSettlementTest(unittest.TestCase):
         self.assertFalse(hunting_settlement_within_bounds(self.stage(6003, 1), result(coins=15_001)))
         self.assertFalse(hunting_settlement_within_bounds(self.stage(6006, 1), result(coins=1)))
 
-    def test_no_daily_quest_settles_experience(self) -> None:
+    def test_a_daily_quest_settles_ordinary_battle_experience(self) -> None:
+        """A Daily Quest is an ordinary battle and pays ordinary EXP.
+
+        Refusing all of it was the bug: Metal Runner Rampage pays nothing but
+        EXP, and its recovered spawns reach 306,000 on their own.
+        """
         for stage in build_bundled_daily_quest_stages():
             with self.subTest(stage=stage.identity_label()):
-                self.assertFalse(hunting_settlement_within_bounds(stage, result(exp=1)))
+                self.assertTrue(hunting_settlement_within_bounds(stage, result(exp=306_000)))
+
+    def test_an_absurd_experience_claim_is_still_refused(self) -> None:
+        for stage in build_bundled_daily_quest_stages():
+            with self.subTest(stage=stage.identity_label()):
+                self.assertFalse(hunting_settlement_within_bounds(stage, result(exp=7_720_001)))
+
+    def test_each_puzzle_quest_settles_the_companion_its_manifest_names(self) -> None:
+        """The two `dropBuddies` codes, 68353 and 35841, decoded and honoured.
+
+        Declaring neither is what refused an honest Puzzle Quest clear and left
+        the account's battle active; see issue 29.
+        """
+        self.assertTrue(hunting_settlement_within_bounds(self.stage(6011, 1), result(buddies=[267])))
+        self.assertTrue(hunting_settlement_within_bounds(self.stage(6011, 2), result(buddies=[140])))
+
+    def test_a_puzzle_quest_refuses_the_other_ones_companion(self) -> None:
+        """Each manifest names one candidate, and only that one."""
+        self.assertFalse(hunting_settlement_within_bounds(self.stage(6011, 1), result(buddies=[140])))
+        self.assertFalse(hunting_settlement_within_bounds(self.stage(6011, 2), result(buddies=[267])))
+
+    def test_a_puzzle_quest_settles_at_most_one_companion(self) -> None:
+        """`code & 0xFF` is 1 on both manifests, so a second copy is a claim."""
+        self.assertFalse(hunting_settlement_within_bounds(self.stage(6011, 1), result(buddies=[267, 267])))
+
+    def test_a_dropped_companion_arrives_at_level_one(self) -> None:
+        for identity, companion in (((6011, 1), 267), ((6011, 2), 140)):
+            with self.subTest(stage=identity):
+                self.assertEqual({companion: 1}, self.stage(*identity).companion_drop_levels)
+
+    def test_the_other_twelve_quests_refuse_every_companion(self) -> None:
+        """Their own `dropBuddies` manifests are empty, so the refusal stands."""
+        for stage in build_bundled_daily_quest_stages():
+            if (stage.chapter, stage.section) in {(6011, 1), (6011, 2)}:
+                continue
+            with self.subTest(stage=stage.identity_label()):
+                self.assertEqual({}, stage.companion_maxima)
+                self.assertFalse(hunting_settlement_within_bounds(stage, result(buddies=[267])))
+
+    def test_a_puzzle_quest_settles_every_tier_it_pays(self) -> None:
+        """Weapons, Tears and Particles: bounding only the first tier refused
+        the other two, which a real clear reports."""
+        self.assertTrue(hunting_settlement_within_bounds(
+            self.stage(6011, 1), result({9: 12, 18: 6, 22: 4}),
+        ))
+        # The second Puzzle Quest widens tier one and swaps Particles for Ores.
+        self.assertTrue(hunting_settlement_within_bounds(
+            self.stage(6011, 2), result({13: 8, 22: 4, 26: 2}),
+        ))
+
+    def test_a_puzzle_quest_still_refuses_more_than_its_waves_could_hold(self) -> None:
+        self.assertFalse(hunting_settlement_within_bounds(self.stage(6011, 1), result({9: 94})))
+        self.assertFalse(hunting_settlement_within_bounds(self.stage(6011, 2), result({13: 82})))
+
+    def test_the_ore_and_tear_families_settle_where_they_drop(self) -> None:
+        """Rarity Rumble's Ore and Tearjerker Time's Tears and rings."""
+        self.assertTrue(hunting_settlement_within_bounds(self.stage(6005, 1), result({26: 1, 81: 1})))
+        self.assertTrue(hunting_settlement_within_bounds(self.stage(6008, 1), result({18: 2, 46: 1})))
 
 
 class DailyQuestGrantTest(unittest.TestCase):
@@ -329,3 +401,144 @@ class DailyQuestLoginTest(unittest.TestCase):
                 self.assertNotIn("lastDailyQuestPlayTime1", payload)
             finally:
                 server.shutdown(); thread.join(); server.server_close()
+
+
+class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
+    """The refusal issue 29 reported, over real HTTP, start to finish.
+
+    A tester cleared Yamamoto's Puzzle Quest, the client reported the Companion
+    its own `dropBuddies` manifest allows, and the settlement refused it with
+    `409 invalid_local_hunting_result`. The clear never released the account, so
+    the battle stayed active across a force-close and every later stage start
+    was refused too -- which is why the report reads as a corrupted install
+    rather than as one lost reward.
+
+    The clock is pinned to a UTC day whose rotation offers 6011-1, so the test
+    does not depend on the day it runs.
+    """
+
+    #: UTC day 17817, whose two quests are 6010-1 and 6011-1.
+    NOW = 17817 * 86400.0
+    GLASSY_MINION = 267
+
+    def setUp(self) -> None:
+        patcher = mock.patch("liminal_gate.bootstrap_server.time.time", return_value=self.NOW)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.token, self.account_id = "daily-token", "daily-account"
+        self.character = {
+            "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+            "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+        }
+        profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        catalog = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
+        self.server = BootstrapServer(
+            ("127.0.0.1", 0), profile, BootstrapState(self.state_path),
+            hunting_catalog=catalog, daily_quests=True,
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+        self.addCleanup(self.stop_server)
+        self.server.state.create_account(self.token, self.account_id, {
+            "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
+            "progressCode": (1 << 24) | (3 << 6) | 1, "chrdata": [self.character],
+            "itemList": [0] * BUNDLED_ITEM_SLOTS, "summonList": [0, 0],
+        })
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            self.server.state._persist_locked()
+
+    def stop_server(self) -> None:
+        self.server.shutdown()
+        self.thread.join()
+        self.server.server_close()
+
+    def post(self, route: str, request_id: str, fields: list) -> tuple:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "POST", f"{route}?otk={self.token}&requestID={request_id}",
+            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    def account(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]
+
+    def userdata(self) -> dict:
+        return self.account()["userdata"]
+
+    def start(self, request_id: str) -> tuple:
+        return self.post("/gd/start_quest", request_id, [
+            ("stamina", "0"), ("coins", "0"), ("chapter", "6011"),
+            ("section", "1"), ("lastUpdate", "1"),
+        ])
+
+    def clear(self, request_id: str, *, buddies=(), items=None, item_list=None) -> tuple:
+        userdata = self.userdata()
+        return self.post("/gd/clear_quest", request_id, [
+            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"],
+            })),
+            ("chrdata", json.dumps([self.character])),
+            ("itemList", json.dumps(userdata["itemList"] if item_list is None else item_list)),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": 6011, "section": 1, "coins": 0, "exp": 0,
+                "items": items or {}, "buddies": list(buddies), "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+
+    def test_the_reported_companion_settles_and_releases_the_account(self) -> None:
+        status, started = self.start("dq-start")
+        self.assertEqual((200, True), (status, started["success"]))
+        self.assertEqual("hunting_active", self.account()["tutorial_phase"])
+
+        status, cleared = self.clear("dq-clear", buddies=[self.GLASSY_MINION])
+        self.assertEqual(200, status, cleared)
+        granted = self.userdata()["buddyInfo"]["list"]
+        self.assertEqual([self.GLASSY_MINION], [row["bid"] for row in granted])
+        self.assertEqual([1], [row["lv"] for row in granted])
+        self.assertEqual(granted, cleared["buddyInfo"]["list"])
+        # The whole severity of the report was here: a refused clear left this
+        # `hunting_active`, and every unrelated stage start then failed too.
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+        self.assertIsNone(self.account()["active_hunt"])
+
+    def test_the_puzzle_reward_tiers_settle_alongside_the_companion(self) -> None:
+        """Weapons, Tears and Particles in one clear, with the drop."""
+        self.assertEqual(200, self.start("tiers-start")[0])
+        projected = [0] * BUNDLED_ITEM_SLOTS
+        for item_id, count in ((9, 3), (18, 2), (22, 1)):
+            projected[item_id - 1] = count
+        status, cleared = self.clear(
+            "tiers-clear", buddies=[self.GLASSY_MINION],
+            items={"9": 3, "18": 2, "22": 1}, item_list=projected,
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(projected, self.userdata()["itemList"])
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_a_companion_the_manifest_does_not_name_is_still_refused(self) -> None:
+        """The bound moved to what the client's own data allows, not away."""
+        self.assertEqual(200, self.start("undeclared-start")[0])
+        before = self.userdata()
+        status, refused = self.clear("undeclared-clear", buddies=[140])
+        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual(before, self.userdata(), "a refused clear must not mutate the save")
+        # And the honest clear still settles afterwards, which is the recovery
+        # path a wedged account takes: replay the same stage and finish it.
+        self.assertEqual(200, self.clear("recover", buddies=[self.GLASSY_MINION])[0])
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])

@@ -192,11 +192,22 @@ class EnvironmentIsolatedTest(unittest.TestCase):
 
 
 def _statuses(**missing: bool) -> list[doctor.ToolStatus]:
-    names = ("java", "platform tools", "build tools", "UnityPy", "Il2CppDumper", "disassembler")
+    names = ("java", "platform tools", "build tools", "SDK platform", "UnityPy", "Il2CppDumper", "disassembler")
     return [doctor.ToolStatus(name, not missing.get(name.replace(" ", "_"), False), "") for name in names]
 
 
 class DoctorSurveyTest(unittest.TestCase):
+    def test_missing_compile_sdk_is_reported_even_when_build_tools_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            sdk = Path(temporary) / "sdk"
+            tools = sdk / "build-tools" / "36.1.0"
+            tools.mkdir(parents=True)
+            with patch.object(doctor.tester_setup, "find_build_tools", return_value=(tools / "zipalign", tools / "apksigner")):
+                statuses = doctor.survey(Host("mac", "aarch64"))
+        platform = next(status for status in statuses if status.name == "SDK platform")
+        self.assertFalse(platform.ok)
+        self.assertIn("platform 35", platform.detail)
+
     def test_a_missing_tool_carries_its_own_instruction_into_the_report(self) -> None:
         with patch.object(doctor.tester_setup, "find_il2cpp_dumper", return_value=None):
             statuses = doctor.survey(Host("mac", "aarch64"))
@@ -261,6 +272,18 @@ class DoctorInstallTest(EnvironmentIsolatedTest):
                     _statuses(disassembler=True), Path(temporary), Host("mac", "aarch64"),
                     toolchain.Toolchain(), accept_licences=False, packages=(),
                 )
+
+    def test_missing_compile_sdk_triggers_android_package_install(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(doctor.shutil, "which", return_value="/usr/bin/java"), \
+                patch.object(doctor.tool_install, "accept_android_licences"), \
+                patch.object(doctor.tool_install, "install_android_packages", return_value=Path(temporary) / "sdk") as install:
+            doctor.install_missing(
+                _statuses(SDK_platform=True), Path(temporary), Host("mac", "aarch64"),
+                toolchain.Toolchain(), accept_licences=True,
+                packages=tool_install.ANDROID_PACKAGES,
+            )
+        self.assertIn("platforms;android-35", install.call_args.args[4])
 
     def test_missing_disassembler_installs_and_records_the_pinned_ndk_tool(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
