@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 from threading import Thread
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import zipfile
 
 import liminal_gate.android_entrypoint as entrypoint
@@ -42,7 +42,7 @@ class AndroidEntrypointTest(unittest.TestCase):
         }
         runtime = {"schema_version": 1, "config": {"profile": profile}}
         runtime_bytes = json.dumps(runtime).encode()
-        seed_bytes = b'{"accounts":{},"tokens":{}}\n'
+        self.seed_bytes = b'{"accounts":{},"tokens":{}}\n'
         manifest = {"schema_version": 2, "build_id": self.build_id, "resources": [{
             "path": "/resources/packs/entry.bin", "member": "assets/liminal_gate/resources/entry.bin",
             "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest(),
@@ -50,12 +50,12 @@ class AndroidEntrypointTest(unittest.TestCase):
             "name": "server.json", "member": RUNTIME_SERVER_MEMBER,
             "size": len(runtime_bytes), "sha256": hashlib.sha256(runtime_bytes).hexdigest(),
         }], "seed": {
-            "member": RUNTIME_SEED_MEMBER, "size": len(seed_bytes), "sha256": hashlib.sha256(seed_bytes).hexdigest(),
+            "member": RUNTIME_SEED_MEMBER, "size": len(self.seed_bytes), "sha256": hashlib.sha256(self.seed_bytes).hexdigest(),
         }}
         with zipfile.ZipFile(self.apk, "w", compression=zipfile.ZIP_STORED) as archive:
             archive.writestr(RUNTIME_SERVER_MEMBER, runtime_bytes)
             archive.writestr(PACKAGED_MANIFEST_MEMBER, json.dumps(manifest))
-            archive.writestr(RUNTIME_SEED_MEMBER, seed_bytes)
+            archive.writestr(RUNTIME_SEED_MEMBER, self.seed_bytes)
             archive.writestr("assets/liminal_gate/resources/entry.bin", payload)
 
     def tearDown(self) -> None:
@@ -63,7 +63,11 @@ class AndroidEntrypointTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def test_start_is_loopback_idempotent_and_health_reports_the_expected_build(self) -> None:
-        server = start(self.apk, self.files_dir, self.build_id)
+        # Android app-private storage refused the old hard-link publication
+        # path. The full startup and real HTTP health boundary must not need it.
+        with patch.object(entrypoint.os, "link", side_effect=PermissionError(13, "Permission denied")):
+            server = start(self.apk, self.files_dir, self.build_id)
+        self.assertEqual(self.seed_bytes, (self.files_dir / "state.json").read_bytes())
         self.assertEqual((LOOPBACK_HOST, LOOPBACK_PORT), server.server_address)
         self.assertIs(server, start(self.apk, self.files_dir, self.build_id))
         connection = HTTPConnection(LOOPBACK_HOST, LOOPBACK_PORT)
@@ -75,6 +79,27 @@ class AndroidEntrypointTest(unittest.TestCase):
             json.loads(response.read()),
         )
         connection.close()
+
+    def test_interrupted_seed_publication_leaves_retryable_absence(self) -> None:
+        manifest = entrypoint._load_packaged_manifest(self.apk, self.build_id)
+        state = self.files_dir / "state.json"
+        with patch.object(entrypoint.os, "replace", side_effect=PermissionError(13, "Permission denied")):
+            with self.assertRaises(PermissionError):
+                entrypoint._seed_state_once(self.apk, self.files_dir, manifest)
+        self.assertFalse(state.exists())
+
+        entrypoint._seed_state_once(self.apk, self.files_dir, manifest)
+        self.assertEqual(self.seed_bytes, state.read_bytes())
+
+    def test_seed_never_replaces_an_existing_save(self) -> None:
+        self.files_dir.mkdir()
+        state = self.files_dir / "state.json"
+        existing = b'{"accounts":{},"tokens":{},"marker":"kept"}\n'
+        state.write_bytes(existing)
+        manifest = entrypoint._load_packaged_manifest(self.apk, self.build_id)
+        with patch.object(entrypoint, "_write_atomic", side_effect=AssertionError("existing state was rewritten")):
+            entrypoint._seed_state_once(self.apk, self.files_dir, manifest)
+        self.assertEqual(existing, state.read_bytes())
 
     def test_retry_preserves_existing_durable_state_instead_of_reseeding(self) -> None:
         start(self.apk, self.files_dir, self.build_id)

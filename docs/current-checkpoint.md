@@ -71,6 +71,15 @@ emulator lacked space to replace the prior 1-GiB install. Final-artifact
 physical ARM64, ARMv7 runtime, and combined-APK Chapter 2-1 acceptance remain
 pending and do not change the canonical gameplay boundary above.
 
+Latest on-device seed correction: Issue 30's Pixel 7 Pro/Android 15 diagnostic
+reached `python_start` and then refused the hard link used to publish an embedded
+first-install save. Seed publication now takes the state store's existing
+single-writer lock, rechecks absence, and atomically renames a fully written and
+fsynced temporary file. Focused real-HTTP startup tests cover Android-style hard
+link denial, interruption before commit followed by retry, existing-save
+preservation, and matching `/healthz`. Physical-device seeded startup and
+force-stop/relaunch remain pending.
+
 Latest chapter-ticket validation: the live Chapter 8-9 account retained read
 Chapter 5 Metal Ticket x2 and Chapter 6 Companion Ticket x3 messages but lacked
 the already-earned Chapter 7 Metal Ticket x2 present. Guided core story now

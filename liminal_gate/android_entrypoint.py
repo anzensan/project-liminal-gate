@@ -17,7 +17,13 @@ from threading import Lock, Thread
 from typing import Any
 import zipfile
 
-from liminal_gate.bootstrap_server import BootstrapServer, ProfileError, build_server
+from liminal_gate.bootstrap_server import (
+    BootstrapServer,
+    ProfileError,
+    _fsync_directory,
+    _lock_exclusive,
+    build_server,
+)
 from liminal_gate.resource_catalog import ResourceCatalogError, load_resource_catalog_document
 from liminal_gate.server_config import ServerConfig, _PATH_FIELDS
 
@@ -140,7 +146,7 @@ def _materialize_runtime_files(apk: Path, root: Path, manifest: dict[str, object
                 if target in seen:
                     raise ProfileError("packaged APK has duplicate extracted member names")
                 seen.add(target)
-                _write_atomic(target, data, replace_existing=True)
+                _write_atomic(target, data)
         if root / RUNTIME_SERVER_FILE not in seen:
             raise ProfileError(f"packaged APK is missing {RUNTIME_SERVER_MEMBER}")
 
@@ -223,7 +229,7 @@ def _load_runtime_config(root: Path) -> ServerConfig:
     values.pop("schema_version", None)
     profile = values.get("profile")
     if isinstance(profile, dict):
-        _write_atomic(root / "profile.json", (json.dumps(profile, separators=(",", ":")) + "\n").encode("utf-8"), replace_existing=True)
+        _write_atomic(root / "profile.json", (json.dumps(profile, separators=(",", ":")) + "\n").encode("utf-8"))
         values["profile"] = "profile.json"
     permitted = {field.name for field in fields(ServerConfig)}
     if set(values) - permitted:
@@ -268,7 +274,7 @@ def _read_member(archive: zipfile.ZipFile, member: str) -> bytes:
         raise ProfileError(f"packaged APK is missing {member}") from error
 
 
-def _write_atomic(path: Path, data: bytes, *, replace_existing: bool) -> None:
+def _write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
         temporary = Path(stream.name)
@@ -276,15 +282,30 @@ def _write_atomic(path: Path, data: bytes, *, replace_existing: bool) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     try:
-        if replace_existing:
-            os.replace(temporary, path)
-        else:
-            os.link(temporary, path)
-    except FileExistsError:
-        pass
+        os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
 
 def _write_if_absent(path: Path, data: bytes) -> None:
-    _write_atomic(path, data, replace_existing=False)
+    """Publish a first-install file atomically without Android hard links.
+
+    Android app-private storage can refuse ``link(2)`` even when both names are
+    in the same directory.  The state store already owns a process lock beside
+    the save; take that same lock while checking and renaming so another server
+    cannot create the save between those operations.  A crash before the rename
+    leaves no state file, and a crash after it leaves the complete fsynced file.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(f".{path.name}.lock")
+    with lock_path.open("a+b") as stream:
+        try:
+            _lock_exclusive(stream)
+        except OSError as error:
+            raise ProfileError(
+                f"packaged Android state is already in use: {path}"
+            ) from error
+        if path.exists():
+            return
+        _write_atomic(path, data)
+        _fsync_directory(path.parent)

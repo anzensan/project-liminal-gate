@@ -10,7 +10,7 @@ capabilities:
   - family: on_device_host_readiness
     routes: [healthz, resources]
     status: local_policy
-    note: "private combined APK only: fixed 127.0.0.1:8002, matching build-id gate before Unity, schema-v2 stored-member resource streaming; all 11,806 retained resources packaged, API 34 ARM64 full-payload startup, exact resource response, and force-stop relaunch confirmed; physical and ARMv7 acceptance pending"
+    note: "private combined APK only: fixed 127.0.0.1:8002, matching build-id gate before Unity, schema-v2 stored-member resource streaming; first-install seed publication uses the state store lock plus atomic rename rather than Android-refused hard links, with denial/interruption/retry/existing-save transport regressions; all 11,806 retained resources packaged, API 34 ARM64 full-payload startup, exact resource response, and force-stop relaunch confirmed; physical seeded startup and ARMv7 acceptance pending"
     transport_tests: true
     restart_tests: true
   - family: bootstrap
