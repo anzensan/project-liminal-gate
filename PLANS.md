@@ -1,5 +1,32 @@
 # Execution Plans
 
+## 2026-08-03 client-trusted Hunting settlement
+
+Status: implemented and repository-validated; physical-client retest pending.
+
+Objective: stop treating incomplete reconstructed reward ceilings as an
+anti-cheat gate for battles the surviving client executes itself.
+
+Execution boundaries:
+
+1. Keep exact active-stage identity, wallet arithmetic, item/ticket projection,
+   Companion-box integrity, replay, and durable commit mandatory.
+2. Trust structurally valid Hunting, Metal, Special, and Daily Quest outcomes
+   by default; retain catalog maxima under `--outcome-strict` for audit use.
+3. Do not fabricate Companion rows: an id still needs recovered level metadata
+   because the client clear does not submit the row the server must return.
+4. Regress the Pixel Crystal Road shape (280 Coins, 5,625 EXP) over real HTTP,
+   exact retry, and restart.
+
+Result:
+
+- The default Hunting clear path no longer calls the per-stage maxima gate.
+- Strict-mode tests retain every prior ceiling refusal.
+- The Crystal Road result settles once and returns the account to `free_roam`;
+  exact restart replay does not credit the 280 Coins twice.
+- Seventy-four focused Hunting/Daily tests and all 919 warning-strict
+  repository tests pass; compilation, structured-file, and diff checks pass.
+
 ## 2026-08-02 doctor-managed AArch64 disassembler
 
 Status: completed 2026-08-02; live Google NDK licence acceptance and download

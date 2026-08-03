@@ -20,7 +20,7 @@ import unittest
 from unittest.mock import patch
 
 from liminal_gate import on_device_setup
-from liminal_gate.bootstrap_server import load_launch_config, parse_args
+from liminal_gate.bootstrap_server import build_server, load_launch_config, parse_args
 from liminal_gate.server_config import ServerConfig
 from liminal_gate.server_setup import STANDARD_POLICY_FLAGS
 from liminal_gate.tester_setup import server_arguments
@@ -83,6 +83,19 @@ class LaunchConfigTest(unittest.TestCase):
                      "trading_post"):
             with self.subTest(name):
                 self.assertTrue(getattr(config, name), f"{name} was not enabled by the guided flags")
+
+    def test_outcome_strict_can_audit_hunting_without_a_story_catalog(self) -> None:
+        """Hunting owns a complete bundled audit catalog of its own."""
+        config = self.parse("--hunting", "--outcome-strict")
+        self.assertIsNone(config.story_outcome_catalog)
+        with (
+            patch("liminal_gate.bootstrap_server.BootstrapState"),
+            patch("liminal_gate.bootstrap_server.BootstrapServer") as constructor,
+        ):
+            build_server(config)
+        options = constructor.call_args.kwargs
+        self.assertTrue(options["outcome_strict"])
+        self.assertIsNotNone(options["hunting_catalog"])
 
     def test_both_launchers_enable_the_same_gameplay_policies(self) -> None:
         """A feature enabled for testers must also be enabled on a dedicated host.

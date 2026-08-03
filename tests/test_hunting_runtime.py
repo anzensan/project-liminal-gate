@@ -89,6 +89,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
             "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
         }
+        self.outcome_strict = False
         self.start_server()
         self.server.state.create_account(self.token, self.account_id, {
             "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
@@ -108,7 +109,7 @@ class HuntingRuntimeTest(unittest.TestCase):
     def start_server(self) -> None:
         self.server = BootstrapServer(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
-            hunting_catalog=self.catalog,
+            hunting_catalog=self.catalog, outcome_strict=self.outcome_strict,
         )
         self.thread = threading.Thread(target=self.server.serve_forever)
         self.thread.start()
@@ -121,6 +122,10 @@ class HuntingRuntimeTest(unittest.TestCase):
     def restart(self) -> None:
         self.stop_server()
         self.start_server()
+
+    def enable_strict_outcomes(self) -> None:
+        self.outcome_strict = True
+        self.server.outcome_strict = True
 
     def post(self, route: str, request_id: str, fields: list[tuple[str, str]]) -> tuple[int, dict]:
         connection = HTTPConnection(*self.server.server_address)
@@ -190,6 +195,7 @@ class HuntingRuntimeTest(unittest.TestCase):
     def clear(self, request_id: str, chapter: int, section: int, *, coins: int = 0,
               items: dict | None = None, item_list: list | None = None, exp: int = 0,
               buddies: list | None = None, monsters: list | None = None,
+              summons: list | None = None,
               snapshot: dict | None = None) -> tuple[int, dict]:
         # A real retry resends the body it sent the first time.  Rebuilding it
         # from live userdata would instead echo the Energy the first clear
@@ -208,7 +214,8 @@ class HuntingRuntimeTest(unittest.TestCase):
             ("summonList", json.dumps(userdata["summonList"])),
             ("battle_result", json.dumps({
                 "chapter": chapter, "section": section, "coins": coins, "exp": exp,
-                "items": items or {}, "buddies": buddies or [], "monsters": monsters or [], "summons": [],
+                "items": items or {}, "buddies": buddies or [], "monsters": monsters or [],
+                "summons": summons or [],
                 "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
             })),
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
@@ -336,6 +343,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         )
 
     def test_special_quest_settles_and_replays_after_restart(self) -> None:
+        self.enable_strict_outcomes()
         status, started = self.start("special-start", 3003, 1, 5)
         self.assertEqual((200, True), (status, started["success"]))
         # Entry debits the client stamina meter, not the Energy wallet.
@@ -368,6 +376,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.assertEqual(1900, self.userdata()["coins"])
 
     def test_crystal_road_settles_only_the_two_documented_item_channels(self) -> None:
+        self.enable_strict_outcomes()
         status, started = self.start("crystal-start", 3004, 1, 7)
         self.assertEqual((200, True), (status, started["success"]))
         self.restart()
@@ -391,6 +400,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         )
 
     def test_a_road_recruit_settles_once_and_a_duplicate_changes_nothing(self) -> None:
+        self.enable_strict_outcomes()
         status, started = self.start("road-start", 1200, 1, 2)
         self.assertEqual((200, True), (status, started["success"]))
         snapshot = copy.deepcopy(self.userdata())
@@ -433,6 +443,9 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.assertEqual((before["itemList"], before["energy"], "free_roam"), (self.userdata()["itemList"], self.userdata()["energy"], self.phase()))
 
     def test_a_result_outside_the_declared_bounds_is_refused_without_mutation(self) -> None:
+        # Catalog maxima are an explicit audit mode. Normal preservation play
+        # trusts a structurally consistent result from the active battle.
+        self.enable_strict_outcomes()
         for label, kwargs in (
             ("coins", {"coins": 1}),                      # Pudding declares none
             ("exp", {"exp": 1}),                          # nor any EXP
@@ -451,6 +464,35 @@ class HuntingRuntimeTest(unittest.TestCase):
                 # The stage stays active, so the player may retry it honestly.
                 self.assertEqual("hunting_active", self.phase())
                 self.assertEqual(200, self.clear(f"settle-{label}", 1001, 1)[0])
+
+    def test_default_trusts_the_pixel_crystal_road_result_and_replays_after_restart(self) -> None:
+        """Issue 20's Pixel report outranks the catalog's zero placeholders."""
+        self.assertEqual(200, self.start("crystal-pixel-start", 3004, 1, 7)[0])
+        snapshot = copy.deepcopy(self.userdata())
+        status, cleared = self.clear(
+            "crystal-pixel-clear", 3004, 1,
+            coins=280, exp=5625, snapshot=snapshot,
+        )
+        self.assertEqual((200, True), (status, cleared["success"]))
+        self.assertEqual((380, "free_roam"), (self.userdata()["coins"], self.phase()))
+
+        self.restart()
+        self.assertEqual(
+            (status, cleared),
+            self.clear(
+                "crystal-pixel-clear", 3004, 1,
+                coins=280, exp=5625, snapshot=snapshot,
+            ),
+        )
+        self.assertEqual((380, "free_roam"), (self.userdata()["coins"], self.phase()))
+
+    def test_default_refuses_a_summon_it_cannot_settle_instead_of_discarding_it(self) -> None:
+        self.assertEqual(200, self.start("summon-start", 1001, 1, 3)[0])
+        before = self.userdata()
+        status, refused = self.clear("summon-clear", 1001, 1, summons=[1])
+        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual(before, self.userdata())
+        self.assertEqual("hunting_active", self.phase())
 
     def test_a_locked_stage_is_refused_and_a_second_battle_releases_the_first(self) -> None:
         status, locked = self.start("locked", *LOCKED_STAGE, 1)
@@ -613,6 +655,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.assertEqual("free_roam", self.phase())
 
     def test_a_companion_claim_beyond_the_manifest_is_refused(self) -> None:
+        self.enable_strict_outcomes()
         for label, kwargs in (
             ("too-many", {"buddies": [11, 11, 11], "exp": 0}),   # manifest allows two
             ("undeclared", {"buddies": [12], "exp": 0}),         # not in the manifest

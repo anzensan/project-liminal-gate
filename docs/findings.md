@@ -46,6 +46,24 @@ Private inputs, captures, account state, and original assets remain excluded.
 
 ## Quest settlement compatibility
 
+- **Confirmed by Pixel 7 Pro final-client/server evidence:** the Issue 20
+  Crystal Road attachment (SHA-256
+  `b3139d63dd54a8ae6d6c067c7f15a62c8014ad301f61a33f98332b53a5acb99d`)
+  contains 25 HTTP 409 `invalid_local_hunting_result` records for Chapter
+  3004-1. All report 280 Coins; 21 report 5,400 EXP and four report 5,625 EXP.
+  This proves the bundled zero-Coin/zero-EXP placeholders were incomplete, not
+  compatibility limits. It does not establish the historical maxima or reward
+  distribution.
+- **Local preservation-policy correction:** Hunting, Metal, default Special,
+  and Daily Quest clears now trust a structurally valid result for the exact
+  active battle by default. Stage identity, wallet arithmetic, item/ticket
+  projection, Companion-box integrity, body-scoped replay, and durable commit
+  remain mandatory. Catalog maxima are enforced only with `--outcome-strict`.
+  Companion ids still require catalog level data because the server must author
+  a response row absent from the clear request. A real-HTTP regression settles
+  the observed Crystal Road 280-Coin/5,625-EXP shape and proves restart replay
+  does not credit it twice; physical-client retest remains pending.
+
 - **Confirmed by exact final-client Chapter 2004-1 transport:** Jade Dragon's
   result reports variable battle Coins independently of the generated event
   catalog's fixed clear increment. The preserved 17,795-byte form has SHA-256
@@ -236,10 +254,11 @@ Private inputs, captures, account state, and original assets remain excluded.
 - **Confirmed by static client analysis:** Arena -> Special Quests reads the
   server `specialQuestList` and exact `sp_ch_<chapter>-<section>` flags.
   **Local policy:** after Chapter 3, the bundled server advertises recovered
-  Chapter 3003-1 (*Money Money Time*) through the bounded Hunting transaction.
-  Its permanent availability is not recovered service behavior; the 1,800
-  Coin ceiling is bounded by the Issue 25 final-client result, not a recovered
-  historical distribution. Arena VS remains unsupported.
+  Chapter 3003-1 (*Money Money Time*) through the Hunting transaction. Its
+  permanent availability is not recovered service behavior; the Issue 25
+  final-client 1,800-Coin result remains strict-audit evidence, not a recovered
+  historical distribution or a default acceptance ceiling. Arena VS remains
+  unsupported.
 - **Confirmed final-client static contract:** `ChapterInterface::.cctor` and
   its predicates identify Chapters 9010--9013 as Tower of Temptation and
   9100--9102 as Donation. `ServerConstants.towerQuestList` and
@@ -308,9 +327,11 @@ Private inputs, captures, account state, and original assets remain excluded.
   3004-1 as *Crystal Road* (`クリスタルロード`): three battles and seven stamina.
   `UISpecialSelect` mode 7 reads `huntingHuntingList`, while the generic
   non-1000-series gate requires `sp_ch_3004-1`. **Local policy:** its bounded
-  transaction accepts up to two Items from material IDs 1--17 and the
-  Ticket/power-up IDs 50 and 53--56. The reference table's historical odds are
-  not implemented or claimed; original-client acceptance is still unverified.
+  catalog records up to two Items from material IDs 1--17 and the
+  Ticket/power-up IDs 50 and 53--56 for optional strict auditing. The reference
+  table's historical odds are not implemented or claimed. A later Pixel 7 Pro
+  clear confirms entry and reports 280 Coins plus 5,400/5,625 EXP; client
+  acceptance after the relaxed settlement-policy change remains pending.
 - **Confirmed by static client analysis, live transport, and original-client
   observation:** Strikes Back reads `descentHuntingList`. One folded tier-1 row
   per unlocked Chapter 8000--8007 or 8012--8017 family plus its matching

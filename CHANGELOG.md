@@ -31,6 +31,18 @@
 
 ### Fixed
 
+- **Hunting and Daily Quest clears no longer reject the original client's
+  rewards just because a reconstructed ceiling is incomplete.** The client
+  executes these battles and reports their Coins, EXP, items, recruits, and
+  Companions at clear. The server now trusts that report by default after
+  checking the exact active stage, wallet arithmetic, item projection,
+  ticket-spend reconciliation, Companion-box integrity, and durable one-time
+  settlement. `--outcome-strict` restores per-stage catalog maxima as an audit
+  mode. This directly accepts the Pixel 7 Pro Crystal Road result that reported
+  280 Coins and 5,400/5,625 EXP against the old zero placeholders. Companion
+  IDs still need catalog level data because the server must author a row the
+  clear form does not contain.
+
 - **A game over in a Daily Quest no longer ends in a Network Error.** The
   client offers Continue when a Daily Quest is lost and posts `/gd/continue`
   for it, but the server accepted Continue only in the generic-story phase, so

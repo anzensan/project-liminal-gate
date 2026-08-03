@@ -32,7 +32,7 @@ capabilities:
   - family: hunting_metal_and_default_special
     routes: [start_quest, clear_quest, unlock_metal_zone]
     status: local_policy
-    note: "Chapter 3003-1 accepts the Issue 25 final-client 1800-Coin result; full historical reward distribution remains unknown"
+    note: "structurally valid active-battle outcomes are trusted by default; --outcome-strict audits catalog maxima; Pixel 7 Pro confirmed Crystal Road reports 280 Coins and 5400/5625 EXP, while full historical reward distributions remain unknown"
     transport_tests: true
     restart_tests: true
   - family: pacts_and_companions

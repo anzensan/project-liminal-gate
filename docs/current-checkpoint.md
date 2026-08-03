@@ -18,6 +18,21 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Latest settlement-policy correction: Hunting, Metal, default Special, and
+Daily Quest clears now trust the surviving client's structurally valid result
+for its exact active battle. The server still enforces identity, wallet
+arithmetic, item/ticket projection, Companion-box integrity, replay, and
+durable one-time commit. Per-stage reward maxima moved behind the existing
+`--outcome-strict` audit option. The Issue 20 Pixel attachment contains 25
+Crystal Road 3004-1 refusals: every result reports 280 Coins, with 21 reporting
+5,400 EXP and four reporting 5,625 EXP, against the old zero placeholders. A
+real-HTTP regression accepts 280/5,625 by default and proves exact restart
+replay grants the Coins once; strict mode retains the old refusal tests.
+The focused Hunting/Daily lane passes 74 tests and the complete warning-strict
+suite passes all 919 tests in 147.266 seconds; compilation, structured-file,
+and diff checks pass. Original-client retest after this policy change remains
+pending.
+
 Toolchain checkpoint: `doctor --install-missing` now covers the last mandatory
 command-line prerequisite. When no existing disassembler reports AArch64
 support, it installs Google's pinned side-by-side Android NDK r27d under
@@ -261,7 +276,8 @@ owns both regular and All Hail the King rows plus both Roads; Hunting also
 receives bounded Crystal Road 3004-1 after Chapter 3, with its exact event
 flag. Arena -> Special Quests no longer inherits the client's built-in Metal
 fallback list and, after Chapter 3, receives bundled Chapter 3003-1 through
-the bounded Hunting lifecycle. Permanent
+the structurally validated Hunting lifecycle. Catalog reward maxima are an
+optional `--outcome-strict` audit. Permanent
 Fate reaches the ordinary Pact transaction with the captured `luckType=true`
 form. The statically recovered one-draw Item 81 Fellowship Ticket form now
 settles ordinary and Fellowship-side Fate draws through real HTTP with durable

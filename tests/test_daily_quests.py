@@ -532,7 +532,7 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
 
     def test_a_companion_the_manifest_does_not_name_is_still_refused(self) -> None:
-        """The bound moved to what the client's own data allows, not away."""
+        """Unknown Companion ids still cannot be authored without level data."""
         self.assertEqual(200, self.start("undeclared-start")[0])
         before = self.userdata()
         status, refused = self.clear("undeclared-clear", buddies=[140])

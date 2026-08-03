@@ -36,6 +36,20 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-03 client-trusted Hunting settlement: per-stage reward maxima no
+  longer block ordinary Hunting, Metal, Special, or Daily Quest play by
+  default. The final client owns the battle and reports its outcome; the server
+  continues to require the exact active stage, wallet arithmetic, item/ticket
+  reconciliation, Companion authoring data and box integrity, replay, and a
+  durable one-time commit. `--outcome-strict` retains the maxima as an audit
+  mode and no longer requires a story-outcome catalog when auditing Hunting.
+  The Issue 20 Pixel log proves Crystal Road can report 280 Coins and
+  5,400/5,625 EXP despite the old zero placeholders. Focused real-HTTP coverage
+  accepts 280/5,625 and proves restart replay credits it once; strict-mode
+  refusal coverage remains. Seventy-four focused tests and all 919
+  warning-strict repository tests pass; compilation, structured-file, and diff
+  checks pass. Physical-client retest is pending.
+
 - 2026-08-03 setup review pass, two defects fixed and the launcher checks made
   structural. Guided setup started the server against the operator's own
   `--resource-root` while the manifest had been built against the
@@ -671,8 +685,8 @@ machine-readable/current capability boundary.
   between an external reward table and client-compatible behavior.
 - 2026-07-28 default Special Quest support: the guided server now advertises
   recovered Chapter 3003-1 (*Money Money Time*) after Chapter 3, together with
-  its exact `sp_ch_3003-1` flag. It uses the existing bounded Hunting start and
-  clear transaction, so its five-stamina entry, rejected-result behavior,
+  its exact `sp_ch_3003-1` flag. It uses the Hunting start and clear
+  transaction, so its five-stamina entry, strict-audit refusal behavior,
   body-scoped replay, and restart handling are covered by real HTTP tests. Its
   1,800-Coin ceiling is now bounded by Issue 25 final-client evidence; the
   permanent unlock remains explicit local preservation policy, not a claim
