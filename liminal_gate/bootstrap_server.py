@@ -2143,6 +2143,7 @@ class BootstrapState:
                 account["active_hunt"] = None
                 account["active_hunt_ticket_spent"] = None
                 account["active_world_map_special"] = None
+                account["active_battle_continue_coins"] = 0
             userdata["lastupdate"] = 1.0
             payload = _canonical_payload({"success": True, "lastupdate": 1.0})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
@@ -2236,6 +2237,7 @@ class BootstrapState:
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "hunting_active"
             account["active_hunt"] = identity
+            account["active_battle_continue_coins"] = 0
             if stage.once_per_utc_day:
                 # The day is consumed at accepted start, not at clear: the
                 # retired service updated `lastDailyQuestPlayTime` from
@@ -2289,7 +2291,7 @@ class BootstrapState:
             if (
                 clear["progressCode"] != int(userdata.get("progressCode", 0))
                 or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
-                or clear["valuables"].get("coins") != expected_coins
+                or clear["valuables"].get("coins") not in _settled_wallet_coins(account, expected_coins)
                 or clear["summonList"] != userdata.get("summonList", [])
             ):
                 return "tutorial_state_conflict", None
@@ -2325,6 +2327,7 @@ class BootstrapState:
             account["tutorial_phase"] = "free_roam"
             account["active_hunt"] = None
             account["active_hunt_ticket_spent"] = None
+            account["active_battle_continue_coins"] = 0
             # Preservation income; see `archive_economy`.
             award_stage_energy(account, "hunting", *identity)
             userdata["valuables"]["freeEnergy"] = int(userdata.get("freeEnergy", 0))
@@ -2400,6 +2403,7 @@ class BootstrapState:
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "world_map_special_active"
             account["active_world_map_special"] = identity
+            account["active_battle_continue_coins"] = 0
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -2483,6 +2487,7 @@ class BootstrapState:
             userdata["lastupdate"] = 1.0
             account["tutorial_phase"] = "free_roam"
             account["active_world_map_special"] = None
+            account["active_battle_continue_coins"] = 0
             # Preservation income; see `archive_economy`.
             award_stage_energy(account, "world_map_special", *identity)
             _synchronize_wallet_projection(userdata)
@@ -2609,6 +2614,7 @@ class BootstrapState:
                 payload["luckUpTable"] = list(luck_up)
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity
+            account["active_battle_continue_coins"] = 0
             # Retained because the client folds the chest into the balances it
             # reports at clear; settlement has to know what it handed out.
             account["active_luck_result"] = list(luck_slots)
@@ -2685,7 +2691,7 @@ class BootstrapState:
                 ("active_stage", active == {"chapter": identity[0], "section": identity[1]}),
                 ("progress", expected_progress is not None and clear["progressCode"] == expected_progress),
                 ("world_map", clear["worldMapNo"] == int(userdata.get("worldMapNo", 0))),
-                ("wallet", clear["valuables"].get("coins") == expected_coins),
+                ("wallet", clear["valuables"].get("coins") in _settled_wallet_coins(account, expected_coins)),
                 (
                     "battle_coins",
                     event or reported_battle_coins == fixed_clear_coins,
@@ -2779,6 +2785,7 @@ class BootstrapState:
                 payload["buddyInfo"] = copy.deepcopy(buddy_info)
             account["tutorial_phase"] = "free_roam"
             account["active_generic_story"] = None
+            account["active_battle_continue_coins"] = 0
             account["active_luck_result"] = []
             account["active_luck_up"] = []
             payload = _canonical_payload(payload)
@@ -2862,6 +2869,17 @@ class BootstrapState:
                 # is the one answer it cannot show the player usefully.
                 return "success", _canonical_payload({"success": False, "errorCode": 1})
             userdata["coins"] = coins - policy["coin_cost"]
+            # The client does not take this off its own wallet, and cannot: the
+            # coin cost is local policy, while what the client thinks it spent
+            # is the `client_cost` unit this answer reports back as Energy. Its
+            # clear therefore repeats the pre-Continue coin total, and the
+            # settlement compares that figure against the server's. Remember
+            # what was charged so exactly that much can be reconciled there --
+            # the same accommodation `active_hunt_ticket_spent` makes for the
+            # Metal Ticket the client leaves in its own item list at entry.
+            account["active_battle_continue_coins"] = (
+                _continue_coins_charged(account) + policy["coin_cost"]
+            )
             payload = {
                 "success": True,
                 "energy": int(userdata.get("energy", 0)),
@@ -3916,6 +3934,31 @@ def _started_identity(body: bytes) -> tuple[int, int] | None:
 ACTIVE_BATTLE_PHASES = frozenset({"generic_story_active", "hunting_active", "world_map_special_active"})
 
 
+def _settled_wallet_coins(account: dict[str, Any], expected: int) -> tuple[int, ...]:
+    """The coin totals a clear may honestly report for this battle.
+
+    Normally one: the server's own total plus what the battle paid. A battle
+    that was continued has a second, higher one, because the client never took
+    the local coin cost off its wallet -- it is not a cost the client knows
+    about. The widening is exactly what this battle's Continues charged and
+    nothing else, and the settlement still commits `expected`, so continuing
+    costs what it says it costs.
+    """
+    charged = _continue_coins_charged(account)
+    return (expected,) if charged == 0 else (expected, expected + charged)
+
+
+def _continue_coins_charged(account: dict[str, Any]) -> int:
+    """Coins this battle's Continues have taken that the client has not.
+
+    Zero for a save written before Continue charged anything, and for any value
+    that is not a plain count: this only ever widens a settlement check, so a
+    malformed one must widen it by nothing.
+    """
+    charged = account.get("active_battle_continue_coins")
+    return charged if type(charged) is int and charged > 0 else 0
+
+
 def release_abandoned_battle(account: dict[str, Any]) -> bool:
     """Drop an open battle the client has demonstrably left, and say whether it did.
 
@@ -3938,6 +3981,7 @@ def release_abandoned_battle(account: dict[str, Any]) -> bool:
     account["active_hunt"] = None
     account["active_hunt_ticket_spent"] = None
     account["active_world_map_special"] = None
+    account["active_battle_continue_coins"] = 0
     return True
 
 

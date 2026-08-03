@@ -699,3 +699,72 @@ class DailyQuestGameOverContinueTest(unittest.TestCase):
         self.assertEqual(17819, self.account()["daily_quest_clears"]["6005-1"])
         status, again = self.start("rumble-again")
         self.assertEqual((200, 1), (status, again["cmdError"]))
+
+    def clear(self, request_id: str, *, coins: int | None = None, items: dict | None = None) -> tuple:
+        """Settle the quest, reporting the wallet the way the client does.
+
+        `coins` is what the client believes it holds. Left unset it is the
+        server's own total, which is what an uninterrupted run reports.
+        """
+        userdata = self.userdata()
+        item_list = list(userdata["itemList"])
+        for item_id, count in (items or {}).items():
+            item_list[int(item_id) - 1] += count
+        return self.post("/gd/clear_quest", request_id, [
+            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"] if coins is None else coins,
+            })),
+            ("chrdata", json.dumps([self.character])),
+            ("itemList", json.dumps(item_list)),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": 6005, "section": 1, "coins": 0, "exp": 0,
+                "items": items or {}, "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+
+    def test_a_continued_quest_still_settles_on_the_result_screen(self) -> None:
+        """The second Network Error the same tester hit, one screen later.
+
+        Continue debits coins the client never takes off its own wallet -- it
+        cannot, because the coin cost is local policy and what the client thinks
+        it spent is the `client_cost` unit the answer reports back as Energy.
+        The clear therefore reported the pre-Continue total, the settlement
+        compared it against the server's, and refused with
+        `tutorial_state_conflict` on the result screen, with the run already
+        played and the Ore already rolled.
+        """
+        self.assertEqual(200, self.start("rumble-start")[0])
+        before = self.userdata()["coins"]
+        self.assertEqual(200, self.resume("rumble-continue")[0])
+
+        # One Ore, which is Rarity Rumble's guaranteed drop, and the wallet the
+        # client actually reported in the tester's own log: the pre-Continue one.
+        status, cleared = self.clear("rumble-clear", coins=before, items={"26": 1})
+
+        self.assertEqual(200, status, cleared)
+        # The Continue is still paid for: the settlement commits the server's
+        # total, and the answer carries it back so the client resynchronizes.
+        self.assertEqual(before - self.CONTINUE_COINS, self.userdata()["coins"])
+        self.assertEqual(before - self.CONTINUE_COINS, cleared["coins"])
+        self.assertEqual(1, self.userdata()["itemList"][25])
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_an_uncontinued_quest_still_has_to_report_the_real_wallet(self) -> None:
+        """The widening is this battle's Continues and nothing else."""
+        self.assertEqual(200, self.start("plain-start")[0])
+        before = self.userdata()["coins"]
+        status, refused = self.clear("plain-clear", coins=before + self.CONTINUE_COINS)
+        self.assertEqual((409, "tutorial_state_conflict"), (status, refused["error"]))
+
+    def test_the_widening_does_not_survive_into_the_next_quest(self) -> None:
+        """A new battle starts owing nothing, however the last one ended."""
+        self.assertEqual(200, self.start("first-start")[0])
+        self.assertEqual(200, self.resume("first-continue")[0])
+        self.assertEqual(200, self.start("second-start", chapter=6012, section=1)[0])
+        self.assertEqual(0, self.account()["active_battle_continue_coins"])
