@@ -21,6 +21,7 @@ and absent from both -- so nothing validates membership against them.
 from __future__ import annotations
 
 EVENT_FLAG_PREFIX = "sp_ch_"
+DAILY_BONUS_EVENT_FLAG = "enableDailyBonus"
 
 
 def event_flags_for(chapter: int, section: int) -> tuple[str, str]:
@@ -30,6 +31,21 @@ def event_flags_for(chapter: int, section: int) -> tuple[str, str]:
     chapter; the second gates this stage alone.
     """
     return f"{EVENT_FLAG_PREFIX}{chapter}", f"{EVENT_FLAG_PREFIX}{chapter}-{section}"
+
+
+def daily_bonus_event_flags() -> dict[str, dict[str, object]]:
+    """Activate the final client's own recovered 15-day drop rotation.
+
+    The server supplies only the boolean gate.  The surviving client derives
+    the bonus kind and eligible chapter from its server-corrected clock, so no
+    schedule, multiplier, or battle result is authored here.
+    """
+    return {
+        DAILY_BONUS_EVENT_FLAG: {
+            "name": DAILY_BONUS_EVENT_FLAG,
+            "value": True,
+        },
+    }
 
 
 # Present as literals in the final client's global metadata.

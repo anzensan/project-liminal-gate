@@ -34,6 +34,10 @@ Three categories are used below and they are not interchangeable:
   the rotation the login response names and per-slot play times. Both Yamamoto
   Puzzle Quests settle the one Companion their own `dropBuddies` manifest
   names, at level 1; they are the only two of the fourteen that carry one.
+- The final client's native 15-day ordinary-story bonus rotation: item drops
+  x2, monster recruits x2, then no bonus, rotating through five chapter groups.
+  Guided core story supplies only the recovered boolean gate; the client owns
+  the date, chapter selection, badge, and multiplier.
 - The two secondary world maps: BreaSoul's twenty sections and the ten Five
   Emperors descents, each behind the client's own map predicate.
 - Luck: the stat grows from play, and Luck Treasure Chests are authored at

@@ -18,6 +18,21 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Latest daily-drop validation: Issue 35 identified the missing gate for the
+final client's native ordinary-story rotation. Guided core story now supplies
+the exact boolean `enableDailyBonus` event flag during login. Dual-ABI client
+analysis confirms that the client selects item x2, monster-recruit x2, or no
+bonus from a 15-day cycle anchored to 2015-01-01, using the server-corrected
+instant and the device-local calendar day; Companion and Battle Summon drops
+are not doubled. The linked Terra Battle Stats calendar independently resolves
+to the same cycle and chapter groups. Focused real-HTTP tests cover the exact
+nested flag and disabled/enabled boundary. Continuous activation is explicit
+preservation policy because the retired service's event window was not
+captured. Physical confirmation of the map badge and an eligible roll remains
+pending. The focused login/setup lane passes 67 tests and the complete
+warning-strict suite passes all 955 tests with five expected skips; compilation,
+endpoint YAML, and diff checks pass.
+
 Latest login-reward validation: guided core story issues the published
 standard consecutive and cumulative login presents through `messageList`.
 Eligibility is account-local and turns at 00:00 UTC; the message and updated

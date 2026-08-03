@@ -1,5 +1,28 @@
 # Execution Plans
 
+## 2026-08-03 Issue 35 daily drop rotation
+
+Status: implemented and repository-validated; physical-client validation
+pending.
+
+Objective: restore the final client's native 15-day item/monster double-drop
+rotation without recreating its deterministic schedule on the server.
+
+Boundaries:
+
+1. Send only the client-confirmed `enableDailyBonus` boolean event flag from
+   guided core story.
+2. Leave date selection, chapter grouping, badge presentation, and the x2
+   multiplier in the surviving client.
+3. Treat the always-enabled gate as preservation policy. The client formula is
+   dual-ABI confirmed, while no historical service event window survives.
+4. Keep Companion and Battle Summon rates unchanged, matching client code.
+5. Prove the exact flag shape and opt-in boundary over real HTTP; request a
+   physical badge/drop check before claiming client acceptance.
+
+Result: `--core-story` login now activates the recovered client rotation. No
+account state or settlement mutation was added.
+
 ## 2026-08-03 Issue 33 chapter-ticket compatibility
 
 Status: implemented and repository-validated; physical retest pending.
