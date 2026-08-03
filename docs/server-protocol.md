@@ -68,16 +68,17 @@ ticket/coin batch has been recovered. Missing-ticket error 2 is compatibility
 policy pending a live refusal capture. Nonzero campaign/event selectors remain
 unsupported.
 
-The guided core-story path issues the retail first-clear ticket presents through
-the existing inbox transport: Metal Ticket (Item 50) x2 after Chapters 5 and 7,
-and Companion Ticket (Item 112) x3/x3/x4 after Chapters 6, 8, and 10. Eligibility
-requires the next chapter to be unlocked, so a player within Chapter 8 has not
-yet earned its present. Login backfills any eligible missing message and commits
-a separate issued-ID sentinel before returning it. Reading still performs the
-inventory mutation; deleting a read message leaves the sentinel intact, so
-login, retry, deletion, interruption, and restart cannot mint a second copy.
-The quantities are documented retail behavior; Item IDs and inventory limits
-are corroborated by the final client.
+The guided core-story path settles the retail first-clear ticket rewards
+directly: Metal Ticket (Item 50) x2 after Chapters 5 and 7, and Companion Ticket
+(Item 112) x3/x3/x4 after Chapters 6, 8, and 10. Eligibility requires the next
+chapter to be unlocked, so a player within Chapter 8 has not yet earned its
+reward. Login commits inventory and the issued-ID/read ledger before returning.
+Issue 33 showed that the final client could display the previous milestone mail
+without rendering or clearing its reward, so direct settlement is explicit
+compatibility policy, not a recovered service transport claim. An unread legacy
+milestone is granted once and marked read; a read or deleted milestone is never
+granted again across retry or restart. The quantities are documented retail
+behavior; Item IDs and inventory limits are corroborated by the final client.
 
 Combined Companion equip writes use the exact ordered
 `chrdata`, `buddyInfo`, `lastUpdate` form. Both values are dirty-record arrays,

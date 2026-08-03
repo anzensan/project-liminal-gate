@@ -43,10 +43,12 @@ class MessageCatalog:
     max_owned: int = 1000
 
 
-# Retail first-clear chapter presents. These are progress-gated inbox messages,
-# not unconditional startup gifts: the next unlocked chapter must be strictly
-# greater than the completed chapter. Item IDs are decoded by the final client
-# as Metal Ticket (50) and Companion Ticket (112).
+# Retail first-clear chapter rewards. They retain LocalMessage records as the
+# durable migration ledger for saves created before Issue 33, but guided core
+# story settles their items directly: the final client rendered the mail without
+# a usable reward. The next unlocked chapter must be strictly greater than the
+# completed chapter. Item IDs are decoded by the final client as Metal Ticket
+# (50) and Companion Ticket (112).
 CHAPTER_MILESTONES: tuple[tuple[int, int, int, str], ...] = (
     (5, 50, 2, "Metal Ticket"),
     (6, 112, 3, "Companion Ticket"),
@@ -167,12 +169,12 @@ def _message(value: object, item_slots: int) -> LocalMessage:
 
 
 def build_bundled_chapter_message_policy() -> MessageCatalog:
-    """Return reward limits for the progress-gated retail chapter presents.
+    """Return reward limits for the progress-gated retail chapter rewards.
 
-    The messages themselves are created only when an account has completed the
+    Internal read records are created only when an account has completed the
     relevant chapter. Keeping this catalog empty prevents a new Chapter 1
-    account from seeing later presents while still giving the existing inbox
-    settlement path its recovered client limits.
+    account from receiving later rewards while still giving direct settlement
+    and legacy-mail migration the same bounded inventory policy.
     """
     return MessageCatalog(
         BUNDLED_ITEM_SLOTS,
@@ -184,7 +186,7 @@ def build_bundled_chapter_message_policy() -> MessageCatalog:
 
 
 def eligible_chapter_messages(progress_code: int, issued_at: float) -> tuple[LocalMessage, ...]:
-    """Build every retail chapter present earned by ``progress_code``."""
+    """Build every durable chapter-reward record earned by ``progress_code``."""
     if type(progress_code) is not int or progress_code < 0:
         return ()
     unlocked_chapter = (progress_code & 0xFFFF) >> 6

@@ -16,6 +16,14 @@ service computed each and the client only rendered it.
 Next phase: extending original-client verification beyond Chapter 9, and
 backing more of it with preserved traces rather than playthrough alone.
 
+Issue 33 corrected the chapter-ticket boundary. A Pixel 7 Pro rendered the
+Chapter 7 milestone row with an empty reward area and retained its unread badge,
+disproving the prior server-only inbox acceptance. Guided core story now grants
+eligible chapter tickets directly and atomically before login. Existing unread
+milestone records migrate to one grant and read state; existing read/deleted
+records do not grant again. Physical confirmation of Item 50 x2 and removal of
+the stuck row remains pending.
+
 ## Verified boundary
 
 - The original Android client path is verified through **Chapter 9**, played

@@ -44,8 +44,9 @@ Three categories are used below and they are not interchangeable:
 - Trading Post **weekly rotation**: eight weeks, 126 offers, item and Companion
   targets, turning over every Friday at 00:00 UTC.
 - Inbox lifecycle with coin, Energy, item, **character, and Companion** rewards,
-  the progress-gated retail chapter-ticket presents, and the standard daily
-  login schedule: eight-day consecutive rewards plus cumulative milestones.
+  plus the standard daily login schedule. Progress-gated retail chapter tickets
+  settle directly as compatibility policy after Issue 33 disproved milestone
+  mail acceptance in the final client.
 - Hash-validated serving of a user-owned mirrored resource tree.
 
 ## Unrecoverable

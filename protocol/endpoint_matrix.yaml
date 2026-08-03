@@ -50,7 +50,7 @@ capabilities:
   - family: messages_achievements_trading
     routes: [achived, read_messages, delete_messages, get_current_exchange, exchange]
     status: local_policy
-    note: "guided core story issues the community-recorded standard login schedule at UTC day boundaries through messageList; counters and presents commit atomically before exposure, and claimed messages are omitted from later login projections while retained for replay/delete; original-client daily-present rendering remains pending and the separate newcomer campaign remains unaudited"
+    note: "Issue 33 disproved final-client acceptance of chapter milestone mail, so guided core story directly settles those tickets once with legacy-unread migration and retry/restart coverage; the community-recorded standard login schedule still uses messageList at UTC day boundaries, with original-client daily-present rendering pending and the separate newcomer campaign unaudited"
     transport_tests: true
     restart_tests: true
   - family: local_events

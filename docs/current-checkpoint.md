@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-08-02
+Date: 2026-08-03
 
 Mode: public-release implementation hardening and private on-device packaging.
 
@@ -80,7 +80,22 @@ link denial, interruption before commit followed by retry, existing-save
 preservation, and matching `/healthz`. Physical-device seeded startup and
 force-stop/relaunch remain pending.
 
-Latest chapter-ticket validation: the live Chapter 8-9 account retained read
+Latest chapter-ticket compatibility correction: Issue 33 supplied the first
+physical-client presentation result for the guided milestone inbox. The final
+client displayed the Chapter 7 row and its text, but an empty reward area and
+an unread badge survived opening it. The prior real-HTTP proof therefore did
+not establish client acceptance. Guided core story now settles each eligible
+Chapter 5/7 Metal Ticket and Chapter 6/8/10 Companion Ticket directly into the
+durable item inventory before login responds and omits its internal read record
+from `messageList`. Existing unread milestone mail is granted once and marked
+read; existing read or deleted milestones are adopted without another grant.
+Focused real-HTTP tests cover first settlement, same-process retry, migration
+of Issue-33-style unread state, later threshold crossing, and restart. Physical
+client confirmation that the stuck row disappears and Item 50 increases by two
+remains pending. User-authored and daily-login messages still use the separate
+inbox transport and retain their own original-client acceptance boundary.
+
+Earlier chapter-ticket validation: the live Chapter 8-9 account retained read
 Chapter 5 Metal Ticket x2 and Chapter 6 Companion Ticket x3 messages but lacked
 the already-earned Chapter 7 Metal Ticket x2 present. Guided core story now
 issues the retail Chapter 5/7 Metal and Chapter 6/8/10 Companion Ticket presents
@@ -97,7 +112,8 @@ test checkpoint. Commit `d976bd5` is now pushed and deployed on the Beelink
 under systemd PID 264479. A live login at progress 8-10 returned the existing
 read Chapter 5/6 messages plus exactly one unread Chapter 7 Item 50 x2 message;
 durable Item 50 and Item 112 balances remained zero until read. Original-client
-inbox/read acceptance remains pending.
+inbox/read acceptance remained pending and is now superseded by the Issue 33
+compatibility correction above.
 
 Latest curated Archive validation: dual-ABI `UISpecialSelect.SetMode(0)`
 analysis confirms that a nonempty server `specialQuestList` overrides the

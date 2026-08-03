@@ -16,6 +16,14 @@ Private inputs, captures, account state, and original assets remain excluded.
   community-documented historical behavior. Sources checked 2026-07-31:
   [Metal Ticket](https://terrabattle.fandom.com/wiki/Metal_Ticket) and
   [Companion Ticket](https://terrabattle.fandom.com/wiki/Companion_Ticket).
+- **Physical-client correction from Issue 33:** the final client rendered the
+  Chapter 7 milestone row and localized text, but its reward area was empty and
+  opening it did not clear the unread badge. The earlier HTTP-only read proof
+  was therefore insufficient. Guided core story now treats direct, exactly-once
+  inventory settlement as explicit compatibility policy. An existing unread
+  milestone record is settled and marked read; an already-read or deleted
+  record is never granted again. The generic local inbox remains available for
+  operator messages and login rewards, whose client acceptance is separate.
 
 ## First tutorial Pact outcome
 
