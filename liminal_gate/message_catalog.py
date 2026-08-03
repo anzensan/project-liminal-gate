@@ -54,6 +54,38 @@ CHAPTER_MILESTONES: tuple[tuple[int, int, int, str], ...] = (
     (8, 112, 3, "Companion Ticket"),
     (10, 112, 4, "Companion Ticket"),
 )
+# Community-recorded retail login rewards:
+# https://terrabattle.fandom.com/wiki/Login_Bonus (reviewed 2026-08-03).
+# The client only receives these as
+# ordinary inbox rewards; eligibility and the two counters belonged to the
+# retired service. The project treats the published schedule as settled local
+# preservation policy, while the existing message transport remains the
+# recovered client contract.
+CONSECUTIVE_LOGIN_REWARDS: tuple[tuple[int, int], ...] = (
+    (500, 0),
+    (800, 0),
+    (1_000, 0),
+    (1_500, 0),
+    (0, 2),
+    (2_000, 0),
+    (3_000, 0),
+    (0, 3),
+)
+OVERALL_LOGIN_REWARDS: dict[int, tuple[int, int]] = {
+    1: (3_000, 5),
+    2: (0, 3),
+    3: (0, 2),
+    4: (0, 3),
+    5: (0, 2),
+    6: (0, 2),
+    7: (0, 2),
+    8: (0, 2),
+    9: (0, 2),
+    10: (0, 3),
+    30: (0, 3),
+    60: (0, 3),
+    100: (0, 5),
+}
 BUNDLED_ITEM_SLOTS = 181
 BUNDLED_MAX_FREE_ENERGY = 9_999
 BUNDLED_MAX_COINS = 99_999_999
@@ -173,5 +205,56 @@ def eligible_chapter_messages(progress_code: int, issued_at: float) -> tuple[Loc
             coins=0,
             free_energy=0,
             items={item_id: count},
+        ))
+    return tuple(messages)
+
+
+def login_bonus_messages(
+    consecutive_days: int, total_days: int, issued_at: float,
+) -> tuple[LocalMessage, ...]:
+    """Build the login presents earned by one newly eligible UTC day."""
+    if (
+        type(consecutive_days) is not int or consecutive_days < 1
+        or type(total_days) is not int or total_days < 1
+        or consecutive_days > total_days
+        or type(issued_at) not in {int, float} or not math.isfinite(issued_at)
+        or issued_at < 0
+    ):
+        return ()
+
+    cycle_day = (consecutive_days - 1) % len(CONSECUTIVE_LOGIN_REWARDS)
+    consecutive_coins, consecutive_energy = CONSECUTIVE_LOGIN_REWARDS[cycle_day]
+    messages = [LocalMessage(
+        message_id=f"login:consecutive:{total_days}",
+        date=float(issued_at),
+        # No expiry interval survives in the published schedule. Keep the
+        # existing preservation inbox policy instead of making a daily reward
+        # disappear before an offline player can claim it.
+        days_last=36_500,
+        texts={
+            language: f"Consecutive login bonus day {consecutive_days}"
+            for language in ("default", "ja", "en")
+        },
+        coins=consecutive_coins,
+        free_energy=consecutive_energy,
+        items={},
+    )]
+
+    overall = OVERALL_LOGIN_REWARDS.get(total_days)
+    if overall is None and total_days > 100 and total_days % 50 == 0:
+        overall = (0, 5)
+    if overall is not None:
+        overall_coins, overall_energy = overall
+        messages.append(LocalMessage(
+            message_id=f"login:overall:{total_days}",
+            date=float(issued_at),
+            days_last=36_500,
+            texts={
+                language: f"Login bonus day {total_days}"
+                for language in ("default", "ja", "en")
+            },
+            coins=overall_coins,
+            free_energy=overall_energy,
+            items={},
         ))
     return tuple(messages)

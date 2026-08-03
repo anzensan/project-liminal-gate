@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-02"
+updated: "2026-08-03"
 canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -50,6 +50,7 @@ capabilities:
   - family: messages_achievements_trading
     routes: [achived, read_messages, delete_messages, get_current_exchange, exchange]
     status: local_policy
+    note: "guided core story issues the community-recorded standard login schedule at UTC day boundaries through messageList; counters and presents commit atomically before exposure, and claimed messages are omitted from later login projections while retained for replay/delete; original-client daily-present rendering remains pending and the separate newcomer campaign remains unaudited"
     transport_tests: true
     restart_tests: true
   - family: local_events

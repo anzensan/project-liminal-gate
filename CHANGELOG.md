@@ -4,6 +4,21 @@
 
 ### Added
 
+- **Daily login rewards now arrive through the original inbox** (issue 34).
+  Guided core-story servers issue the published eight-day consecutive cycle
+  and cumulative rewards for days 1--10, 30, 60, 100, and every 50th day
+  thereafter. Eligibility turns over at 00:00 UTC. Same-day relogins do not
+  duplicate a present, a missed UTC day resets only the consecutive count, and
+  the cumulative count survives. Issuance commits with the account before the
+  login response exposes either present; the existing inbox read/delete
+  transaction then grants Coins and Energy once across retries and restarts.
+  Login now projects only unread presents, so a claimed message cannot be
+  reconstructed as a fresh menu badge; its durable record remains available
+  for exact read replay and explicit deletion.
+  The separately branded seven-day newcomer campaign is not folded into these
+  standard rewards: its item and Companion identities remain a distinct event
+  policy to audit.
+
 - **A toolchain doctor removes the `PATH` and `JAVA_HOME` step.**
   `python3 -m liminal_gate.doctor` reports which build tools this machine has;
   `--install-missing` fetches a Temurin JDK, the Android SDK packages through

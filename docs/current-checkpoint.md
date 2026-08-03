@@ -18,6 +18,18 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Latest login-reward validation: guided core story issues the published
+standard consecutive and cumulative login presents through `messageList`.
+Eligibility is account-local and turns at 00:00 UTC; the message and updated
+last-day/consecutive/total counters commit before login exposes it. Focused
+real-HTTP tests cover day-1 dual issuance, read/delete, same-day relogin,
+restart, next-day continuation, missed-day reset, and omission of claimed
+messages from the next login projection so the new badge cannot recur. Reward
+values and timing are settled community-recorded local policy; inbox transport
+and settlement reuse the existing replay-safe client path. Original-client
+rendering and claim acceptance remain pending. The separately branded
+seven-day newcomer event remains a distinct unaudited policy.
+
 Latest settlement-policy correction: Hunting, Metal, default Special, and
 Daily Quest clears now trust the surviving client's structurally valid result
 for its exact active battle. The server still enforces identity, wallet

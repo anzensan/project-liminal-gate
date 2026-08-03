@@ -44,7 +44,8 @@ Three categories are used below and they are not interchangeable:
 - Trading Post **weekly rotation**: eight weeks, 126 offers, item and Companion
   targets, turning over every Friday at 00:00 UTC.
 - Inbox lifecycle with coin, Energy, item, **character, and Companion** rewards,
-  plus the progress-gated retail chapter-ticket presents.
+  the progress-gated retail chapter-ticket presents, and the standard daily
+  login schedule: eight-day consecutive rewards plus cumulative milestones.
 - Hash-validated serving of a user-owned mirrored resource tree.
 
 ## Unrecoverable
@@ -66,6 +67,9 @@ not exist anywhere in the APK, the resources, or any surviving capture.
 
 ## Open
 
+- The separately branded seven-day newcomer login event needs an item and
+  Companion identity audit before it can be added beside the standard login
+  schedule. It is not silently approximated from reward names.
 - **Original-client verification beyond Chapter 9.** The client is played
   through Chapter 9 on physical hardware; Chapter 2-1 is the deepest point
   backed by preserved request traces. Extending both is open work.
