@@ -5756,9 +5756,10 @@ def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[
 
     Preserving a whole character is not enough on its own: a client that is
     stale about a character it *does* know still reports that character's older
-    level and skill boost, and taking its row wholesale undoes the Pact
-    duplicate or event gain the server had already committed.  Job experience
-    and skill boost only ever accumulate — every spend has its own route — so
+    level, skill boost, and Luck, and taking its row wholesale undoes a gain the
+    server had already committed.  The final client is also confirmed to omit
+    the optional ``luck`` member from a valid clear.  Job experience, skill
+    boost, and Luck only ever accumulate — every spend has its own route — so
     the larger of the two values is the true one.  Everything else (active job,
     equipped slots, flags) is a player choice that legitimately moves in either
     direction, and stays client-authoritative.
@@ -5772,6 +5773,12 @@ def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[
         ]
     if type(held.get("skillBoost")) is int and type(merged.get("skillBoost")) is int:
         merged["skillBoost"] = max(held["skillBoost"], merged["skillBoost"])
+    if type(held.get("luck")) is int:
+        reported_luck = merged.get("luck")
+        merged["luck"] = (
+            max(held["luck"], reported_luck)
+            if type(reported_luck) is int else held["luck"]
+        )
     return merged
 
 

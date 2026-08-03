@@ -34,6 +34,16 @@ gate continuously enabled is explicit preservation policy because the retired
 service event window was not captured. Physical badge and drop confirmation
 remain pending.
 
+The reported post-battle Luck reset exposed a regression in the shared roster
+merge. A confirmed final-client clear legitimately omits the optional `luck`
+member, but the merge protected only monotonic levels and Skill Boost, so it
+discarded the durable field before returning the roster. Battle clears now
+preserve the greater durable/reported Luck and then apply the cached
+`luckUpTable` gain once inside the existing atomic clear transaction. Focused
+real-HTTP coverage proves omission, explicit stale zero, exact replay, and
+restart behavior. Already-reset values remain unrecoverable without a backup;
+physical-client confirmation remains pending.
+
 ## Verified boundary
 
 - The original Android client path is verified through **Chapter 9**, played
@@ -53,6 +63,16 @@ See `docs/current-checkpoint.md` and `protocol/endpoint_matrix.yaml` for the
 machine-readable/current capability boundary.
 
 ## Completed hardening
+
+- 2026-08-03 battle-clear Luck preservation: the shared roster merge now keeps
+  monotonic Luck alongside job progression and Skill Boost. A real-HTTP story
+  clear reproduces the final client's omitted field, keeps durable Luck 5.0,
+  applies one authored 0.2 gain, returns 5.2, replays without another gain, and
+  persists 5.2 across restart. An explicit stale zero is also unable to lower
+  the save. The focused story/Luck lane passes 23 tests and all 957
+  warning-strict repository tests pass with five expected skips. The correction
+  reaches every clear family using the shared merge; physical-client
+  confirmation remains pending.
 
 - 2026-08-03 Issue 35 daily drop rotation: guided core story supplies the exact
   boolean `enableDailyBonus` login event flag. The final client computes the

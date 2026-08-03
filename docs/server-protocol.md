@@ -61,6 +61,16 @@ as a same-phase no-op: client roster arrays are not applied, and only the
 following `kind=12` Pact advances to `knight_granted`. The acknowledgment and
 its body-scoped replay survive restart.
 
+Battle-clear character rows treat job experience, Skill Boost, and Luck as
+monotonic state. The final client is confirmed to omit the optional `luck`
+member from a valid clear even after receiving a nonzero `luckUpTable`, so an
+omission or lower stale value cannot erase the durable field. The server merges
+the greater durable/reported value first, applies its cached battle-start Luck
+gain afterward, and commits the roster plus replay response in the existing
+atomic clear transaction. Exact retry and restart therefore cannot apply the
+gain twice. Other row fields remain client-authoritative where their dedicated
+mutations permit movement in either direction.
+
 The equal Bahl/Grace retail rule is maintainer-supplied historical evidence.
 The `kind=10` wire form and Grace response shape are client-confirmed; Bahl's
 character identity is corroborated by the operator's derived character names.

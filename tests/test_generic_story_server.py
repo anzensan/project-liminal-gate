@@ -8,7 +8,7 @@ import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, _parse_generic_story_clear, load_profile
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, _parse_generic_story_clear, _preserved_progress, load_profile
 from liminal_gate.story_catalog import load_story_catalog
 
 
@@ -202,6 +202,51 @@ class GenericStoryServerTest(unittest.TestCase):
         self.assertEqual(3, row["skillBoost"])
         # A player choice still moves in whichever direction the client reports.
         self.assertEqual(self.character["jobID"], row["jobID"])
+
+    def test_clear_preserves_omitted_luck_then_commits_one_authored_gain(self) -> None:
+        """The final client omits optional Luck from a valid clear roster.
+
+        Preserve the durable value before applying the start response's
+        server-authored gain. Replay and restart must not apply that gain twice.
+        """
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["userdata"]["chrdata"] = [dict(self.character, luck=50)]
+            account["userdata"]["teamMembers"] = [9001, 0, 0, 0, 0, 0]
+            self.server.state._persist_locked()
+
+        start = [("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "2"), ("lastUpdate", "1")]
+        self.assertEqual(200, self.post(f"/gd/start_quest?otk={self.token}&requestID=start-luck", start)[0])
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["active_luck_up"] = [2, 0, 0, 0, 0, 0]
+            self.server.state._persist_locked()
+
+        clear = [
+            ("progressCode", "16777347"), ("worldMapNo", "0"),
+            ("valuables", json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 240})),
+            # Exact final-client behavior: the optional Luck member is absent.
+            ("chrdata", json.dumps([self.character])),
+            ("itemList", "[]"), ("summonList", "[]"),
+            ("battle_result", json.dumps({"chapter": 2, "section": 2, "coins": 30, "exp": 0, "items": {}, "buddies": [], "monsters": [], "summons": [], "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0]})),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ]
+        path = f"/gd/clear_quest?otk={self.token}&requestID=clear-luck"
+        status, cleared = self.post(path, clear)
+        self.assertEqual((200, 52), (status, cleared["chrdata"][0]["luck"]))
+        self.assertEqual((status, cleared), self.post(path, clear))
+
+        self.stop_server()
+        self.start_server()
+        row = json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]["userdata"]["chrdata"][0]
+        self.assertEqual(52, row["luck"])
+
+    def test_clear_cannot_replace_durable_luck_with_explicit_zero(self) -> None:
+        self.assertEqual(
+            50,
+            _preserved_progress(
+                dict(self.character, luck=50), dict(self.character, luck=0),
+            )["luck"],
+        )
 
     def test_rejects_incomplete_or_malformed_client_clear_result(self) -> None:
         fields = [
