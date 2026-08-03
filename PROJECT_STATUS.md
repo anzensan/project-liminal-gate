@@ -840,6 +840,23 @@ machine-readable/current capability boundary.
   story-outcome and Companion-equipment catalogs, preserves the exact
   pre-deploy state hash, and passes loopback and LAN HTTP checks.
 
+- 2026-08-02 Daily Quest settlement correction (issue 29): a Yamamoto Puzzle
+  Quest clear reporting the Companion the client's own `dropBuddies` manifest
+  allows was refused, and a refused settlement never releases the active
+  battle — so the account stayed `hunting_active` across a force-close and
+  every unrelated stage was refused afterwards, which is what the tester
+  reported as a corrupted installation. 6011-1 and 6011-2 are the only two of
+  the fourteen with a manifest; their codes decode to Companions 267 and 140,
+  one copy each, now settled at level 1. The same review found three more
+  bounds in the family that would each have wedged an account the same way:
+  a zero EXP ceiling on all fourteen, both Puzzle Quests bounding only their
+  first reward tier and a third of their item capacity, and Rarity Rumble's
+  Ores and Tearjerker Time's Tears and rings left undeclared. The refusal
+  diagnostic now names the channel by count, which it could not before. All 889
+  warning-strict tests passed in 143.977 seconds, including a real-HTTP
+  regression that starts 6011-1, settles the reported Companion, and proves the
+  account returns to `free_roam`.
+
 ## Blockers and unresolved fidelity
 
 - Full-resource combined-APK acceptance on physical ARM64 hardware and an

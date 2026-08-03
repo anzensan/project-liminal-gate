@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Fixed
+
+- **A Yamamoto Puzzle Quest clear no longer wedges the account** (issue 29).
+  6011-1 and 6011-2 are the only two Daily Quests whose own `BattleData` section
+  declares a `dropBuddies` manifest, and their two packed codes decode to
+  Companion 267 and Companion 140 at one copy each. The bundled policy declared
+  no Companion for any Daily Quest, so the client rolled the drop its own data
+  allows, reported it, and had the whole clear refused with `409
+  invalid_local_hunting_result` — which never releases the active battle, so
+  every unrelated stage was refused afterwards too, across restarts. Both
+  Companions now settle, at level 1 and at most one per clear; the other twelve
+  quests still refuse a reported Companion outright. To recover an already
+  wedged save, replay the same Puzzle Quest and finish it: re-entering a stage
+  that is already active does not charge or consume the day again.
+
+- **Three more Daily Quest ceilings that could refuse an honest clear.** All
+  fourteen stages carried a zero EXP ceiling, which refuses the ordinary battle
+  EXP a Daily Quest pays and which Metal Runner Rampage pays *only*; both Puzzle
+  Quests bounded just their first reward tier, not the Tears, Particles and Ores
+  the later tiers pay, and allowed roughly a third of the item total their waves
+  can hold; and Rarity Rumble's Ores and Tearjerker Time's Tears and attribute
+  rings were not declared at all. Each would have produced the same wedge on the
+  stage that hit it. A bound in a client-settled family is only ever safely too
+  generous, never too tight, and this family's bounds now say so.
+
+- **A refused settlement now records which channel it refused.** The diagnostic
+  logged chapter, section, coins and EXP, so eleven logged refusals of the same
+  clear could not say whether an item, a Companion, a recruit or a Summon was at
+  fault. It now also records how many of each a result claimed — counts only,
+  never an identity or a string from the body.
+
 ### Added
 
 - **A toolchain doctor removes the `PATH` and `JAVA_HOME` step.**

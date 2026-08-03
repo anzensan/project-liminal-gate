@@ -49,6 +49,20 @@ def safe_form_diagnostics(body: bytes) -> dict[str, Any]:
             for name in ("chapter", "section", "coins", "exp")
             if type(battle.get(name)) is int
         }
+        # Coins and EXP alone cannot say why a bounded settlement was refused.
+        # A Puzzle Quest clear reporting a Companion was refused eleven times
+        # over with `coins: 0, exp: 0` in the log, and nothing in it named the
+        # channel at fault -- see `docs/findings.md`. These are counts, not
+        # contents: how many Companions, recruits, Summons, and item stacks a
+        # result claimed, which is enough to point at the channel without
+        # putting a single identity or body string in the log.
+        for name in ("buddies", "monsters", "summons"):
+            if isinstance(battle.get(name), list):
+                settlement[f"reported_{name}"] = len(battle[name])
+        if isinstance(battle.get("items"), dict):
+            counts = [count for count in battle["items"].values() if type(count) is int]
+            settlement["reported_item_stacks"] = len(battle["items"])
+            settlement["reported_items_total"] = sum(counts)
         if settlement:
             details["reported_battle_result"] = settlement
     return details
