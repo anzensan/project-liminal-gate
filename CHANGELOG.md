@@ -19,6 +19,25 @@
   standard rewards: its item and Companion identities remain a distinct event
   policy to audit.
 
+- **The on-device save can be moved off the device.**
+  `python3 -m liminal_gate.on_device_state export|import|update --device SERIAL`
+  reaches the packaged Android build's save through the embedded server's new
+  loopback `/local/state` route over `adb forward`. Until now that save had no
+  route out at all: the app is not debuggable, so `run-as` is unavailable, and
+  `adb backup` stopped carrying app data for release packages after Android 11.
+  `export` changes nothing on the device and writes a full copy under
+  `user-data/on-device-state/`. `import` refuses a file that breaks the client's
+  invariants or that has lost an account the device holds, replaces the
+  in-memory state and the file together so a running server cannot undo it,
+  rotates the replaced save into `state.json.bak.1`, and restarts the app to
+  confirm the result. `update` exports before it builds and never uninstalls —
+  on a signing-key mismatch it stops and prints the recovery steps. Every
+  workstation command in `liminal_gate.account_state`, including `adopt` for a
+  reinstalled client's new UUID, now applies to an on-device save through the
+  exported copy. The route is served only by a loopback-bound listener, so a
+  LAN-bound server does not publish a downloadable, replaceable save to the
+  network; on the device itself, any app can reach it while the game runs.
+
 - **A toolchain doctor removes the `PATH` and `JAVA_HOME` step.**
   `python3 -m liminal_gate.doctor` reports which build tools this machine has;
   `--install-missing` fetches a Temurin JDK, the Android SDK packages through

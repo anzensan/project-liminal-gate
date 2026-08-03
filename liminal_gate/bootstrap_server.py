@@ -119,6 +119,12 @@ RETAINED_TOKENS_PER_ACCOUNT = 512
 # generous headroom for a full roster while refusing an unbounded read from a
 # LAN peer: the guided server must listen beyond loopback for a physical device.
 MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024
+# Operator save transfer, served only by a loopback-bound server. The packaged
+# Android build keeps its save where no workstation command can reach it, so
+# this route is the export/import path `liminal_gate.on_device_state` drives.
+# It is deliberately outside the profile's route table: the client never calls
+# it, and it must not be reachable through the mutation transport.
+LOCAL_STATE_ROUTE = "/local/state"
 # Committed states kept beside the save, newest first, so a bad write, a manual
 # edit, or a damaged file is recoverable instead of terminal.
 ACCOUNT_STATE_BACKUP_COUNT = 5
@@ -674,6 +680,106 @@ def _fsync_directory(directory: Path) -> None:
         pass
     finally:
         os.close(handle)
+
+
+def _parse_state_document(document: object) -> tuple[
+    dict[str, dict[str, Any]], dict[str, str], str | None, dict[str, str], dict[str, str],
+]:
+    """Validate and normalize one state document without binding it to a server.
+
+    Loading the save and accepting an imported one must agree exactly about what
+    a valid document is: an import that skipped a check here would write a file
+    the next start refuses, stranding the save inside app-private storage where
+    the retained backups cannot be reached.  Both paths therefore share this one
+    function rather than restating the rules.  The account dictionaries are
+    normalized in place, so callers pass a document they own.
+    """
+    if not isinstance(document, dict) or not isinstance(document.get("accounts"), dict) or not isinstance(document.get("tokens"), dict):
+        raise ProfileError("local bootstrap state is invalid")
+    accounts = document["accounts"]
+    tokens = document["tokens"]
+    active_account_id = document.get("active_account_id")
+    if not all(isinstance(token, str) and isinstance(value, dict) and isinstance(value.get("userdata"), dict) for token, value in accounts.items()):
+        raise ProfileError("local bootstrap state contains invalid account data")
+    if not all(isinstance(token, str) and isinstance(account_id, str) and account_id in accounts for token, account_id in tokens.items()):
+        raise ProfileError("local bootstrap state contains invalid token bindings")
+    if active_account_id is not None and (not isinstance(active_account_id, str) or active_account_id not in accounts):
+        raise ProfileError("local bootstrap state contains an invalid active account")
+    for account in accounts.values():
+        _migrate_replay_keys(account)
+    # Absent in saves written before per-client routing; an empty map simply
+    # falls back to the active account, which is the earlier behaviour.
+    client_hosts = document.get("client_hosts", {})
+    if not isinstance(client_hosts, dict) or not all(
+        isinstance(host, str) and isinstance(account_id, str) and account_id in accounts
+        for host, account_id in client_hosts.items()
+    ):
+        raise ProfileError("local bootstrap state contains invalid client host bindings")
+    # Absent in saves written before device linking; an empty map means no
+    # UUID resolves to anything but itself, which is the earlier behaviour.
+    # A device UUID may name an account or an alias, never both, or signup
+    # and login would disagree about which save the device plays.
+    account_aliases = document.get("account_aliases", {})
+    if not isinstance(account_aliases, dict) or not all(
+        isinstance(device, str) and device and device not in accounts
+        and isinstance(account_id, str) and account_id in accounts
+        for device, account_id in account_aliases.items()
+    ):
+        raise ProfileError("local bootstrap state contains invalid linked-device aliases")
+    for account in accounts.values():
+        account.setdefault("tutorial_phase", "initial")
+        account.setdefault("tutorial_requests", {})
+        account.setdefault("initial_userdata_served", False)
+        account.setdefault("active_generic_story", None)
+        account.setdefault("active_hunt", None)
+        account.setdefault("active_hunt_ticket_spent", None)
+        account.setdefault("active_world_map_special", None)
+        account.setdefault("claimed_achievements", [])
+        account.setdefault("achievement_requests", {})
+        account.setdefault("messages", {})
+        account.setdefault("chapter_milestones_issued", [])
+        account.setdefault("login_bonus_last_utc_day", None)
+        account.setdefault("login_bonus_consecutive_days", 0)
+        account.setdefault("login_bonus_total_days", 0)
+        account.setdefault("message_requests", {})
+        if (
+            not isinstance(account["tutorial_phase"], str)
+            or not isinstance(account["tutorial_requests"], dict)
+            or type(account["initial_userdata_served"]) is not bool
+            or (
+                "tutorial_starter_character_id" in account
+                and (
+                    type(account["tutorial_starter_character_id"]) is not int
+                    or account["tutorial_starter_character_id"] <= 0
+                )
+            )
+            or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
+            or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
+            or account["active_hunt_ticket_spent"] is not None and type(account["active_hunt_ticket_spent"]) is not bool
+            or account["active_world_map_special"] is not None and not isinstance(account["active_world_map_special"], dict)
+            or not isinstance(account["claimed_achievements"], list)
+            or any(type(value) is not int or value < 1 for value in account["claimed_achievements"])
+            or account["claimed_achievements"] != sorted(set(account["claimed_achievements"]))
+            or not isinstance(account["achievement_requests"], dict)
+            or not isinstance(account["messages"], dict)
+            or not isinstance(account["chapter_milestones_issued"], list)
+            or any(not isinstance(value, str) or not value for value in account["chapter_milestones_issued"])
+            or account["chapter_milestones_issued"] != sorted(set(account["chapter_milestones_issued"]))
+            or account["login_bonus_last_utc_day"] is not None
+            and (type(account["login_bonus_last_utc_day"]) is not int or account["login_bonus_last_utc_day"] < 0)
+            or type(account["login_bonus_consecutive_days"]) is not int
+            or account["login_bonus_consecutive_days"] < 0
+            or type(account["login_bonus_total_days"]) is not int
+            or account["login_bonus_total_days"] < 0
+            or account["login_bonus_consecutive_days"] > account["login_bonus_total_days"]
+            or account["login_bonus_last_utc_day"] is None
+            and (account["login_bonus_consecutive_days"] != 0 or account["login_bonus_total_days"] != 0)
+            or account["login_bonus_last_utc_day"] is not None
+            and (account["login_bonus_consecutive_days"] < 1 or account["login_bonus_total_days"] < 1)
+            or not isinstance(account["message_requests"], dict)
+        ):
+            raise ProfileError("local bootstrap state contains invalid tutorial state")
+    return accounts, tokens, active_account_id, client_hosts, account_aliases
 
 
 class BootstrapState:
@@ -2953,95 +3059,47 @@ class BootstrapState:
             document = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise ProfileError("could not read local bootstrap state") from error
-        if not isinstance(document, dict) or not isinstance(document.get("accounts"), dict) or not isinstance(document.get("tokens"), dict):
-            raise ProfileError("local bootstrap state is invalid")
-        accounts = document["accounts"]
-        self.tokens = document["tokens"]
-        active_account_id = document.get("active_account_id")
-        if not all(isinstance(token, str) and isinstance(value, dict) and isinstance(value.get("userdata"), dict) for token, value in accounts.items()):
-            raise ProfileError("local bootstrap state contains invalid account data")
-        if not all(isinstance(token, str) and isinstance(account_id, str) and account_id in accounts for token, account_id in self.tokens.items()):
-            raise ProfileError("local bootstrap state contains invalid token bindings")
-        if active_account_id is not None and (not isinstance(active_account_id, str) or active_account_id not in accounts):
-            raise ProfileError("local bootstrap state contains an invalid active account")
+        accounts, tokens, active_account_id, client_hosts, account_aliases = _parse_state_document(document)
+        self.tokens = tokens
         self.active_account_id = active_account_id
-        for account in accounts.values():
-            _migrate_replay_keys(account)
-        # Absent in saves written before per-client routing; an empty map simply
-        # falls back to the active account, which is the earlier behaviour.
-        client_hosts = document.get("client_hosts", {})
-        if not isinstance(client_hosts, dict) or not all(
-            isinstance(host, str) and isinstance(account_id, str) and account_id in accounts
-            for host, account_id in client_hosts.items()
-        ):
-            raise ProfileError("local bootstrap state contains invalid client host bindings")
         self.client_hosts = client_hosts
-        # Absent in saves written before device linking; an empty map means no
-        # UUID resolves to anything but itself, which is the earlier behaviour.
-        # A device UUID may name an account or an alias, never both, or signup
-        # and login would disagree about which save the device plays.
-        account_aliases = document.get("account_aliases", {})
-        if not isinstance(account_aliases, dict) or not all(
-            isinstance(device, str) and device and device not in accounts
-            and isinstance(account_id, str) and account_id in accounts
-            for device, account_id in account_aliases.items()
-        ):
-            raise ProfileError("local bootstrap state contains invalid linked-device aliases")
         self.account_aliases = account_aliases
-        for account in accounts.values():
-            account.setdefault("tutorial_phase", "initial")
-            account.setdefault("tutorial_requests", {})
-            account.setdefault("initial_userdata_served", False)
-            account.setdefault("active_generic_story", None)
-            account.setdefault("active_hunt", None)
-            account.setdefault("active_hunt_ticket_spent", None)
-            account.setdefault("active_world_map_special", None)
-            account.setdefault("claimed_achievements", [])
-            account.setdefault("achievement_requests", {})
-            account.setdefault("messages", {})
-            account.setdefault("chapter_milestones_issued", [])
-            account.setdefault("login_bonus_last_utc_day", None)
-            account.setdefault("login_bonus_consecutive_days", 0)
-            account.setdefault("login_bonus_total_days", 0)
-            account.setdefault("message_requests", {})
-            if (
-                not isinstance(account["tutorial_phase"], str)
-                or not isinstance(account["tutorial_requests"], dict)
-                or type(account["initial_userdata_served"]) is not bool
-                or (
-                    "tutorial_starter_character_id" in account
-                    and (
-                        type(account["tutorial_starter_character_id"]) is not int
-                        or account["tutorial_starter_character_id"] <= 0
-                    )
-                )
-                or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
-                or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
-                or account["active_hunt_ticket_spent"] is not None and type(account["active_hunt_ticket_spent"]) is not bool
-                or account["active_world_map_special"] is not None and not isinstance(account["active_world_map_special"], dict)
-                or not isinstance(account["claimed_achievements"], list)
-                or any(type(value) is not int or value < 1 for value in account["claimed_achievements"])
-                or account["claimed_achievements"] != sorted(set(account["claimed_achievements"]))
-                or not isinstance(account["achievement_requests"], dict)
-                or not isinstance(account["messages"], dict)
-                or not isinstance(account["chapter_milestones_issued"], list)
-                or any(not isinstance(value, str) or not value for value in account["chapter_milestones_issued"])
-                or account["chapter_milestones_issued"] != sorted(set(account["chapter_milestones_issued"]))
-                or account["login_bonus_last_utc_day"] is not None
-                and (type(account["login_bonus_last_utc_day"]) is not int or account["login_bonus_last_utc_day"] < 0)
-                or type(account["login_bonus_consecutive_days"]) is not int
-                or account["login_bonus_consecutive_days"] < 0
-                or type(account["login_bonus_total_days"]) is not int
-                or account["login_bonus_total_days"] < 0
-                or account["login_bonus_consecutive_days"] > account["login_bonus_total_days"]
-                or account["login_bonus_last_utc_day"] is None
-                and (account["login_bonus_consecutive_days"] != 0 or account["login_bonus_total_days"] != 0)
-                or account["login_bonus_last_utc_day"] is not None
-                and (account["login_bonus_consecutive_days"] < 1 or account["login_bonus_total_days"] < 1)
-                or not isinstance(account["message_requests"], dict)
-            ):
-                raise ProfileError("local bootstrap state contains invalid tutorial state")
         return accounts
+
+    def document(self) -> dict[str, Any]:
+        """The exact document `_persist_locked` would write for this state."""
+        with self.lock:
+            return self._document_locked()
+
+    def _document_locked(self) -> dict[str, Any]:
+        return {
+            "accounts": self.accounts,
+            "active_account_id": self.active_account_id,
+            "tokens": self.tokens,
+            "client_hosts": self.client_hosts,
+            "account_aliases": self.account_aliases,
+        }
+
+    def replace_document(self, document: object) -> str | None:
+        """Adopt an imported save, returning the account the client will play.
+
+        The in-memory copy has to move with the file.  This server holds the
+        whole state and republishes all of it on the next mutation, so writing
+        only the file would leave the import to be overwritten by whatever the
+        running process still believed.
+        """
+        accounts, tokens, active_account_id, client_hosts, account_aliases = _parse_state_document(document)
+        with self.lock:
+            self.accounts = accounts
+            self.tokens = tokens
+            self.active_account_id = active_account_id
+            self.client_hosts = client_hosts
+            self.account_aliases = account_aliases
+            # Rotation happens inside the persist, so the save this import
+            # replaced stays beside it as `.bak.1` and an unwanted import is
+            # recoverable by the same route as any other bad write.
+            self._persist_locked()
+            return self.active_account_id
 
     def _bound_locked(self) -> None:
         """Keep the durable save bounded by recent history, not session length.
@@ -3099,7 +3157,7 @@ class BootstrapState:
     def _persist_locked(self) -> None:
         self._bound_locked()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        encoded = (json.dumps({"accounts": self.accounts, "active_account_id": self.active_account_id, "tokens": self.tokens, "client_hosts": self.client_hosts, "account_aliases": self.account_aliases}, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        encoded = (json.dumps(self._document_locked(), separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
         with tempfile.NamedTemporaryFile(dir=self.path.parent, delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(encoded)
@@ -3292,6 +3350,24 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         )
         return None
 
+    def _serves_local_state(self, path: str) -> bool:
+        """Whether this server answers the operator save-transfer route here.
+
+        The packaged Android server is the reason the route exists: its save
+        lives in app-private storage no workstation command can reach, so an
+        HTTP route through the loopback listener is the only way in or out.  A
+        LAN-bound server has no such problem — its save is an ordinary file on
+        the machine running it — and publishing a downloadable, replaceable save
+        to every device on the network is not a trade the route is worth.
+
+        A profile that claimed this path for a game route would keep it: the
+        client's transport is the one that cannot be broken from here.
+        """
+        if path != LOCAL_STATE_ROUTE or path in set(self.server.profile.routes.values()):
+            return False
+        address = getattr(self.server, "server_address", None)
+        return isinstance(address, tuple) and bool(address) and address[0] in {"127.0.0.1", "::1"}
+
     def do_GET(self) -> None:
         target = urlsplit(self.path)
         if target.path == "/healthz":
@@ -3299,6 +3375,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
                 {"service": "project-liminal-gate", "status": "ok", "build_id": self.server.build_id},
             )
+            return
+        if self._serves_local_state(target.path):
+            self._json(HTTPStatus.OK, self.server.state.document())
             return
         if self._serve_local_content(target.path):
             return
@@ -3446,6 +3525,25 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             else: self._json(HTTPStatus.NOT_IMPLEMENTED if result == "unsupported_exchange" else HTTPStatus.UNAUTHORIZED, {"error": result})
             return
         self._json(HTTPStatus.NOT_IMPLEMENTED, {"error": "route_not_implemented"})
+
+    def _import_local_state(self) -> None:
+        """Adopt an operator-supplied save in place of the running one."""
+        body = self._read_mutation_body()
+        if body is None:
+            return
+        try:
+            document = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid_local_state_document"})
+            return
+        try:
+            active_account_id = self.server.state.replace_document(document)
+        except ProfileError as error:
+            # The refusal text is the one the next start would print for the
+            # same file, so an import that would strand the save says so now.
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "rejected_local_state", "detail": str(error)})
+            return
+        self._json(HTTPStatus.OK, {"status": "imported", "active_account_id": active_account_id})
 
     def _read_mutation_body(self) -> bytes | None:
         """Read one bounded request body, emitting its transport error in place."""
@@ -3828,6 +3926,11 @@ class BootstrapHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         target = urlsplit(self.path)
+        # Ahead of the mutation dispatch below, which answers every unknown
+        # path with 501 and would otherwise swallow this route.
+        if self._serves_local_state(target.path):
+            self._import_local_state()
+            return
         profile = self.server.profile
         mutation_routes = {profile.routes.get(name) for name in MUTATION_ROUTE_NAMES}
         if target.path not in mutation_routes:

@@ -6,14 +6,10 @@ save while it runs, and these commands refuse to touch a save in use.
 
 That description applies to the separate-computer server. The
 [self-hosted single-APK route](on-device-setup.md) instead stores `state.json`
-in Android app-private storage. The commands on this page cannot currently
-export, inspect, or restore that on-device copy. Updating with the same local
-signing key preserves it; uninstalling, clearing app storage, or using
-`--replace-existing` can erase it. Losing the signing key prevents later builds
-from updating that install in place. There is no supported on-device
-export/import workflow yet, so read
-[Protect the on-device save](on-device-setup.md#protect-the-on-device-save)
-before beginning a long playthrough.
+in Android app-private storage, which the commands on this page cannot open
+directly. Move it to this computer first with
+[`on_device_state`](#the-on-device-save); every command here then applies to
+the exported copy, and `import` puts it back.
 
 **Only one server may use a save at a time.** Two servers pointed at the same
 `--data-dir` do not share it: each keeps the whole save in memory and rewrites all
@@ -42,6 +38,62 @@ Restoring keeps your current save alongside as a timestamped
 `.pre-restore.*.json`, so a restore is itself undoable. If several safety copies
 are made in the same second, each receives a distinct suffix rather than
 overwriting an earlier copy.
+
+## The on-device save
+
+The self-hosted APK keeps its save inside the app, where no file on this
+computer corresponds to it. `on_device_state` moves it across, over USB, while
+the app is running — open the game and wait for it to appear first.
+
+```bash
+python3 -m liminal_gate.on_device_state export --device YOUR_ADB_SERIAL
+```
+
+That writes a full copy under `user-data/on-device-state/` and changes nothing
+on the device. **Do this before a long playthrough, and before any update you
+are unsure of.** Exports are never rotated or pruned, so old ones stay until you
+remove them.
+
+Everything else on this page works on that exported file. To put it back:
+
+```bash
+python3 -m liminal_gate.on_device_state import \
+  --device YOUR_ADB_SERIAL user-data/on-device-state/YOUR-EXPORT.json --yes
+```
+
+`import` refuses a file that breaks the invariants the client relies on, and
+refuses one missing an account the device currently holds — that is far more
+often the wrong file than an intended deletion. `--force` overrides both. The
+save being replaced is kept on the device as `state.json.bak.1`, and the app is
+restarted and re-read to confirm the import took.
+
+To rebuild and reinstall with the save backed up first:
+
+```bash
+python3 -m liminal_gate.on_device_state update --device YOUR_ADB_SERIAL
+```
+
+`update` exports before it builds, installs over the existing app, and then
+confirms the accounts survived. It never uninstalls. If Android refuses the
+install because the build is signed with a different local key, it stops and
+prints the recovery steps rather than clearing the app itself.
+
+A build installed before this route existed cannot be exported, so the first
+update onto one has no backup to take. `update` says so and stops; add
+`--allow-missing-backup` to accept that one update. An in-place update keeps the
+save on its own, and the build it installs can be exported afterwards.
+
+**Restoring onto a cleared install needs one extra step.** The client generates
+a new UUID whenever its data is cleared, so a restored save names an account
+the app no longer asks for. Let the reinstalled app reach the title screen once,
+export that fresh state to read its new account id, then re-point your real save
+at it with [`adopt`](#if-you-reinstall-the-app-and-your-progress-is-gone) before
+importing.
+
+While the app is running, its save is readable and replaceable by any other app
+on that device over loopback. That is the cost of there being any route in or
+out at all; it is worth knowing before you install this build on a phone you use
+for other things.
 
 ## Editing a save
 

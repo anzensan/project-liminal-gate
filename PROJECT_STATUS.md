@@ -78,6 +78,20 @@ machine-readable/current capability boundary.
   refusal coverage remains. Seventy-four focused tests and all 919
   warning-strict repository tests pass; compilation, structured-file, and diff
   checks pass. Physical-client retest is pending.
+
+- 2026-08-03 on-device save transfer. The app-private `state.json` now has a
+  supported route on and off the device, which supersedes the "no export/import
+  exists yet" boundary recorded below. `liminal_gate.on_device_state`
+  export/import/update drives a loopback-only `/local/state` route over
+  `adb forward`; the same document the server would persist is served, and an
+  import replaces memory and file together before rotating the displaced save
+  into `state.json.bak.1`. `BootstrapState` load and import now share one
+  parser, so an accepted import is by construction a document the next start
+  will load. The destructive paths are unchanged and still destructive:
+  `update` never uninstalls, and restoring onto a cleared install still needs
+  `adopt` for the client's regenerated UUID. This is workstation tooling and
+  establishes no new device acceptance.
+
 - 2026-08-03 setup review pass, two defects fixed and the launcher checks made
   structural. Guided setup started the server against the operator's own
   `--resource-root` while the manifest had been built against the
