@@ -531,6 +531,41 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
         self.assertEqual(projected, self.userdata()["itemList"])
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
 
+    def test_the_reported_incidental_item_settles_and_releases_the_account(self) -> None:
+        """PR 28's device clear included an item outside this quest's chest.
+
+        The normal preservation policy trusts that client-reported battle
+        outcome. Inventory reconciliation still requires the submitted slot
+        delta to say exactly the same thing as ``battle_result.items``.
+        """
+        self.assertEqual(200, self.start("incidental-start")[0])
+        projected = [0] * BUNDLED_ITEM_SLOTS
+        projected[0] = 1  # Item 1 is outside Yamamoto 6011-1's themed chest.
+
+        status, cleared = self.clear(
+            "incidental-clear", items={"1": 1}, item_list=projected,
+        )
+
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(projected, self.userdata()["itemList"])
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_an_unreported_incidental_slot_change_is_refused_without_mutation(self) -> None:
+        """Trust covers the requested reward, not unrelated inventory writes."""
+        self.assertEqual(200, self.start("unreported-start")[0])
+        before = self.userdata()
+        submitted = list(before["itemList"])
+        submitted[0] = 1
+        submitted[49] = 999
+
+        status, refused = self.clear(
+            "unreported-clear", items={"1": 1}, item_list=submitted,
+        )
+
+        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual(before, self.userdata())
+        self.assertEqual("hunting_active", self.account()["tutorial_phase"])
+
     def test_a_companion_the_manifest_does_not_name_is_still_refused(self) -> None:
         """Unknown Companion ids still cannot be authored without level data."""
         self.assertEqual(200, self.start("undeclared-start")[0])
