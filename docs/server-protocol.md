@@ -26,6 +26,16 @@ Response signing remains token-derived according to the included compatibility
 profile. Event diagnostics never record tokens, authentication digests, query
 strings, account IDs, rosters, or request bodies.
 
+Guided core-story login includes `eventFlags.enableDailyBonus` as a nested
+boolean event record. This is only the recovered server-owned gate. The final
+client derives the current ordinary-story item/monster bonus from its
+server-corrected instant, device-local calendar date, and chapter number. Its
+native 15-day rotation doubles item drops or monster recruits on the matching
+days and leaves Companion and Battle Summon drops unchanged. Keeping the gate
+continuously enabled is explicit preservation policy; no historical service
+event start/end window is claimed. The login flag is read-only and changes no
+durable account or replay state.
+
 ## Mutation contract
 
 Supported mutations validate the exact ordered form and relevant catalog

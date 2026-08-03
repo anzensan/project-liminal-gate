@@ -1426,7 +1426,7 @@ def choose_local_server_options(
         "Story, Archive Special Quests, Tower, solo Eidolon quests, Strikes Back, Hunting zones, "
         "Daily Quests, BreaSoul, the Five Emperors, Pacts, and Companions are all enabled."
     )
-    print("Custom drop-rate controls are not available yet.")
+    print("The recovered 15-day item/monster double-drop rotation is enabled; custom drop-rate controls are not available.")
     if event_catalog is not None:
         print(f"Reviewed local event catalog: {event_catalog}")
     return LocalServerOptions(event_catalog=event_catalog)

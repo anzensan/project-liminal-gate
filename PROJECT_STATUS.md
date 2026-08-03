@@ -24,6 +24,16 @@ milestone records migrate to one grant and read state; existing read/deleted
 records do not grant again. Physical confirmation of Item 50 x2 and removal of
 the stuck row remains pending.
 
+Issue 35 restored the dormant ordinary-story daily bonus mechanism. Guided
+core story now supplies the client-confirmed `enableDailyBonus` boolean during
+login. The final client—not the server—uses its server-corrected instant and
+local calendar day to select the recovered 15-day item-x2, monster-x2, or no
+bonus slot and eligible chapter group. The schedule mechanism is dual-ABI
+confirmed and independently matches the linked community calendar; keeping its
+gate continuously enabled is explicit preservation policy because the retired
+service event window was not captured. Physical badge and drop confirmation
+remain pending.
+
 ## Verified boundary
 
 - The original Android client path is verified through **Chapter 9**, played
@@ -43,6 +53,16 @@ See `docs/current-checkpoint.md` and `protocol/endpoint_matrix.yaml` for the
 machine-readable/current capability boundary.
 
 ## Completed hardening
+
+- 2026-08-03 Issue 35 daily drop rotation: guided core story supplies the exact
+  boolean `enableDailyBonus` login event flag. The final client computes the
+  15-day five-chapter-group rotation and doubles only item or monster-recruit
+  rolls; Companion and Battle Summon drops remain unchanged. Focused real-HTTP
+  coverage proves the flag is absent by default, present with the exact nested
+  shape when enabled, and enabled by `--core-story`. The focused login/setup
+  lane passes 67 tests and all 955 warning-strict repository tests pass with
+  five expected skips. This changes no durable state. Physical-client badge and
+  eligible-drop confirmation remain pending.
 
 - 2026-08-03 Issue 34 daily login rewards: guided core story now issues the
   community-recorded standard login schedule through the client's existing

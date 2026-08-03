@@ -27,6 +27,7 @@ capabilities:
   - family: ordinary_story_chapter_2_to_42
     routes: [start_quest, clear_quest, userdata]
     status: local_policy
+    note: "guided core story supplies the client-confirmed enableDailyBonus login flag; the final client owns the recovered 15-day item-x2/monster-x2/no-bonus rotation, while continuous activation is preservation policy pending physical badge/drop confirmation"
     transport_tests: true
     restart_tests: true
   - family: hunting_metal_and_default_special

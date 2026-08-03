@@ -3,6 +3,26 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Daily item and monster drop rotation
+
+- **Confirmed final-client mechanism:** `DailyQuestManager.GetDailyBonusType`
+  reads the boolean event flag `enableDailyBonus`, rejects Chapter 1 and values
+  above 99, and deterministically selects no bonus, item x2, or monster-recruit
+  x2 from the local calendar day of a server-corrected instant. Item and monster
+  rolls read that result in fresh and resumed battles. Companion and Battle
+  Summon rolls do not. The 15-day formula and write/read paths agree in both
+  final-client ABIs.
+- **Independent community corroboration:** the live
+  [Terra Battle Stats schedule source](https://tbs.desile.fr/scripts/services/daily-bonus.js)
+  anchors its displayed cycle to 2015-02-07. That date is day 37 from the
+  client's 2015-01-01 epoch and resolves to the same first item-bonus chapter
+  group, so all fifteen published slots align with the client formula.
+- **Preservation policy:** Issue 35 prompted guided core story to keep the
+  boolean gate enabled. The server does not compute or settle the bonus; it lets
+  the client select and display its recovered schedule. Continuous enablement
+  does not claim that the retired service used one unbounded event window.
+  Physical-client badge and eligible-drop confirmation remain pending.
+
 ## Chapter ticket presents
 
 - **Confirmed local gap and retail-backed correction:** the retained Chapter

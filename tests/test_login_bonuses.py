@@ -28,6 +28,7 @@ class LoginBonusTest(unittest.TestCase):
             ))
             try:
                 self.assertTrue(server.login_bonuses)
+                self.assertTrue(server.daily_drop_bonuses)
                 self.assertIsNotNone(server.message_catalog)
             finally:
                 server.server_close()

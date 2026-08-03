@@ -575,7 +575,7 @@ strong static/runtime result rather than Pixel 7 Pro acceptance. If the exact
 message still appears after rebuilding, attach a fresh log and the setup line
 that identifies the generated APK; do not attach the APK itself.
 
-### Drop rates: no campaign doubling, deliberately
+### Drop rates: recovered daily doubling
 
 The client's drop roll multiplies its recovered per-enemy percentage by a daily
 bonus when one is active: `DailyBonusType.ItemDropUp` doubles the item ratio and
@@ -584,18 +584,16 @@ drops are never doubled.
 
 Whether a bonus is active is read from `EventManager.GetBoolean("enableDailyBonus")`,
 which is false for an absent key, a wrong type, or an event outside its date
-window. **This server delivers no such event parameter, so no doubling ever
-fires and the recovered base percentages are exact.**
+window. Guided `--core-story` login now sends that exact boolean gate. The
+client—not the server—uses the recovered 15-day cycle: item x2, monster x2,
+then no bonus, rotating through five chapter groups from its 2015-01-01 epoch.
+Its instant is server-corrected and its calendar-day boundary is device-local.
 
-That is a deliberate default, not an oversight. The original schedule ran a
-bonus two days in three for one chapter in five, anchored to a server-corrected
-clock, and none of that is reproducible here. Serving a constant base rate is
-the honest choice.
-
-It is written down because it is fragile: anything that starts delivering event
-parameters under that name would silently double item and monster drop rates
-across the whole game. If you add event-parameter delivery, decide about
-`enableDailyBonus` explicitly rather than inheriting it.
+The formula is confirmed in both final-client ABIs and independently matches
+the fifteen entries published by Terra Battle Stats. Keeping the gate enabled
+continuously is explicit preservation policy: the retired service's historical
+event start/end window was not captured. A server launched without guided core
+story still omits the flag and leaves the base rates unchanged.
 
 ### Why drop eligibility is off by default
 

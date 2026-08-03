@@ -77,6 +77,7 @@ from liminal_gate.event_catalog import (
     merge_event_catalogs,
 )
 from liminal_gate.event_log import EventRecorder, refused_write_shapes, safe_form_diagnostics
+from liminal_gate.event_flag_data import daily_bonus_event_flags
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.daily_quest_data import (
     build_bundled_daily_quest_stages,
@@ -3216,6 +3217,7 @@ class BootstrapServer(ThreadingHTTPServer):
         chapter_milestones: bool = False,
         login_bonuses: bool = False,
         build_id: str = "development",
+        daily_drop_bonuses: bool = False,
     ) -> None:
         self.profile = profile
         self.state = state
@@ -3250,6 +3252,7 @@ class BootstrapServer(ThreadingHTTPServer):
         )
         self.chapter_milestones = chapter_milestones
         self.login_bonuses = login_bonuses
+        self.daily_drop_bonuses = daily_drop_bonuses
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
         self.hunting_catalog = hunting_catalog
@@ -3478,6 +3481,11 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 payload |= daily_quest_login_fields(
                     self.server.state.accounts[resolved], time.time(),
                 )
+            if self.server.daily_drop_bonuses:
+                # This is only the recovered service-owned gate. The final
+                # client computes the 15-day item/monster bonus itself from
+                # the server-corrected instant and its local calendar day.
+                event_flags |= daily_bonus_event_flags()
             if event_flags:
                 payload["eventFlags"] = event_flags
             if self.server.drop_eligibility:
@@ -6147,6 +6155,7 @@ def build_server(
             chapter_milestones=getattr(args, "core_story", False),
             login_bonuses=getattr(args, "core_story", False),
             build_id=build_id,
+            daily_drop_bonuses=getattr(args, "core_story", False),
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         if resources is not None:
