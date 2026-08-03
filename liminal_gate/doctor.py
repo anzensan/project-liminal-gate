@@ -57,11 +57,9 @@ _OBJDUMP_LOCATIONS = {
     ),
 }
 
-#: How to get a disassembler, per platform.  Printed rather than performed: an
-#: LLVM distribution is a several-hundred-megabyte download whose supported
-#: installation route is the platform's own package manager, and quietly
-#: unpacking a private copy of a compiler toolchain is a bigger liberty than
-#: this command should take with someone's machine.
+#: Manual fallback when Google's supported SDK/NDK toolchain does not cover the
+#: host.  Normal `--install-missing` uses the pinned side-by-side NDK and never
+#: invokes a system package manager.
 _DISASSEMBLER_ADVICE = {
     "mac": "install it with: xcode-select --install   (or: brew install llvm)",
     "linux": "install it with your package manager, for example: sudo apt install llvm binutils-multiarch",
@@ -145,7 +143,9 @@ def survey(host: Host) -> list[ToolStatus]:
         if found is None:
             raise tester_setup.TesterSetupError(
                 "no objdump on this machine reports AArch64 support, and the encounter map for "
-                f"chapters 8-42 only exists as compiled code inside your APK. On {host.system}, "
+                "chapters 8-42 only exists as compiled code inside your APK. "
+                f"--install-missing installs Google's pinned {tool_install.ANDROID_NDK_PACKAGE} "
+                "LLVM toolchain privately; manual fallback: "
                 f"{_DISASSEMBLER_ADVICE.get(host.system, 'install LLVM')}"
             )
         return str(found)
@@ -165,8 +165,7 @@ def survey(host: Host) -> list[ToolStatus]:
         _probe("SDK platform", android_platform),
         _probe("UnityPy", master_import),
         _probe("Il2CppDumper", il2cpp_dumper),
-        # The one entry this command cannot resolve for the operator.
-        _probe("disassembler", disassembler, fixable=False),
+        _probe("disassembler", disassembler),
     ]
 
 
@@ -257,7 +256,7 @@ def install_missing(
 
     needs_sdk = any(
         _missing(statuses, name)
-        for name in ("platform tools", "build tools", "SDK platform")
+        for name in ("platform tools", "build tools", "SDK platform", "disassembler")
     )
     if needs_sdk:
         tool_install.require_supported_android_sdk_host(host)
@@ -280,9 +279,22 @@ def install_missing(
     if needs_sdk:
         sdk_root = updated.sdk_root or (root / "android-sdk")
         tool_install.accept_android_licences(sdk_root, root, host, updated.java_home)
+        selected_packages = list(packages)
+        if (
+            _missing(statuses, "disassembler")
+            and tool_install.ANDROID_NDK_PACKAGE not in selected_packages
+        ):
+            selected_packages.append(tool_install.ANDROID_NDK_PACKAGE)
         keep(sdk_root=tool_install.install_android_packages(
-            sdk_root, root, host, updated.java_home, packages,
+            sdk_root, root, host, updated.java_home, tuple(selected_packages),
         ))
+        if _missing(statuses, "disassembler"):
+            objdump = tool_install.android_ndk_objdump(updated.sdk_root, host)
+            if tester_setup.find_aarch64_objdump((str(objdump),)) is None:
+                raise ToolInstallError(
+                    f"the installed disassembler at {objdump} does not report AArch64 support"
+                )
+            keep(objdump=objdump)
 
     if _missing(statuses, "UnityPy"):
         install_master_import()
@@ -334,7 +346,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--android-package", dest="packages", action="append", metavar="PACKAGE",
         help=(
             "sdkmanager package to install instead of the defaults "
-            f"({', '.join(tool_install.ANDROID_PACKAGES)}); repeatable"
+            f"({', '.join(tool_install.ANDROID_PACKAGES)}); repeatable. The pinned "
+            f"{tool_install.ANDROID_NDK_PACKAGE} package is still added when the "
+            "AArch64 disassembler is missing"
         ),
     )
     return parser.parse_args(argv)
@@ -368,7 +382,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         accept = args.accept_licences
         needs_sdk = any(
             _missing(statuses, name)
-            for name in ("platform tools", "build tools", "SDK platform")
+            for name in ("platform tools", "build tools", "SDK platform", "disassembler")
         )
         if needs_sdk and not accept and sys.stdin.isatty():
             accept = confirm_android_licences()

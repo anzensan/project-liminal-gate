@@ -2,18 +2,20 @@
 
 Nothing here is a Terra Battle asset.  Every download is a general-purpose
 development tool published by its own vendor -- a JDK from Adoptium, the Android
-command line tools from Google, the .NET runtime from Microsoft, Il2CppDumper
-from its GitHub release -- and each lands beneath the tester's ignored data
-directory rather than anywhere Git can see.  The project's own inputs are still
-supplied by the operator and are still never downloaded.
+command line tools and NDK from Google, the .NET runtime from Microsoft,
+Il2CppDumper from its GitHub release -- and each lands beneath the tester's
+ignored data directory rather than anywhere Git can see.  The project's own
+inputs are still supplied by the operator and are still never downloaded.
 
 Two pinning strategies are used, deliberately:
 
-* Google's command line tools and Il2CppDumper are pinned to an exact build,
-  with the checksum written here in the source.  Both are versioned artefacts
-  whose contents this project reasons about -- the dumper's version is already
-  named in `tester_setup`, whose workaround for its exit behaviour is specific
-  to it -- so a silent upgrade is a change worth refusing.
+* Google's command line tools, the side-by-side NDK package, and Il2CppDumper
+  are pinned to an exact build. Direct-archive checksums are written here;
+  `sdkmanager` resolves and verifies the NDK through Google's repository
+  metadata. These are versioned artefacts whose contents this project reasons
+  about -- the dumper's version is already named in `tester_setup`, whose
+  workaround for its exit behaviour is specific to it -- so a silent upgrade
+  is a change worth refusing.
 * The JDK and the .NET runtime are resolved through their vendor's own release
   API, and the checksum is the one that API publishes over the same HTTPS
   connection.  Both ship security updates on their own schedule, both are
@@ -361,6 +363,24 @@ ANDROID_PACKAGES = (
     f"platforms;android-{ANDROID_PLATFORM_API}",
 )
 
+#: The latest long-term-support NDK at the time this installer was reviewed.
+#: Guided setup does not build native code with it: the package is Google's
+#: cross-platform, side-by-side distribution of LLVM, and its `llvm-objdump`
+#: is the one private AArch64 disassembler the doctor needs.  Installing it
+#: through `sdkmanager` keeps Google's package checksum/licence handling and
+#: avoids a separate platform-specific LLVM installer.
+ANDROID_NDK_VERSION = "27.3.13750724"
+ANDROID_NDK_PACKAGE = f"ndk;{ANDROID_NDK_VERSION}"
+
+#: Google retains the x86_64-looking Darwin tag for compatibility, but its NDK
+#: binaries are universal and run natively on Apple silicon too.
+_ANDROID_NDK_HOST_TAGS = {
+    ("mac", "x64"): "darwin-x86_64",
+    ("mac", "aarch64"): "darwin-x86_64",
+    ("linux", "x64"): "linux-x86_64",
+    ("windows", "x64"): "windows-x86_64",
+}
+
 #: Where accepting these licences commits the operator, named so the doctor can
 #: print it before asking.
 ANDROID_LICENCE_URL = "https://developer.android.com/studio/terms"
@@ -480,6 +500,28 @@ def install_android_packages(
     _run_sdkmanager(manager, sdk_root, tuple(packages), java_home, stdin_text="y\n" * 50)
     print(f"  Android SDK ready: {sdk_root}")
     return sdk_root
+
+
+def android_ndk_objdump(sdk_root: Path, host: Host) -> Path:
+    """Return the pinned NDK's exact LLVM disassembler or fail explicitly."""
+    try:
+        host_tag = _ANDROID_NDK_HOST_TAGS[(host.system, host.architecture)]
+    except KeyError as error:
+        raise ToolInstallError(
+            f"Google publishes no supported Android NDK toolchain for "
+            f"{host.system}/{host.architecture}"
+        ) from error
+    executable = (
+        sdk_root / "ndk" / ANDROID_NDK_VERSION / "toolchains" / "llvm" /
+        "prebuilt" / host_tag / "bin" / f"llvm-objdump{host.executable_suffix}"
+    )
+    if not executable.is_file():
+        raise ToolInstallError(
+            f"the installed {ANDROID_NDK_PACKAGE} package did not provide {executable}. "
+            "The SDK installation was kept; rerun the doctor to repair the package."
+        )
+    _make_executable(executable)
+    return executable
 
 
 # --------------------------------------------------------------------------

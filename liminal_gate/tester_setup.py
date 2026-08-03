@@ -646,8 +646,10 @@ _READKEY_ADVICE = (
 MASTER_IMPORT_DISTRIBUTIONS = ("UnityPy", "TypeTreeGeneratorAPI")
 
 AARCH64_DISASSEMBLER_MISSING = (
-    "complete guided setup requires an AArch64 disassembler; install LLVM "
-    "(llvm-objdump) or binutils-multiarch, then re-run setup"
+    "complete guided setup requires an AArch64 disassembler; run "
+    "python3 -m liminal_gate.doctor --install-missing to install the pinned "
+    "Android NDK llvm-objdump privately, or install LLVM/binutils-multiarch by hand, "
+    "then re-run setup"
 )
 
 

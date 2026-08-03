@@ -36,6 +36,21 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-02 doctor-managed AArch64 disassembler: `doctor --install-missing`
+  now installs Google's pinned side-by-side Android NDK r27d
+  (`ndk;27.3.13750724`) below ignored `user-data/` when no existing objdump can
+  read AArch64. It locates the official host `llvm-objdump`, executes the same
+  capability probe the real derivation uses, and only then atomically records
+  its exact path. SDK licence acceptance remains explicit; `sdkmanager` owns
+  Google package retrieval and repository verification. Android Studio remains
+  optional for physical-device use, while emulator creation stays outside the
+  doctor. This changes setup prerequisites only, not protocol behavior or the
+  verified client boundary. The warning-strict focused suite passed 113 tests
+  and the complete suite passed 895 tests; a fixture executable exercised the
+  production AArch64 capability probe. A real NDK download was not performed,
+  because accepting Google's Android SDK licence is deliberately the tester's
+  action.
+
 - 2026-08-02 self-hosted APK operator documentation: the README now presents
   the separate-server and self-hosted layouts as explicit alternatives, and
   `docs/on-device-setup.md` carries one complete private-input-to-launch path.
@@ -63,9 +78,9 @@ machine-readable/current capability boundary.
   variable the operator exported still wins. Verified on macOS/arm64 with
   `PATH` reduced to `/usr/bin:/bin` and no `ANDROID_*` or `JAVA_HOME` set:
   `tester_setup --check` resolved adb, build tools, Il2CppDumper, and the
-  disassembler from the record alone. Android Studio, emulator system images,
-  and an LLVM toolchain remain the operator's to install, and Google's SDK
-  licences are never accepted without an explicit answer.
+  disassembler from the record alone. Android Studio and emulator system images
+  remain the operator's choice; the AArch64 LLVM tool no longer does. Google's
+  SDK licences are never accepted without an explicit answer.
 
 - 2026-08-02 private on-device server package: the reviewed source hash now
   drives one local command which repeats the complete guided derivations,
