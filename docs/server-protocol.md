@@ -184,22 +184,23 @@ left the result screen, and the settled state survived restart. Other Archive
 families still require their own client-clear observations.
 
 The bundled Special Quest uses that same Hunting transaction: Chapter 3003-1
-charges 5 stamina, accepts no EXP, items, or Companions, and has a local 1,800
-Coin ceiling. That ceiling is compatibility-bounded by an Issue 25 final-client
-clear, not by a recovered historical reward table. Start, clear, refusal,
-replay, and restart behavior are otherwise identical to the bounded Hunting
-lifecycle. Permanent availability remains local policy; only the stage
-identity, entry cost, visibility flag, and observed 1,800-Coin result are
-client-backed.
+charges 5 stamina and retains the Issue 25 final-client 1,800-Coin observation
+as audit data, not as the default acceptance ceiling. Start, clear, structural
+refusal, replay, and restart behavior are identical to the Hunting lifecycle.
+Permanent availability remains local policy; only the stage identity, entry
+cost, visibility flag, and observed 1,800-Coin result are client-backed.
 
-Crystal Road (3004-1) is another bounded Hunting transaction. The supplied
+Crystal Road (3004-1) is another Hunting transaction. The supplied
 final APK identifies its three-battle, seven-stamina entry and the mode-7
 selector requires its exact `sp_ch_3004-1` flag. The bundled local policy
-accepts a maximum of two Items from the recovered material IDs 1--17 plus the
+records two Items from the recovered material IDs 1--17 plus the
 reference-backed Ticket/power-up channels (50 and 53--56); it does not roll or
-claim the retired service's probabilities. Start, clear, refusal, replay, and
-restart follow the same real-HTTP-tested Hunting lifecycle. Original-client
-acceptance of this new row remains unverified.
+claim the retired service's probabilities. A Pixel 7 Pro original-client clear
+reported 280 Coins and 5,400/5,625 EXP, proving the former zero placeholders
+were not compatibility bounds. Default settlement now trusts such a
+structurally consistent active-battle result; `--outcome-strict` retains the
+catalog ceilings as an operator audit. Exact replay and restart grant the
+reported Coins once.
 
 ## Evidence labels
 

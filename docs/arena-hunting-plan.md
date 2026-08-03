@@ -31,7 +31,7 @@ it never attempts a one-field partial projection.
 | --- | --- | --- |
 | Hunting | User-local, solo Metal/Hunting stages selected and settled through the normal quest lifecycle. | Recreating retired rotations, paid-entry systems, or unbounded client-authoritative rewards. |
 | Huntland -> Strikes Back | Packaged non-collaboration Counter Descent families, progress-gated and settled through the bounded normal quest lifecycle. | Claiming recovered historical dates, rotations, or rewards. |
-| Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated 42-stage curated Archive and any explicit reviewed override, using the bounded Hunting/event lifecycle. | Treating Special Quests as PvP or a live event schedule. |
+| Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated 42-stage curated Archive and any explicit reviewed override, using structurally validated Hunting/event settlement; Hunting reward maxima are optional strict-audit data. | Treating Special Quests as PvP or a live event schedule. |
 | Tower | All 12 shipped battles, permanently available after a local Chapter 3 gate as a solo adapter. | Shared HP, staged achievements, rankings, historical rotations, or invented fixed rewards. |
 | Eidolon Quests | The 12 converted solo battles with matching banners and zero fabricated collectible reward. | Empty tier placeholders, retired Co-op, in-battle summoning, enhancement, or server-side rerolling. |
 | Arena VS / ranking | Remain visibly unavailable. | Photon rooms, friends, matchmaking, rankings, co-op, raids, or a simulated service presented as the original Arena. |

@@ -2258,9 +2258,20 @@ class BootstrapState:
 
     def apply_hunting_clear(
         self, token: str, request_id: str, body: bytes, catalog: HuntingCatalog,
-        now: float | None = None,
+        now: float | None = None, *, outcome_strict: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
-        """Settle one cataloged Hunting result, only within its declared bounds."""
+        """Settle one structurally valid result for the active Hunting stage.
+
+        The surviving client executes the battle and reports its outcome.  By
+        default the local preservation server trusts that report while still
+        requiring exact stage ownership, wallet arithmetic, inventory
+        projection, and a single durable settlement.  ``outcome_strict`` turns
+        the catalog's recovered reward ceilings back into an audit gate.
+
+        Companion grants remain limited to ids for which the catalog supplies
+        the level needed to author the response row; accepting an unknown id
+        would require inventing state the client did not send.
+        """
         now = time.time() if now is None else now
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
@@ -2295,7 +2306,12 @@ class BootstrapState:
                 or clear["summonList"] != userdata.get("summonList", [])
             ):
                 return "tutorial_state_conflict", None
-            if not hunting_settlement_within_bounds(stage, result):
+            # Hunting has no recovered Summon authoring contract. Accepting a
+            # reported Summon here would acknowledge the clear while silently
+            # discarding its reward, which is neither trust nor compatibility.
+            if result["summons"]:
+                return "invalid_local_hunting_result", None
+            if outcome_strict and not hunting_settlement_within_bounds(stage, result):
                 return "invalid_local_hunting_result", None
             gains = {int(item_id): count for item_id, count in result["items"].items()}
             projected_items = _projected_hunting_items(
@@ -3689,6 +3705,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         ):
             return state.apply_hunting_clear(
                 token, request_id, body, self.server.hunting_catalog,
+                outcome_strict=self.server.outcome_strict,
             )
         if kind == "clear" and (
             self.server.event_catalog is not None
@@ -5669,7 +5686,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--core-story", action="store_true", help="enable the bundled ordinary Chapter 2--42 progression policy without reward data")
     parser.add_argument("--settlement-catalog", type=Path, help="optional user-local generic-story identity/reward constraints")
     parser.add_argument("--story-outcome-catalog", type=Path, help="user-local generic-story reported-outcome bounds and Companion drop levels")
-    parser.add_argument("--outcome-strict", action="store_true", help="additionally bound reported items, monsters, and Summons with --story-outcome-catalog, on the stages it has evidence for")
+    parser.add_argument("--outcome-strict", action="store_true", help="audit client-reported outcomes against available story and Hunting reward catalogs instead of trusting structurally valid active-battle results")
     parser.add_argument("--clear-state-catalog", type=Path, help="user-local generic-story character EXP and Skill-Boost constraints")
     parser.add_argument("--statusup-catalog", type=Path, help="user-local item/character rules for status-up progression")
     parser.add_argument("--job-catalog", type=Path, help="user-local ordered job-unlock costs")
@@ -5791,8 +5808,6 @@ def build_server(
         if stories is not None and progression is not None:
             raise ProfileError("--story-catalog and --story-progression-catalog cannot be combined")
         settlements = None if args.settlement_catalog is None else load_settlement_catalog(args.settlement_catalog)
-        if getattr(args, "outcome_strict", False) and args.story_outcome_catalog is None:
-            raise ProfileError("--outcome-strict requires --story-outcome-catalog")
         story_outcomes = None if args.story_outcome_catalog is None else load_story_outcome_catalog(args.story_outcome_catalog)
         clear_states = None if args.clear_state_catalog is None else load_clear_state_catalog(args.clear_state_catalog)
         if args.status_items and args.statusup_catalog is not None:

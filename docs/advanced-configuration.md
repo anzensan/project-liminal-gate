@@ -180,8 +180,11 @@ Use these together when you want stricter generic story settlement:
 - `--settlement-catalog` constrains per-stage Coins and item/summon deltas.
 - `--story-outcome-catalog` constrains reported items, characters, and
   Companion outcomes.
-- `--outcome-strict` extends the option above from the Companion outcome, which
-  it always bounds, to reported items and monsters as well. See [What the
+- `--outcome-strict` audits available story and Hunting/Daily reward catalogs.
+  For story it extends the option above from the Companion outcome, which it
+  always bounds, to reported items and monsters as well. For Hunting and Daily
+  Quests it turns the catalog's per-stage Coins, EXP, item, recruit, and
+  Companion maxima into settlement gates. See [What the
   catalog enforces, and what it admits it
   cannot](#what-the-catalog-enforces-and-what-it-admits-it-cannot).
 - `--clear-state-catalog` validates participating character EXP, level, and
@@ -356,8 +359,9 @@ does not, because its emptiness is an admission. A stage with no `evidence` key
 is treated as fully evidenced, so a catalog authored before this field behaves
 exactly as it did.
 
-`--outcome-strict` requires `--story-outcome-catalog`; on its own it would be a
-no-op and is rejected rather than ignored.
+`--outcome-strict` may be used with the bundled or operator-supplied Hunting
+catalog even when no story-outcome catalog is configured. It audits only the
+catalogs that are present.
 
 Two checks stay relaxed even under `--outcome-strict`. The submitted roster is
 no longer required to contain every character the server holds: `_preserved_roster`
@@ -806,10 +810,12 @@ is known to be incomplete, so nothing is validated against it.
 
 ## Local Hunting stages
 
-Hunting battles run entirely on the client. The server's whole job is to
-authorise an entry, charge its cost, and accept a settlement that stays inside
-declared bounds, so a stage carries identity, entry cost, unlock policy, and
-result ceilings — and no enemy, encounter, reward, or resource data.
+Hunting battles run entirely on the client. The server authorises an entry,
+charges its cost, and by default trusts the structurally valid outcome reported
+for that exact active battle. It still reconciles the wallet, item projection,
+ticket spend, Companion box, replay, and durable one-time settlement. A stage
+retains result ceilings for evidence and optional `--outcome-strict` auditing;
+it carries no enemy, encounter, reward-roll, or resource data.
 
 The quickest path is the bundled policy, which covers Pudding Time, Tin Parade,
 Attack of the Coin Creeps, Puppet Show, Metal Zone, Dragon Road, Machine Road,
@@ -829,18 +835,15 @@ becomes permanent after story chapters 3, 9, and 18, because the retired
 rotations were never captured — and Puppet Show's aggregate of 60 items, whose
 real-time board has no cumulative spawn counter to recover a true cap from.
 
-**Metal Zone is bounded, not unrestricted.** Its ticket-or-stamina entries,
-EXP ceilings, and Companion manifests are declared by the bundled policy; an
-undeclared result is refused. Dragon and Machine Road settle their
-client-declared EXP channel plus one bounded community-documented reward
-each — a single Steel Dragon recruit on Dragon Road, Star items under a
-generous ceiling on Machine Road — while Companion drops and the Luck chest
-stay refused on their sections' own declarations. The default
-Special Quest is also bounded: Chapter 3003-1 accepts up to 1,800 Coins and no
-EXP, items, or Companions. Crystal Road (3004-1) is a permanent local Huntland
-route after Chapter 3: its seven-stamina entry and three-battle client record
-are recovered, while its published material/Ticket/power-up table is explicit
-local policy. It accepts at most two declared items from those channels. See
+**Catalog ceilings are audit data, not the default play gate.** Metal Zone's
+ticket-or-stamina entries, EXP ceilings, and Companion manifests remain
+declared; Dragon and Machine Road retain their community-documented reward
+ceilings; Chapter 3003-1 retains the observed 1,800-Coin record; and Crystal
+Road retains its reference-backed two-item table. With `--outcome-strict`, an
+outcome outside those declarations is refused. Without it, the authenticated
+client's structurally consistent outcome settles. Companion ids still need a
+declared drop level because the server must author a `buddyInfo` row that is
+not present in the clear form. See
 [the external quest reference ledger](external-quest-reference-ledger.md) for
 the approved-source facts and the stages that remain deliberately unavailable.
 
