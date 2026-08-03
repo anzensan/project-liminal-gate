@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
@@ -18,7 +19,7 @@ from liminal_gate.message_catalog import (
 
 
 class MessageLifecycleTest(unittest.TestCase):
-    def test_retail_chapter_milestones_backfill_once_and_survive_deletion(self) -> None:
+    def test_retail_chapter_milestones_settle_directly_once_and_survive_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
@@ -42,15 +43,6 @@ class MessageLifecycleTest(unittest.TestCase):
                 connection.close()
                 return response.status, payload
 
-            def post(server: BootstrapServer, route: str, request_id: str, message_id: str) -> tuple[int, dict[str, object]]:
-                body = urlencode({"idlist": json.dumps([message_id]), "lastUpdate": "1"})
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", f"/gd/{route}?otk=token&requestID={request_id}", body=body)
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
-
             server, thread = start()
             try:
                 seed = {
@@ -62,41 +54,131 @@ class MessageLifecycleTest(unittest.TestCase):
                 }
                 server.state.create_account("signup", "account", seed, catalog)
                 status, login = get(server)
-                self.assertEqual(200, status)
-                self.assertEqual(
-                    ["chapter:5:item:50", "chapter:6:item:112", "chapter:7:item:50"],
-                    sorted(message["id"] for message in login["messageList"]),
-                )
+                self.assertEqual((200, []), (status, login["messageList"]))
                 self.assertNotIn("chapter:8:item:112", {message["id"] for message in login["messageList"]})
                 self.assertEqual(
                     ["chapter:5:item:50", "chapter:6:item:112", "chapter:7:item:50"],
                     server.state.accounts["account"]["chapter_milestones_issued"],
                 )
-
-                status, read = post(server, "read_messages", "read-seven", "chapter:7:item:50")
-                self.assertEqual((200, 2), (status, read["itemList"][49]))
-                self.assertEqual((status, read), post(server, "read_messages", "read-seven", "chapter:7:item:50"))
-                status, deleted = post(server, "delete_messages", "delete-seven", "chapter:7:item:50")
-                self.assertEqual((200, ["chapter:7:item:50"]), (status, deleted["deletelist"]))
+                userdata = server.state.accounts["account"]["userdata"]
+                self.assertEqual((4, 3), (userdata["itemList"][49], userdata["itemList"][111]))
+                self.assertTrue(all(
+                    server.state.accounts["account"]["messages"][message_id]["read"]
+                    for message_id in server.state.accounts["account"]["chapter_milestones_issued"]
+                ))
             finally:
                 server.shutdown(); thread.join(); server.server_close()
 
             restarted, thread = start()
             try:
                 status, login = get(restarted)
-                self.assertEqual(200, status)
-                self.assertNotIn("chapter:7:item:50", {message["id"] for message in login["messageList"]})
-                self.assertEqual(2, restarted.state.accounts["account"]["userdata"]["itemList"][49])
+                self.assertEqual((200, []), (status, login["messageList"]))
+                self.assertEqual(
+                    (4, 3),
+                    tuple(restarted.state.accounts["account"]["userdata"]["itemList"][index] for index in (49, 111)),
+                )
                 with restarted.state.lock:
                     restarted.state.accounts["account"]["userdata"]["progressCode"] = (9 << 6) | 1
                     restarted.state._persist_locked()
                 status, login = get(restarted)
-                self.assertEqual(200, status)
-                self.assertIn("chapter:8:item:112", {message["id"] for message in login["messageList"]})
-                status, read = post(restarted, "read_messages", "read-eight", "chapter:8:item:112")
-                self.assertEqual((200, 3), (status, read["itemList"][111]))
+                self.assertEqual((200, []), (status, login["messageList"]))
+                self.assertEqual(6, restarted.state.accounts["account"]["userdata"]["itemList"][111])
+                self.assertTrue(restarted.state.accounts["account"]["messages"]["chapter:8:item:112"]["read"])
             finally:
                 restarted.shutdown(); thread.join(); restarted.server_close()
+
+    def test_unread_chapter_mail_migrates_to_one_direct_grant(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.json"
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            catalog = build_bundled_chapter_message_policy()
+            seed = {
+                "progressCode": (8 << 6) | 9,
+                "chrdata": [], "buddyInfo": {"list": [], "record": []},
+                "summonList": [0] * 16, "itemList": [0] * 181,
+                "coins": 0, "freeEnergy": 0, "energy": 0,
+                "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+            }
+            state = BootstrapState(state_path)
+            state.create_account("signup", "account", seed, catalog)
+            account = state.accounts["account"]
+            old_messages = eligible_chapter_messages((8 << 6) | 9, 123.0)
+            for message in old_messages:
+                account["messages"][message.message_id] = {
+                    "id": message.message_id, "date": message.date, "read": True,
+                    "days_last": message.days_last, "messages": dict(message.texts),
+                    "coins": 0, "free_energy": 0,
+                    "items": {str(item_id): amount for item_id, amount in message.items.items()},
+                    "character_id": 0, "companion_id": 0, "companion_level": 1,
+                }
+            account["messages"]["chapter:7:item:50"]["read"] = False
+            account["chapter_milestones_issued"] = sorted(account["messages"])
+            with state.lock:
+                state._persist_locked()
+            state.close()
+
+            server = BootstrapServer(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                message_catalog=catalog, chapter_milestones=True,
+            )
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                connection = HTTPConnection(*server.server_address)
+                connection.request("GET", "/gd/login?otk=token&uuid=account")
+                response = connection.getresponse()
+                login = json.loads(response.read())
+                connection.close()
+                self.assertEqual((200, []), (response.status, login["messageList"]))
+                userdata = server.state.accounts["account"]["userdata"]
+                self.assertEqual((2, 0), (userdata["itemList"][49], userdata["itemList"][111]))
+                self.assertTrue(server.state.accounts["account"]["messages"]["chapter:7:item:50"]["read"])
+                connection = HTTPConnection(*server.server_address)
+                connection.request("GET", "/gd/login?otk=token&uuid=account")
+                response = connection.getresponse()
+                self.assertEqual((200, []), (response.status, json.loads(response.read())["messageList"]))
+                connection.close()
+                self.assertEqual(2, server.state.accounts["account"]["userdata"]["itemList"][49])
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+
+            restarted = BootstrapState(state_path)
+            self.assertEqual(2, restarted.accounts["account"]["userdata"]["itemList"][49])
+            restarted.close()
+
+    def test_interrupted_chapter_settlement_retries_from_durable_unread_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            catalog = build_bundled_chapter_message_policy()
+            state = BootstrapState(state_path)
+            state.create_account("signup", "account", {
+                "progressCode": (6 << 6) | 1,
+                "chrdata": [], "buddyInfo": {"list": [], "record": []},
+                "summonList": [0] * 16, "itemList": [0] * 181,
+                "coins": 0, "freeEnergy": 0, "energy": 0,
+                "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+            }, catalog)
+            with patch.object(state, "_persist_locked", side_effect=OSError("interrupted")):
+                with self.assertRaises(OSError):
+                    state.login_messages(
+                        "account", chapter_milestones=True, now=123.0,
+                        message_catalog=catalog,
+                    )
+            state.close()
+
+            retried = BootstrapState(state_path)
+            self.assertEqual(0, retried.accounts["account"]["userdata"]["itemList"][49])
+            self.assertEqual([], retried.login_messages(
+                "account", chapter_milestones=True, now=124.0,
+                message_catalog=catalog,
+            ))
+            self.assertEqual(2, retried.accounts["account"]["userdata"]["itemList"][49])
+            retried.close()
+
+            restarted = BootstrapState(state_path)
+            self.assertEqual(2, restarted.accounts["account"]["userdata"]["itemList"][49])
+            restarted.close()
 
     def test_retail_chapter_message_table_is_exact(self) -> None:
         messages = eligible_chapter_messages((11 << 6) | 1, 123.0)

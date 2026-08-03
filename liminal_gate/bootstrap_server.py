@@ -1277,14 +1277,18 @@ class BootstrapState:
     def login_messages(
         self, account_id: str, chapter_milestones: bool = False,
         login_bonuses: bool = False, now: float | None = None,
+        message_catalog: MessageCatalog | None = None,
     ) -> list[dict[str, Any]]:
         with self.lock:
             account = self.accounts.get(account_id)
             if account is None:
                 return []
             issued_at = time.time() if now is None else now
-            changed = chapter_milestones and _synchronize_chapter_milestone_messages(
+            if chapter_milestones and message_catalog is None:
+                raise ProfileError("chapter milestone settlement requires a message catalog")
+            changed = chapter_milestones and _settle_chapter_milestone_rewards(
                 account, issued_at,
+                max_stack=message_catalog.max_stack,
             )
             if login_bonuses:
                 changed = _synchronize_login_bonus_messages(account, issued_at) or changed
@@ -3434,7 +3438,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             now = time.time()
             payload["messageList"] = self.server.state.login_messages(
                 resolved, self.server.chapter_milestones,
-                self.server.login_bonuses, now,
+                self.server.login_bonuses, now, self.server.message_catalog,
             )
             # Reads as an ordinary login statistic and is not one. The client
             # stores it as `UserData.lastLoginTime`, and `DailyQuestManager`
@@ -5277,16 +5281,36 @@ def _message_state(message: Any) -> dict[str, Any]:
     }
 
 
-def _synchronize_chapter_milestone_messages(
-    account: dict[str, Any], issued_at: float | None = None,
+def _settle_chapter_milestone_rewards(
+    account: dict[str, Any], issued_at: float | None = None, *, max_stack: int,
 ) -> bool:
-    """Issue each earned chapter present once, even after inbox deletion."""
+    """Settle each earned chapter ticket once without the unproven mail UI.
+
+    Issue 33 supplied the missing physical-client evidence: the final client
+    rendered a chapter message but left its reward area empty and did not
+    clear the unread state.  Keep the recovered progress/reward table, while
+    treating direct inventory settlement as explicit compatibility policy.
+
+    Existing states need a careful bridge.  An unread milestone message has
+    not granted its items, so settle it here and mark it read.  A read message,
+    or an issued ID whose message was deleted, was already settled by the old
+    route and must never grant again.  New milestones are recorded as read
+    messages so the existing issued/read state remains the durable ledger.
+    """
     messages = account.setdefault("messages", {})
     issued = account.setdefault("chapter_milestones_issued", [])
-    progress = account.get("userdata", {}).get("progressCode", 0)
+    userdata = account.get("userdata", {})
+    progress = userdata.get("progressCode", 0)
     eligible = eligible_chapter_messages(
         progress, time.time() if issued_at is None else issued_at,
     )
+    items = userdata.get("itemList")
+    if (
+        not isinstance(items, list)
+        or any(type(value) is not int or value < 0 for value in items)
+        or any(item_id < 1 or item_id > len(items) for message in eligible for item_id in message.items)
+    ):
+        return False
     eligible_ids = {message.message_id for message in eligible}
     changed = False
 
@@ -5298,10 +5322,21 @@ def _synchronize_chapter_milestone_messages(
             issued.append(message_id)
             changed = True
     for message in eligible:
-        if message.message_id in issued:
+        state = messages.get(message.message_id)
+        if message.message_id not in issued:
+            state = _message_state(message)
+            messages[message.message_id] = state
+            issued.append(message.message_id)
+            changed = True
+        if state is None or state.get("read"):
             continue
-        messages[message.message_id] = _message_state(message)
-        issued.append(message.message_id)
+        updated_items = list(userdata["itemList"])
+        for item_id, amount in message.items.items():
+            updated_items[item_id - 1] = min(
+                max_stack, updated_items[item_id - 1] + amount,
+            )
+        userdata["itemList"] = updated_items
+        state["read"] = True
         changed = True
     if changed:
         issued.sort()

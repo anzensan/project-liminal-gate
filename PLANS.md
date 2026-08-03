@@ -1,5 +1,27 @@
 # Execution Plans
 
+## 2026-08-03 Issue 33 chapter-ticket compatibility
+
+Status: implemented and repository-validated; physical retest pending.
+
+Objective: remove the empty, non-clearable Chapter 7 milestone mail while
+preserving its exactly-once Metal Ticket x2 reward.
+
+Boundaries:
+
+1. Treat the reporter's Pixel screenshots as physical presentation evidence:
+   the row/text rendered, but the reward/read lifecycle did not.
+2. Keep the community-recorded chapter thresholds and client-confirmed Item 50
+   and Item 112 identities; label direct delivery as compatibility policy.
+3. Commit inventory plus the existing issued/read ledger before login returns.
+4. Grant an existing unread milestone once; never re-grant read or deleted
+   milestones; cover retry, later progress, and restart over real HTTP.
+5. Leave user-authored and daily-login inbox behavior outside this correction.
+
+Result: guided core story settles chapter tickets directly and hides the
+internal read records from `messageList`. Issue-33-style unread state migrates
+to one grant. Physical Pixel confirmation remains the acceptance boundary.
+
 ## 2026-08-03 Attack of Coin Creeps card artwork
 
 Status: implemented and repository-validated; physical-client rendering pending.
