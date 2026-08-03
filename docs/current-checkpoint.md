@@ -18,6 +18,22 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Latest Luck-state correction: a user report that every character returned to
+zero after a battle matches a confirmed final-client wire detail: valid
+`clear_quest.chrdata` may omit the optional `luck` member. The shared roster
+merge preserved stale-safe job progression and Skill Boost but not Luck, so an
+omitted or explicit stale zero could replace the durable value before the
+server returned the roster. The merge now preserves the greater Luck value and
+then applies the cached `luckUpTable` gain inside the same clear transaction.
+A focused real-HTTP regression starts with Luck 5.0, submits the client-shaped
+omission, applies one authored 0.2 gain, returns 5.2, replays without another
+gain, and persists 5.2 across restart; a lower explicit value is also preserved
+against. The 23-test focused story/Luck lane passes. Physical-client validation
+remains pending. The complete warning-strict suite
+passes all 957 tests with five expected skips; compilation, endpoint YAML, and
+diff checks pass. Values already lost from a save cannot be inferred and need
+a pre-reset backup for exact recovery.
+
 Latest daily-drop validation: Issue 35 identified the missing gate for the
 final client's native ordinary-story rotation. Guided core story now supplies
 the exact boolean `enableDailyBonus` event flag during login. Dual-ABI client

@@ -1,5 +1,29 @@
 # Execution Plans
 
+## 2026-08-03 battle-clear Luck preservation
+
+Status: implemented and repository-validated; physical-client validation
+pending.
+
+Objective: stop a valid battle clear from resetting durable character Luck
+when the final client omits the optional `luck` member or reports stale zero.
+
+Boundaries:
+
+1. Correct the shared roster merge used by ordinary story, Archive events,
+   Hunting/Daily/Metal/Special, and World Map Special clears.
+2. Preserve the greater durable/reported Luck value, matching the existing
+   monotonic level and Skill Boost policy.
+3. Apply the start response's cached `luckUpTable` only after that merge and
+   commit it in the clear transaction.
+4. Cover omitted Luck, explicit stale zero, exact retry, and restart over the
+   real clear transport.
+5. Do not invent values already lost from an affected save; recovery requires
+   a pre-reset backup or another exact source.
+
+Result: a valid clear keeps durable Luck and applies one authored gain. The
+authoritative roster returned to the client no longer projects zero.
+
 ## 2026-08-03 Issue 35 daily drop rotation
 
 Status: implemented and repository-validated; physical-client validation

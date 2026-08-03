@@ -3,6 +3,24 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Battle-clear Luck preservation
+
+- **Confirmed final-client wire behavior:** the preserved Chapter 3-2 clear
+  body (SHA-256
+  `dc3017906db7da31a0979a239048050cc0238006db53f387045abba25752e5a5`)
+  omits optional `luck` members from `chrdata` after start returned a nonzero
+  `luckUpTable`. Omission is valid and means the server remains authoritative
+  for the durable field; it is not a request to reset every character.
+- **Confirmed regression:** the shared clear merge retained monotonic job
+  progression and Skill Boost but copied an omitted or stale-zero Luck field
+  from the client row. Because ordinary story, Archive, Hunting, Daily, Metal,
+  Special, and World Map Special clears share that merge, the loss was not
+  confined to one quest family.
+- **Correction boundary:** clear now keeps the greater durable/reported Luck
+  before applying the cached server-authored gain. The clear response, replay
+  payload, and durable save therefore agree. This prevents future loss but
+  cannot reconstruct values already overwritten without a backup.
+
 ## Daily item and monster drop rotation
 
 - **Confirmed final-client mechanism:** `DailyQuestManager.GetDailyBonusType`
