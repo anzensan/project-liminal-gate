@@ -56,6 +56,7 @@ from liminal_gate.message_catalog import (
     MessageCatalogError,
     build_bundled_chapter_message_policy,
     eligible_chapter_messages,
+    login_bonus_messages,
     load_message_catalog,
 )
 from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, active_week_index, build_bundled_exchange_policy, load_exchange_catalog
@@ -780,6 +781,9 @@ class BootstrapState:
                     "achievement_requests": {},
                     "messages": _initial_messages(message_catalog),
                     "chapter_milestones_issued": [],
+                    "login_bonus_last_utc_day": None,
+                    "login_bonus_consecutive_days": 0,
+                    "login_bonus_total_days": 0,
                     "message_requests": {},
                     "exchange_remaining": _initial_exchange_remaining(exchange_catalog),
                     "exchange_total": 0,
@@ -1164,16 +1168,34 @@ class BootstrapState:
             self._persist_locked()
             return "success", payload
 
-    def login_messages(self, account_id: str, chapter_milestones: bool = False) -> list[dict[str, Any]]:
+    def login_messages(
+        self, account_id: str, chapter_milestones: bool = False,
+        login_bonuses: bool = False, now: float | None = None,
+    ) -> list[dict[str, Any]]:
         with self.lock:
             account = self.accounts.get(account_id)
             if account is None:
                 return []
-            if chapter_milestones and _synchronize_chapter_milestone_messages(account):
+            issued_at = time.time() if now is None else now
+            changed = chapter_milestones and _synchronize_chapter_milestone_messages(
+                account, issued_at,
+            )
+            if login_bonuses:
+                changed = _synchronize_login_bonus_messages(account, issued_at) or changed
+            if changed:
                 # Commit before exposing the gift. A restart between login and
-                # read must retain both the message and its issued sentinel.
+                # read must retain both the message and its eligibility state.
                 self._persist_locked()
-            return [_message_wire(message) for _, message in sorted(account.setdefault("messages", {}).items())]
+            # The final client marks each ID from `readlist` locally, but a
+            # later login reconstructs its inbox from this array. Re-projecting
+            # claimed entries makes its menu badge announce them as new again.
+            # Keep the durable record for exact read replay and explicit delete,
+            # while only exposing presents that are still claimable.
+            return [
+                _message_wire(message)
+                for _, message in sorted(account.setdefault("messages", {}).items())
+                if not message.get("read")
+            ]
 
     def read_messages(self, token: str, request_id: str, body: bytes, catalog: MessageCatalog | None) -> tuple[str, dict[str, Any] | None]:
         with self.lock:
@@ -2978,6 +3000,9 @@ class BootstrapState:
             account.setdefault("achievement_requests", {})
             account.setdefault("messages", {})
             account.setdefault("chapter_milestones_issued", [])
+            account.setdefault("login_bonus_last_utc_day", None)
+            account.setdefault("login_bonus_consecutive_days", 0)
+            account.setdefault("login_bonus_total_days", 0)
             account.setdefault("message_requests", {})
             if (
                 not isinstance(account["tutorial_phase"], str)
@@ -3002,6 +3027,17 @@ class BootstrapState:
                 or not isinstance(account["chapter_milestones_issued"], list)
                 or any(not isinstance(value, str) or not value for value in account["chapter_milestones_issued"])
                 or account["chapter_milestones_issued"] != sorted(set(account["chapter_milestones_issued"]))
+                or account["login_bonus_last_utc_day"] is not None
+                and (type(account["login_bonus_last_utc_day"]) is not int or account["login_bonus_last_utc_day"] < 0)
+                or type(account["login_bonus_consecutive_days"]) is not int
+                or account["login_bonus_consecutive_days"] < 0
+                or type(account["login_bonus_total_days"]) is not int
+                or account["login_bonus_total_days"] < 0
+                or account["login_bonus_consecutive_days"] > account["login_bonus_total_days"]
+                or account["login_bonus_last_utc_day"] is None
+                and (account["login_bonus_consecutive_days"] != 0 or account["login_bonus_total_days"] != 0)
+                or account["login_bonus_last_utc_day"] is not None
+                and (account["login_bonus_consecutive_days"] < 1 or account["login_bonus_total_days"] < 1)
                 or not isinstance(account["message_requests"], dict)
             ):
                 raise ProfileError("local bootstrap state contains invalid tutorial state")
@@ -3116,6 +3152,7 @@ class BootstrapServer(ThreadingHTTPServer):
         outcome_strict: bool = False,
         companion_equipment_catalog: CompanionEquipmentCatalog | None = None,
         chapter_milestones: bool = False,
+        login_bonuses: bool = False,
         build_id: str = "development",
     ) -> None:
         self.profile = profile
@@ -3146,10 +3183,11 @@ class BootstrapServer(ThreadingHTTPServer):
         self.achievement_catalog = achievement_catalog
         self.message_catalog = (
             build_bundled_chapter_message_policy()
-            if chapter_milestones and message_catalog is None
+            if (chapter_milestones or login_bonuses) and message_catalog is None
             else message_catalog
         )
         self.chapter_milestones = chapter_milestones
+        self.login_bonuses = login_bonuses
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
         self.hunting_catalog = hunting_catalog
@@ -3314,8 +3352,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # the country-selection modal when nothing is stored.
             payload |= dict(LOCAL_LOGIN_COUNTRY_FIELDS)
             payload["name"] = self.server.state.accounts[resolved].get("username", payload.get("name", "Player"))
+            now = time.time()
             payload["messageList"] = self.server.state.login_messages(
                 resolved, self.server.chapter_milestones,
+                self.server.login_bonuses, now,
             )
             # Reads as an ordinary login statistic and is not one. The client
             # stores it as `UserData.lastLoginTime`, and `DailyQuestManager`
@@ -3323,7 +3363,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # play. Left unsent it stays zero, no slot ever opens, and the
             # Huntland button is disabled even with the category flag on and
             # today's two quests named.
-            payload["lastLogin"] = time.time()
+            payload["lastLogin"] = now
             event_flags: dict[str, Any] = {}
             progress = self.server.state.accounts[resolved].get(
                 "userdata", {}
@@ -5134,12 +5174,16 @@ def _message_state(message: Any) -> dict[str, Any]:
     }
 
 
-def _synchronize_chapter_milestone_messages(account: dict[str, Any]) -> bool:
+def _synchronize_chapter_milestone_messages(
+    account: dict[str, Any], issued_at: float | None = None,
+) -> bool:
     """Issue each earned chapter present once, even after inbox deletion."""
     messages = account.setdefault("messages", {})
     issued = account.setdefault("chapter_milestones_issued", [])
     progress = account.get("userdata", {}).get("progressCode", 0)
-    eligible = eligible_chapter_messages(progress, time.time())
+    eligible = eligible_chapter_messages(
+        progress, time.time() if issued_at is None else issued_at,
+    )
     eligible_ids = {message.message_id for message in eligible}
     changed = False
 
@@ -5159,6 +5203,28 @@ def _synchronize_chapter_milestone_messages(account: dict[str, Any]) -> bool:
     if changed:
         issued.sort()
     return changed
+
+
+def _synchronize_login_bonus_messages(account: dict[str, Any], now: float) -> bool:
+    """Issue at most one retail login-bonus set for the current UTC day."""
+    if type(now) not in {int, float} or not math.isfinite(now) or now < 0:
+        return False
+    utc_day = int(now) // 86_400
+    last_day = account.setdefault("login_bonus_last_utc_day", None)
+    if last_day is not None and utc_day <= last_day:
+        return False
+
+    consecutive = account.setdefault("login_bonus_consecutive_days", 0)
+    total = account.setdefault("login_bonus_total_days", 0)
+    consecutive = consecutive + 1 if last_day is not None and utc_day == last_day + 1 else 1
+    total += 1
+    messages = account.setdefault("messages", {})
+    for message in login_bonus_messages(consecutive, total, now):
+        messages[message.message_id] = _message_state(message)
+    account["login_bonus_last_utc_day"] = utc_day
+    account["login_bonus_consecutive_days"] = consecutive
+    account["login_bonus_total_days"] = total
+    return True
 
 
 def _restock_exchange_week(account: dict[str, Any], catalog: ExchangeCatalog) -> dict[int, Any]:
@@ -5941,6 +6007,7 @@ def build_server(
             outcome_strict=getattr(args, "outcome_strict", False),
             companion_equipment_catalog=companion_equipment,
             chapter_milestones=getattr(args, "core_story", False),
+            login_bonuses=getattr(args, "core_story", False),
             build_id=build_id,
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:

@@ -36,6 +36,22 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-03 Issue 34 daily login rewards: guided core story now issues the
+  community-recorded standard login schedule through the client's existing
+  inbox. The consecutive reward follows an eight-day cycle, the cumulative
+  track pays days 1--10, 30, 60, 100, and every 50 days after 100, and UTC
+  midnight owns eligibility. Account state records the last eligible UTC day,
+  current consecutive count, and total count in the same atomic save as the
+  generated messages. Focused real-HTTP coverage proves dual day-1 issuance,
+  read/delete settlement, same-day suppression, restart persistence,
+  next-day advancement, and missed-day streak reset. Login projects only unread
+  messages, preventing a claimed entry from returning as a new badge while its
+  durable record remains available for replay and deletion. This is settled
+  community-schedule local policy through a recovered inbox transport;
+  original-client rendering/claim acceptance is still pending. The separate
+  seven-day newcomer campaign remains outside this standard schedule until its
+  item and Companion identities are audited.
+
 - 2026-08-03 Attack of Coin Creeps card-art recovery: the final APK's embedded
   306-row `SpecialBanner` catalog contains `sp1001`, `sp1002`, and `sp1004`
   families but no `sp1003` record, matching the reporter's stable but blank
@@ -62,7 +78,6 @@ machine-readable/current capability boundary.
   refusal coverage remains. Seventy-four focused tests and all 919
   warning-strict repository tests pass; compilation, structured-file, and diff
   checks pass. Physical-client retest is pending.
-
 - 2026-08-03 setup review pass, two defects fixed and the launcher checks made
   structural. Guided setup started the server against the operator's own
   `--resource-root` while the manifest had been built against the

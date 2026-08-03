@@ -149,6 +149,9 @@ class MessageLifecycleTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual((True, ["local-1"], 5, 3, [0, 5, 0]), (read["result"], read["readlist"], read["coins"], read["freeEnergy"], read["itemList"]))
                 self.assertTrue({"chrdata", "buddyInfo", "summonList", "achivementFlags", "energyAppStore", "energyGooglePlay", "energyAndApp"} <= set(read))
+                status, after_read_login = get(server, "/gd/login?otk=token&uuid=account")
+                self.assertEqual((200, []), (status, after_read_login["messageList"]))
+                self.assertTrue(server.state.accounts["account"]["messages"]["local-1"]["read"])
                 self.assertEqual((status, read), post(server, "read_messages", "read-one", read_body))
                 # Reusing a spent requestID with a different body is no longer
                 # read as a tampered retry: this is a fresh read of a message
