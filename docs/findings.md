@@ -638,3 +638,48 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   `ResourceWarning` promoted to an error. The three Android JVM tests passed
   under pinned Gradle 8.11.1 and Java 21. A clean committed source candidate
   passed release material preflight and independent-history audit.
+
+## 2026-08-02: the Puzzle Quests' Companion drop, and a bound that wedges an account
+
+- **Confirmed, from the client's own data:** Chapters 6011-1 and 6011-2 are the
+  only two of the fourteen Daily Quests whose `BattleData` section carries a
+  non-empty `dropBuddies`. Each holds exactly one packed code — 68353 and 35841
+  — which decode under the project's existing `code >> 8` Companion /
+  `code & 0xFF` count packing to Companion 267 at one copy and Companion 140 at
+  one copy. Both IDs are present in the recovered Companion master data. The
+  community record agrees independently, naming them Glassy Minion Λ and Golden
+  Minion Λ, each behind a 60% Ancient Key roll. The other twelve declare an
+  empty manifest.
+- **Confirmed defect:** the bundled Daily Quest policy declared no
+  `companion_maxima` for any stage, so a Puzzle Quest clear reporting the drop
+  the client's own data allows was refused with `409
+  invalid_local_hunting_result`. Reported as issue 29 from a physical Pixel 7
+  Pro: eleven identical refusals for chapter 6011 section 1 with `coins: 0,
+  exp: 0`.
+- **The severity is the wedge, not the lost drop.** A refused settlement never
+  releases `active_hunt`, so the account stays `hunting_active` across a
+  force-close and every unrelated stage start is then refused with
+  `tutorial_state_conflict`. That is what a tester reports as a corrupted
+  installation. The same shape produced issue 25. **A bound in a
+  client-settled family is only ever safely too generous, never too tight**, and
+  the bundled Daily Quest ceilings are now written with that asymmetry stated.
+- **Confirmed, same defect class, found while fixing it:** all fourteen stages
+  carried `max_exp = 0`, which refuses the ordinary battle EXP a Daily Quest
+  pays; Metal Runner Rampage pays nothing else and its recovered spawns reach
+  306,000 alone. Both Puzzle Quests bounded only their first reward tier, not
+  the Tears, Particles and Ores their later tiers pay, and their item totals
+  were roughly a third of the wave capacity behind them. Rarity Rumble's Ore
+  identities (26-29) and Tearjerker Time's Tears and attribute rings were
+  unbounded. Every one of these would have refused an honest clear and wedged
+  the account the same way; all are now declared.
+- **Confirmed diagnostic gap:** the refusal event recorded chapter, section,
+  coins and EXP and nothing else, so eleven logged refusals could not name the
+  channel at fault and the cause had to be recovered from the APK instead. The
+  settlement diagnostic now also records how many Companions, battle-recruited
+  monsters, Summons, and item stacks a result claimed — counts only, no
+  identity and no body string, which is the same boundary the rest of the event
+  log keeps.
+- **Validation:** all 889 Python tests passed with `ResourceWarning` promoted to
+  an error, including a real-HTTP regression that starts 6011-1, settles a
+  reported Companion 267, and asserts the box holds one copy at level 1 and the
+  account returns to `free_roam`.

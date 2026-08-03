@@ -31,7 +31,9 @@ Three categories are used below and they are not interchangeable:
   the two Roads, with the `get_server_status.constants` block the client's
   Huntland selectors and enable gate require.
 - Daily Quests: all fourteen recovered stages, gated once per UTC day, with
-  the rotation the login response names and per-slot play times.
+  the rotation the login response names and per-slot play times. Both Yamamoto
+  Puzzle Quests settle the one Companion their own `dropBuddies` manifest
+  names, at level 1; they are the only two of the fourteen that carry one.
 - The two secondary world maps: BreaSoul's twenty sections and the ten Five
   Emperors descents, each behind the client's own map predicate.
 - Luck: the stat grows from play, and Luck Treasure Chests are authored at

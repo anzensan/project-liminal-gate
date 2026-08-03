@@ -45,6 +45,41 @@ class EventLogPrivacyTest(unittest.TestCase):
                          shapes["buddyInfo"])
 
 
+class SettlementDiagnosticTest(unittest.TestCase):
+    """What a refused settlement has to say about itself.
+
+    Issue 29 logged eleven identical refusals of one Daily Quest clear, and the
+    only settlement facts in them were chapter, section, coins and EXP -- all
+    of which were inside their bounds. The channel actually at fault, a
+    reported Companion, was invisible, and the cause had to be recovered from
+    the client's own data instead.
+    """
+
+    def body(self, **battle) -> bytes:
+        result = {
+            "chapter": 6011, "section": 1, "coins": 0, "exp": 0,
+            "items": {}, "buddies": [], "monsters": [], "summons": [],
+        }
+        return urlencode({"battle_result": json.dumps(result | battle), "lastUpdate": "1"}).encode()
+
+    def test_a_settlement_reports_how_much_of_each_channel_it_claimed(self) -> None:
+        details = safe_form_diagnostics(self.body(buddies=[267], items={"9": 3, "18": 2}))
+        self.assertEqual(
+            {
+                "chapter": 6011, "section": 1, "coins": 0, "exp": 0,
+                "reported_buddies": 1, "reported_monsters": 0, "reported_summons": 0,
+                "reported_item_stacks": 2, "reported_items_total": 5,
+            },
+            details["reported_battle_result"],
+        )
+
+    def test_the_counts_carry_no_identity(self) -> None:
+        """Counts, never contents: an item or Companion id is still not logged."""
+        rendered = json.dumps(safe_form_diagnostics(self.body(buddies=[267], items={"9": 3})))
+        for leaked in ("267", '"9"'):
+            self.assertNotIn(leaked, rendered)
+
+
 class RefusedWriteShapeTest(unittest.TestCase):
     """A refusal must say which half of the write was wrong, and how."""
 
