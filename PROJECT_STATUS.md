@@ -787,9 +787,14 @@ machine-readable/current capability boundary.
 
 ## Blockers and unresolved fidelity
 
-- Hunting selector flashing/loading after its rows render. Live diagnostics
-  show no associated banner/resource request or 404, so a client runtime
-  capture is still needed before changing server behavior.
+- Original-client confirmation that the Hunting selector no longer flashes. The
+  cause is identified and fixed server-side: `UISpecialSelect.UpdateItems`
+  revalidates every drawn row with `CheckQuestFlag` and has none of the
+  Chapter 1000--1099 exemption that `IsQuestOpen` applies while building the
+  list, so the unflagged tier-1 Hunting rows were removed and rebuilt once per
+  frame. Every advertised row now carries its own exact `sp_ch_` flag. No APK
+  patch is required; the earlier per-frame `set_localPosition` candidate was
+  ruled out by disassembly and must not be patched.
 - Original-client Strikes Back battle clear and return to free roam. Selector,
   tier navigation, and Chapter 8000-1 entry are confirmed; clear is currently
   covered only by the real-HTTP regression.

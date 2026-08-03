@@ -283,6 +283,10 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         )
         self.assertEqual(
             {
+                "sp_ch_1001-1": {"name": "sp_ch_1001-1", "value": True},
+                "sp_ch_1002-1": {"name": "sp_ch_1002-1", "value": True},
+                "sp_ch_1003-1": {"name": "sp_ch_1003-1", "value": True},
+                "sp_ch_1004-1": {"name": "sp_ch_1004-1", "value": True},
                 "sp_ch_3000-1": {"name": "sp_ch_3000-1", "value": True},
                 "sp_ch_3000-11": {"name": "sp_ch_3000-11", "value": True},
                 "sp_ch_1200-1": {"name": "sp_ch_1200-1", "value": True},
@@ -292,6 +296,41 @@ class BundledHuntingPolicyTest(unittest.TestCase):
             },
             first,
         )
+
+    def test_every_advertised_row_carries_its_own_section_flag(self) -> None:
+        """`UpdateItems` revalidates *every* row against `CheckQuestFlag`.
+
+        `IsQuestOpen` exempts Chapters 1000--1099 while building the list, but
+        the per-frame recheck does not, so an advertised row without its flag
+        is removed and re-added every frame -- the flashing Hunting selector.
+        The invariant is therefore one exact flag per advertised row, with no
+        chapter range excused.
+        """
+        for chapter in (4, 10, 19, 31):
+            with self.subTest(chapter=chapter):
+                progress = 0x01000000 | (chapter << 6) | 1
+                lists = self.catalog.client_lists(progress)
+                advertised = (
+                    lists["metalHuntingList"]
+                    + lists["huntingHuntingList"]
+                    + lists["specialQuestList"]
+                )
+                flags = self.catalog.client_event_flags(progress)
+                self.assertEqual(
+                    sorted(f"sp_ch_{identity}" for identity in advertised),
+                    sorted(flags),
+                )
+                # A flag must never reach beyond the rows actually advertised,
+                # or a locked card becomes a card the catalog would refuse.
+                self.assertTrue(all(flag["value"] for flag in flags.values()))
+
+    def test_tier_one_hunting_rows_are_flagged_once_unlocked(self) -> None:
+        """Regression for the Hunting Zone flash: 1000-series rows need flags."""
+        locked = self.catalog.client_event_flags(0x01000000 | (3 << 6) | 1)
+        self.assertNotIn("sp_ch_1003-1", locked)
+        unlocked = self.catalog.client_event_flags(0x01000000 | (4 << 6) | 1)
+        for chapter in (1001, 1002, 1003, 1004):
+            self.assertIn(f"sp_ch_{chapter}-1", unlocked)
 
     def test_regular_and_king_metal_sections_are_both_advertised_and_startable(self) -> None:
         """The two ranges are distinct client cards, not duplicate list rows."""
