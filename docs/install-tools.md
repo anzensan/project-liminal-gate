@@ -20,8 +20,8 @@ code window.
 
 | It installs | It does not install |
 | --- | --- |
-| A Temurin JDK 17, for `keytool` | **Android Studio** — use it only when you want its emulator GUI |
-| Android SDK Platform-Tools and Build-Tools, through Google's own `sdkmanager` | **An emulator system image or AVD** — create one in Android Studio or use a physical device |
+| A Temurin JDK 17, for `keytool` and for Gradle | **Android Studio**, which you still need for the emulator |
+| Android SDK Platform-Tools, Build-Tools, and Platform 35, through Google's own `sdkmanager` | **An emulator system image or AVD** — create those in Android Studio |
 | Android NDK r27d (`ndk;27.3.13750724`), solely for its AArch64-capable `llvm-objdump` | **A system-wide LLVM installation** — the NDK tool stays private under `user-data/` |
 | Il2CppDumper v6.7.46, pinned | **A system-wide .NET runtime** — a private runtime is added only where the managed dumper needs one |
 | A private .NET runtime, only where Il2CppDumper needs one | **Anything of Terra Battle's** — you still supply the APK and resources |
@@ -43,8 +43,8 @@ advance if you have already read them.
 ### Where it put things
 
 `user-data/toolchain.json` records the location of every tool the doctor found
-or installed. Guided setup reads it at startup and puts those locations into its
-own environment, which is why you do not need to export anything.
+or installed. Every setup command reads it at startup and puts those locations
+into its own environment, which is why you do not need to export anything.
 
 A variable you set yourself always wins. If you export `JAVA_HOME`, that is the
 JDK setup uses, whatever the file says. To make the doctor's copy authoritative
@@ -68,6 +68,7 @@ not have to read the other two sections.
 | A JDK | Provides `keytool`, which creates the local test signing key. Android Studio's bundled JDK is sufficient if its `bin` directory is on your `PATH`. |
 | [Il2CppDumper](https://github.com/Perfare/Il2CppDumper) | Recovers the master-data layout that an IL2CPP build strips. Without it a story clear cannot award a Companion. Setup runs it for you against your own APK. |
 | An AArch64 disassembler | **LLVM** (`llvm-objdump`) on macOS and Windows, or `binutils-multiarch` on Linux. The Chapter 8–42 encounter map only exists as compiled code inside your APK, so reading it needs one. |
+| Pinned Gradle 8.11.1 and Java 17–23 (on-device build only) | Builds the Android host. Setup verifies Gradle against its published SHA-256, caches it only below ignored `user-data/work/`, repairs its local launcher mode, and automatically uses a compatible Android Studio JDK when available. Do not commit a wrapper binary. |
 
 You also need a local Terra Battle Android 5.5.7-170 APK and matching Android
 resources. See [Files you supply](../README.md#files-you-supply).
@@ -258,3 +259,17 @@ Return to the [README](../README.md#2-check-your-setup) and run:
 ```sh
 python3 -m liminal_gate.tester_setup --check
 ```
+
+## Optional: private on-device APK
+
+Check the on-device route before it downloads/builds/installs anything:
+
+```sh
+python3 -m liminal_gate.on_device_setup --check
+```
+
+It requires the normal Android SDK/JDK tools, a complete `android-host/` source
+tree, a reviewed local APK/resources, and (for installation) API 24+, at least
+one supported Android ABI, and 4 GiB free in `/data`. Continue with
+[Run the server inside the Android APK](on-device-setup.md); do not return to
+the README's separate-server setup steps for this deployment mode.

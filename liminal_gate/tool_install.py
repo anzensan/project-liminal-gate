@@ -274,11 +274,12 @@ def _make_executable(path: Path) -> None:
 
 
 # --------------------------------------------------------------------------
-# A JDK, for keytool and Google's sdkmanager
+# A JDK, for keytool and for Gradle
 # --------------------------------------------------------------------------
 
-#: Java 17. `keytool` is content with any JDK, while Google's command-line SDK
-#: tools also require Java; using the current long-term release covers both.
+#: Java 17.  `keytool` is content with any JDK, but the on-device path hands
+#: this same runtime to pinned Gradle, which accepts 17 through 23, and 17 is
+#: the long-term release inside that window.
 JDK_FEATURE_VERSION = 17
 
 ADOPTIUM_LATEST = (
@@ -355,9 +356,11 @@ _CMDLINE_TOOLS = {
 #: `zipalign` with `apksigner` from build-tools.  The build-tools version is not
 #: special -- `find_build_tools` takes the highest installed -- so this is
 #: simply a current stable one, overridable from the command line.
+ANDROID_PLATFORM_API = 35
 ANDROID_PACKAGES = (
     "platform-tools",
     "build-tools;36.1.0",
+    f"platforms;android-{ANDROID_PLATFORM_API}",
 )
 
 #: The latest long-term-support NDK at the time this installer was reviewed.

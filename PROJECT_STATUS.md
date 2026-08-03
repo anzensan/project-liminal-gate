@@ -36,17 +36,76 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
-- 2026-08-02 toolchain doctor with managed AArch64 disassembler:
-  `doctor --install-missing` installs and records the JDK, Android SDK tools,
-  pinned Android NDK r27d `llvm-objdump`, Il2CppDumper, and its required runtime
-  below ignored `user-data/`. Guided setup replays that atomic record before
-  resolving any tool, so no `PATH` or `JAVA_HOME` edit is required. A missing
-  disassembler is recorded only after the production AArch64 capability probe
-  passes. Licence acceptance remains explicit, Android Studio stays optional
-  for physical-device use, and no self-hosted APK or gameplay behavior is part
-  of this main-branch change. The warning-strict focused suite passed 111 tests
-  and all 858 main-branch tests passed.
+- 2026-08-02 doctor-managed AArch64 disassembler: `doctor --install-missing`
+  now installs Google's pinned side-by-side Android NDK r27d
+  (`ndk;27.3.13750724`) below ignored `user-data/` when no existing objdump can
+  read AArch64. It locates the official host `llvm-objdump`, executes the same
+  capability probe the real derivation uses, and only then atomically records
+  its exact path. SDK licence acceptance remains explicit; `sdkmanager` owns
+  Google package retrieval and repository verification. Android Studio remains
+  optional for physical-device use, while emulator creation stays outside the
+  doctor. This changes setup prerequisites only, not protocol behavior or the
+  verified client boundary. The warning-strict focused suite passed 113 tests
+  and the complete suite passed 895 tests; a fixture executable exercised the
+  production AArch64 capability probe. A real NDK download was not performed,
+  because accepting Google's Android SDK licence is deliberately the tester's
+  action.
 
+- 2026-08-02 self-hosted APK operator documentation: the README now presents
+  the separate-server and self-hosted layouts as explicit alternatives, and
+  `docs/on-device-setup.md` carries one complete private-input-to-launch path.
+  It records defaults, exact preflight and success output, device selection,
+  first-run/restart verification, safe in-place updates, first-install seeding,
+  generated artifacts, and self-hosted troubleshooting. The LAN physical-device
+  guide is now clearly scoped to the separate-server layout. Save documentation
+  no longer implies that workstation tools protect the app-private `state.json`:
+  no supported export/import exists yet, so uninstall, clear-data,
+  signing-key loss, and `--replace-existing` are called out as destructive.
+  This improves reproducibility but establishes no new device acceptance.
+
+- 2026-08-02 toolchain doctor: `liminal_gate.doctor` reports the build tools
+  this machine has and, with `--install-missing`, fetches a Temurin JDK, the
+  Android SDK Platform-Tools, Build-Tools, and Platform 35 through Google's own
+  `sdkmanager`, pinned Il2CppDumper
+  v6.7.46, and a private .NET runtime where the managed dumper build needs one.
+  Each download, including pinned Gradle for the on-device host, is verified
+  against a published checksum and unpacked with
+  member-path and executable-bit handling; each success is recorded in
+  `user-data/toolchain.json` as it happens, so an interrupted run keeps what it
+  installed. `tester_setup` and `on_device_setup` replay that record into their
+  own environment before resolving anything, which retires the per-OS `PATH`
+  and `JAVA_HOME` setup that `docs/install-tools.md` used to lead with. A
+  variable the operator exported still wins. Verified on macOS/arm64 with
+  `PATH` reduced to `/usr/bin:/bin` and no `ANDROID_*` or `JAVA_HOME` set:
+  `tester_setup --check` resolved adb, build tools, Il2CppDumper, and the
+  disassembler from the record alone. Android Studio and emulator system images
+  remain the operator's choice; the AArch64 LLVM tool no longer does. Google's
+  SDK licences are never accepted without an explicit answer.
+
+- 2026-08-02 private on-device server package: the reviewed source hash now
+  drives one local command which repeats the complete guided derivations,
+  redirects the client to fixed Android loopback, builds a dual-ABI
+  Chaquopy/Python 3.11 host, embeds the full tester-owned resource tree, signs,
+  and optionally installs/launches one APK. The replacement activity waits for
+  a matching `/healthz` build ID before constructing Unity; app-private state
+  retains the existing atomic/replay behavior and an optional seed cannot
+  overwrite it. Schema-v2 resources stream from stored APK members while small
+  catalogs/configuration are digest-checked and extracted atomically. The full
+  retained tree produced 11,806 packaged resources (940,138,388 bytes) in a
+  1.0-GiB APK; the final private artifact is
+  `aeba11eade3b507d62403ee806b3e7390bb3a2abced03a0219e3ec4633685ef0`
+  with payload ID
+  `53d043cbb585337d19a749ef1a1735b31c5499bbe00c1376123d9600900fff93`.
+  Package/SDK/launcher/dual-ABI inspection, new ZIP-header consistency,
+  alignment, and v2/v3 signature verification passed. A preceding full-resource
+  payload on API 34 ARM64 returned its matching health identity, initialized
+  Unity, streamed a 129,018-byte resource with the exact manifest hash, and
+  recovered after force-stop in a new process. The final payload could not
+  replace it because that emulator had only 1.2 GiB free; its physical/device
+  acceptance remains pending rather than inferred from the preceding build. ADB
+  incremental install falsely reported success for this size and was replaced
+  with a regression-tested non-incremental install. Physical-device, ARMv7
+  runtime, and Chapter 2-1 acceptance are still separate pending evidence.
 - 2026-08-01 repeatable setup rehearsal: guided setup is the path every operator
   takes and the one path the unit suite cannot reach, because it replaces the
   IL2CPP dump, the master-data import, the catalog derivations, the APK patch,
@@ -796,8 +855,28 @@ machine-readable/current capability boundary.
   story-outcome and Companion-equipment catalogs, preserves the exact
   pre-deploy state hash, and passes loopback and LAN HTTP checks.
 
+- 2026-08-02 Daily Quest settlement correction (issue 29): a Yamamoto Puzzle
+  Quest clear reporting the Companion the client's own `dropBuddies` manifest
+  allows was refused, and a refused settlement never releases the active
+  battle — so the account stayed `hunting_active` across a force-close and
+  every unrelated stage was refused afterwards, which is what the tester
+  reported as a corrupted installation. 6011-1 and 6011-2 are the only two of
+  the fourteen with a manifest; their codes decode to Companions 267 and 140,
+  one copy each, now settled at level 1. The same review found three more
+  bounds in the family that would each have wedged an account the same way:
+  a zero EXP ceiling on all fourteen, both Puzzle Quests bounding only their
+  first reward tier and a third of their item capacity, and Rarity Rumble's
+  Ores and Tearjerker Time's Tears and rings left undeclared. The refusal
+  diagnostic now names the channel by count, which it could not before. All 889
+  warning-strict tests passed in 143.977 seconds, including a real-HTTP
+  regression that starts 6011-1, settles the reported Companion, and proves the
+  account returns to `free_roam`.
+
 ## Blockers and unresolved fidelity
 
+- Full-resource combined-APK acceptance on physical ARM64 hardware and an
+  ARMv7 runtime, including cold start, force-stop/relaunch, one exact resource,
+  tutorial Pact, and Chapter 2-1 state/retry/restart proof.
 - Original-client confirmation that the Hunting selector no longer flashes. The
   cause is identified and fixed server-side: `UISpecialSelect.UpdateItems`
   revalidates every drawn row with `CheckQuestFlag` and has none of the
@@ -840,8 +919,10 @@ machine-readable/current capability boundary.
 
 ## Next recommended task
 
-On the final client, clear Bahamut 2000-1 through its result screen. Then
-certify Strikes Back 8000-1, Tower 9010-1, and Eidolon
-4100-3 one at a time with before/after state and restart proof. After normal
-story progress reaches Chapter 10, smoke injected explicit card 2014-1 to prove
-the server-owned list beyond the embedded fallback.
+Install the full-resource on-device artifact on physical ARM64 hardware. Record
+cold start, one manifest-approved resource, signup/login, tutorial Pact, and a
+Chapter 2-1 clear with exact retry plus force-stop/relaunch state proof. Repeat
+the startup/resource boundary on an ARMv7 runtime. Then, on the final client,
+clear Bahamut 2000-1 through its result screen and certify Strikes Back 8000-1,
+Tower 9010-1, and Eidolon 4100-3 one at a time with before/after state and
+restart proof.

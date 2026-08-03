@@ -1,5 +1,10 @@
 # Install on a physical phone or tablet
 
+> This page is only for the **separate-computer server** layout. If the server
+> should start inside the APK, use [Run the server inside the Android APK](on-device-setup.md).
+> In that layout `127.0.0.1:8002` is deliberately correct and no LAN address is
+> configured.
+
 The emulator path reaches the server through `10.0.2.2`, an alias that only
 exists inside an Android emulator. A real device has to be told this machine's
 own address on your network instead. **Everything else — the file layout, the

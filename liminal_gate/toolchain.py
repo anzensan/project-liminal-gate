@@ -56,7 +56,7 @@ class Toolchain:
 
     #: Android SDK root, holding `platform-tools` and `build-tools`.
     sdk_root: Path | None = None
-    #: A JDK root. `keytool` and the Java launcher live in its `bin`.
+    #: A JDK root.  `keytool` lives in its `bin`, and Gradle is handed the root.
     java_home: Path | None = None
     #: The Il2CppDumper executable or its managed `.dll`.
     il2cpp_dumper: Path | None = None

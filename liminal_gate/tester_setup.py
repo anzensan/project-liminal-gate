@@ -239,7 +239,13 @@ def build_server_origin(device_host: str, port: int) -> str:
         raise TesterSetupError(str(error)) from error
 
 
-def install_apk(adb: str, device: str, apk: Path, replace_existing: bool = False) -> None:
+def install_apk(
+    adb: str,
+    device: str,
+    apk: Path,
+    replace_existing: bool = False,
+    no_incremental: bool = False,
+) -> None:
     """Install the signed local APK, explaining a signing-key conflict.
 
     A build made from a different checkout carries a different local test key,
@@ -247,9 +253,11 @@ def install_apk(adb: str, device: str, apk: Path, replace_existing: bool = False
     The only remedy is uninstalling first, which also clears that app's local
     data, so it is never done implicitly.
     """
-    result = subprocess.run(
-        (adb, "-s", device, "install", "-r", str(apk)), text=True, capture_output=True,
-    )
+    install = [adb, "-s", device, "install"]
+    if no_incremental:
+        install.append("--no-incremental")
+    install.extend(("-r", str(apk)))
+    result = subprocess.run(tuple(install), text=True, capture_output=True)
     if result.returncode == 0:
         return
     output = f"{result.stdout}\n{result.stderr}"
@@ -261,11 +269,12 @@ def install_apk(adb: str, device: str, apk: Path, replace_existing: bool = False
             f"local key, so Android refused to replace it. Rerun with --replace-existing to uninstall "
             f"it first, or uninstall it yourself with: "
             f"{adb} -s {device} uninstall {PACKAGE_NAME}. Either way the app's local data on that "
-            f"device is cleared, so it downloads resources again and starts a new local account."
+            f"device is cleared, so the next launch recreates its per-install data and starts a "
+            f"new local account."
         )
     print(f"Uninstalling the differently signed {PACKAGE_NAME} from {device} before installing.")
     subprocess.run((adb, "-s", device, "uninstall", PACKAGE_NAME), check=True)
-    subprocess.run((adb, "-s", device, "install", "-r", str(apk)), check=True)
+    subprocess.run(tuple(install), check=True)
 
 
 def check_device_host_suits_device(device: str, device_host: str) -> None:
