@@ -1,5 +1,36 @@
 # Execution Plans
 
+## 2026-08-02 self-hosted APK operator documentation
+
+Status: completed 2026-08-02; physical/ARMv7 acceptance remains pending.
+
+Objective: make the implemented on-device path usable without combining the
+README's separate-server instructions with the architecture evidence note.
+
+Execution boundaries:
+
+1. Document only behavior present in `liminal_gate.on_device_setup`, the Android
+   startup gate, and the validated package evidence.
+2. Keep separate-server LAN guidance intact but label its deployment scope so
+   its loopback warning cannot be applied to the self-hosted package.
+3. Make save loss explicit. The app-private state currently has no supported
+   export/import path, so documentation must not imply the workstation save
+   commands protect it.
+4. Preserve the pending physical ARM64, ARMv7, and Chapter 2-1 acceptance
+   boundary.
+
+Result:
+
+- `docs/on-device-setup.md` now covers private inputs, tools, exact preflight,
+  device selection, build/install output, startup verification, restart,
+  updates, first-install seeding, generated files, and save limitations.
+- The README presents separate-server and self-hosted deployment as explicit
+  alternatives, and the LAN device guide is labeled accordingly.
+- Troubleshooting has self-hosted Gradle, storage, large-install, signature,
+  readiness, Unity, and later Network Error paths.
+- The save guide states that its workstation commands do not manage the
+  app-private copy and routes users to the destructive-action warning.
+
 ## 2026-08-02 Toolchain doctor
 
 Status: completed 2026-08-02.

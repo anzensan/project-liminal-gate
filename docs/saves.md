@@ -4,6 +4,17 @@ Your progress lives in one file, `bootstrap-state.json`, inside the `--data-dir`
 you chose at setup. Everything below needs the server **stopped** — it holds the
 save while it runs, and these commands refuse to touch a save in use.
 
+That description applies to the separate-computer server. The
+[self-hosted single-APK route](on-device-setup.md) instead stores `state.json`
+in Android app-private storage. The commands on this page cannot currently
+export, inspect, or restore that on-device copy. Updating with the same local
+signing key preserves it; uninstalling, clearing app storage, or using
+`--replace-existing` can erase it. Losing the signing key prevents later builds
+from updating that install in place. There is no supported on-device
+export/import workflow yet, so read
+[Protect the on-device save](on-device-setup.md#protect-the-on-device-save)
+before beginning a long playthrough.
+
 **Only one server may use a save at a time.** Two servers pointed at the same
 `--data-dir` do not share it: each keeps the whole save in memory and rewrites all
 of it, so the second silently overwrites the first player's progress. The server

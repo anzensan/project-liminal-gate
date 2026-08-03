@@ -36,6 +36,18 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-02 self-hosted APK operator documentation: the README now presents
+  the separate-server and self-hosted layouts as explicit alternatives, and
+  `docs/on-device-setup.md` carries one complete private-input-to-launch path.
+  It records defaults, exact preflight and success output, device selection,
+  first-run/restart verification, safe in-place updates, first-install seeding,
+  generated artifacts, and self-hosted troubleshooting. The LAN physical-device
+  guide is now clearly scoped to the separate-server layout. Save documentation
+  no longer implies that workstation tools protect the app-private `state.json`:
+  no supported export/import exists yet, so uninstall, clear-data,
+  signing-key loss, and `--replace-existing` are called out as destructive.
+  This improves reproducibility but establishes no new device acceptance.
+
 - 2026-08-02 toolchain doctor: `liminal_gate.doctor` reports the build tools
   this machine has and, with `--install-missing`, fetches a Temurin JDK, the
   Android SDK Platform-Tools, Build-Tools, and Platform 35 through Google's own

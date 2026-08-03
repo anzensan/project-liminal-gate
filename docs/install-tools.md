@@ -262,4 +262,6 @@ python3 -m liminal_gate.on_device_setup --check
 
 It requires the normal Android SDK/JDK tools, a complete `android-host/` source
 tree, a reviewed local APK/resources, and (for installation) API 24+, at least
-one supported Android ABI, and 4 GiB free in `/data`.
+one supported Android ABI, and 4 GiB free in `/data`. Continue with
+[Run the server inside the Android APK](on-device-setup.md); do not return to
+the README's separate-server setup steps for this deployment mode.

@@ -4,6 +4,29 @@ Find your symptom in the section that matches where you are. If a local
 client-to-server request fails and nothing here covers it, see [Reporting a
 network error](#reporting-a-network-error) at the end.
 
+## On-device APK
+
+This section applies to [the self-hosted single-APK route](on-device-setup.md).
+It does not require a Python server on the computer, `--device-host`, a chosen
+port, Wi-Fi routing, or firewall access.
+
+| What you see | What to do |
+| --- | --- |
+| `--check` reports `Gradle cache` as `warn` | This is the one non-required build check. Run the normal command once while online; it downloads checksum-verified Gradle 8.11.1 below ignored `user-data/work/`. |
+| The device check reports API below 24, no supported ABI, or less than 4 GiB free | Use an API 24+ device with `arm64-v8a` or `armeabi-v7a`, or free space before building. The full validated package is roughly 1.0 GiB and setup deliberately requires more installation headroom. |
+| `on-device setup failed: Android host Gradle build failed` | Keep the complete trailing Gradle message. Rerun `python3 -m liminal_gate.on_device_setup --check --device YOUR_ADB_SERIAL`; confirm Android SDK Platform 35 and Java 17–23 are reported ready. The host source must exist at `android-host/` unless `--host-source` names another complete copy. |
+| A large APK install appears successful but the package is absent | Update the checkout and use `liminal_gate.on_device_setup`; it forces ADB `--no-incremental` because incremental installation falsely reported success for the validated 1-GiB package. Do not substitute a manual incremental install. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` or `signatures do not match` | The installed app and this checkout use different local signing keys. **Do not use `--replace-existing` if the installed app has progress you need:** uninstalling clears its app-private save, and no supported export exists yet. Use the original checkout/data directory and key, or treat the installed save as non-recoverable before replacing it. |
+| The app stays at **Starting local service…** and then shows **Local service failed to start.** | Tap **Copy diagnostics**, preserve the copied text, then tap **Retry** once. The gate waits up to about 60 seconds for a matching loopback build ID. Do not start a LAN server; this package only uses `127.0.0.1:8002`. If retry fails, report the copied diagnostics and the exact setup command. |
+| The app says **Unity player is unavailable in this package.** | The embedded server passed readiness, but the combined package does not contain the expected Unity player. Update the checkout, rerun the complete build from the reviewed source APK, and reinstall with the same signing key. Do not replace the launcher or assemble host/client APKs by hand. |
+| The game later shows Network Error | Force-stop and reopen the app so the embedded service starts in a new process. There is no computer-side server or changing LAN address to repair. If the startup gate fails, copy its diagnostics; if Unity starts and only a game action fails, report the last action and a privacy-reviewed log rather than guessing an endpoint response. |
+
+The generated package is `user-data/on-device-liminal-gate.apk`. A successful
+command prints both its path and `Installed and launched on ...`. See
+[Protect the on-device save](on-device-setup.md#protect-the-on-device-save)
+before uninstalling, clearing app storage, deleting a local signing key, or
+using `--replace-existing`.
+
 ## Tools setup cannot find
 
 | What you see | What to do |
@@ -34,7 +57,7 @@ network error](#reporting-a-network-error) at the end.
 | The keystore is never created, and setup reports it could not be created | The password was probably shorter than six characters, which `keytool` refuses. Setup now asks again rather than failing, states the minimum in the prompt, and repeats whatever `keytool` reported. If you are running the manual step instead, see [Create a local test signing key](setup-manual.md#2-create-a-local-test-signing-key). |
 | `server origin ... allow at most 27` | The address and port do not fit in the space available inside the APK. Use a port with four digits or fewer, and an IP address rather than a host name. See [Choose a port](device-setup.md#d-choose-a-port-with-at-most-four-digits). |
 
-## Choosing and reaching the target device
+## Choosing and reaching the separate-server target device
 
 | What you see | What to do |
 | --- | --- |
@@ -48,7 +71,7 @@ network error](#reporting-a-network-error) at the end.
 
 | What you see | What to do |
 | --- | --- |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | A build made from a different checkout, with a different local test key, is already installed. Rerun with `--replace-existing`, or uninstall it yourself with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either way that app's local data is cleared, so it downloads resources again and starts a new local account. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | For a self-hosted APK, stop and read [the on-device warning above](#on-device-apk), because uninstalling also deletes its server save. For the separate-server layout, a build made with another checkout's local key is installed; rerun with `--replace-existing`, or uninstall it with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either choice clears client app data, while the separate workstation server state remains in its `--data-dir`. |
 | `INSTALL_FAILED_NO_MATCHING_ABIS` / `res=-113` | The emulator image has no ARM translation. Pick a **Translated ABI** image; see [Emulator setup](emulator.md#choose-an-android-14-image-with-translated-abi-support). |
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
 
@@ -56,7 +79,7 @@ network error](#reporting-a-network-error) at the end.
 
 | What you see | What to do |
 | --- | --- |
-| Network Error before the title flow | Confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |
+| Network Error before the title flow | On the self-hosted route, use [the on-device section](#on-device-apk). On the separate-server route, confirm the server uses `--host 0.0.0.0` and the same port embedded in the APK. If you change the port, rerun the plan, patch, sign, and install steps; then inspect `tail -n 20 user-data/events.jsonl`. |
 | A device that worked yesterday now shows Network Error | This machine's network address probably changed. Recheck it, then rerun setup and reinstall. See [Keep that address from changing](device-setup.md#c-keep-that-address-from-changing). |
 | The app closes at the title screen and logcat says `Using memoryadresses from more that 16GB of memory` followed by signal 11 | Fixed for the exact final client by the generated ARM64 plan. Run `git pull --ff-only`, rerun the complete setup command, and reinstall its new APK. `pip install ".[master-import]"` installs the current checkout; it does not pull newer source. Do not drop ARM64 on Pixel 7/7 Pro because those devices run 64-bit apps only. |
 | `/gd/login` returns 401 or the title screen immediately shows Network Error after a server-state change | The emulator's saved account does not exist in the chosen server state file. Start with a new state-file name and clear the selected emulator app's data. |
@@ -78,7 +101,7 @@ network error](#reporting-a-network-error) at the end.
 
 | What you see | What to do |
 | --- | --- |
-| Progress is gone after reinstalling or clearing the app's data | The app generated a new account ID; your save is still there. See [If you reinstall the app and your progress is gone](saves.md#if-you-reinstall-the-app-and-your-progress-is-gone). |
+| Progress is gone after reinstalling or clearing the app's data | For the self-hosted APK, app-private server state was also cleared and there is no supported recovery unless you preserved another copy before installation. For the separate-server layout, the app generated a new account ID while the save remains in the workstation state file; see [If you reinstall the app and your progress is gone](saves.md#if-you-reinstall-the-app-and-your-progress-is-gone). |
 | `local account state is already in use by another server` | Another server already has that save open. Stop it, or start this one with its own `--data-dir`. See [Look after your save](saves.md). |
 | `account state is in use; stop the local server before changing it` | `restore` and `adopt` will not change a save a running server owns. Stop the server and run the command again. |
 

@@ -2,6 +2,9 @@
 
 Status: build path implemented; physical-client acceptance is pending.
 
+This page records architecture and validation evidence. For the complete
+operator procedure, use [Run the server inside the Android APK](on-device-setup.md).
+
 ## Reported approach
 
 The local build path creates one privately signed APK from a tester-owned,
@@ -43,6 +46,10 @@ The combined APK contains `arm64-v8a` and `armeabi-v7a`; the device must be API
 installation. `--prepare-only` creates no device
 changes. `--replace-existing` may uninstall a mismatched local signature and
 therefore clears that app's data.
+
+The [operator guide](on-device-setup.md) covers the required private input
+layout, tool installation, device selection, expected success output, startup
+verification, updates, save limitations, and failure recovery.
 
 ## Current evidence
 
