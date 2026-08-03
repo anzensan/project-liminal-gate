@@ -137,15 +137,29 @@ class HuntingCatalog:
         return lists
 
     def client_event_flags(self, progress_code: int) -> dict[str, dict[str, Any]]:
-        """Return the exact flags required by advertised non-1000-series rows.
+        """Return the exact `sp_ch_` flag every advertised row needs.
 
-        Hunting chapters 1000--1099 bypass the per-row event gate in the final
-        client. Every other advertised row, including Crystal Road in the
-        ordinary Hunting selector, requires `sp_ch_<chapter>-<section>`.
+        Every advertised row gets its own `sp_ch_<chapter>-<section>`,
+        including Chapters 1000--1099. An earlier reading exempted that range
+        because `UISpecialSelect.IsQuestOpen` really does bypass the flag for
+        it -- ARM64 `0xF84D84` tests `chapter - 1000 <= 99` at `0xF84EB0` and
+        returns true without consulting a flag. That bypass covers only how the
+        list is *built*: `<GetList>c__Iterator0.MoveNext` is its sole caller.
+
+        The per-frame revalidation in `UISpecialSelect.UpdateItems` calls
+        `CheckQuestFlag` directly (ARM64 `0xF85A44`) with no such range
+        exemption, so an unflagged 1000-series row builds and is then dropped
+        from `openList`/`itemList` on the next frame, which starts `Refresh()`
+        (`0xF85BF4`), which rebuilds it. That loop is the flashing Hunting
+        selector and its permanent loading circle; see `docs/findings.md`.
+
         Deriving flags from the same advertised rows prevents a flag from
         exposing a stage the catalog would still refuse. Exact section flags
         are intentional: the broad `sp_ch_3000` fallback also opens every
         Chapter 3000 row in the client's built-in Arena -> Special Quests list.
+        A per-section flag cannot do that, and the client only consults its
+        embedded 50-entry Arena list when the server sends an empty
+        `specialQuestList`, which this server never does.
         """
         lists = self.client_lists(progress_code)
         identities = (
@@ -159,7 +173,6 @@ class HuntingCatalog:
                 "value": True,
             }
             for identity in identities
-            if not 1000 <= int(identity.split("-", 1)[0]) <= 1099
         }
 
 

@@ -292,10 +292,26 @@ class HuntingRuntimeTest(unittest.TestCase):
             self.server.state.progress_for_status("unbound", "127.0.0.1"),
         )
 
-    def test_login_pairs_advertised_metal_rows_with_required_flags(self) -> None:
+    def test_login_pairs_every_advertised_row_with_its_required_flag(self) -> None:
+        """Including the 1000-series Hunting rows.
+
+        `UISpecialSelect.IsQuestOpen` excuses Chapters 1000--1099 from the flag
+        while the list is built, but `UpdateItems` revalidates every drawn row
+        against `CheckQuestFlag` with no such exemption. An unflagged row is
+        therefore removed and rebuilt every frame, which is the flashing
+        Hunting Zone selector reported in issue 20.
+        """
         login = self.login("login-token")
         self.assertEqual(
             {
+                "sp_ch_1001-1": {
+                    "name": "sp_ch_1001-1",
+                    "value": True,
+                },
+                "sp_ch_1003-1": {
+                    "name": "sp_ch_1003-1",
+                    "value": True,
+                },
                 "sp_ch_1200-1": {
                     "name": "sp_ch_1200-1",
                     "value": True,

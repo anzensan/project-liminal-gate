@@ -1351,7 +1351,8 @@ Result:
 
 ## 2026-07-27 Hunting selector runtime stability
 
-Status: discovery in progress.
+Status: resolved server-side on 2026-08-02; original-client confirmation
+pending. No APK patch was required, and none should be added.
 
 Objective: stop the original client's Hunting selector from flashing while
 retaining the real, progress-gated Hunting rows and their existing bounded
@@ -1363,21 +1364,35 @@ Evidence boundary:
   flashes around the Attack of the Coin Creeps card and loading indicator.
 - Live server diagnostics record no banner/resource failure or selector-time
   endpoint error.
-- Static client analysis identifies a per-frame `UISpecialSelect.Update`
-  writer of the list root position that runs only when rows exist. The exact
-  oscillator remains unproved at runtime.
+- Static client analysis identified a per-frame `UISpecialSelect.Update`
+  writer of the list root position that runs only when rows exist.
 
-Required proof before a client patch:
+Result:
 
-1. Capture the original client while the flash occurs and exclude a failing
-   resource, event timer, or subjugation request.
-2. Identify the exact ARM64 and ARMv7 instruction boundary responsible for the
-   repeated movement without disabling list initialization, scrolling, or
-   selection.
-3. Add source-byte-guarded dual-ABI plan entries and tests only if that boundary
-   is confirmed.
-4. Rebuild locally and confirm stable rendering plus a successful Hunting
-   start; do not add duplicate rows or unlock later tiers as a layout hack.
+- The per-frame position writer was **not** the cause and is not a valid patch
+  target. ARM64 `Update` at `0xF85584` reads `listRoot.localPosition`, replaces
+  only its **X** with the window transform's own X, and writes it back at
+  `0xF85698`; Y and Z are round-tripped unchanged through `listPos` at `0xC4`
+  and `0xC8`. It cannot move the list vertically, and it runs in every selector
+  mode, including the Metal Zone and Strikes Back lists that were stable.
+- The real oscillator is the tail call to `UpdateItems` (`0xF856C8`), which
+  revalidates each drawn row with `CheckQuestFlag` (`0xF85A44`), removes the
+  failures, and restarts `Refresh()` (`0xF85BF4`) whenever it removed anything.
+  `IsQuestOpen` (`0xF84D84`) exempts Chapters 1000--1099 from that flag at
+  `0xF84EB0` but is only called while the list is built, so an unflagged
+  1000-series row is rebuilt and dropped once per frame.
+- `client_event_flags` withheld flags for exactly that chapter range, which is
+  why only the tier-1 Hunting families flashed. It now emits an exact
+  `sp_ch_<chapter>-<section>` for every advertised row. See `docs/findings.md`.
+
+Remaining proof:
+
+1. Confirm on the reporter's physical device that the selector is now stable and
+   that a Hunting battle starts and clears through the real client.
+2. Confirm the matching ARMv7 addresses if the ARM64 reading is ever reused; the
+   published fix does not depend on them.
+3. Identify the global byte at `0xF85A70` that the removal branch also requires
+   to be zero. The observed flash implies its value rather than proving it.
 
 ## 2026-07-28 external-reference quest expansion
 

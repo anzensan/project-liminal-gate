@@ -317,6 +317,37 @@ Private inputs, captures, account state, and original assets remain excluded.
   chapter flag opens that family's card. Spinetrich Kino and Kraken Kino
   rendered for the current progress, and Chapter 8000-1 reached `start_quest`
   and loaded its battle resources.
+- **Confirmed by ARM64 disassembly (issue 20), original-client observation
+  pending:** the final client validates a selector row *twice*, under two
+  different rules, and the mismatch is what made the Hunting Zone selector
+  flash around Attack of the Coin Creeps. `UISpecialSelect.IsQuestOpen`
+  (ARM64 RVA `0xF84D84`) exempts Chapters 1000--1099 from the per-row
+  `sp_ch_<chapter>-<section>` gate: `0xF84EB0` computes `chapter - 1000`,
+  compares it against `0x63`, and returns true without consulting a flag.
+  That bypass covers only list *construction* --
+  `UISpecialSelect.<GetList>c__Iterator0.MoveNext` is its sole caller in the
+  class (`0xF897FC`, `0xF89898`, `0xF898D4`). The per-frame revalidation in
+  `UISpecialSelect.UpdateItems` (`0xF856C8`) instead calls `CheckQuestFlag`
+  directly at `0xF85A44`, with no range exemption. A row that fails it is
+  appended to a local removal list (`0xF85AE4`), removed from `openList` and
+  `itemList`, and -- when that list is nonempty (`0xF85B00`) --
+  `StartCoroutine(Refresh())` runs at `0xF85BF4`, rebuilding the row so the
+  next frame repeats. That loop is the flashing selector and its permanent
+  loading circle.
+- **Confirmed implementation cause and fix:** `client_event_flags` withheld
+  `sp_ch_` flags for exactly Chapters 1000--1099, citing the `IsQuestOpen`
+  bypass, so tier-1 Hunting rows 1001--1004 were advertised unflagged while
+  Metal Zone (3000), the Roads (1200/1201), Crystal Road (3004-1), and Strikes
+  Back (8000--8017) were flagged and stayed stable -- exactly the reported
+  boundary. Every advertised row now carries its own exact section flag.
+  Nothing about this is visible as an HTTP error, because the loop is entirely
+  client-local; the reporter's event log correctly showed no selector-time
+  endpoint failure.
+- **Remaining evidence boundary:** only ARM64 was disassembled; the matching
+  ARMv7 addresses are not yet confirmed. The removal branch at `0xF85A70` also
+  requires a global byte to be zero, and that field is unidentified -- the
+  observed flash implies its value rather than proving it. Original-client
+  confirmation that the selector is now stable is still pending.
 - **Local policy:** the country roster and large character/Companion box sizes
   are compatibility fixtures, not recovered production-service values.
 - **Local policy with confirmed client meter semantics:** a successful

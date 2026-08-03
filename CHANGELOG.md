@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The Hunting Zone selector flashed around Attack of the Coin Creeps.** The
+  rows drew correctly and then the whole list strobed behind a loading circle,
+  while Metal Zone and Strikes Back stayed perfectly stable. No request failed,
+  because nothing was being requested.
+
+  The client checks a selector row twice under two different rules.
+  `UISpecialSelect.IsQuestOpen` excuses Chapters 1000--1099 from needing an
+  `sp_ch_<chapter>-<section>` flag, and that is what builds the list — so the
+  rows appeared. But the per-frame recheck in `UISpecialSelect.UpdateItems`
+  calls `CheckQuestFlag` directly with no such exemption, drops every row that
+  fails it, and then restarts the list-refresh coroutine, which rebuilds the
+  rows so the next frame can drop them again.
+
+  The server had been withholding flags for exactly Chapters 1000--1099,
+  trusting the first rule. That covered all four tier-1 Hunting families and
+  nothing else, which is precisely why the other selectors were unaffected.
+  Every advertised row now carries its own exact section flag. (issue 20)
+
 ## 1.0.3 — 2026-08-01
 
 ### Added
