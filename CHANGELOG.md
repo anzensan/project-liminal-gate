@@ -31,6 +31,23 @@
 
 ### Fixed
 
+- **Guided setup starts the server against the resource root it built the
+  manifest from.** `--resource-root` accepts any of the enclosing directories
+  and setup reports the `data_u2017/android` directory it detected inside one,
+  but the launch that followed was handed the operator's own argument. Every
+  mapped file was then looked up a level or more too high, so a setup that had
+  just built and installed the APK ended on `resource file is unavailable`
+  instead of serving. The detected directory is now resolved once and used for
+  both. `server_setup` and `on_device_setup` were already correct.
+
+- **The setup rehearsal finds the tools the doctor installed.** Every run gets
+  an empty data directory, and guided setup replays recorded tool locations
+  from the data directory it is given, so a machine provisioned by
+  `liminal_gate.doctor --install-missing` failed the rehearsal's own
+  prerequisite check on an Il2CppDumper it had. The record is now copied into
+  the run; `--toolchain` names it when the doctor was run with a different
+  `--data-dir`.
+
 - **A Yamamoto Puzzle Quest clear no longer wedges the account** (issue 29).
   6011-1 and 6011-2 are the only two Daily Quests whose own `BattleData` section
   declares a `dropBuddies` manifest, and their two packed codes decode to

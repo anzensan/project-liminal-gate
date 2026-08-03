@@ -47,6 +47,7 @@ from liminal_gate.tester_setup import (
     IL2CPP_OUTPUT_DIRECTORY,
     resolve_resource_root,
 )
+from liminal_gate.toolchain import TOOLCHAIN_FILE
 
 
 REHEARSAL_SCHEMA_VERSION = 1
@@ -60,6 +61,13 @@ DEFAULT_BUILD_PORT = 8697
 # Beside the save rather than inside a run directory: runs are pruned, and a
 # baseline that disappeared with the run that recorded it would compare nothing.
 DEFAULT_BASELINE = Path("user-data/rehearsal-baseline.json")
+
+# Where `liminal_gate.doctor --install-missing` records what it installed, at
+# its own default `--data-dir`.  Every run gets an empty data directory, and
+# guided setup reads that record from the data directory it is given, so
+# without carrying it a machine the doctor provisioned fails the rehearsal's
+# prerequisite check on tools it demonstrably has.
+DEFAULT_TOOLCHAIN = Path("user-data") / TOOLCHAIN_FILE
 
 # The scripted client's identity.  Fixed rather than generated because every run
 # gets an empty data directory, and a constant keeps two summaries comparable.
@@ -118,6 +126,10 @@ VOLATILE_FIELDS = frozenset({
     "source_mode",
     "python",
     "recorded_artifacts",
+    # Names a machine-local path to the doctor's record. Recorded so a run says
+    # where its tools came from; never compared, because it describes this
+    # machine rather than anything the run produced.
+    "toolchain_record",
     # The tutorial Pact really does roll between starters.  Which one it lands
     # on is not a regression; the assertions in `onboard` and `verify_restart`
     # are what hold it to one starter that survives a restart.
@@ -296,6 +308,24 @@ def setup_arguments(
     if reuse_il2cpp is not None:
         arguments.extend(("--dummy-dll-dir", str(reuse_il2cpp.resolve())))
     return arguments
+
+
+def carry_toolchain(record: Path, data_directory: Path) -> Path | None:
+    """Put the operator's recorded tool locations into this run's data directory.
+
+    The doctor installs under its own `--data-dir` and records absolute paths to
+    what it installed; guided setup replays that record from whichever data
+    directory it is given.  A rehearsal gives setup an empty one, so the record
+    has to travel with it or the run reports a missing Il2CppDumper on a machine
+    where the doctor installed one.  Copied rather than pointed at, so nothing
+    the rehearsal runs can write back to the operator's own file.
+    """
+    if not record.is_file():
+        return None
+    data_directory.mkdir(parents=True, exist_ok=True)
+    carried = data_directory / TOOLCHAIN_FILE
+    shutil.copy2(record, carried)
+    return carried
 
 
 def free_port() -> int:
@@ -726,6 +756,7 @@ def rehearse(
     repository: Path, run: RehearsalRun, apk: Path, resource_root: Path,
     revision: str | None, reuse_venv: Path | None, reuse_il2cpp: Path | None,
     run_smoke: bool, build_port: int = DEFAULT_BUILD_PORT,
+    toolchain_record: Path | None = None,
 ) -> dict[str, Any]:
     """Run every requested stage and return the summary they produced."""
     started = time.time()
@@ -750,6 +781,11 @@ def rehearse(
     # that file's hash and report a regression where nothing had changed.
     arguments = setup_arguments(interpreter, apk, resource_root, run.data_directory, build_port, reuse_il2cpp)
     summary["build_port"] = build_port
+
+    carried = carry_toolchain(toolchain_record, run.data_directory) if toolchain_record is not None else None
+    summary["toolchain_record"] = str(toolchain_record) if carried is not None else None
+    if carried is not None:
+        print(f"Using the tool locations recorded in {toolchain_record}.")
 
     print("Checking prerequisites the way an operator would...")
     run_step(StageLog("preflight", run.logs / "preflight.log"), (*arguments, "--check"), cwd=run.source)
@@ -834,6 +870,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--reuse-il2cpp", type=Path,
         help="an existing Il2CppDumper DummyDll directory; faster, but no longer proves fresh extraction",
     )
+    parser.add_argument(
+        "--toolchain", type=Path, default=DEFAULT_TOOLCHAIN,
+        help=(
+            "tool locations recorded by liminal_gate.doctor, copied into the run so a "
+            f"machine the doctor provisioned passes the prerequisite check (default: {DEFAULT_TOOLCHAIN}); "
+            "ignored when absent"
+        ),
+    )
     parser.add_argument("--skip-smoke", action="store_true", help="generate only; do not run the server")
     parser.add_argument(
         "--build-port", type=int, default=DEFAULT_BUILD_PORT,
@@ -884,6 +928,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         summary = rehearse(
             repository, run, args.apk, args.resource_root, args.revision,
             args.reuse_venv, args.reuse_il2cpp, not args.skip_smoke, args.build_port,
+            args.toolchain.resolve(),
         )
     except RehearsalError as error:
         print(f"\nRehearsal failed: {error}", file=sys.stderr)

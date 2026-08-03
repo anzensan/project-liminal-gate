@@ -90,6 +90,13 @@ Android SDK build tools, a JDK for `keytool`, `adb`, an AArch64-capable
 device needs to be connected; the device check warns and the rehearsal
 continues.
 
+If you installed those with `python3 -m liminal_gate.doctor --install-missing`,
+nothing else is needed. The doctor records what it installed in
+`user-data/toolchain.json`, and because every run gets its own empty data
+directory, the rehearsal copies that record into the run so the tools are found
+the same way guided setup finds them. Pass `--toolchain <file>` if you ran the
+doctor with a different `--data-dir`.
+
 ## Options
 
 | Option | What it does |
@@ -101,6 +108,7 @@ continues.
 | `--keep <n>` | How many previous run directories to keep. Each holds an APK and an environment. Default 3. |
 | `--reuse-venv <dir>` | Use an existing environment instead of building one. |
 | `--reuse-il2cpp <dir>` | Reuse an Il2CppDumper `DummyDll` directory instead of extracting one. |
+| `--toolchain <file>` | The doctor's record of what it installed, copied into the run so its tools are found. Defaults to `user-data/toolchain.json`; ignored when absent. |
 | `--skip-smoke` | Generate only; do not start the server. |
 | `--build-port <port>` | The port setup bakes into the rehearsed APK. Fixed at 8697 by default so that APK's hash is stable; changing it changes the hash. |
 | `--baseline <file>` | Compare against a different baseline. |
