@@ -27,7 +27,7 @@ Everything below stays under the ignored `user-data/` directory.
 | `input-manifest/` | Records hashes and structural validation for the APK and resource inputs used by this setup. | No. Keep it as provenance evidence. |
 | `rehearsal-baseline.json` | Only if you run [the setup rehearsal](setup-rehearsal.md). Records the hashes, counts, and transport result of a run you trusted, so a later run can report exactly what changed. | No. It is derived from your own APK and never leaves your machine. |
 | `local-server-plan.json`, the local signing key, and `liminal-gate-test.apk` | Record the client patch, sign it with a local-only key, and produce the APK installed on your device. | The plan and key are not server inputs. The generated APK belongs on the client device. |
-| `work/on-device/`, Gradle cache, and `on-device-liminal-gate.apk` | Private staging/build products and the combined on-device package. | The package and its full resource tree remain private to the tester. |
+| `work/on-device/`, `work/gradle/`, `work/gradle-user-home/`, and `on-device-liminal-gate.apk` | Private staging, pinned build caches, and the combined on-device package. The APK is the installable output; the work directories are reproducible. Deleting workstation build output does not remove an already installed app, but it does not back up that app's private save either. | The package and its full resource tree remain private to the tester. |
 
 Keep the output not marked **Yes** on the setup workstation: it is the
 reproducible path from the private APK to the final runtime catalogs, not
