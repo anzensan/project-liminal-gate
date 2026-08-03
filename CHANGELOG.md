@@ -31,6 +31,26 @@
 
 ### Fixed
 
+- **A game over in a Daily Quest no longer ends in a Network Error.** The
+  client offers Continue when a Daily Quest is lost and posts `/gd/continue`
+  for it, but the server accepted Continue only in the generic-story phase, so
+  a Hunting battle — which every Daily Quest is — answered
+  `continue_unavailable` at 409 and the client showed a transport failure with
+  no way past it. Continue now applies the same coin policy to a Hunting
+  battle. Chapter 1100 stays excluded, as its own notice requires: it runs as a
+  world-map special. A Continue that genuinely cannot be offered is now
+  soft-refused on `cmdError` like an out-of-rotation Daily Quest entry, so the
+  client shows its own message rather than a transport error.
+
+- **An abandoned battle no longer strands the account.** Nothing the client
+  sends on the way out of a lost battle released the open stage, and a Daily
+  Quest could not be re-entered to release it either — the day is spent at
+  accepted start, so the client greys out the one stage that would have. Every
+  other quest then answered 409 until the UTC day rolled over. A start for a
+  different stage now counts as the player having left, since the client runs
+  one battle at a time. Explicit local policy, alongside the existing release
+  on a roster or party save. The spent day still stands.
+
 - **Guided setup starts the server against the resource root it built the
   manifest from.** `--resource-root` accepts any of the enclosing directories
   and setup reports the `data_u2017/android` directory it detected inside one,

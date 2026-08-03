@@ -2190,6 +2190,11 @@ class BootstrapState:
                 self._persist_locked()
                 return "success", payload
             # One active battle per account, shared with story and event stages.
+            # A start for a different stage releases the one still open: the
+            # client cannot be in two, so this is the player having left.
+            if phase != "free_roam":
+                release_abandoned_battle(account)
+                phase = account["tutorial_phase"]
             if phase != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
             if not stage.unlocked_at(int(userdata.get("progressCode", 0))):
@@ -2378,7 +2383,11 @@ class BootstrapState:
                 requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
-            # One active battle per account, shared with story and Hunting.
+            # One active battle per account, shared with story and Hunting. A
+            # start for a different stage releases the one still open.
+            if phase != "free_roam":
+                release_abandoned_battle(account)
+                phase = account["tutorial_phase"]
             if phase != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
             origin = spend_stamina(
@@ -2557,6 +2566,9 @@ class BootstrapState:
                 requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
+            # A start for a different stage releases the battle still open.
+            if account["tutorial_phase"] != "free_roam":
+                release_abandoned_battle(account)
             if account["tutorial_phase"] != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
             # Entry debits the stamina meter, never the Energy wallet.  The two
@@ -2831,16 +2843,24 @@ class BootstrapState:
                 return "unsupported_continue", None
             userdata = account["userdata"]
             coins = userdata.get("coins", 0)
-            if (
-                # Requiring the generic-story phase also keeps Continue out of
-                # Chapter 1100, whose own notice says it cannot be continued
-                # after a game over, and out of a Hunting battle.
-                account.setdefault("tutorial_phase", "initial") != "generic_story_active"
-                or not isinstance(account.get("active_generic_story"), dict)
-                or type(coins) is not int
-                or coins < policy["coin_cost"]
-            ):
-                return "continue_unavailable", None
+            phase = account.setdefault("tutorial_phase", "initial")
+            # A Hunting battle continues on the same terms as an ordinary story
+            # one. The client offers Continue after a game over in a Daily
+            # Quest and posts it here, so refusing on the phase alone answered a
+            # button the client was really showing -- and, because the refusal
+            # carried a 409, the player saw a Network Error rather than any
+            # answer. Chapter 1100 stays excluded: it runs as a world-map
+            # special, and its own notice says it cannot be continued.
+            in_battle = (
+                (phase == "generic_story_active" and isinstance(account.get("active_generic_story"), dict))
+                or (phase == "hunting_active" and isinstance(account.get("active_hunt"), dict))
+            )
+            if not in_battle or type(coins) is not int or coins < policy["coin_cost"]:
+                # Soft-refused rather than 409, the same way an out-of-rotation
+                # Daily Quest entry is: a state the client should not have
+                # offered is still the client's to report, and a transport error
+                # is the one answer it cannot show the player usefully.
+                return "success", _canonical_payload({"success": False, "errorCode": 1})
             userdata["coins"] = coins - policy["coin_cost"]
             payload = {
                 "success": True,
@@ -3889,6 +3909,36 @@ def _started_identity(body: bytes) -> tuple[int, int] | None:
     """The chapter/section a start request names, if it is well formed."""
     values = _parse_generic_story_start(body)
     return None if values is None else (values["chapter"], values["section"])
+
+
+#: The phases that mean one battle is open. Free roam and the tutorial states
+#: are not among them: only these three own an active stage to release.
+ACTIVE_BATTLE_PHASES = frozenset({"generic_story_active", "hunting_active", "world_map_special_active"})
+
+
+def release_abandoned_battle(account: dict[str, Any]) -> bool:
+    """Drop an open battle the client has demonstrably left, and say whether it did.
+
+    Explicit local policy, not recovered behaviour. The client runs one battle
+    at a time, so a start for a *different* stage is proof the last one was
+    abandoned -- and until that counted as proof, an abandoned battle left the
+    account unable to start anything at all.  A Daily Quest reached that state
+    from an ordinary game over: the day is spent at accepted start, so the
+    client greys out the one stage whose re-entry would have released it, and
+    every other start answered 409 until the UTC day rolled over.
+
+    A save carrying a roster or party already releases a battle the same way
+    (see `write_userdata`); this covers the client that starts something else
+    without writing one first.
+    """
+    if account.get("tutorial_phase") not in ACTIVE_BATTLE_PHASES:
+        return False
+    account["tutorial_phase"] = "free_roam"
+    account["active_generic_story"] = None
+    account["active_hunt"] = None
+    account["active_hunt_ticket_spent"] = None
+    account["active_world_map_special"] = None
+    return True
 
 
 def _utc_day(now: float) -> int:
