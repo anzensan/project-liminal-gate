@@ -32,7 +32,7 @@ def _sha1(data: bytes) -> str:
     return hashlib.sha1(data).hexdigest()
 
 
-def _load_inverse_table(apk: Path) -> bytes:
+def _load_decode_tables(apk: Path) -> tuple[bytes, bytes]:
     try:
         with zipfile.ZipFile(apk) as archive:
             metadata = archive.read(METADATA_MEMBER)
@@ -46,7 +46,11 @@ def _load_inverse_table(apk: Path) -> bytes:
         raise PactBannerImportError("the APK does not contain the reviewed banner decode table")
     if any(inverse[forward[value]] != value for value in range(TABLE_SIZE)):
         raise PactBannerImportError("the APK banner decode tables are inconsistent")
-    return inverse
+    return forward, inverse
+
+
+def _load_inverse_table(apk: Path) -> bytes:
+    return _load_decode_tables(apk)[1]
 
 
 def _calc_index(index: int, size: int) -> int:

@@ -155,6 +155,35 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual("image/png", content_type)
         self.assertEqual(payload, body)
 
+    def test_serves_derived_coin_creeps_bundle_at_hashed_resource_url(self) -> None:
+        banners = self.root / "public_data" / "banner_resources"
+        banners.mkdir(parents=True)
+        name = "824301495dd437d0dcd4392231844364sp1003-1.bin"
+        payload = b"ENCA-local-derived-bundle"
+        (banners / name).write_bytes(payload)
+        server = BootstrapServer(
+            ("127.0.0.1", 0), self.server.profile,
+            BootstrapState(self.root / "coin-creeps-banner-state.json"),
+            public_data_root=self.root / "public_data",
+        )
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            for path in (f"/resources/Banner/{name}", "/Banner/sp1003-1.bin"):
+                connection = HTTPConnection(*server.server_address)
+                connection.request("GET", path)
+                response = connection.getresponse()
+                body = response.read()
+                content_type = response.getheader("Content-Type")
+                connection.close()
+                self.assertEqual(200, response.status)
+                self.assertEqual("application/octet-stream", content_type)
+                self.assertEqual(payload, body)
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+
     def test_account_survives_server_restart(self) -> None:
         _, signup = self.request("/local/signup?uuid=local-account&otk=signup-token")
         self.assertEqual(16, len(signup["digest"]))

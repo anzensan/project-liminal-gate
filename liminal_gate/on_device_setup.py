@@ -28,6 +28,7 @@ from liminal_gate import tester_setup, tool_install, toolchain
 from liminal_gate.apk_patcher import apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import sign_apk
 from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
+from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASES, hashed_resource_name
 from liminal_gate.pact_banner_importer import PACT_BANNERS
 
 
@@ -215,12 +216,17 @@ def catalog_inputs(data_directory: Path) -> dict[str, Path]:
 
 
 def public_data_inputs(data_directory: Path) -> dict[str, Path]:
-    """Require and name the generated Pact UI payload used by the full setup."""
+    """Name the generated UI/resource payloads used by the full setup."""
     result = {
         f"public_data/banners/{name}_en.png":
             data_directory / "public_data" / "banners" / f"{name}_en.png"
         for name in PACT_BANNERS
     }
+    for alias in COIN_CREEPS_BANNER_ALIASES:
+        filename = hashed_resource_name(alias)
+        path = data_directory / "public_data" / "banner_resources" / filename
+        if path.is_file():
+            result[f"public_data/banner_resources/{filename}"] = path
     missing = [name for name, path in result.items() if not path.is_file()]
     if missing:
         raise OnDeviceSetupError(

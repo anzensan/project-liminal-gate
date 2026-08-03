@@ -18,9 +18,23 @@ from liminal_gate.il2cpp_plan_generator import PlanGenerationError, generate_pla
 
 
 METADATA_MEMBER = "assets/bin/Data/Managed/Metadata/global-metadata.dat"
+DATA_BUNDLE_MEMBER = "assets/bin/Data/data.unity3d"
 API_BASE_LITERAL = b"https://gdappserver.appspot.com/"
 RESOURCE_BASE_LITERAL = b"http://storage.googleapis.com/gdresources/data_u2017/android/"
 WEBSITE_BASE_LITERAL = b"http://www.terra-battle.com"
+
+# The final catalog skips Attack of Coin Creeps even though the selector still
+# advertises all three Chapter 1003 sections. Copying the retained 3003-1 record
+# supplies the same 610x140/version metadata under the missing logical names;
+# resource setup separately prefers exact operator-owned sp1003 bundles and
+# otherwise derives internally renamed bundles from retained Coin Creeps art.
+COIN_CREEPS_BANNER_ALIASES = {
+    "member": DATA_BUNDLE_MEMBER,
+    "asset_name": "AssetVersions",
+    "collection": "SpecialBanner",
+    "source_name": "sp3003-1",
+    "aliases": ["sp1003-1", "sp1003-2", "sp1003-3"],
+}
 
 # The retired Unity IAP bootstrap always reports PurchasingUnavailable (zero).
 # These source-byte-guarded branches dismiss only that startup modal; they do
@@ -156,6 +170,7 @@ def generate_legacy_client_plan(source_apk: Path, server_origin: str) -> dict[st
             *ARM64_SCUDO_ALLOCATOR_PATCHES,
         )
     )
+    plan["text_asset_json_aliases"] = [COIN_CREEPS_BANNER_ALIASES]
     return plan
 
 

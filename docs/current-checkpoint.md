@@ -300,6 +300,15 @@ free roam are now confirmed. Other Archive clears remain open. These
 are fast-lane client observations, not a replacement for the Chapter 2-1
 canonical certification boundary.
 
+Issue 20's selector is now reported stable, exposing a second presentation
+gap: Attack of Coin Creeps had a blank card because the final APK catalog and
+retained archives omit every `sp1003` banner. Guided APK preparation now adds
+the three missing catalog identities; setup derives internally renamed ENCA
+bundles from retained `sp3003-1` Coin Creeps-family art when exact `sp1003`
+resources are unavailable, without changing the Chapter 1003 route. The
+rebuilt APK, all three derived bundle identities, and real HTTP bytes are verified;
+physical-client rendering after reinstall remains pending.
+
 Security boundary: the server listens on the local network for Android device
 compatibility. Signup/login associates a client host with an account; a new
 token from an unidentified host is refused once ownership exists. Request

@@ -7,7 +7,16 @@ import tempfile
 import unittest
 import zipfile
 
-from liminal_gate.apk_patcher import PatchPlan, PatchPlanError, apply_patch_plan, load_patch_plan, native_abis, sha256_file
+from liminal_gate.apk_patcher import (
+    PatchPlan,
+    PatchPlanError,
+    TextAssetJsonAliases,
+    _alias_text_asset_document,
+    apply_patch_plan,
+    load_patch_plan,
+    native_abis,
+    sha256_file,
+)
 
 
 class ApkPatcherTest(unittest.TestCase):
@@ -56,6 +65,25 @@ class ApkPatcherTest(unittest.TestCase):
                 output,
                 load_patch_plan(self.write_plan(source_sha256, expected_hex="000000000000")),
             )
+
+    def test_copies_one_exact_text_asset_record_to_named_aliases(self) -> None:
+        patch = TextAssetJsonAliases(
+            "assets/bin/Data/data.unity3d", "AssetVersions", "SpecialBanner",
+            "sp3003-1", ("sp1003-1", "sp1003-2", "sp1003-3"),
+        )
+        source = json.dumps({"SpecialBanner": [
+            {"id": 0, "h": 140, "name": "sp3003-1", "w": 610, "ver": 110},
+            {"id": 0, "h": 140, "name": "unrelated", "w": 610, "ver": 108},
+        ]})
+        entries = json.loads(_alias_text_asset_document(source, patch))["SpecialBanner"]
+        self.assertEqual(
+            ["sp3003-1", "unrelated", "sp1003-1", "sp1003-2", "sp1003-3"],
+            [entry["name"] for entry in entries],
+        )
+        for entry in entries[2:]:
+            self.assertEqual((0, 140, 610, 110), (entry["id"], entry["h"], entry["w"], entry["ver"]))
+        with self.assertRaisesRegex(PatchPlanError, "already exists"):
+            _alias_text_asset_document(json.dumps({"SpecialBanner": entries}), patch)
 
 
 class DropAbiTest(unittest.TestCase):
