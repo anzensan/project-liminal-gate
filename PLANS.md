@@ -1,5 +1,40 @@
 # Execution Plans
 
+## 2026-08-02 toolchain doctor with managed AArch64 disassembler
+
+Status: completed 2026-08-02; live Google NDK licence acceptance and download
+remain a tester action.
+
+Objective: make every command-line prerequisite for guided setup installable
+and reusable without editing a shell profile or requiring Android Studio.
+
+Execution boundaries:
+
+1. Keep all vendor tools and the atomic location record below ignored
+   `user-data/`; never edit a shell profile, registry, or global tool directory.
+2. Preserve operator-set environment variables. Recorded locations fill gaps;
+   only the doctor's immediate post-install verification may override a broken
+   existing value.
+3. Require explicit Android SDK licence acceptance and let Google's
+   `sdkmanager` retrieve and verify SDK/NDK packages.
+4. Reuse an existing AArch64-capable disassembler before installing pinned
+   side-by-side NDK r27d (`ndk;27.3.13750724`). Record its `llvm-objdump` only
+   after the same capability probe used by guided derivation passes.
+5. Bring only the doctor, installer, tool record, guided-setup integration,
+   focused tests, and generic setup documentation to `main`; exclude the
+   self-hosted APK and gameplay commits from the feature branch.
+
+Result:
+
+- `doctor --install-missing` can install the JDK, Android SDK, NDK
+  disassembler, Il2CppDumper, required Python packages, and a private .NET
+  runtime in dependency order while recording each completed step.
+- Retry after an interrupted SDK/NDK install keeps completed records but never
+  records an absent or incapable disassembler.
+- The warning-strict focused suite passed 111 tests and the complete main suite
+  passed 858 tests. Compilation, diff hygiene, release preflight, and the
+  independent repository audit passed against the clean committed candidate.
+
 ## 2026-08-01 Repeatable setup rehearsal
 
 Status: completed 2026-08-01.

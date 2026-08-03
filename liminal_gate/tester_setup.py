@@ -48,7 +48,7 @@ from liminal_gate.setup_progress import (
     run_with_heartbeat as _run_with_heartbeat,
 )
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
-from liminal_gate import account_state
+from liminal_gate import account_state, toolchain
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
 from liminal_gate.event_catalog import (
     DEFAULT_EVENT_CATALOG,
@@ -637,8 +637,10 @@ _READKEY_ADVICE = (
 MASTER_IMPORT_DISTRIBUTIONS = ("UnityPy", "TypeTreeGeneratorAPI")
 
 AARCH64_DISASSEMBLER_MISSING = (
-    "complete guided setup requires an AArch64 disassembler; install LLVM "
-    "(llvm-objdump) or binutils-multiarch, then re-run setup"
+    "complete guided setup requires an AArch64 disassembler; run "
+    "python3 -m liminal_gate.doctor --install-missing to install the pinned "
+    "Android NDK llvm-objdump privately, or install LLVM/binutils-multiarch by hand, "
+    "then re-run setup"
 )
 
 
@@ -1652,6 +1654,11 @@ def _progress_label(progress: object) -> str:
 
 def main() -> int:
     args = parse_args()
+    # Ahead of every resolver, including the ones --check runs. Each of them
+    # reads the environment, and this is what puts the locations a previous
+    # `liminal_gate.doctor` run recorded back into it, so a tester who ran the
+    # doctor never has to set PATH or JAVA_HOME in this terminal.
+    toolchain.load_and_apply(args.data_dir)
     if args.check:
         # Deliberately ahead of every prompt and every check that can raise: the
         # point of this mode is to answer "is this machine ready" without asking

@@ -14,3 +14,24 @@
   release checks.
 
 CI separately targets Python 3.11 and 3.13 on Ubuntu.
+
+## 2026-08-02 doctor-managed AArch64 disassembler
+
+- Host: Darwin arm64
+- Pinned package: Android NDK r27d, `ndk;27.3.13750724`
+- Package availability check: the installed Google `sdkmanager --list` reported
+  `ndk;27.3.13750724` as available.
+- Focused warning-strict tests:
+  `PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest -v tests.test_doctor tests.test_toolchain tests.test_setup_story_drops tests.test_tester_preflight`
+- Complete warning-strict main-branch tests:
+  `PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v`
+- Result: 111 focused tests and all 858 main-branch tests passed. A POSIX
+  NDK-layout fixture executed the same `--version` AArch64 probe used by guided
+  setup. The current host's existing Apple `objdump` also passed the live
+  survey. Compilation and diff hygiene passed; the clean committed candidate
+  passed `liminal_gate.release_preflight` and the independent
+  `liminal_gate.release_audit`.
+- Deliberate boundary: no real NDK package was installed during validation.
+  The doctor refuses to accept Google's Android SDK licence without the
+  tester's explicit confirmation; package retrieval and repository verification
+  remain delegated to Google's `sdkmanager`.
