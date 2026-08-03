@@ -36,6 +36,19 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-03 Attack of Coin Creeps card-art recovery: the final APK's embedded
+  306-row `SpecialBanner` catalog contains `sp1001`, `sp1002`, and `sp1004`
+  families but no `sp1003` record, matching the reporter's stable but blank
+  Chapter 1003 card. The guarded local APK plan now derives `sp1003-1` through
+  `sp1003-3` catalog aliases from the retained 610x140 `sp3003-1` record. Setup
+  prefers exact operator-owned `sp1003` bundles and otherwise derives three
+  ENCA bundles with matching internal texture/container names from the retained
+  Coin Creeps-family art. A real final-APK rebuild round-tripped all three
+  records; each derived bundle round-tripped through ENCA/Unity parsing, and
+  real HTTP returned the 172,451-byte section-1 derivation exactly. All 927
+  warning-strict repository tests pass. The APK/resource inputs remain
+  unchanged; physical-client confirmation after reinstall is pending.
+
 - 2026-08-03 client-trusted Hunting settlement: per-stage reward maxima no
   longer block ordinary Hunting, Metal, Special, or Daily Quest play by
   default. The final client owns the battle and reports its outcome; the server

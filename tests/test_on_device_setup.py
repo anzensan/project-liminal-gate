@@ -96,6 +96,10 @@ class OnDeviceSetupTest(unittest.TestCase):
             banners = data / "public_data" / "banners"; banners.mkdir(parents=True)
             for name in on_device_setup.PACT_BANNERS:
                 (banners / f"{name}_en.png").write_bytes(b"png")
+            coin_creeps = data / "public_data" / "banner_resources"
+            coin_creeps.mkdir()
+            for alias in on_device_setup.COIN_CREEPS_BANNER_ALIASES:
+                (coin_creeps / on_device_setup.hashed_resource_name(alias)).write_bytes(b"enca")
             plan = {"schema_version": 1}
             signed = data / "on-device-liminal-gate.apk"
             with patch.object(on_device_setup, "sha256_file", return_value=on_device_setup.REVIEWED_SOURCE_SHA256), \
@@ -119,6 +123,9 @@ class OnDeviceSetupTest(unittest.TestCase):
                 {"server.json"} | {
                     f"public_data/banners/{name}_en.png"
                     for name in on_device_setup.PACT_BANNERS
+                } | {
+                    f"public_data/banner_resources/{on_device_setup.hashed_resource_name(alias)}"
+                    for alias in on_device_setup.COIN_CREEPS_BANNER_ALIASES
                 },
                 set(assemble.call_args.kwargs["runtime_files"]),
             )

@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover - exercised on Windows only
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from liminal_gate.archive_economy import award_chapter_energy, award_stage_energy
+from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASES, hashed_resource_name
 from liminal_gate.resource_catalog import ResourceCatalog, ResourceCatalogError, load_resource_catalog
 from liminal_gate.stamina_meter import chapter_for_progress, current_stamina, max_stamina_for_chapter, spend_stamina
 from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogError, build_bundled_companion_policy, load_companion_catalog
@@ -126,6 +127,16 @@ PACT_BANNER_FILES = {
     "/public_data/banners/sl_friend_01_en.png": "sl_friend_01_en.png",
     "/public_data/banners/slb_friend_01_en.png": "slb_friend_01_en.png",
     "/public_data/banners/sl_luck_01_en.png": "sl_truth_01_en.png",
+}
+COIN_CREEPS_BANNER_FILES = {
+    path: hashed_resource_name(alias)
+    for alias in COIN_CREEPS_BANNER_ALIASES
+    for path in (
+        f"/resources/Banner/{alias}.bin",
+        f"/resources/Banner/{hashed_resource_name(alias)}",
+        f"/Banner/{alias}.bin",
+        f"/Banner/{hashed_resource_name(alias)}",
+    )
 }
 # Final-client `UIBarSlot.NormalSlotItemId`. Unlike campaign/event selectors,
 # this permanent payment identity is embedded in the surviving client.
@@ -3203,6 +3214,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             else:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "local_banner_not_found"})
             return True
+        coin_creeps_name = COIN_CREEPS_BANNER_FILES.get(path)
+        if coin_creeps_name is not None and self.server.public_data_root is not None:
+            banner = self.server.public_data_root / "banner_resources" / coin_creeps_name
+            if banner.is_file() and banner.resolve().is_relative_to(self.server.public_data_root):
+                self._file(HTTPStatus.OK, banner, "application/octet-stream")
+                return True
+            # Fall through so an exact operator-owned sp1003 resource in the
+            # hash-validated manifest can satisfy the same URL.
         resource = (
             self.server.resource_catalog.resolve(path)
             if self.server.resource_catalog else None
@@ -5680,7 +5699,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--resource-root", type=Path, help="user-local root containing manifest-mapped files")
     parser.add_argument("--resource-manifest", type=Path, help="user-local explicit resource mapping manifest")
-    parser.add_argument("--public-data-root", type=Path, help="user-local derived PNGs for supported public-data image paths")
+    parser.add_argument("--public-data-root", type=Path, help="user-local derived UI and resource payloads")
     parser.add_argument("--story-catalog", type=Path, help="user-local normalized generic-story catalog")
     parser.add_argument("--story-progression-catalog", type=Path, help="user-derived reviewed core-story progression catalog")
     parser.add_argument("--core-story", action="store_true", help="enable the bundled ordinary Chapter 2--42 progression policy without reward data")

@@ -1,5 +1,41 @@
 # Execution Plans
 
+## 2026-08-03 Attack of Coin Creeps card artwork
+
+Status: implemented and repository-validated; physical-client rendering pending.
+
+Objective: render a stable, nonblank card for the advertised Attack of Coin
+Creeps stages without changing their Chapter 1003 gameplay identity.
+
+Execution boundaries:
+
+1. Keep the final APK and retained resource archive immutable; derive all APK
+   and manifest changes from the operator's own inputs.
+2. Add only the three absent final-client `SpecialBanner` catalog identities,
+   `sp1003-1` through `sp1003-3`, using the retained `sp3003-1` dimensions and
+   version as a labeled local presentation fallback.
+3. Prefer exact `sp1003` resources if an operator has them. Otherwise derive
+   three user-local ENCA bundles from retained `sp3003-1` Coin Creeps-family
+   art with the internal names required by each hash-derived client URL.
+4. Preserve Chapter 1003 section identity, entry costs, battle data, settlement,
+   retry, and restart behavior unchanged.
+5. Validate catalog transformation, resource bytes over real HTTP, source-hash
+   guards, focused tests, the complete suite, and a rebuilt client before
+   requesting the remaining physical-client visual check.
+
+Result:
+
+- The guarded plan copies the retained `sp3003-1` metadata to all three absent
+  `sp1003` identities without changing the Chapter 1003 selector/click fields.
+- Exact operator-owned `sp1003` resources win; the reviewed archive otherwise
+  supplies source art for three locally derived bundles with matching internal
+  texture, container, and bundle names at the plain and MD5-derived URLs.
+- A real final-APK rebuild round-tripped all three aliases; all three derived
+  resources round-tripped through ENCA and Unity parsing, and real HTTP served
+  the exact section-1 derivation. All 927 warning-strict tests pass.
+- The original/fallback artwork distinction is explicit. A reinstall and
+  physical-client visual check remain the next boundary.
+
 ## 2026-08-03 client-trusted Hunting settlement
 
 Status: implemented and repository-validated; physical-client retest pending.

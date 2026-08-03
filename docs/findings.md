@@ -364,11 +364,34 @@ Private inputs, captures, account state, and original assets remain excluded.
   Nothing about this is visible as an HTTP error, because the loop is entirely
   client-local; the reporter's event log correctly showed no selector-time
   endpoint failure.
-- **Remaining evidence boundary:** only ARM64 was disassembled; the matching
-  ARMv7 addresses are not yet confirmed. The removal branch at `0xF85A70` also
+- **Confirmed follow-on cause:** after the selector stabilized, the Chapter
+  1003 card remained blank. The final APK's embedded `AssetVersions` TextAsset
+  contains 306 `SpecialBanner` rows and jumps from complete `sp1001` and
+  `sp1002` families to `sp1004`; neither the catalog nor the retained Android,
+  iOS, or Mac archives contains an `sp1003` family. `UISpecialItem.Init` still
+  receives `hasBanner=true` and starts `loadImage` without changing its stored
+  chapter/section fields, so this is an image-catalog gap rather than a quest
+  identity or server-list failure.
+- **Implemented local presentation policy:** the source-hash-guarded APK plan
+  copies the retained `sp3003-1` 610x140/version-110 catalog record to logical
+  names `sp1003-1`, `sp1003-2`, and `sp1003-3`. The resource manifest serves an
+  exact operator-owned `sp1003` file if one exists; otherwise setup derives
+  three ENCA bundles from retained `sp3003-1` Coin Creeps-family art, renaming
+  each Unity texture, container path, and bundle identity to the matching
+  `sp1003` name. The public-data transport serves those derivations at both the
+  plain and client-MD5 URLs. It does not rename Chapter 1003, change click
+  routing, or modify battle/settlement state. A real rebuilt final APK
+  round-tripped all three catalog records; all three derived bundles
+  round-tripped through ENCA and Unity parsing, and real HTTP returned the exact
+  172,451-byte section-1 derivation.
+- **Remaining evidence boundary:** the fallback is retained client artwork for
+  the related Coin Creeps special quest, not a claim that it is the lost retail
+  Attack of Coin Creeps banner. The rebuilt card still needs physical-client
+  visual confirmation. Only ARM64 was disassembled for the earlier flashing
+  diagnosis; the matching ARMv7 addresses are not yet confirmed. The removal
+  branch at `0xF85A70` also
   requires a global byte to be zero, and that field is unidentified -- the
-  observed flash implies its value rather than proving it. Original-client
-  confirmation that the selector is now stable is still pending.
+  observed flash implies its value rather than proving it.
 - **Local policy:** the country roster and large character/Companion box sizes
   are compatibility fixtures, not recovered production-service values.
 - **Local policy with confirmed client meter semantics:** a successful

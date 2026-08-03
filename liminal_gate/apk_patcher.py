@@ -50,9 +50,21 @@ class BinaryPatch:
 
 
 @dataclass(frozen=True)
+class TextAssetJsonAliases:
+    """Names copied from one existing record in a Unity TextAsset JSON list."""
+
+    member: str
+    asset_name: str
+    collection: str
+    source_name: str
+    aliases: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PatchPlan:
     source_sha256: str
     patches: tuple[BinaryPatch, ...]
+    text_asset_json_aliases: tuple[TextAssetJsonAliases, ...] = ()
 
 
 def sha256_file(path: Path) -> str:
@@ -76,7 +88,14 @@ def load_patch_plan(path: Path) -> PatchPlan:
     raw_patches = document.get("patches")
     if not isinstance(raw_patches, list) or not raw_patches:
         raise PatchPlanError("patches must be a nonempty array")
-    return PatchPlan(source_sha256, tuple(_parse_patch(item) for item in raw_patches))
+    raw_aliases = document.get("text_asset_json_aliases", [])
+    if not isinstance(raw_aliases, list):
+        raise PatchPlanError("text_asset_json_aliases must be an array")
+    return PatchPlan(
+        source_sha256,
+        tuple(_parse_patch(item) for item in raw_patches),
+        tuple(_parse_text_asset_json_aliases(item) for item in raw_aliases),
+    )
 
 
 def apply_patch_plan(
@@ -111,6 +130,11 @@ def apply_patch_plan(
         if _member_abi(patch.member) in drop_abis:
             continue
         patches_by_member.setdefault(patch.member, []).append(patch)
+    aliases_by_member: dict[str, list[TextAssetJsonAliases]] = {}
+    for aliases in plan.text_asset_json_aliases:
+        if _member_abi(aliases.member) in drop_abis:
+            continue
+        aliases_by_member.setdefault(aliases.member, []).append(aliases)
     output_apk.parent.mkdir(parents=True, exist_ok=True)
     seen_members: set[str] = set()
     with zipfile.ZipFile(source_apk) as source, zipfile.ZipFile(
@@ -125,8 +149,11 @@ def apply_patch_plan(
             for patch in patches_by_member.get(source_info.filename, []):
                 data = _apply_patch(data, patch)
                 seen_members.add(patch.member)
+            for aliases in aliases_by_member.get(source_info.filename, []):
+                data = _apply_text_asset_json_aliases(data, aliases)
+                seen_members.add(aliases.member)
             output.writestr(_clone_zip_info(source_info), data)
-    missing = sorted(set(patches_by_member) - seen_members)
+    missing = sorted((set(patches_by_member) | set(aliases_by_member)) - seen_members)
     if missing:
         output_apk.unlink(missing_ok=True)
         raise PatchPlanError(f"patch members missing from source APK: {missing}")
@@ -150,6 +177,34 @@ def _parse_patch(value: object) -> BinaryPatch:
     return BinaryPatch(member, offset, expected, replacement)
 
 
+def _parse_text_asset_json_aliases(value: object) -> TextAssetJsonAliases:
+    if not isinstance(value, dict):
+        raise PatchPlanError("each text-asset alias patch must be an object")
+    member = value.get("member")
+    asset_name = value.get("asset_name")
+    collection = value.get("collection")
+    source_name = value.get("source_name")
+    aliases = value.get("aliases")
+    if not isinstance(member, str) or not member or member.startswith("/") or ".." in Path(member).parts:
+        raise PatchPlanError("text-asset alias member must be a safe archive path")
+    for name, field in (
+        (asset_name, "asset_name"),
+        (collection, "collection"),
+        (source_name, "source_name"),
+    ):
+        if not isinstance(name, str) or not name:
+            raise PatchPlanError(f"text-asset alias {field} must be a nonempty string")
+    if (
+        not isinstance(aliases, list)
+        or not aliases
+        or any(not isinstance(alias, str) or not alias for alias in aliases)
+        or len(set(aliases)) != len(aliases)
+        or source_name in aliases
+    ):
+        raise PatchPlanError("text-asset aliases must be unique nonempty strings distinct from source_name")
+    return TextAssetJsonAliases(member, asset_name, collection, source_name, tuple(aliases))
+
+
 def _decode_hex(value: object, name: str) -> bytes:
     if not isinstance(value, str) or not value or len(value) % 2:
         raise PatchPlanError(f"{name} must be nonempty even-length hexadecimal")
@@ -168,6 +223,61 @@ def _apply_patch(data: bytes, patch: BinaryPatch) -> bytes:
     if end > len(data) or data[patch.offset:end] != patch.expected:
         raise PatchPlanError(f"patch expectation did not match {patch.member} at offset {patch.offset}")
     return data[:patch.offset] + patch.replacement + data[end:]
+
+
+def _apply_text_asset_json_aliases(data: bytes, patch: TextAssetJsonAliases) -> bytes:
+    """Apply a declarative alias edit and repack the operator's Unity bundle."""
+    try:
+        import UnityPy
+    except ImportError as error:
+        raise PatchPlanError(
+            'Unity TextAsset patching requires the pinned master-import extra: pip install ".[master-import]"'
+        ) from error
+    try:
+        environment = UnityPy.load(data)
+        matches = []
+        for item in environment.objects:
+            if item.type.name != "TextAsset":
+                continue
+            asset = item.read()
+            if asset.m_Name == patch.asset_name:
+                matches.append(asset)
+        if len(matches) != 1:
+            raise PatchPlanError(
+                f"Unity member must contain exactly one TextAsset named {patch.asset_name}"
+            )
+        asset = matches[0]
+        asset.m_Script = _alias_text_asset_document(asset.m_Script, patch)
+        asset.save()
+        bundles = [item for item in environment.files.values() if hasattr(item, "save")]
+        if len(bundles) != 1:
+            raise PatchPlanError("Unity member must contain exactly one writable bundle")
+        return bundles[0].save(packer="original")
+    except PatchPlanError:
+        raise
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise PatchPlanError(f"could not patch Unity TextAsset aliases: {error}") from error
+
+
+def _alias_text_asset_document(script: str | bytes, patch: TextAssetJsonAliases) -> str:
+    document = json.loads(script)
+    entries = document.get(patch.collection) if isinstance(document, dict) else None
+    if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+        raise PatchPlanError(
+            f"TextAsset {patch.asset_name} has no object list named {patch.collection}"
+        )
+    sources = [entry for entry in entries if entry.get("name") == patch.source_name]
+    if len(sources) != 1:
+        raise PatchPlanError(
+            f"TextAsset alias source {patch.source_name} must match exactly one record"
+        )
+    existing = {entry.get("name") for entry in entries}
+    collisions = sorted(set(patch.aliases) & existing)
+    if collisions:
+        raise PatchPlanError(f"TextAsset alias already exists: {', '.join(collisions)}")
+    source = sources[0]
+    entries.extend({**source, "name": alias} for alias in patch.aliases)
+    return json.dumps(document, ensure_ascii=False, separators=(",", ":"))
 
 
 def _is_signature_member(name: str) -> bool:

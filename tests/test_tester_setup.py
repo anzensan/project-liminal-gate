@@ -156,7 +156,7 @@ class TesterSetupTest(unittest.TestCase):
                 },
                 "ItemSet": {"itemSet": []},
                 "BuddyDatabase": {"data": [{"ID": 1, "exclusiveChrID": 0, "exclusiveSpeciesID": 0}]},
-            }), patch("liminal_gate.tester_setup.write_local_names"), patch("liminal_gate.tester_setup.derive_story_outcome_catalog", return_value=data / "story-outcomes.json"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.check_derivation_prerequisites"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
+            }), patch("liminal_gate.tester_setup.write_local_names"), patch("liminal_gate.tester_setup.derive_story_outcome_catalog", return_value=data / "story-outcomes.json"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.prepare_coin_creeps_banners"), patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), patch("liminal_gate.tester_setup.ensure_keystore"), patch("liminal_gate.tester_setup.check_derivation_prerequisites"), patch("liminal_gate.tester_setup.find_build_tools", return_value=(root / "zipalign", root / "apksigner")), patch("liminal_gate.tester_setup.sign_apk"):
                 prepare_local_tester(apk, resources, data, 8696, None, dummy)
             self.assertTrue((data / "character-catalog.json").is_file())
             self.assertTrue((data / "companion-equipment.json").is_file())
@@ -551,7 +551,7 @@ class LocalSigningToolTest(unittest.TestCase):
                  patch("liminal_gate.tester_setup.check_derivation_prerequisites", side_effect=lambda *_: order.append("prerequisites")), \
                  patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: order.append("inventory") or {}), \
                  patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), \
-                 patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), \
+                 patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.prepare_coin_creeps_banners"), \
                  patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), \
                  patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), \
                  patch("liminal_gate.tester_setup.sign_apk"):

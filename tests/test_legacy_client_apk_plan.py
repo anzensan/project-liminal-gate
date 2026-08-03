@@ -20,6 +20,7 @@ from liminal_gate.legacy_client_apk_plan import (
     WEBSITE_BASE_LITERAL,
     IAP_MODAL_PATCHES,
     TERMS_CONFIRMATION_PATCHES,
+    COIN_CREEPS_BANNER_ALIASES,
     generate_legacy_client_plan,
     max_server_origin_length,
     normalize_server_origin,
@@ -42,6 +43,7 @@ class LegacyClientApkPlanTest(unittest.TestCase):
             cursor += len(literal)
         with zipfile.ZipFile(self.source, "w") as archive:
             archive.writestr(METADATA_MEMBER, metadata)
+            archive.writestr("assets/bin/Data/data.unity3d", b"fixture Unity bundle")
             libraries = {}
             for member, offset, old, _new in (
                 *IAP_MODAL_PATCHES,
@@ -70,7 +72,8 @@ class LegacyClientApkPlanTest(unittest.TestCase):
         plan_path = self.root / "plan.json"
         plan_path.write_text(json.dumps(plan), encoding="utf-8")
         output = self.root / "patched.apk"
-        apply_patch_plan(self.source, output, load_patch_plan(plan_path))
+        with patch("liminal_gate.apk_patcher._apply_text_asset_json_aliases", side_effect=lambda data, _aliases: data):
+            apply_patch_plan(self.source, output, load_patch_plan(plan_path))
         with zipfile.ZipFile(output) as archive:
             metadata = archive.read(METADATA_MEMBER)
         values = []
@@ -119,6 +122,7 @@ class LegacyClientApkPlanTest(unittest.TestCase):
             ],
         )
         self.assertNotIn("source_apk", plan)
+        self.assertEqual([COIN_CREEPS_BANNER_ALIASES], plan["text_asset_json_aliases"])
 
     def test_rejects_a_different_arm64_unity_player(self) -> None:
         self.unity_hash.stop()
@@ -136,7 +140,8 @@ class LegacyClientApkPlanTest(unittest.TestCase):
         plan_path = self.root / "plan.json"
         plan_path.write_text(json.dumps(plan), encoding="utf-8")
         output = self.root / "patched.apk"
-        apply_patch_plan(self.source, output, load_patch_plan(plan_path))
+        with patch("liminal_gate.apk_patcher._apply_text_asset_json_aliases", side_effect=lambda data, _aliases: data):
+            apply_patch_plan(self.source, output, load_patch_plan(plan_path))
         member, offset, expected, replacement = ARM64_SCUDO_ALLOCATOR_PATCHES[0]
         self.assertEqual(ARM64_UNITY_MEMBER, member)
         with zipfile.ZipFile(output) as archive:

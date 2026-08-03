@@ -50,6 +50,7 @@ from liminal_gate.setup_progress import (
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
 from liminal_gate import account_state, toolchain
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
+from liminal_gate.coin_creeps_banner import CoinCreepsBannerError, prepare_coin_creeps_banners
 from liminal_gate.event_catalog import (
     DEFAULT_EVENT_CATALOG,
     EventCatalogError,
@@ -1276,6 +1277,7 @@ def prepare_local_tester(
             prepare_pact_banners(apk, resource_root, data_directory / "public_data")
         except PactBannerImportError as error:
             print(f"Pact banner preparation skipped: {error}")
+        prepare_coin_creeps_banners(apk, resource_root, data_directory / "public_data")
         plan = generate_legacy_client_plan(apk, server_origin)
         plan_path = data_directory / "local-server-plan.json"
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -1283,7 +1285,7 @@ def prepare_local_tester(
         apply_patch_plan(apk, unsigned, load_patch_plan(plan_path))
         signed = data_directory / "liminal-gate-test.apk"
         sign_apk(unsigned, signed, zipalign, apksigner, keystore, KEY_ALIAS, password_file, password_file)
-    except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, CharacterCatalogImportError, CompanionEquipmentCatalogError, ValueError) as error:
+    except (OSError, ImportError, ResourceCatalogError, PatchPlanError, ApkSigningError, CharacterCatalogImportError, CompanionEquipmentCatalogError, CoinCreepsBannerError, ValueError) as error:
         raise TesterSetupError(str(error)) from error
     print(f"Prepared local test APK: {signed}")
     print(f"This build reaches the server at {server_origin} and only that address.")
