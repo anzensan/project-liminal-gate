@@ -36,6 +36,17 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-02 toolchain doctor with managed AArch64 disassembler:
+  `doctor --install-missing` installs and records the JDK, Android SDK tools,
+  pinned Android NDK r27d `llvm-objdump`, Il2CppDumper, and its required runtime
+  below ignored `user-data/`. Guided setup replays that atomic record before
+  resolving any tool, so no `PATH` or `JAVA_HOME` edit is required. A missing
+  disassembler is recorded only after the production AArch64 capability probe
+  passes. Licence acceptance remains explicit, Android Studio stays optional
+  for physical-device use, and no self-hosted APK or gameplay behavior is part
+  of this main-branch change. The warning-strict focused suite passed 111 tests
+  and all 858 main-branch tests passed.
+
 - 2026-08-01 repeatable setup rehearsal: guided setup is the path every operator
   takes and the one path the unit suite cannot reach, because it replaces the
   IL2CPP dump, the master-data import, the catalog derivations, the APK patch,

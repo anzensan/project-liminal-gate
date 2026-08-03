@@ -18,6 +18,15 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Toolchain checkpoint: `doctor --install-missing` covers every mandatory
+command-line prerequisite. It stores vendor tools and an atomic location record
+under ignored `user-data/`; guided setup replays that record without requiring
+shell configuration. When no existing disassembler reports AArch64 support,
+the doctor installs pinned side-by-side Android NDK r27d, probes the exact host
+`llvm-objdump`, and records it only after it passes. Android SDK licence
+acceptance remains explicit. Android Studio and emulator creation remain
+optional/out of scope, and no gameplay or protocol boundary changes.
+
 Latest chapter-ticket validation: the live Chapter 8-9 account retained read
 Chapter 5 Metal Ticket x2 and Chapter 6 Companion Ticket x3 messages but lacked
 the already-earned Chapter 7 Metal Ticket x2 present. Guided core story now

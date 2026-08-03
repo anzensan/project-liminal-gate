@@ -1,19 +1,68 @@
 # Installing the tools
 
-Work through the section for **your** operating system, then return to the
-[README](../README.md#2-check-your-setup) and run the `--check` command. You do
-not have to read the other two sections.
+**Most people should not read this page.** Run the doctor instead:
+
+```sh
+python3 -m liminal_gate.doctor --install-missing
+```
+
+It installs the JDK, the Android SDK packages, a pinned Android NDK
+`llvm-objdump`, and Il2CppDumper, and records where they are so nothing below
+about `PATH` or `JAVA_HOME` applies to you. Read on only if you want to install
+a tool yourself, if the doctor could not cover your platform, or if you want to
+know what it is doing on your behalf.
 
 These are shell commands. Use **Terminal** on macOS, **PowerShell** on Windows,
 or your usual shell on Linux — not the Python prompt, and not an Android Studio
 code window.
+
+## What the doctor does and does not do
+
+| It installs | It does not install |
+| --- | --- |
+| A Temurin JDK 17, for `keytool` | **Android Studio** — use it only when you want its emulator GUI |
+| Android SDK Platform-Tools and Build-Tools, through Google's own `sdkmanager` | **An emulator system image or AVD** — create one in Android Studio or use a physical device |
+| Android NDK r27d (`ndk;27.3.13750724`), solely for its AArch64-capable `llvm-objdump` | **A system-wide LLVM installation** — the NDK tool stays private under `user-data/` |
+| Il2CppDumper v6.7.46, pinned | **A system-wide .NET runtime** — a private runtime is added only where the managed dumper needs one |
+| A private .NET runtime, only where Il2CppDumper needs one | **Anything of Terra Battle's** — you still supply the APK and resources |
+
+Directly downloaded archives are checked against their vendor-published
+checksums before use; Google's `sdkmanager` verifies its SDK and NDK packages
+from Google's repository metadata. Vendor tools and their records land under
+`user-data/`, which Git ignores; required Python packages install into the
+active Python environment. The doctor never edits a shell profile or registry.
+
+Google's Android development tools do not support ARM-based Windows or Linux
+hosts. The doctor refuses those SDK installs before downloading anything and
+names the supported host choices; macOS supports both Intel and Apple silicon.
+
+It will not accept the [Android SDK licences](https://developer.android.com/studio/terms)
+for you. It prints them and asks; `--accept-android-sdk-licenses` answers in
+advance if you have already read them.
+
+### Where it put things
+
+`user-data/toolchain.json` records the location of every tool the doctor found
+or installed. Guided setup reads it at startup and puts those locations into its
+own environment, which is why you do not need to export anything.
+
+A variable you set yourself always wins. If you export `JAVA_HOME`, that is the
+JDK setup uses, whatever the file says. To make the doctor's copy authoritative
+again, unset yours. To start over, delete the file and run the doctor again.
+
+## Installing the tools by hand
+
+The rest of this page covers doing it yourself. Work through the section for
+**your** operating system, then return to the
+[README](../README.md#2-check-your-setup) and run the `--check` command. You do
+not have to read the other two sections.
 
 ## What has to be installed
 
 | Tool | Why it is needed |
 | --- | --- |
 | Python 3.11 or newer | Runs everything in this project. |
-| Android Studio, with the Android Emulator and SDK tools | Creates the emulator and provides the SDK below. |
+| Android Studio, with the Android Emulator and SDK tools | Optional: creates and manages an emulator. It is not needed when installing on a physical device and using the doctor's private SDK. |
 | Android SDK Platform-Tools | Provides `adb`, which talks to the emulator or device. |
 | Android SDK Build-Tools | Provide `zipalign` and `apksigner`, which sign the rebuilt APK. |
 | A JDK | Provides `keytool`, which creates the local test signing key. Android Studio's bundled JDK is sufficient if its `bin` directory is on your `PATH`. |
@@ -23,9 +72,11 @@ code window.
 You also need a local Terra Battle Android 5.5.7-170 APK and matching Android
 resources. See [Files you supply](../README.md#files-you-supply).
 
-## Install Android Studio's SDK components
+## Install Android Studio's SDK components by hand
 
-Install Android Studio from the official Android Developers site, then open
+Skip this section when the doctor completed successfully. To manage the SDK or
+an emulator through Android Studio instead, install it from the official Android
+Developers site, then open
 **Android Studio → Settings → Languages & Frameworks → Android SDK** (on some
 versions: **More Actions → SDK Manager** on the welcome screen). In **SDK
 Tools**, select **Android SDK Platform-Tools**, **Android Emulator**, and
@@ -35,6 +86,7 @@ screen.
 
 ## macOS
 
+If you are installing tools by hand instead of using the doctor's pinned NDK,
 Homebrew provides the disassembler:
 
 ```sh
@@ -121,7 +173,8 @@ Then install Il2CppDumper — see [Il2CppDumper](#il2cppdumper) below.
 
 ## Linux
 
-Install the disassembler with your distribution's package manager:
+If you are installing tools by hand instead of using the doctor's pinned NDK,
+install the disassembler with your distribution's package manager:
 
 ```sh
 sudo apt install binutils-multiarch    # Debian/Ubuntu

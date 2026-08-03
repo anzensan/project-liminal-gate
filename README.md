@@ -33,11 +33,11 @@ Full detail: [What works right now](docs/scope-and-status.md).
 
 ### Tools you install
 
-Python 3.11+, Android Studio (Emulator and SDK tools), Android SDK Platform-Tools
-and Build-Tools, a JDK, [Il2CppDumper](https://github.com/Perfare/Il2CppDumper),
-and an AArch64 disassembler (LLVM, or `binutils-multiarch` on Linux).
-
-Step 1 below walks through installing these on your operating system.
+Install Python 3.11+ and provide either a USB-debuggable Android device or an
+emulator. Step 1 installs and remembers the JDK, Android SDK tools, pinned
+Android NDK AArch64 disassembler, Il2CppDumper, and its runtime. Android Studio
+is only needed if you want its emulator GUI; a physical-device setup does not
+need the IDE.
 
 ### Files you supply
 
@@ -62,9 +62,29 @@ subdirectory, or from another project.
 
 ### 1. Install the tools
 
-Follow the section for your operating system in **[Installing the
-tools](docs/install-tools.md)**, then come back here. It covers the Android SDK
-components, per-OS `PATH` setup, and Il2CppDumper.
+Let the doctor do it. It reports what this machine is missing and, with
+`--install-missing`, downloads the rest from each vendor into `user-data/`:
+
+```sh
+python3 -m liminal_gate.doctor --install-missing
+```
+
+It fetches a JDK, the Android SDK packages, the pinned Android NDK
+`llvm-objdump`, and Il2CppDumper, then records where everything landed in
+`user-data/toolchain.json`. **Setup reads that file, so you never have to set
+`PATH` or `JAVA_HOME`** — in this terminal or any later one.
+
+Two things it deliberately leaves to you:
+
+- **The Android SDK licences.** It prints the agreement and asks; it will not
+  accept Google's terms on your behalf. Answer `y`, or pass
+  `--accept-android-sdk-licenses`.
+- **An emulator.** You still need Android Studio, or a physical device, to have
+  something to install onto.
+
+Prefer to install everything yourself, or want to know what the doctor is doing?
+**[Installing the tools](docs/install-tools.md)** covers each tool by hand, per
+operating system.
 
 ### 2. Check your setup
 

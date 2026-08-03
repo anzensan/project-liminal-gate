@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- **A toolchain doctor removes the `PATH`, `JAVA_HOME`, and system LLVM setup
+  steps.** `python3 -m liminal_gate.doctor` reports which build tools this
+  machine has; `--install-missing` fetches a Temurin JDK, Android SDK tools
+  through Google's own `sdkmanager`, pinned Android NDK r27d for its
+  AArch64-capable `llvm-objdump`, Il2CppDumper v6.7.46, and a private .NET
+  runtime where needed. Direct archives use published checksums; SDK/NDK
+  packages use Google's repository verification. Locations are recorded under
+  ignored `user-data/` and replayed by guided setup. Android SDK licence
+  acceptance remains explicit, and Android Studio remains optional for a
+  physical device.
+
 ### Fixed
 
 - **The Hunting Zone selector flashed around Attack of the Coin Creeps.** The
