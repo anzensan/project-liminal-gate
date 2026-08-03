@@ -67,8 +67,21 @@ verification, updates, save limitations, and failure recovery.
   storage.
 - Save state, replay records, event diagnostics, and backups remain under the
   app's private files directory. A seed uses atomic create-if-absent behavior.
+- The loopback listener also answers `GET`/`POST /local/state`, the operator
+  save-transfer route that [`on_device_state`](saves.md#the-on-device-save)
+  drives over `adb forward`. Export serializes the same document the server
+  would persist, so it cannot lag the running save; import replaces the
+  in-memory copy and the file together, rotating the replaced save into
+  `state.json.bak.1`. Both are refused unless the listener is bound to
+  loopback, which keeps a LAN-bound workstation server from publishing a
+  downloadable, replaceable save to the network. On the device itself loopback
+  is not a privilege boundary: while the app runs, any other app on that device
+  can read and replace the save.
 - JVM and Python lifecycle/resource tests cover readiness, extraction, retry,
   seed preservation, direct streaming, and server close behavior.
+- The APK hashes recorded below predate the save-transfer route and no longer
+  describe a current build. They stand as the evidence for the run they came
+  from; a rebuild must record its own.
 - The complete local build packaged 11,806 resources (940,138,388 bytes),
   passed ZIP-header, alignment, and v2/v3 signature verification. The final
   source-exact APK is SHA-256

@@ -72,7 +72,7 @@ using `--replace-existing`.
 
 | What you see | What to do |
 | --- | --- |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | For a self-hosted APK, stop and read [the on-device warning above](#on-device-apk), because uninstalling also deletes its server save. For the separate-server layout, a build made with another checkout's local key is installed; rerun with `--replace-existing`, or uninstall it with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either choice clears client app data, while the separate workstation server state remains in its `--data-dir`. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | For a self-hosted APK, stop: uninstalling also deletes its server save. Export it first with `python3 -m liminal_gate.on_device_state export --device YOUR_SERIAL`, then read [the on-device warning above](#on-device-apk); restoring afterwards needs [`adopt`](saves.md#the-on-device-save) for the client's regenerated UUID. For the separate-server layout, a build made with another checkout's local key is installed; rerun with `--replace-existing`, or uninstall it with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either choice clears client app data, while the separate workstation server state remains in its `--data-dir`. |
 | `INSTALL_FAILED_NO_MATCHING_ABIS` / `res=-113` | The emulator image has no ARM translation. Pick a **Translated ABI** image; see [Emulator setup](emulator.md#choose-an-android-14-image-with-translated-abi-support). |
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
 
@@ -103,7 +103,7 @@ using `--replace-existing`.
 
 | What you see | What to do |
 | --- | --- |
-| Progress is gone after reinstalling or clearing the app's data | For the self-hosted APK, app-private server state was also cleared and there is no supported recovery unless you preserved another copy before installation. For the separate-server layout, the app generated a new account ID while the save remains in the workstation state file; see [If you reinstall the app and your progress is gone](saves.md#if-you-reinstall-the-app-and-your-progress-is-gone). |
+| Progress is gone after reinstalling or clearing the app's data | For the self-hosted APK, app-private server state was cleared with it. Recovery needs an export taken beforehand — see [The on-device save](saves.md#the-on-device-save) — and that export must be re-pointed with `adopt` at the UUID the reinstalled client now generates. Without an earlier export there is no copy to recover. For the separate-server layout, the app generated a new account ID while the save remains in the workstation state file; see [If you reinstall the app and your progress is gone](saves.md#if-you-reinstall-the-app-and-your-progress-is-gone). |
 | `local account state is already in use by another server` | Another server already has that save open. Stop it, or start this one with its own `--data-dir`. See [Look after your save](saves.md). |
 | `account state is in use; stop the local server before changing it` | `restore` and `adopt` will not change a save a running server owns. Stop the server and run the command again. |
 

@@ -22,8 +22,9 @@ import sys
 import tempfile
 import textwrap
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable, Iterator, Sequence
 
 from liminal_gate.apk_patcher import PatchPlanError, apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import ApkSigningError, sign_apk
@@ -276,6 +277,49 @@ def install_apk(
     print(f"Uninstalling the differently signed {PACKAGE_NAME} from {device} before installing.")
     subprocess.run((adb, "-s", device, "uninstall", PACKAGE_NAME), check=True)
     subprocess.run(tuple(install), check=True)
+
+
+@contextmanager
+def adb_forward(adb: str, device: str, device_port: int) -> Iterator[int]:
+    """Publish one device port on a free workstation port for the block's life.
+
+    `tcp:0` lets adb choose the workstation port, so a forward left behind by an
+    interrupted run cannot collide with this one, and two devices can be served
+    at once.  The forward is removed on the way out even when the body raises:
+    a stale forward silently points a later run's request at whichever device
+    happens to still answer on it.
+    """
+    result = subprocess.run(
+        (adb, "-s", device, "forward", "tcp:0", f"tcp:{device_port}"),
+        text=True, capture_output=True,
+    )
+    if result.returncode != 0:
+        raise TesterSetupError(
+            f"could not forward a port to {device}: {(result.stderr or result.stdout).strip() or result.returncode}"
+        )
+    try:
+        local_port = int(result.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError) as error:
+        raise TesterSetupError(f"adb forward did not report a port: {result.stdout.strip()!r}") from error
+    try:
+        yield local_port
+    finally:
+        subprocess.run(
+            (adb, "-s", device, "forward", "--remove", f"tcp:{local_port}"),
+            capture_output=True, check=False,
+        )
+
+
+def force_stop(adb: str, device: str, package: str = PACKAGE_NAME) -> None:
+    """Stop the app so its next launch loads durable state from disk."""
+    subprocess.run((adb, "-s", device, "shell", "am", "force-stop", package), check=True, capture_output=True)
+
+
+def package_installed(adb: str, device: str, package: str = PACKAGE_NAME) -> bool:
+    result = subprocess.run(
+        (adb, "-s", device, "shell", "pm", "path", package), text=True, capture_output=True,
+    )
+    return result.returncode == 0 and result.stdout.strip().startswith("package:")
 
 
 def check_device_host_suits_device(device: str, device_host: str) -> None:

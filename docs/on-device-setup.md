@@ -170,17 +170,31 @@ does not prove gameplay or persistence.
 ## Protect the on-device save
 
 The combined APK keeps its server state and replay records in the app's private
-files directory. The workstation save commands in [Look after your save](saves.md)
-cannot currently export, inspect, or restore that copy.
+files directory. Copy that state to this computer before you rely on it:
+
+```sh
+python3 -m liminal_gate.on_device_state export --device YOUR_ADB_SERIAL
+```
+
+The app must be open and past the loading screen; the export reads the running
+server over USB and changes nothing on the device. See
+[The on-device save](saves.md#the-on-device-save) for `import` and `update`.
 
 Updating an install with another build from the same checkout normally uses the
 same local signing key and preserves app data. Do **not** uninstall the app,
 clear its storage in Android settings, or use `--replace-existing` after you
-have progress you care about. Those paths can destroy the only copy of the
-on-device save. Preserve the checkout's local signing key too: losing it does
-not erase the installed save immediately, but it prevents a future build from
-updating that install in place. There is no supported on-device save
-export/import workflow yet.
+have progress you care about. Those paths destroy the on-device save, and
+restoring an export onto a cleared install additionally requires re-pointing it
+at the client's newly generated UUID. Preserve the checkout's local signing key
+too: losing it does not erase the installed save immediately, but it prevents a
+future build from updating that install in place.
+
+An export is also the answer to a save the app will not load. The state
+document has no schema version and no migration step, so a future revision that
+changes its shape can leave a perfectly intact save unreadable — and the
+retained `.bak.N` copies beside it are inside app-private storage, where the
+recovery advice the server prints cannot be carried out. An export taken while
+the old build still ran is the copy that survives that.
 
 Advanced users can seed a *new* install from an existing workstation-hosted
 server state before the app has created any state of its own. Stop the
