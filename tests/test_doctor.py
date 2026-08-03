@@ -97,6 +97,31 @@ class HostTest(unittest.TestCase):
             with self.assertRaisesRegex(ToolInstallError, "does not cover SunOS"):
                 tool_install.detect_host()
 
+    def test_pinned_ndk_objdump_path_matches_each_supported_google_host(self) -> None:
+        for host, tag in (
+            (Host("mac", "aarch64"), "darwin-x86_64"),
+            (Host("mac", "x64"), "darwin-x86_64"),
+            (Host("linux", "x64"), "linux-x86_64"),
+            (Host("windows", "x64"), "windows-x86_64"),
+        ):
+            with self.subTest(host=host), tempfile.TemporaryDirectory() as temporary:
+                sdk = Path(temporary)
+                suffix = host.executable_suffix
+                expected = (
+                    sdk / "ndk" / tool_install.ANDROID_NDK_VERSION / "toolchains" /
+                    "llvm" / "prebuilt" / tag / "bin" / f"llvm-objdump{suffix}"
+                )
+                expected.parent.mkdir(parents=True)
+                expected.write_text("", encoding="utf-8")
+                self.assertEqual(expected, tool_install.android_ndk_objdump(sdk, host))
+
+    def test_missing_or_unsupported_ndk_objdump_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ToolInstallError, "did not provide"):
+                tool_install.android_ndk_objdump(Path(temporary), Host("linux", "x64"))
+            with self.assertRaisesRegex(ToolInstallError, "publishes no supported"):
+                tool_install.android_ndk_objdump(Path(temporary), Host("linux", "aarch64"))
+
 
 class DotnetIndexTest(unittest.TestCase):
     def _index(self, digest: str = "a" * 128) -> dict:
@@ -190,12 +215,12 @@ class DoctorSurveyTest(unittest.TestCase):
         self.assertFalse(dumper.ok)
         self.assertIn("Il2CppDumper", dumper.detail)
 
-    def test_the_disassembler_is_reported_as_beyond_this_commands_reach(self) -> None:
+    def test_the_disassembler_is_reported_as_installable_from_the_pinned_ndk(self) -> None:
         with patch.object(doctor.tester_setup, "find_aarch64_objdump", return_value=None):
             statuses = doctor.survey(Host("mac", "aarch64"))
         disassembler = next(status for status in statuses if status.name == "disassembler")
-        self.assertFalse(disassembler.fixable)
-        self.assertIn("xcode-select", disassembler.detail)
+        self.assertTrue(disassembler.fixable)
+        self.assertIn(tool_install.ANDROID_NDK_PACKAGE, disassembler.detail)
 
 
 class DoctorDiscoveryTest(EnvironmentIsolatedTest):
@@ -239,6 +264,15 @@ class DoctorInstallTest(EnvironmentIsolatedTest):
                     toolchain.Toolchain(), accept_licences=False, packages=(),
                 )
 
+    def test_the_disassembler_is_not_installed_without_accepting_the_licences(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(doctor.shutil, "which", return_value="/usr/bin/java"):
+            with self.assertRaisesRegex(ToolInstallError, "licen[cs]es"):
+                doctor.install_missing(
+                    _statuses(disassembler=True), Path(temporary), Host("mac", "aarch64"),
+                    toolchain.Toolchain(), accept_licences=False, packages=(),
+                )
+
     def test_missing_compile_sdk_triggers_android_package_install(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.object(doctor.shutil, "which", return_value="/usr/bin/java"), \
@@ -250,6 +284,69 @@ class DoctorInstallTest(EnvironmentIsolatedTest):
                 packages=tool_install.ANDROID_PACKAGES,
             )
         self.assertIn("platforms;android-35", install.call_args.args[4])
+
+    def test_missing_disassembler_installs_and_records_the_pinned_ndk_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            sdk = data / "sdk"
+            objdump = sdk / "llvm-objdump"
+            objdump.parent.mkdir(parents=True)
+            objdump.write_text("", encoding="utf-8")
+            with patch.object(doctor.shutil, "which", return_value="/usr/bin/java"), \
+                    patch.object(doctor.tool_install, "accept_android_licences"), \
+                    patch.object(doctor.tool_install, "install_android_packages", return_value=sdk) as install, \
+                    patch.object(doctor.tool_install, "android_ndk_objdump", return_value=objdump), \
+                    patch.object(doctor.tester_setup, "find_aarch64_objdump", return_value=str(objdump)):
+                updated = doctor.install_missing(
+                    _statuses(disassembler=True), data, Host("mac", "aarch64"),
+                    toolchain.Toolchain(), accept_licences=True,
+                    packages=("platform-tools",),
+                )
+            self.assertIn(tool_install.ANDROID_NDK_PACKAGE, install.call_args.args[4])
+            self.assertEqual(updated.objdump, objdump)
+            self.assertEqual(toolchain.load(data).objdump, objdump.resolve())
+
+    @unittest.skipIf(os.name == "nt", "uses a POSIX executable fixture")
+    def test_installed_ndk_tool_must_pass_the_real_aarch64_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            sdk = data / "sdk"
+            objdump = (
+                sdk / "ndk" / tool_install.ANDROID_NDK_VERSION / "toolchains" /
+                "llvm" / "prebuilt" / "darwin-x86_64" / "bin" / "llvm-objdump"
+            )
+            objdump.parent.mkdir(parents=True)
+            objdump.write_text(
+                "#!/bin/sh\nprintf 'LLVM test\\nRegistered Targets:\\n  aarch64 - AArch64\\n'\n",
+                encoding="utf-8",
+            )
+            objdump.chmod(0o755)
+            with patch.object(doctor.shutil, "which", return_value="/usr/bin/java"), \
+                    patch.object(doctor.tool_install, "accept_android_licences"), \
+                    patch.object(doctor.tool_install, "install_android_packages", return_value=sdk):
+                updated = doctor.install_missing(
+                    _statuses(disassembler=True), data, Host("mac", "aarch64"),
+                    toolchain.Toolchain(), accept_licences=True, packages=(),
+                )
+            self.assertEqual(updated.objdump, objdump)
+            with patch.dict(os.environ, {"PATH": str(objdump.parent)}):
+                self.assertEqual(str(objdump), doctor.tester_setup.find_aarch64_objdump((str(objdump),)))
+
+    def test_a_bad_ndk_install_keeps_the_sdk_record_for_a_repair_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            sdk = data / "sdk"
+            with patch.object(doctor.shutil, "which", return_value="/usr/bin/java"), \
+                    patch.object(doctor.tool_install, "accept_android_licences"), \
+                    patch.object(doctor.tool_install, "install_android_packages", return_value=sdk), \
+                    patch.object(doctor.tool_install, "android_ndk_objdump", side_effect=ToolInstallError("NDK incomplete")):
+                with self.assertRaisesRegex(ToolInstallError, "NDK incomplete"):
+                    doctor.install_missing(
+                        _statuses(disassembler=True), data, Host("mac", "aarch64"),
+                        toolchain.Toolchain(), accept_licences=True, packages=(),
+                    )
+            self.assertEqual(toolchain.load(data).sdk_root, sdk.resolve())
+            self.assertIsNone(toolchain.load(data).objdump)
 
     def test_a_jdk_is_fetched_for_sdkmanager_even_when_keytool_was_found(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

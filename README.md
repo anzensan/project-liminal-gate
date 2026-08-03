@@ -33,12 +33,11 @@ Full detail: [What works right now](docs/scope-and-status.md).
 
 ### Tools you install
 
-Python 3.11+, Android Studio (Emulator and SDK tools), Android SDK Platform-Tools
-and Build-Tools, a JDK, [Il2CppDumper](https://github.com/Perfare/Il2CppDumper),
-and an AArch64 disassembler (LLVM, or `binutils-multiarch` on Linux).
-
-Step 1 below installs most of these for you. You supply Android Studio, for the
-emulator, and the disassembler.
+Install Python 3.11+ and provide either a USB-debuggable Android device or an
+emulator. Step 1 installs and remembers the JDK, Android SDK tools, pinned
+Android NDK AArch64 disassembler, Il2CppDumper, and its runtime. Android Studio
+is only needed if you want its emulator GUI; a physical-device setup does not
+need the IDE.
 
 ### Files you supply
 
@@ -81,18 +80,16 @@ Let the doctor do it. It reports what this machine is missing and, with
 python3 -m liminal_gate.doctor --install-missing
 ```
 
-It fetches a JDK, the Android SDK packages, and Il2CppDumper, then records where
-everything landed in `user-data/toolchain.json`. **Setup reads that file, so you
-never have to set `PATH` or `JAVA_HOME`** — in this terminal or any later one.
+It fetches a JDK, the Android SDK packages, the pinned Android NDK
+`llvm-objdump`, and Il2CppDumper, then records where everything landed in
+`user-data/toolchain.json`. **Setup reads that file, so you never have to set
+`PATH` or `JAVA_HOME`** — in this terminal or any later one.
 
-Three things it deliberately leaves to you:
+Two things it deliberately leaves to you:
 
 - **The Android SDK licences.** It prints the agreement and asks; it will not
   accept Google's terms on your behalf. Answer `y`, or pass
   `--accept-android-sdk-licenses`.
-- **An AArch64 disassembler.** It finds one you already have — on macOS the
-  Command Line Tools usually provide it — but installing LLVM is your package
-  manager's job. It prints the exact command for your OS.
 - **An emulator.** You still need Android Studio, or a physical device, to have
   something to install onto.
 

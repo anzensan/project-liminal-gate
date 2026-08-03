@@ -18,6 +18,15 @@ PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
 
+Toolchain checkpoint: `doctor --install-missing` now covers the last mandatory
+command-line prerequisite. When no existing disassembler reports AArch64
+support, it installs Google's pinned side-by-side Android NDK r27d under
+`user-data/`, verifies the exact host `llvm-objdump` with the same capability
+probe guided derivation uses, and records it atomically. Android SDK licence
+acceptance remains explicit. Android Studio and emulator creation remain
+optional/out of scope; no gameplay or protocol boundary changes with this
+tooling path.
+
 On-device checkpoint: the source-hash-guarded private builder, dual-ABI
 Chaquopy host, packaged resource catalog, loopback health gate, app-private
 state bootstrap, signing, and installation path are implemented. The real

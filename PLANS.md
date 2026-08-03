@@ -1,5 +1,39 @@
 # Execution Plans
 
+## 2026-08-02 doctor-managed AArch64 disassembler
+
+Status: completed 2026-08-02; live Google NDK licence acceptance and download
+remain a tester action.
+
+Objective: make the Chapter 8–42 disassembler a real one-command prerequisite
+instead of the last mandatory system-package instruction left by the doctor.
+
+Execution boundaries:
+
+1. Keep Android Studio optional. The physical-device path needs SDK command-line
+   tools, not an IDE or emulator image.
+2. Install only under `--data-dir`, using Google's pinned side-by-side Android
+   NDK r27d package and its host `llvm-objdump`.
+3. Reuse an installed AArch64-capable disassembler before downloading the large
+   NDK package.
+4. Require explicit Android SDK licence acceptance and let Google's
+   `sdkmanager` perform repository package verification.
+5. Record and replay the exact executable through the existing atomic
+   `toolchain.json` mechanism. A partial NDK failure may retain a completed SDK
+   install, but must never record an unusable disassembler.
+
+Result:
+
+- A missing disassembler is now fixable by `doctor --install-missing`.
+- The doctor appends pinned `ndk;27.3.13750724` even when an advanced caller
+  overrides the other SDK packages, locates the supported host tool, executes
+  the existing AArch64 capability probe, and records it only after that probe.
+- Missing package members, unsupported hosts, licence refusal, failed capability
+  probes, and interrupted post-SDK validation remain explicit failures.
+- The warning-strict focused suite passed 113 tests and the complete suite
+  passed 895 tests. Compilation, diff hygiene, documentation links, and both
+  release gates passed against a clean committed candidate.
+
 ## 2026-08-02 self-hosted APK operator documentation
 
 Status: completed 2026-08-02; physical/ARMv7 acceptance remains pending.

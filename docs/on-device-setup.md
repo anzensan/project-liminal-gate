@@ -85,10 +85,11 @@ python3 -m liminal_gate.doctor --install-missing
 
 Vendor tools and their recorded locations stay under ignored `user-data/`;
 required Python packages install into the active virtual environment. The
-doctor asks before accepting Android SDK licences. It cannot install an
-AArch64 disassembler for you; if that check fails, it prints the command for
-your operating system. Keep this environment active for the remaining commands.
-See [Installing the tools](install-tools.md) for manual and platform-specific
+doctor asks before accepting Android SDK licences. If no installed tool can
+read AArch64, it adds Google's pinned side-by-side NDK and records that
+package's `llvm-objdump`; it does not install Android Studio. Keep this
+environment active for the remaining commands. See
+[Installing the tools](install-tools.md) for manual and platform-specific
 alternatives.
 
 Now run the non-mutating check with the exact device you intend to use:

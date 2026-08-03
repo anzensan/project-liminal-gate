@@ -38,15 +38,18 @@
 - **A toolchain doctor removes the `PATH` and `JAVA_HOME` step.**
   `python3 -m liminal_gate.doctor` reports which build tools this machine has;
   `--install-missing` fetches a Temurin JDK, the Android SDK packages through
-  Google's own `sdkmanager`, Il2CppDumper v6.7.46, and — only where the managed
-  dumper build needs one — a private .NET runtime. Every download is verified
-  against a published checksum — including the on-device builder's pinned
-  Gradle distribution — and lands under ignored `user-data/`. Locations
+  Google's own `sdkmanager`, pinned Android NDK r27d for its AArch64-capable
+  `llvm-objdump`, Il2CppDumper v6.7.46, and — only where the managed dumper build
+  needs one — a private .NET runtime. Direct archives are verified against
+  published checksums, SDK/NDK packages use Google's repository verification,
+  and everything — including the on-device builder's pinned Gradle distribution
+  — lands under ignored `user-data/`. Locations
   are recorded in `user-data/toolchain.json` and replayed into the environment
   by `tester_setup` and `on_device_setup`, so no shell variable has to be
   exported in any terminal. A variable the operator set themselves still wins.
-  The Android SDK licences are never accepted without being asked, and Android
-  Studio, emulator images, and an LLVM toolchain remain the operator's own.
+  The Android SDK licences are never accepted without being asked. Android
+  Studio and emulator images remain the operator's choice; a system-wide LLVM
+  installation no longer is.
 
 - A source-only private on-device build path packages the tester's reviewed
   client, complete local resources, dual-ABI Python compatibility server, and

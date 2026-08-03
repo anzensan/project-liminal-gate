@@ -36,6 +36,7 @@ using `--replace-existing`.
 | `adb is unavailable`, or `adb` is not found | Setup falls back to the SDK's own `platform-tools\adb`, so this means the SDK root was not found either. Set `ANDROID_SDK_ROOT`, or pass `--adb` with the full path to `adb`. Copying `adb.exe` into the project folder is not needed. |
 | `APK signing failed: zipalign/apksigner is unavailable` | Set `BUILD_TOOLS` to one of the directories printed by `ls "$SDK_ROOT/build-tools"`; do not use the literal placeholder path from an older guide. On Windows see [if setup cannot find zipalign and apksigner](install-tools.md#if-setup-cannot-find-zipalign-and-apksigner). |
 | `error: externally-managed-environment` from `pip install` | Your Python does not allow system-wide installs, which is normal for Homebrew Python. Use a virtual environment, then run setup from that same activated terminal. See [the optional Python dependency](install-tools.md#optional-the-python-image-extraction-dependency). |
+| `disassembler` is missing | Run `python3 -m liminal_gate.doctor --install-missing`. After explicit Android SDK licence acceptance it installs pinned `ndk;27.3.13750724` under `user-data/toolchain/android-sdk/`, verifies that its `llvm-objdump` reports AArch64 support, and records the exact executable. The NDK is a large download; an already-working system `llvm-objdump` or `objdump` is reused instead. |
 
 ## Il2CppDumper
 
