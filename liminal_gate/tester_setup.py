@@ -78,6 +78,7 @@ from liminal_gate.scenario_encounter_importer import (
     import_encounters as import_scenario_encounters,
     write_document as write_scenario_document,
 )
+from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
 from liminal_gate.story_outcome_generator import (
@@ -95,24 +96,14 @@ class TesterSetupError(RuntimeError):
 
 @dataclass(frozen=True)
 class LocalServerOptions:
-    """Supported, explicit local policies selected during tester setup."""
+    """The guided server's per-setup choices.
 
-    core_story: bool = True
-    drop_eligibility: bool = True
-    achievements: bool = True
-    summon_skills: bool = False
-    pacts: bool = True
-    hunting: bool = True
-    daily_quests: bool = True
-    secondary_worlds: bool = True
-    jobs: bool = True
-    rebirth: bool = True
-    status_items: bool = True
-    companion_draw: bool = True
-    companion_sale: bool = True
-    companion_strengthen: bool = True
-    companion_evolution: bool = True
-    trading_post: bool = True
+    Only the reviewed local event catalog actually varies between setups.  The
+    gameplay policy set is `server_config.STANDARD_POLICY_FLAGS`, shared with
+    the dedicated server and the packaged Android host; per-policy selection
+    is a `bootstrap_server` command-line job, not a setup option.
+    """
+
     event_catalog: Path | None = None
 
 
@@ -1373,10 +1364,6 @@ def prepare_local_tester(
 
 def server_arguments(
     resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
-    core_story: bool = True, drop_eligibility: bool = True, achievements: bool = True, summon_skills: bool = False, pacts: bool = True, hunting: bool = True, jobs: bool = True, rebirth: bool = True, status_items: bool = True, companion_draw: bool = True, companion_sale: bool = True,
-    companion_strengthen: bool = True, companion_evolution: bool = True,
-    trading_post: bool = True, daily_quests: bool = True,
-    secondary_worlds: bool = True,
 ) -> list[str]:
     arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
@@ -1390,40 +1377,7 @@ def server_arguments(
         "--companion-equipment-catalog",
         str((data_directory / DEFAULT_COMPANION_EQUIPMENT_CATALOG).resolve()),
     ]
-    if core_story:
-        arguments.append("--core-story")
-    if pacts:
-        arguments.append("--pacts")
-    if hunting:
-        arguments.append("--hunting")
-    if daily_quests:
-        arguments.append("--daily-quests")
-    if secondary_worlds:
-        arguments.append("--secondary-worlds")
-    if jobs:
-        arguments.append("--jobs")
-    if rebirth:
-        arguments.append("--rebirth")
-    if status_items:
-        arguments.append("--status-items")
-    if companion_draw:
-        arguments.append("--companion-draw")
-    if companion_sale:
-        arguments.append("--companion-sale")
-    if companion_strengthen:
-        arguments.append("--companion-strengthen")
-    if companion_evolution:
-        arguments.append("--companion-evolution")
-    if trading_post:
-        arguments.append("--trading-post")
-    if drop_eligibility:
-        # Without this the client discards every drop it rolls, so guided
-        # setups would report empty monsters/buddies on every clear.
-        arguments.append("--drop-eligibility")
-    if achievements:
-        arguments.append("--achievements")
-    if summon_skills:
-        arguments.append("--summon-skills")
+    arguments.extend(STANDARD_POLICY_FLAGS)
     arguments.extend((
         "--story-outcome-catalog", str((data_directory / DEFAULT_OUTCOME_CATALOG).resolve()),
     ))
@@ -1439,9 +1393,7 @@ def server_arguments(
     return arguments
 
 
-def choose_local_server_options(
-    event_catalog: Path | None, ask: Callable[[str], str] = input,
-) -> LocalServerOptions:
+def choose_local_server_options(event_catalog: Path | None) -> LocalServerOptions:
     """Describe and return the explicit guided-server configuration.
 
     Every built-in policy is on.  They were briefly selectable, but the modes
@@ -1452,9 +1404,6 @@ def choose_local_server_options(
     ``docs/advanced-configuration.md`` documents.  Reviewed local events are an
     expert feature enabled only by the explicit ``--event-catalog`` option, so a
     first-time setup is not interrupted by a question it cannot usefully answer.
-
-    ``ask`` remains as a compatibility argument for callers of the former
-    interactive API; it is deliberately never called.
     """
     print("\nLocal setup")
     print(
@@ -1804,12 +1753,7 @@ def main() -> int:
         if args.configure and sys.stdin.isatty():
             offer_account_switch(args.data_dir)
         print(f"\nInstalled on {device}. Starting the local server; press Control-C when finished.")
-        run_server(server_arguments(
-            resource_root, args.data_dir, args.port, options.event_catalog,
-            options.core_story, options.drop_eligibility, options.achievements, options.summon_skills, options.pacts, options.hunting, options.jobs, options.rebirth, options.status_items, options.companion_draw, options.companion_sale,
-            options.companion_strengthen, options.companion_evolution, options.trading_post,
-            options.daily_quests, options.secondary_worlds,
-        ))
+        run_server(server_arguments(resource_root, args.data_dir, args.port, options.event_catalog))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error
     return 0

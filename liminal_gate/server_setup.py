@@ -16,6 +16,7 @@ from liminal_gate.companion_equipment_catalog import (
 from liminal_gate.event_catalog import DEFAULT_EVENT_CATALOG
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
+from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
 from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES
 
@@ -27,23 +28,6 @@ class ServerSetupError(RuntimeError):
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
 DEFAULT_DATA = Path("user-data")
 DEFAULT_PROFILE = Path("profiles/legacy-client-bootstrap.json")
-STANDARD_POLICY_FLAGS = (
-    "--core-story",
-    "--pacts",
-    "--hunting",
-    "--daily-quests",
-    "--secondary-worlds",
-    "--jobs",
-    "--rebirth",
-    "--status-items",
-    "--companion-draw",
-    "--companion-sale",
-    "--companion-strengthen",
-    "--companion-evolution",
-    "--trading-post",
-    "--drop-eligibility",
-    "--achievements",
-)
 
 
 def resolve_resource_root(requested: Path) -> Path:

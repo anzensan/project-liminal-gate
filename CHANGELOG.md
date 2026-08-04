@@ -115,6 +115,31 @@
   resources, keys, state, and Android build products remain private/ignored;
   full physical-client and ARMv7 acceptance are still pending.
 
+### Changed
+
+- **One policy source for all three launchers.** Guided setup, the dedicated
+  server, and the packaged Android host previously each carried their own copy
+  of the gameplay-policy set (sixteen constant booleans threaded through the
+  guided command builder, a literal flag tuple, and an inline JSON document),
+  held together only by a drift-guard test. All three now derive from
+  `server_config.STANDARD_POLICY_FLAGS`, so a recovered feature cannot ship
+  enabled on one path and unreachable on another. Per-policy selection remains
+  a `bootstrap_server` command-line capability, unchanged. The long-retired
+  interactive-setup compatibility argument (`choose_local_server_options`'s
+  `ask`) is gone with it.
+
+- **A maintenance pass consolidated long-copied scaffolding** without behavior
+  change: one shared `sha256_file`, one atomic JSON writer, one home for the
+  reviewed-build identity and client inventory-shape constants, the profile /
+  wire-encoding / request-parser layers lifted out of `bootstrap_server`, and
+  shared test scaffolding replacing per-file copies across fifty test files.
+  Command lines, generated-file bytes, and wire behavior are unchanged. The
+  pass also fixed a latent builtin-`ImportError` shadowing in `tester_setup`,
+  gave `native_encounter_importer` the `--force` overwrite guard its scenario
+  sibling had, made the story-outcome generator refuse invalid baseline IDs
+  before writing, and made an unmapped mutation result answer HTTP 500
+  instead of crashing the handler thread.
+
 ### Fixed
 
 - **`on_device_state` could not find the toolchain `doctor` had installed.**

@@ -11,6 +11,40 @@ class ServerConfigError(ValueError):
     """A user-local bootstrap-server configuration is invalid."""
 
 
+#: The gameplay policies every launcher enables.  Guided setup, the dedicated
+#: server, and the packaged Android host all derive their policy set from this
+#: one tuple, so a recovered feature cannot ship enabled on one path and
+#: unreachable on another -- which is how Daily Quests once shipped:
+#: implemented, tested, documented, and passed by no launcher.
+#:
+#: ``--summon-skills`` is deliberately absent: summon skills are granted by
+#: progression, not by the launcher.  ``--drop-eligibility`` must stay:
+#: without it the client discards every drop it rolls, so guided setups would
+#: report empty monsters and buddies on every clear.
+STANDARD_POLICY_FLAGS = (
+    "--core-story",
+    "--pacts",
+    "--hunting",
+    "--daily-quests",
+    "--secondary-worlds",
+    "--jobs",
+    "--rebirth",
+    "--status-items",
+    "--companion-draw",
+    "--companion-sale",
+    "--companion-strengthen",
+    "--companion-evolution",
+    "--trading-post",
+    "--drop-eligibility",
+    "--achievements",
+)
+
+
+def standard_policy_fields() -> dict[str, bool]:
+    """The same standard set, as the configuration fields the flags toggle."""
+    return {flag.removeprefix("--").replace("-", "_"): True for flag in STANDARD_POLICY_FLAGS}
+
+
 _PATH_FIELDS = (
     "profile", "state_file", "event_log", "resource_root", "resource_manifest", "public_data_root",
     "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "statusup_catalog",
