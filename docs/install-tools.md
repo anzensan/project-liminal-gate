@@ -248,6 +248,12 @@ command is `.venv\Scripts\activate` instead, and use
 `py -3 -m pip install ".[master-import]"` when you use `py -3` for the other
 commands.
 
+If PowerShell refuses to activate with `running scripts is disabled on this
+system`, skip activation rather than changing a policy: name the environment's
+own interpreter, `.\.venv\Scripts\python.exe`, in place of `python3` for both
+the install and every later command. See
+[Windows and PowerShell](troubleshooting.md#windows-and-powershell).
+
 If UnityPy or a required local Banner bundle is unavailable, setup reports the
 exact reason and continues; normal Fellowship and Truth Pacts remain usable, but
 their retired web-banner images will not be shown.
