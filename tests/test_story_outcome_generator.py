@@ -310,6 +310,12 @@ class BuildCatalogTest(unittest.TestCase):
         baseline = {"stages": [{"chapter": 8, "section": 1, "item_maxima": {}, "character_maxima": {}, "companion_maxima": {str(COMPANION_A): 1}}]}
         self.assertEqual({str(COMPANION_A): 4}, self._rules(self._build(baseline=baseline)[0])[(8, 1)]["companion_maxima"])
 
+    def test_rejects_a_baseline_id_the_catalog_loader_would_refuse(self) -> None:
+        for raw_id in ("07", "0", "-1"):
+            baseline = {"stages": [{"chapter": 8, "section": 1, "item_maxima": {raw_id: 1}, "character_maxima": {}, "companion_maxima": {}}]}
+            with self.subTest(raw_id=raw_id), self.assertRaisesRegex(StoryOutcomeGeneratorError, "positive decimal IDs"):
+                self._build(baseline=baseline)
+
     def test_rejects_a_baseline_naming_an_unknown_character_or_item(self) -> None:
         for maxima, field in (({"7777": 1}, "character_maxima"), ({str(BUNDLED_ITEM_SLOTS + 1): 1}, "item_maxima")):
             baseline = {"stages": [{"chapter": 8, "section": 1, "item_maxima": {}, "character_maxima": {}, field: maxima}]}

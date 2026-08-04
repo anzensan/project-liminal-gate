@@ -496,11 +496,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dump-cs", required=True, type=Path, help="dump.cs from the run that produced DummyDll")
     parser.add_argument("--objdump", default="objdump", help="an objdump that disassembles AArch64")
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--force", action="store_true", help="overwrite an existing output")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.output.exists() and not args.force:
+        raise SystemExit(f"refusing to overwrite {args.output} without --force")
     try:
         document = import_encounters(args.apk.resolve(strict=True), args.dump_cs.resolve(strict=True), args.objdump)
         write_document(args.output, document)

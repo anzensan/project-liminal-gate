@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from liminal_gate.native_encounter_importer import (
     Method,
@@ -10,6 +12,7 @@ from liminal_gate.native_encounter_importer import (
     arm64_spawn_targets,
     build_document,
     instructions,
+    main,
     parse_enemies_enum,
     parse_methods,
     resolve_symbol,
@@ -258,3 +261,14 @@ class WriteDocumentTest(unittest.TestCase):
             write_document(path, {"schema_version": 1})
             self.assertEqual('{\n  "schema_version": 1\n}\n', path.read_text(encoding="utf-8"))
             self.assertEqual([path.name], [entry.name for entry in path.parent.iterdir()])
+
+
+class MainOverwriteGuardTest(unittest.TestCase):
+    def test_refuses_to_overwrite_an_existing_output_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "native-encounters.json"
+            output.write_text("{}", encoding="utf-8")
+            arguments = ["importer", "--apk", "a.apk", "--dump-cs", "d.cs", "--output", str(output)]
+            with patch.object(sys, "argv", arguments), self.assertRaisesRegex(SystemExit, "without --force"):
+                main()
+            self.assertEqual("{}", output.read_text(encoding="utf-8"))

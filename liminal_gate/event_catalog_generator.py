@@ -36,6 +36,7 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
+from liminal_gate.event_catalog import EventCatalogError, load_event_catalog
 from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.event_manifest_data import (
     ARCHIVE_SECTION_ALLOWLIST,
@@ -236,6 +237,10 @@ def main() -> int:
         raise SystemExit(f"event catalog generation failed: {error}") from error
 
     write_catalog(args.output, catalog)
+    try:
+        load_event_catalog(args.output, args.character_catalog)
+    except (EventCatalogError, OSError) as error:
+        raise SystemExit(f"event catalog generation failed: {error}") from error
     events = len({row["event_id"] for row in catalog["stages"]})
     print(f"wrote {len(catalog['stages'])} stages across {events} event(s) -> {args.output}")
     for note in notes:

@@ -709,8 +709,8 @@ def _maxima(value: object) -> dict[int, int]:
         raise StoryOutcomeGeneratorError("baseline maxima must be objects")
     result: dict[int, int] = {}
     for raw_id, count in value.items():
-        if not isinstance(raw_id, str) or not raw_id.isdecimal() or type(count) is not int or count < 1:
-            raise StoryOutcomeGeneratorError("baseline maxima require decimal IDs and positive counts")
+        if not isinstance(raw_id, str) or not raw_id.isdecimal() or raw_id != str(int(raw_id)) or int(raw_id) <= 0 or type(count) is not int or count < 1:
+            raise StoryOutcomeGeneratorError("baseline maxima require positive decimal IDs and counts")
         result[int(raw_id)] = count
     return result
 
