@@ -15,7 +15,9 @@ class RefillStaminaTest(unittest.TestCase):
             root = Path(directory)
             profile = bootstrap_profile()
             state_path = root / "state.json"
-            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path))
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path), stamina=True,
+            )
 
             try:
                 # An origin at "now" is a meter that has refilled nothing yet,
@@ -51,7 +53,9 @@ class RefillStaminaTest(unittest.TestCase):
             finally:
                 stop_server(server, thread)
 
-            restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path))
+            restarted, restarted_thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path), stamina=True,
+            )
             try:
                 self.assertEqual((200, success), post(restarted, "/gd/refill_stamina", "one", "cost=1"))
                 self.assertEqual((200, full), post(restarted, "/gd/refill_stamina", "two", "cost=1"))

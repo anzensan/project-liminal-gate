@@ -33,7 +33,9 @@ python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 
 Story chapters, Hunting zones, Daily Quests, Pacts, Companion draws and sales,
 job unlocks, Rebirth, and status items are all enabled with no
-feature-selection prompt. To
+feature-selection prompt. The stamina meter is the one thing left off: entry
+costs no stamina and the bar reads full, unless you launch with
+`--enable-stamina`. To
 isolate one feature while troubleshooting, run `liminal_gate.bootstrap_server`
 directly with only the flags you want; see
 [advanced-configuration.md](advanced-configuration.md).

@@ -1411,6 +1411,10 @@ def choose_local_server_options(event_catalog: Path | None) -> LocalServerOption
         "Daily Quests, BreaSoul, the Five Emperors, Pacts, and Companions are all enabled."
     )
     print("The recovered 15-day item/monster double-drop rotation is enabled; custom drop-rate controls are not available.")
+    print(
+        "The stamina meter is off: the bar stays full and quest entry never waits on it. "
+        "Launch with --enable-stamina (see docs/advanced-configuration.md) to charge it as the retired service did."
+    )
     if event_catalog is not None:
         print(f"Reviewed local event catalog: {event_catalog}")
     return LocalServerOptions(event_catalog=event_catalog)

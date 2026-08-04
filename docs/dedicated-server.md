@@ -93,6 +93,18 @@ system-level operations. Keep the checkout in a path without spaces:
 ./scripts/install_systemd_service.sh 8642
 ```
 
+The stamina meter is off on every launcher: the bar reads full and quest entry
+never waits on it. To run this host with the retired service's timer gate
+instead, add the flag, which the installer writes into the unit's `ExecStart`:
+
+```sh
+./scripts/install_systemd_service.sh 8642 --enable-stamina
+```
+
+Changing your mind means rerunning the installer with or without the flag; the
+unit is the only place a systemd host passes a launcher option. See
+[The stamina meter is off by default](advanced-configuration.md#the-stamina-meter-is-off-by-default).
+
 The service runs as the invoking non-root user, restarts after an unexpected
 exit, and starts during normal multi-user boot. Its systemd protections leave
 only this checkout's `user-data/` writable. The invoking user must therefore be

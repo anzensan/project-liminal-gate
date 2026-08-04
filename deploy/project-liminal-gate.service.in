@@ -13,7 +13,7 @@ Group=@SERVICE_GROUP@
 WorkingDirectory=@PROJECT_ROOT@
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=@PYTHON_EXECUTABLE@ -m liminal_gate.server_setup --port @PORT@
+ExecStart=@PYTHON_EXECUTABLE@ -m liminal_gate.server_setup --port @PORT@@SERVER_FLAGS@
 Restart=always
 RestartSec=5
 TimeoutStopSec=15

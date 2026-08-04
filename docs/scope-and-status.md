@@ -24,6 +24,13 @@ compatibility fixes despite the successful physical-device playthrough.
 
 ## Story and Pacts
 
+Quest entry costs no stamina. The bar the client draws reads full and never
+falls, so nothing gates how many stages you can play in a sitting, and the
+in-game stamina refill answers "no need to refill" rather than taking an Energy.
+The recovered meter is intact and unchanged behind `--enable-stamina`; see
+[The stamina meter is off by default](advanced-configuration.md#the-stamina-meter-is-off-by-default)
+for why it ships off and how to charge it.
+
 The guided setup enables ordinary story progression beyond the tutorial, through
 Chapter 42, and local ordinary Pacts:
 

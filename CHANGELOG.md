@@ -117,6 +117,22 @@
 
 ### Changed
 
+- **The stamina meter no longer gates quest entry, on any launcher.** Entry
+  charges nothing, the bar the client draws stays full, and the refill route
+  answers the client's own `NoNeedToRefill` instead of selling an Energy for a
+  meter nothing spends. A save carrying a fill origin from a charged run is
+  returned to full on the next `GET /gd/userdata` rather than reading back as a
+  half-filled bar nothing will ever finish debiting.
+  The recovered model is intact and unchanged: `--enable-stamina` runs
+  `GameManager.CalcStamina` and `UserData.GetMaxStamina` exactly as before, and
+  `scripts/install_systemd_service.sh PORT --enable-stamina` writes the flag
+  into the systemd unit for a dedicated host. A refilling meter paces a live
+  service; there is no longer a live service to pace. The client always draws
+  the bar — it is `ServerConstants` and local `UserData`, not server-side UI —
+  so off means a meter that is always full, not one that is hidden.
+  The four entry routes now ask one `entry_stamina_origin` helper rather than
+  repeating the same pair of `userdata` reads around `spend_stamina`.
+
 - **One policy source for all three launchers.** Guided setup, the dedicated
   server, and the packaged Android host previously each carried their own copy
   of the gameplay-policy set (sixteen constant booleans threaded through the

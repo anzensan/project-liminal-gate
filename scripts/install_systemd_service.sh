@@ -6,7 +6,30 @@ if (( "$(id -u)" == 0 )); then
   exit 2
 fi
 
-service_port="${1:-8642}"
+service_port=""
+server_flags=""
+# The stamina meter is off unless this host's operator asks for it, so the
+# installer has to be able to say so: the unit it writes is the only place a
+# systemd host ever passes a launcher flag.
+for argument in "$@"; do
+  case "$argument" in
+    --enable-stamina)
+      server_flags=" --enable-stamina"
+      ;;
+    --*)
+      echo "unknown option: $argument (only --enable-stamina is accepted)" >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "$service_port" ]]; then
+        echo "usage: $0 [PORT] [--enable-stamina]" >&2
+        exit 2
+      fi
+      service_port="$argument"
+      ;;
+  esac
+done
+service_port="${service_port:-8642}"
 case "$service_port" in
   *[!0-9]*|"")
     echo "port must be an integer from 1 through 65535" >&2
@@ -41,6 +64,7 @@ sed \
   -e "s|@PROJECT_ROOT@|$project_root|g" \
   -e "s|@PYTHON_EXECUTABLE@|$python_executable|g" \
   -e "s|@PORT@|$service_port|g" \
+  -e "s|@SERVER_FLAGS@|$server_flags|g" \
   "$unit_template" > "$rendered_unit"
 
 systemd-analyze verify "$rendered_unit"

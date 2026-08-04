@@ -119,6 +119,7 @@ def server_arguments(
     story_outcome_catalog: Path | None = None,
     companion_equipment_catalog: Path | None = None,
     event_catalog: Path | None = None,
+    enable_stamina: bool = False,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
@@ -166,6 +167,9 @@ def server_arguments(
         "--public-data-root",
         str(data_directory / "public_data"),
         *STANDARD_POLICY_FLAGS,
+        # Outside the standard set on purpose: the meter is off unless this
+        # host's operator asked for it, so the flag is emitted only when asked.
+        *(["--enable-stamina"] if enable_stamina else []),
         *outcome_flags,
         *equipment_flags,
         *event_flags,
@@ -218,6 +222,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "reviewed archive-event catalog; defaults to "
             f"{DEFAULT_EVENT_CATALOG} in the data directory when present"
+        ),
+    )
+    parser.add_argument(
+        "--enable-stamina",
+        action="store_true",
+        help=(
+            "charge the client's own stamina meter for quest entry; without it "
+            "the meter stays pinned full and entry is never gated by a timer"
         ),
     )
     parser.add_argument(
@@ -274,6 +286,11 @@ def main() -> int:
                 "Archive Special Quests, Tower, and Eidolon quests: "
                 f"ON from {event_catalog}"
             )
+        print(
+            "Stamina meter: ON (quest entry charges it)"
+            if args.enable_stamina
+            else "Stamina meter: OFF (pinned full; pass --enable-stamina to charge it)"
+        )
         if args.prepare_only:
             return 0
         print(
@@ -289,6 +306,7 @@ def main() -> int:
                 story_outcome_catalog=outcome_catalog,
                 companion_equipment_catalog=equipment_catalog,
                 event_catalog=event_catalog,
+                enable_stamina=args.enable_stamina,
             )
         )
     except (OSError, ResourceCatalogError, ServerSetupError, subprocess.CalledProcessError) as error:

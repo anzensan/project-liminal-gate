@@ -27,6 +27,11 @@ individual fixes.
 most are locked on a new account. Empty optional screens at the start are expected,
 not a fault.** Arena VS, rankings, and multiplayer are disabled.
 
+**The stamina bar stays full.** Quests cost no stamina, so nothing makes you wait
+for the meter to refill. The retired service's timer paced a live game, and there
+is no live game left to pace. The original behavior is one launcher flag away —
+see [The stamina meter is off by default](docs/advanced-configuration.md#the-stamina-meter-is-off-by-default).
+
 Full detail: [What works right now](docs/scope-and-status.md).
 
 ## Before you start

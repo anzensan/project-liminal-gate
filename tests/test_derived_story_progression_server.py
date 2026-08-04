@@ -54,6 +54,7 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
             story_progression_catalog=self.catalog, settlement_catalog=self.settlements,
+            stamina=True,
         )
 
     def stop_server(self) -> None:

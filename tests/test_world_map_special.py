@@ -118,7 +118,9 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
             self.server.state._persist_locked()
 
     def start_server(self) -> None:
-        self.server, self.thread = start_server(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path))
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path), stamina=True,
+        )
 
     def stop_server(self) -> None:
         stop_server(self.server, self.thread)

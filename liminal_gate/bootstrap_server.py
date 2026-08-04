@@ -107,7 +107,13 @@ from liminal_gate.bootstrap_wire import (
 )
 from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASES, hashed_resource_name
 from liminal_gate.resource_catalog import ResourceCatalog, ResourceCatalogError, load_resource_catalog
-from liminal_gate.stamina_meter import chapter_for_progress, current_stamina, max_stamina_for_chapter, spend_stamina
+from liminal_gate.stamina_meter import (
+    FULL_METER_ORIGIN,
+    chapter_for_progress,
+    current_stamina,
+    max_stamina_for_chapter,
+    spend_stamina,
+)
 from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogError, build_bundled_companion_policy, load_companion_catalog
 from liminal_gate.companion_equipment_catalog import (
     CompanionEquipmentCatalog,
@@ -801,7 +807,7 @@ class BootstrapState:
                 "free_roam", "generic_story_active", "hunting_active",
             }
 
-    def userdata_for(self, token: str) -> dict[str, Any] | None:
+    def userdata_for(self, token: str, *, stamina: bool = False) -> dict[str, Any] | None:
         with self.lock:
             account_id = self.tokens.get(token)
             account = self.accounts.get(account_id)
@@ -809,6 +815,14 @@ class BootstrapState:
                 return None
             userdata = account["userdata"]
             changed = False
+            # A save written while the stamina policy was on carries a fill
+            # origin the client still turns into a partial bar.  Nothing debits
+            # that meter once the policy is off, so the read returns it to the
+            # client's own full-meter representation rather than leaving a bar
+            # that only time can finish filling.
+            if not stamina and float(userdata.get("refillStartTime", 0.0)) != FULL_METER_ORIGIN:
+                userdata["refillStartTime"] = FULL_METER_ORIGIN
+                changed = True
             # The client reads the nested ``valuables`` object on login, while
             # local mutations update the flat wallet fields.  Rebuild the
             # nested projection on every read so a Pact/quest mutation cannot
@@ -860,7 +874,9 @@ class BootstrapState:
             self._persist_locked()
             return "success", payload
 
-    def refill_stamina(self, token: str, request_id: str, body: bytes) -> tuple[str, dict[str, Any] | None]:
+    def refill_stamina(
+        self, token: str, request_id: str, body: bytes, *, stamina: bool = False,
+    ) -> tuple[str, dict[str, Any] | None]:
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
             if account is None:
@@ -881,10 +897,12 @@ class BootstrapState:
             # meter rather than the raw origin matters once entry actually
             # debits stamina: an origin left nonzero by an earlier quest refills
             # on its own over time, and charging an Energy to "refill" a bar
-            # that already reached its maximum would quietly waste it.
+            # that already reached its maximum would quietly waste it.  With the
+            # policy off nothing debits the meter at all, so every refill takes
+            # that same refusal rather than selling an Energy for nothing.
             chapter = chapter_for_progress(int(data.get("progressCode", 0)))
             origin = float(data.get("refillStartTime", 0.0))
-            if current_stamina(origin, chapter, time.time()) >= max_stamina_for_chapter(chapter):
+            if not stamina or current_stamina(origin, chapter, time.time()) >= max_stamina_for_chapter(chapter):
                 payload = {"success": False, "errorCode": 1}
             else:
                 free, energy = int(data.get("freeEnergy", 0)), int(data.get("energy", 0))
@@ -2010,7 +2028,7 @@ class BootstrapState:
 
     def apply_hunting_start(
         self, token: str, request_id: str, body: bytes, catalog: HuntingCatalog,
-        now: float | None = None,
+        now: float | None = None, *, stamina: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
         """Authorise and charge one cataloged local Hunting entry."""
         now = time.time() if now is None else now
@@ -2080,10 +2098,7 @@ class BootstrapState:
             # addition* to stamina can refuse for want of the item.
             spends_ticket = stage.ticket_optional and held >= stage.entry_item_count
             stamina_due = 0 if spends_ticket else stage.stamina
-            origin = spend_stamina(
-                float(userdata.get("refillStartTime", 0.0)), stamina_due,
-                chapter_for_progress(int(userdata.get("progressCode", 0))), now,
-            )
+            origin = entry_stamina_origin(userdata, stamina_due, now, enabled=stamina)
             if coins < stage.coins or origin is None:
                 return "success", _canonical_payload({"success": False, "errorCode": 1})
             if stage.entry_item_id and not stage.ticket_optional and held < stage.entry_item_count:
@@ -2227,7 +2242,7 @@ class BootstrapState:
 
     def apply_world_map_special_start(
         self, token: str, request_id: str, body: bytes, catalog: WorldMapSpecialCatalog,
-        now: float | None = None,
+        now: float | None = None, *, stamina: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
         """Start one Chapter-1100 battle behind the native Chapter-34 map gate."""
         now = time.time() if now is None else now
@@ -2272,10 +2287,7 @@ class BootstrapState:
                 phase = account["tutorial_phase"]
             if phase != "free_roam" or account.get("active_generic_story") is not None:
                 return "tutorial_state_conflict", None
-            origin = spend_stamina(
-                float(userdata.get("refillStartTime", 0.0)), stage.stamina,
-                chapter_for_progress(progress), now,
-            )
+            origin = entry_stamina_origin(userdata, stage.stamina, now, enabled=stamina)
             if origin is None:
                 return "success", _canonical_payload({"success": False, "errorCode": 1})
             userdata["refillStartTime"] = origin
@@ -2408,6 +2420,7 @@ class BootstrapState:
     def apply_generic_story_start(
         self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog | EventCatalog,
         settlement_catalog: SettlementCatalog | None = None, now: float | None = None,
+        *, stamina: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
         """Start one catalog-declared local story stage after the tutorial."""
         now = time.time() if now is None else now
@@ -2473,10 +2486,7 @@ class BootstrapState:
             # no such floor, so an undeclared coin cost is charged as zero
             # rather than on the client's word.
             coin_cost = stage.coins if stage.coins is not None else 0
-            origin = spend_stamina(
-                float(userdata.get("refillStartTime", 0.0)), stamina_cost,
-                chapter_for_progress(int(userdata.get("progressCode", 0))), now,
-            )
+            origin = entry_stamina_origin(userdata, stamina_cost, now, enabled=stamina)
             if origin is None or int(userdata.get("coins", 0)) < coin_cost:
                 return "success", _canonical_payload(
                     {"success": False, "errorCode": 1}
@@ -2952,6 +2962,7 @@ class BootstrapServer(ThreadingHTTPServer):
         login_bonuses: bool = False,
         build_id: str = "development",
         daily_drop_bonuses: bool = False,
+        stamina: bool = False,
     ) -> None:
         self.profile = profile
         self.state = state
@@ -2992,6 +3003,12 @@ class BootstrapServer(ThreadingHTTPServer):
         self.hunting_catalog = hunting_catalog
         self.daily_quests = daily_quests
         self.secondary_worlds = secondary_worlds
+        # The client always draws a stamina bar -- it is `ServerConstants` and
+        # local `UserData`, not a server-side UI this server could remove.  Off
+        # therefore means the meter is pinned full: entry debits nothing and
+        # refuses nothing, which is the behaviour a preserved single-player
+        # archive wants and the one this server ships by default.
+        self.stamina = stamina
         # The client draws both Chapter-1100 map points itself once the story
         # has passed Chapter 34, so the route is bundled and always accepted
         # rather than advertised behind a flag.
@@ -3237,7 +3254,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # Bind before reading so an older emulator token cannot select an
             # abandoned local account after the active save has been resumed.
             userdata = (
-                self.server.state.userdata_for(token)
+                self.server.state.userdata_for(token, stamina=self.server.stamina)
                 if token and self.server.state.bind_rotated_token(token, self._client_host())
                 else None
             )
@@ -3341,6 +3358,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             ):
                 dispatch.result, dispatch.payload = state.apply_generic_story_start(
                     token, request_id, body, self.server.event_catalog,
+                    stamina=self.server.stamina,
                 )
                 dispatch.kind, dispatch.transitions = "event_start", ()
             return dispatch
@@ -3358,7 +3376,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             ),
             "refill_stamina": (
                 "refill_stamina",
-                lambda: state.refill_stamina(token, request_id, body),
+                lambda: state.refill_stamina(
+                    token, request_id, body, stamina=self.server.stamina,
+                ),
             ),
             "unlock_metal_zone": (
                 "unlock_metal_zone",
@@ -3558,6 +3578,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         ) == WORLD_MAP_SPECIAL_CHAPTER:
             return state.apply_world_map_special_start(
                 token, request_id, body, self.server.world_map_special_catalog,
+                stamina=self.server.stamina,
             )
         if kind == "clear" and _identity_chapter(
             _cleared_identity(body)
@@ -3572,6 +3593,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         ):
             return state.apply_hunting_start(
                 token, request_id, body, self.server.hunting_catalog,
+                stamina=self.server.stamina,
             )
         if kind == "start" and (
             self.server.event_catalog is not None
@@ -3597,7 +3619,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             )
             catalog = event or self.server.story_catalog or self.server.story_progression_catalog
             return (
-                state.apply_generic_story_start(token, request_id, body, catalog)
+                state.apply_generic_story_start(
+                    token, request_id, body, catalog, stamina=self.server.stamina,
+                )
                 if catalog is not None
                 else ("unsupported_start_quest", None)
             )
@@ -3902,6 +3926,28 @@ def release_abandoned_battle(account: dict[str, Any]) -> bool:
     account["active_world_map_special"] = None
     account["active_battle_continue_coins"] = 0
     return True
+
+
+def entry_stamina_origin(
+    userdata: dict[str, Any], cost: int, now: float, *, enabled: bool,
+) -> float | None:
+    """The fill origin quest entry leaves behind, or `None` if the meter is short.
+
+    All four entry routes -- generic story, event, Hunting, and the Chapter-1100
+    special -- debit one meter from the same two fields, so they ask here rather
+    than repeating the pair of `userdata` reads `spend_stamina` needs.
+
+    With the stamina policy off the meter is pinned to the client's own
+    full-meter origin: entry never refuses for want of stamina, and an origin an
+    earlier stamina-enabled run left behind returns to full on the next quest
+    rather than lingering as a bar nothing will ever debit again.
+    """
+    if not enabled:
+        return FULL_METER_ORIGIN
+    return spend_stamina(
+        float(userdata.get("refillStartTime", 0.0)), cost,
+        chapter_for_progress(int(userdata.get("progressCode", 0))), now,
+    )
 
 
 def _utc_day(now: float) -> int:
@@ -4893,6 +4939,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-strengthen", action="store_true", help="enable the bundled local Companion strengthen progression")
     parser.add_argument("--companion-evolution", action="store_true", help="enable the bundled local Companion evolution recipes")
     parser.add_argument("--trading-post", action="store_true", help="enable the bundled local Trading Post offers")
+    parser.add_argument("--enable-stamina", action="store_true", help="charge the client's own stamina meter for quest entry instead of pinning it full")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
@@ -4911,7 +4958,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "jobs", "rebirth", "status_items",
         "companion_draw", "companion_sale", "companion_strengthen",
         "companion_evolution", "trading_post", "drop_eligibility",
-        "achievements", "summon_skills", "outcome_strict",
+        "achievements", "summon_skills", "outcome_strict", "enable_stamina",
     )
     if args.config is not None:
         if (
@@ -4955,6 +5002,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         trading_post=getattr(args, 'trading_post', False),
         achievement_catalog=args.achievement_catalog, achievements=getattr(args, 'achievements', False),
         summon_skills=getattr(args, 'summon_skills', False),
+        enable_stamina=getattr(args, 'enable_stamina', False),
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
     )
@@ -5102,6 +5150,7 @@ def build_server(
             login_bonuses=getattr(args, "core_story", False),
             build_id=build_id,
             daily_drop_bonuses=getattr(args, "core_story", False),
+            stamina=getattr(args, "enable_stamina", False),
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
         if resources is not None:

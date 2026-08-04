@@ -74,7 +74,7 @@ class StaminaGaugeContinuityTest(unittest.TestCase):
     def start_server(self) -> None:
         self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
-            story_catalog=self.catalog,
+            story_catalog=self.catalog, stamina=True,
         )
 
     def stop_server(self) -> None:
@@ -181,7 +181,7 @@ class HuntingGaugeContinuityTest(unittest.TestCase):
         self.token, self.account_id = "hunt-gauge-token", "hunt-gauge-account"
         self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
-            hunting_catalog=self.catalog,
+            hunting_catalog=self.catalog, stamina=True,
         )
         self.server.state.create_account(self.token, self.account_id, {
             "coins": 100, "worldMapNo": 0, "progressCode": PROGRESS,

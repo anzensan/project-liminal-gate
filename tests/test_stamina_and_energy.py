@@ -9,6 +9,10 @@ without limit once its ticket ran out and the entry fell back to stamina.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import tempfile
+import time
 import unittest
 
 from liminal_gate.archive_economy import (
@@ -19,7 +23,9 @@ from liminal_gate.archive_economy import (
     award_chapter_energy,
     award_stage_energy,
 )
+from liminal_gate.bootstrap_server import BootstrapState, entry_stamina_origin
 from liminal_gate.stamina_meter import (
+    FULL_METER_ORIGIN,
     REFILL_INTERVAL_SECONDS,
     chapter_for_progress,
     current_stamina,
@@ -121,6 +127,91 @@ class SpendTest(unittest.TestCase):
 
     def test_a_negative_cost_is_refused_rather_than_refunded(self) -> None:
         self.assertIsNone(spend_stamina(0.0, -1, 5, 1_000_000.0))
+
+
+class DisabledStaminaPolicyTest(unittest.TestCase):
+    """The shipped default, where the meter gates nothing.
+
+    The timer gate paced a live service that no longer exists, so this server
+    charges it only when an operator passes `--enable-stamina`.  Off has to mean
+    the whole gate, not just the arithmetic: an entry that would have been
+    refused is accepted, a save carrying a live fill origin reads back as a full
+    bar, and the refill route stops selling an Energy for a meter nothing spends.
+    """
+
+    def exhausted(self) -> tuple[dict, float]:
+        """A save whose meter a chapter-5 entry could not afford."""
+        now = 1_000_000.0
+        return {"refillStartTime": now, "progressCode": 0x01000000 | (5 << 6)}, now
+
+    def test_an_entry_the_meter_cannot_cover_is_accepted_anyway(self) -> None:
+        userdata, now = self.exhausted()
+        self.assertEqual(
+            FULL_METER_ORIGIN,
+            entry_stamina_origin(userdata, 40, now, enabled=False),
+        )
+
+    def test_the_enabled_policy_still_refuses_that_entry(self) -> None:
+        """The same call with the flag on, so a reversed test cannot pass both."""
+        userdata, now = self.exhausted()
+        self.assertIsNone(entry_stamina_origin(userdata, 40, now, enabled=True))
+
+    def test_the_enabled_policy_debits_the_meter_it_reads(self) -> None:
+        userdata = {"refillStartTime": 0.0, "progressCode": 0x01000000 | (10 << 6)}
+        origin = entry_stamina_origin(userdata, 5, 1_000_000.0, enabled=True)
+        self.assertEqual(
+            max_stamina_for_chapter(10) - 5, current_stamina(origin, 10, 1_000_000.0),
+        )
+
+    def test_a_read_returns_a_save_written_with_the_meter_on_to_full(self) -> None:
+        """A tester who turns the policy off must not inherit a half bar."""
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            try:
+                state.create_account("token", "account", {
+                    "coins": 0, "worldMapNo": 0, "progressCode": 0x01000000 | (5 << 6),
+                    "chrdata": [], "itemList": [], "summonList": [],
+                })
+                with state.lock:
+                    state.accounts["account"]["userdata"]["refillStartTime"] = 1_000_000.0
+                    state._persist_locked()
+                self.assertEqual(
+                    FULL_METER_ORIGIN,
+                    state.userdata_for("token", stamina=False)["refillStartTime"],
+                )
+                # Durable, not just projected: the next read is not the only
+                # thing that has to agree, the next entry does too.
+                self.assertEqual(
+                    FULL_METER_ORIGIN,
+                    json.loads((Path(directory) / "state.json").read_text(encoding="utf-8"))
+                    ["accounts"]["account"]["userdata"]["refillStartTime"],
+                )
+            finally:
+                state.close()
+
+    def test_the_refill_route_sells_nothing_for_a_meter_nothing_spends(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            try:
+                state.create_account("token", "account", {
+                    "coins": 0, "energy": 5, "freeEnergy": 5, "worldMapNo": 0,
+                    "progressCode": 0x01000000 | (5 << 6),
+                    "chrdata": [], "itemList": [], "summonList": [],
+                })
+                with state.lock:
+                    # An origin at "now" is the empty meter a refill is for.
+                    state.accounts["account"]["userdata"]["refillStartTime"] = time.time()
+                    state._persist_locked()
+                result, payload = state.refill_stamina(
+                    "token", "refill", b"cost=1", stamina=False,
+                )
+                # `RefillStaminaErrorCode.NoNeedToRefill`, the client's own
+                # refusal for a bar that is already full.
+                self.assertEqual(("success", {"success": False, "errorCode": 1}), (result, payload))
+                userdata = state.accounts["account"]["userdata"]
+                self.assertEqual((5, 5), (userdata["energy"], userdata["freeEnergy"]))
+            finally:
+                state.close()
 
 
 class ProgressChapterTest(unittest.TestCase):
