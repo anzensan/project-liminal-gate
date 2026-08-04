@@ -2208,6 +2208,11 @@ class BootstrapState:
             payload = _canonical_payload({
                 "success": True, "lastupdate": 1.0, "sentMessage": False,
                 "coins": expected_coins, "freeEnergy": int(userdata.get("freeEnergy", 0)),
+                # Restated for the reason the generic story clear restates it:
+                # silence about the meter reads as a full one.  Hunting never
+                # refills at a boundary, so this is always the entry's own
+                # post-spend origin.
+                "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
                 "chrdata": copy.deepcopy(userdata["chrdata"]), "itemList": copy.deepcopy(userdata["itemList"]),
             })
             # Only a settlement that actually granted Companions touches the box
@@ -2369,6 +2374,11 @@ class BootstrapState:
                 "success": True, "lastupdate": 1.0, "sentMessage": False,
                 "coins": int(userdata.get("coins", 0)),
                 "freeEnergy": int(userdata.get("freeEnergy", 0)),
+                # Restated for the reason the generic story clear restates it:
+                # silence about the meter reads as a full one.  Chapter 1100
+                # never refills at a boundary, so this is always the entry's own
+                # post-spend origin.
+                "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
                 "chrdata": copy.deepcopy(userdata.get("chrdata", [])),
                 "itemList": copy.deepcopy(userdata.get("itemList", [])),
             })
@@ -2652,6 +2662,16 @@ class BootstrapState:
                 "sentMessage": False,
                 "coins": expected_coins,
                 "freeEnergy": int(userdata.get("freeEnergy", 0)),
+                # The settlement callback restates the fill origin for the same
+                # reason the start callback carries it: zero is not a missing
+                # value to the client, it is the assertion that the meter
+                # refilled at the epoch.  A settlement that stays silent about
+                # the meter is read as a full one, so a client that rebuilds its
+                # `UserData` from this response draws a full bar over stamina
+                # the entry really spent.  This is the post-clear origin, so it
+                # also carries the chapter-boundary refill above rather than
+                # leaving that policy to be inferred from a later read.
+                "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
                 "chrdata": copy.deepcopy(userdata["chrdata"]),
                 "itemList": copy.deepcopy(userdata["itemList"]),
             }
