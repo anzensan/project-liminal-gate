@@ -116,6 +116,15 @@ PROFILE_SCHEMA_VERSION = 1
 # any observed live burst while still keeping the state file a bounded size.
 RETAINED_REQUESTS_PER_ACCOUNT = 512
 RETAINED_TOKENS_PER_ACCOUNT = 512
+# Every per-account replay-cache bucket. `_bound_locked` trims exactly these,
+# so a mutation family that caches its responses under a new name must be
+# added here or its bucket grows without bound.
+REPLAY_CACHE_FIELDS = (
+    "tutorial_requests",
+    "achievement_requests",
+    "message_requests",
+    "exchange_requests",
+)
 # The largest observed mutation is a complete local userdata projection. Keep
 # generous headroom for a full roster while refusing an unbounded read from a
 # LAN peer: the guided server must listen beyond loopback for a physical device.
@@ -3121,7 +3130,7 @@ class BootstrapState:
         oldest entries are the ones dropped.
         """
         for account in self.accounts.values():
-            for name in ("tutorial_requests", "achievement_requests", "message_requests", "exchange_requests"):
+            for name in REPLAY_CACHE_FIELDS:
                 cache = account.get(name)
                 if isinstance(cache, dict) and len(cache) > RETAINED_REQUESTS_PER_ACCOUNT:
                     for key in list(cache)[:len(cache) - RETAINED_REQUESTS_PER_ACCOUNT]:
@@ -3934,7 +3943,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 details = dict(getattr(self, "_event_details", None) or {})
                 details["request_shapes"] = shapes
                 self._event_details = details
-        self._json(MUTATION_RESULT_STATUSES[result], {"error": result})
+        status = MUTATION_RESULT_STATUSES.get(result)
+        if status is None:
+            # A result string missing from the table is a wiring mistake in
+            # this server, not client behavior. Answer it as one instead of
+            # raising inside the handler thread and dropping the connection.
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"unmapped_mutation_result:{result}"})
+            return
+        self._json(status, {"error": result})
 
     def do_POST(self) -> None:
         target = urlsplit(self.path)

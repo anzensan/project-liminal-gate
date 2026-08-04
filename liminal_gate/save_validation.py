@@ -39,8 +39,12 @@ MAX_ITEM_STACK = 999
 MAX_COINS = 99999999
 MAX_ENERGY = 9999
 #: Values the client reads as LitJson doubles.  An integer here is a parse
-#: failure on the client, not a rounding difference.
-FLOAT_FIELDS = ("jobLevels", "jobSlots", "date", "lastupdate", "refillStartTime", "metalZoneUnlockTime")
+#: failure on the client, not a rounding difference.  The grouped tuples drive
+#: `_validate_floats`; `FLOAT_FIELDS` is their union.
+CHRDATA_FLOAT_LIST_FIELDS = ("jobLevels", "jobSlots")
+CHRDATA_FLOAT_FIELDS = ("date",)
+ACCOUNT_FLOAT_FIELDS = ("lastupdate", "refillStartTime", "metalZoneUnlockTime")
+FLOAT_FIELDS = CHRDATA_FLOAT_LIST_FIELDS + CHRDATA_FLOAT_FIELDS + ACCOUNT_FLOAT_FIELDS
 WALLET_FIELDS = ("coins", "energy", "freeEnergy", "energyAppStore", "energyGooglePlay", "energyAndApp")
 
 
@@ -279,17 +283,18 @@ def _validate_floats(account_id: str, userdata: dict[str, Any]) -> list[Finding]
                 f"written {value}.0",
             ))
 
-    for name in ("lastupdate", "refillStartTime", "metalZoneUnlockTime"):
+    for name in ACCOUNT_FLOAT_FIELDS:
         if name in userdata:
             check(userdata[name], name)
     rows = userdata.get("chrdata")
     for index, row in enumerate(rows if isinstance(rows, list) else []):
         if not isinstance(row, dict):
             continue
-        for name in ("jobLevels", "jobSlots"):
+        for name in CHRDATA_FLOAT_LIST_FIELDS:
             values = row.get(name)
             for slot, value in enumerate(values if isinstance(values, list) else []):
                 check(value, f"chrdata[{index}].{name}[{slot}]")
-        if "date" in row:
-            check(row["date"], f"chrdata[{index}].date")
+        for name in CHRDATA_FLOAT_FIELDS:
+            if name in row:
+                check(row[name], f"chrdata[{index}].{name}")
     return findings

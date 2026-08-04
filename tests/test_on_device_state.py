@@ -45,8 +45,8 @@ def _write_profile(path: Path) -> Path:
     return path
 
 
-class LocalStateRouteTest(unittest.TestCase):
-    """The loopback save-transfer route the packaged Android build depends on."""
+class _StateRouteHarness(unittest.TestCase):
+    """One server around the save-transfer route, loopback- or LAN-bound."""
 
     host = "127.0.0.1"
 
@@ -77,6 +77,10 @@ class LocalStateRouteTest(unittest.TestCase):
 
     def sign_up(self) -> None:
         self.request("GET", "/gd/signup?uuid=local-account&otk=bootstrap-token")
+
+
+class LocalStateRouteTest(_StateRouteHarness):
+    """The loopback save-transfer route the packaged Android build depends on."""
 
     def test_export_returns_exactly_what_the_save_holds(self) -> None:
         self.sign_up()
@@ -147,8 +151,13 @@ class LocalStateRouteTest(unittest.TestCase):
         self.assertEqual("invalid_local_state_document", result["error"])
 
 
-class LanBoundStateRouteTest(LocalStateRouteTest):
-    """A LAN-bound server must not publish or accept a save over the network."""
+class LanBoundStateRouteTest(_StateRouteHarness):
+    """A LAN-bound server must not publish or accept a save over the network.
+
+    Deliberately not a subclass of `LocalStateRouteTest`: the loopback
+    behaviours have no LAN-bound counterpart, and inheriting them only to skip
+    them would hide a new loopback test instead of forcing a decision here.
+    """
 
     host = "0.0.0.0"
 
@@ -173,13 +182,6 @@ class LanBoundStateRouteTest(LocalStateRouteTest):
         self.assertEqual(501, status)
         self.assertEqual("route_not_implemented", result["error"])
         self.assertEqual(before, self.state_path.read_text(encoding="utf-8"))
-
-    # The remaining loopback behaviours have no LAN-bound counterpart.
-    test_export_reflects_memory_the_file_has_not_caught_up_with = unittest.skip("loopback only")(lambda self: None)
-    test_import_keeps_the_replaced_save_beside_it = unittest.skip("loopback only")(lambda self: None)
-    test_a_later_mutation_persists_the_imported_save_not_the_replaced_one = unittest.skip("loopback only")(lambda self: None)
-    test_import_refuses_a_document_the_next_start_would_reject = unittest.skip("loopback only")(lambda self: None)
-    test_import_refuses_a_body_that_is_not_json = unittest.skip("loopback only")(lambda self: None)
 
 
 class UpdateCommandTest(unittest.TestCase):
