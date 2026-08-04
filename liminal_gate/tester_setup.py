@@ -41,7 +41,7 @@ from liminal_gate.master_strings import (
     load_inverse_table,
 )
 from liminal_gate.resource_catalog import ResourceCatalogError
-from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
+from liminal_gate.resource_catalog_builder import build_resource_manifest, report_resource_inventory, write_resource_manifest
 from liminal_gate.setup_progress import (
     DEFAULT_PROGRESS_INTERVAL_SECONDS,
     ProgressLine,
@@ -332,6 +332,11 @@ def check_device_host_suits_device(device: str, device_host: str) -> None:
     )
 
 
+def _category_holds_a_file(directory: Path) -> bool:
+    """Whether one resource category carries at least one regular file."""
+    return any(entry.is_file() for entry in directory.rglob("*"))
+
+
 def resolve_resource_root(requested: Path) -> Path:
     """Validate the final Android resource folder or find it beneath a common parent."""
     candidates = (
@@ -345,6 +350,21 @@ def resolve_resource_root(requested: Path) -> Path:
             resolved = candidate.resolve()
             if resolved != requested.resolve():
                 print(f"Using detected Android resource root: {resolved}")
+            # A category directory that exists but holds nothing passes every
+            # structural check here and then ships a package missing whatever
+            # belonged in it: the manifest names only the files that were
+            # present, the build succeeds, and the client stalls at play time on
+            # artwork nothing ever served. Refuse it while the tester is still
+            # at a prompt that can re-extract it.
+            empty = [
+                category for category in REQUIRED_RESOURCE_CATEGORIES
+                if not _category_holds_a_file(resolved / category)
+            ]
+            if empty:
+                raise TesterSetupError(
+                    f"resource categories contain no files: {', '.join(empty)}; "
+                    f"re-extract them from your own game data into {resolved}"
+                )
             return resolved
     expected = "data_u2017/android containing " + ", ".join(REQUIRED_RESOURCE_CATEGORIES)
     if not requested.exists():
@@ -1338,6 +1358,9 @@ def prepare_local_tester(
         derive_story_outcome_catalog(apk, dummy_dll_dir, data_directory, dump_cs)
         manifest = build_resource_manifest(resource_root, digests=digests)
         resource_manifest = data_directory / "resources.json"
+        # Reported before the write, so the comparison is against the previous
+        # build rather than against the manifest this one just published.
+        report_resource_inventory(manifest, resource_manifest)
         write_resource_manifest(resource_manifest, manifest)
         hashing.done(
             f"{digests.hashed_files} file(s), {_format_bytes(digests.hashed_bytes)} read once "

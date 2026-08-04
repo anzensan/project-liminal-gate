@@ -150,6 +150,7 @@ class TesterSetupTest(unittest.TestCase):
             (dummy.parent / "dump.cs").write_text("", encoding="utf-8")
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (resources / category).mkdir(parents=True, exist_ok=True)
+                (resources / category / "sample.bin").write_bytes(b"local resource")
             with patch("liminal_gate.tester_setup.build_import_manifest", return_value={}), patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.load_master_trees", return_value={
                 "ChrDatabase": {
                     "infos": [{"ID": 3, "chrType": 1, "isLambda": 0, "rebirthFromID": 0, "rarity": 4, "ancestorChrID": 0, "Jobs": [30]}],
@@ -247,9 +248,36 @@ class TesterSetupTest(unittest.TestCase):
             root = Path(temporary) / "gdresources" / "data_u2017" / "android"
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (root / category).mkdir(parents=True)
+                (root / category / "sample.bin").write_bytes(b"local resource")
             self.assertEqual(root.resolve(), resolve_resource_root(root.parents[2]))
             with self.assertRaisesRegex(TesterSetupError, "data_u2017/android"):
                 resolve_resource_root(root.parent / "datau2017")
+
+    def test_refuses_a_resource_category_that_exists_but_holds_no_files(self) -> None:
+        """A half-extracted tree must fail here rather than at play time.
+
+        Every structural check passes on a category directory that exists and is
+        empty: the manifest names only the files that were there, the build
+        succeeds, and the package installs. The client then stalls on artwork
+        nothing ever served -- a failure that reaches the tester days later and
+        names nothing useful. The tester is still at a prompt now.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "gdresources" / "data_u2017" / "android"
+            for category in REQUIRED_RESOURCE_CATEGORIES:
+                (root / category).mkdir(parents=True)
+                (root / category / "sample.bin").write_bytes(b"local resource")
+            for emptied in ("Illust", "Pieces"):
+                (root / emptied / "sample.bin").unlink()
+            with self.assertRaisesRegex(
+                TesterSetupError, r"resource categories contain no files: Illust, Pieces; re-extract",
+            ):
+                resolve_resource_root(root)
+            # A category holding files in a subdirectory is populated, not empty.
+            (root / "Illust" / "nested").mkdir()
+            (root / "Illust" / "nested" / "illust_01.bin").write_bytes(b"local resource")
+            with self.assertRaisesRegex(TesterSetupError, r"contain no files: Pieces;"):
+                resolve_resource_root(root)
 
     def test_the_server_is_started_against_the_detected_resource_root(self) -> None:
         """The build and the launch must agree about which directory is the root.
@@ -265,6 +293,7 @@ class TesterSetupTest(unittest.TestCase):
             detected = parent / "data_u2017" / "android"
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (detected / category).mkdir(parents=True)
+                (detected / category / "sample.bin").write_bytes(b"local resource")
             arguments = ["tester_setup", "--resource-root", str(parent), "--data-dir", str(Path(temporary) / "data")]
             with patch.object(sys, "argv", arguments), \
                  patch.object(tester_setup, "toolchain"), \
@@ -341,6 +370,7 @@ class TesterSetupTest(unittest.TestCase):
             apk.write_bytes(b"apk")
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (resources / category).mkdir(parents=True, exist_ok=True)
+                (resources / category / "sample.bin").write_bytes(b"local resource")
             with self.assertRaisesRegex(TesterSetupError, "--dummy-dll-dir"):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
 
@@ -530,6 +560,7 @@ class LocalSigningToolTest(unittest.TestCase):
             apk.write_bytes(b"apk")
             for category in REQUIRED_RESOURCE_CATEGORIES:
                 (resources / category).mkdir(parents=True, exist_ok=True)
+                (resources / category / "sample.bin").write_bytes(b"local resource")
             # Setup now requires the master-data layout, so one is supplied and
             # the derivations that consume it are stubbed; this is about the
             # order of the checks, not about what they produce.

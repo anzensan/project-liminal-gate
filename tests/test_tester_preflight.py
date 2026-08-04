@@ -73,6 +73,7 @@ class PreflightChecksTest(unittest.TestCase):
         self.resources = self.root / "android"
         for category in REQUIRED_RESOURCE_CATEGORIES:
             (self.resources / category).mkdir(parents=True)
+            (self.resources / category / "sample.bin").write_bytes(b"local resource")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
