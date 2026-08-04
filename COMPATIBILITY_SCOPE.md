@@ -41,7 +41,7 @@ only this bootstrap and initial-account boundary:
 | World Map Special Chapter 1100 clear | `POST /gd/clear_quest` | Requires the confirmed ordered ten-field clear grammar after a Chapter-1100 start, unchanged core `progressCode` and `worldMapNo`, and a wholly empty result. | Signed `success:true`, `lastupdate:1.0`, `sentMessage:false`, the entry's post-spend `refillStartTime`, and the unchanged coin/roster/item projection; advances only that route's frontier and pays preservation Energy. Reported Coins, EXP, items, Companions, monsters, summons, or Luck deliberately return `409 invalid_local_world_map_special_result` — the `dropBuddies` manifest proves candidates, not a roll rule. |
 | Hunting, Metal, Special, and Daily Quest settlement | `POST /gd/clear_quest` | Requires a catalog-declared stage that is the account's exact active hunt, the ordered clear form, unchanged story/world identity, exact reported-wallet arithmetic, a structurally matching item projection, and Companion authoring metadata when a Companion is reported. Per-stage reward maxima are enforced only with `--outcome-strict`. | Signed client-reported Coin/roster/item/Companion projection and the entry's post-spend `refillStartTime`; clears the active battle and commits/replays atomically. Unknown Companion rows, reported Summons for which Hunting has no authoring contract, and structurally inconsistent projections remain `409 invalid_local_hunting_result`. |
 | Generic-story Continue | `POST /gd/continue` | Requires an active catalog-declared generic story battle, request identity, and exact `cost=1` (optional trailing `lastUpdate`). Deliberately unavailable during a Chapter-1100 battle, matching that chapter's own recovered notice that it cannot be continued after a game over. | Signed `success:true`, integer `energy`, and integer `freeEnergy`; atomically debits the profile-declared 100 local coins. |
-| Stamina refill | `POST /gd/refill_stamina` | Requires request identity and exact one-field `cost=1`, with the client's trailing `lastUpdate` tolerated. A local account needs refill only when its derived stamina is below the chapter maximum. | Signed full callback (`refillStartTime`, four Energy projections, `freeEnergy`, `bonusStamina`) or signed `success:true,cmdError:1|2`; commits/replays atomically. |
+| Stamina refill | `POST /gd/refill_stamina` | Requires request identity and exact one-field `cost=1`, with the client's trailing `lastUpdate` tolerated. A local account needs refill only when its derived stamina is below the chapter maximum, which without `--enable-stamina` is never. | Signed full callback (`refillStartTime`, four Energy projections, `freeEnergy`, `bonusStamina`) or signed `success:true,cmdError:1|2`; commits/replays atomically. Without `--enable-stamina` every request takes `cmdError:1` (`NoNeedToRefill`) and no Energy is spent. |
 | Timed Metal Zone opening | `POST /gd/unlock_metal_zone` | Requires request identity and the recovered empty POST body. | Signed local `metalZoneUnlockTime` JSON-double plus five Energy projections, or signed `success:true,cmdError:2`; commits/replays atomically. One-hour duration/all-zone scope are local preservation policy. |
 | Catalog-gated achievement claim | `POST /gd/achived` | Requires `--achievement-catalog`, request identity, and exact ordered `id`, `lastUpdate=1` fields. Stored local progress must exceed the operator-declared chapter threshold; each local ID is one-shot. | Signed local `achivementFlags`, free Energy, coins, and item projection; commits/replays atomically. Unknown/ineligible claims deliberately return `409 invalid_local_achievement`. |
 | Inbox lifecycle and chapter rewards | Login `messageList`; `POST /gd/read_messages`, `POST /gd/delete_messages` | Guided `--core-story` directly settles the retail Chapter 5/7 Metal Ticket and Chapter 6/8/10 Companion Ticket rewards after each chapter is complete because Issue 33 disproved client acceptance of milestone mail. `--message-catalog` can add user-local messages. Login uses recovered nested 13-key messages. Mutations require unique JSON `idlist` and optional nonnegative trailing `lastUpdate`. | Eligible chapter rewards commit to inventory with a durable issued/read ledger before login; unread legacy milestone mail migrates to one grant, while read/deleted mail never re-grants. Other inbox reads return the complete client-required local reload projection and commit local rewards once; later login projections omit claimed entries. Character/summon/title/Companion message reward kinds remain unsupported. |
@@ -63,6 +63,15 @@ only this bootstrap and initial-account boundary:
 The raw JSON response, including its whitespace and final newline, is signed.
 The timestamp is emitted as a JSON floating-point value because this client
 boundary requires a floating-point JSON token.
+
+Every phrase above describing a debited meter — "debits the stamina meter", a
+"post-spend `refillStartTime`", a refusal because "the meter is short" — states
+the behavior under `--enable-stamina`, which no launcher passes by default.
+Without it entry charges nothing and refuses nothing on stamina grounds: each of
+those callbacks reports `refillStartTime: 0.0`, the client's own full-meter
+representation. The wire shapes are otherwise unchanged, and the recovered meter
+model itself is unchanged. See
+[The stamina meter is off by default](docs/advanced-configuration.md#the-stamina-meter-is-off-by-default).
 
 This is a narrow compatibility claim. It does not include game-data import,
 resource mapping, later mutations, APK patching, or a claim of full-client
@@ -160,7 +169,10 @@ separate-server and self-hosted routes, because both install the same client.
   on the account's chapter scaled by `MaxStaminaBias`, which defaults to 100
   when the server omits it (`0x19D57AC`). A zero origin therefore means a full
   meter, not an unset field. Stamina and Energy are separate currencies: quest
-  entry debits the meter, never the Energy wallet.
+  entry debits the meter, never the Energy wallet. Charging it is nonetheless
+  **opt-in preservation policy** rather than a fidelity claim this server always
+  makes: a refilling meter paces a live service, so entry charges the recovered
+  model only under `--enable-stamina` and otherwise pins the origin at zero.
 - Per-stage and per-chapter Energy income on clear is **local preservation
   policy, not recovered service behavior**. The retired service sold Energy and
   gifted it through campaigns and operator mail, none of which this archive can

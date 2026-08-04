@@ -26,6 +26,10 @@ DELIBERATELY_OFF = {
     # Unlocked by play rather than granted at launch; enabling it hands the
     # client skills the save has not earned.
     "summon_skills": "granted by progression, not by the launcher",
+    # The retired service's timer gate paced a live game. Nothing is being
+    # paced here, so the meter is pinned full and an operator who wants the
+    # original behaviour asks for it on the command line.
+    "enable_stamina": "an opt-in restoration of the timer gate, not standard content",
 }
 
 

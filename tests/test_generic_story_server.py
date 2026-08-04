@@ -43,7 +43,10 @@ class GenericStoryServerTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
-        self.server, self.thread = start_server(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path), story_catalog=self.catalog)
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
+            story_catalog=self.catalog, stamina=True,
+        )
 
     def stop_server(self) -> None:
         stop_server(self.server, self.thread)

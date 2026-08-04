@@ -9,7 +9,7 @@ DEDICATED_SERVER_DOC = PROJECT_ROOT / "docs" / "dedicated-server.md"
 
 
 class SystemdUnitTest(unittest.TestCase):
-    def render(self) -> str:
+    def render(self, server_flags: str = "") -> str:
         return (
             UNIT_TEMPLATE.read_text(encoding="utf-8")
             .replace("@SERVICE_USER@", "tester")
@@ -17,6 +17,7 @@ class SystemdUnitTest(unittest.TestCase):
             .replace("@PROJECT_ROOT@", "/srv/project-liminal-gate")
             .replace("@PYTHON_EXECUTABLE@", "/usr/bin/python3")
             .replace("@PORT@", "8642")
+            .replace("@SERVER_FLAGS@", server_flags)
         )
 
     def test_runs_server_only_launcher_as_unprivileged_user(self) -> None:
@@ -33,6 +34,22 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertNotIn("@SERVICE_USER@", source)
         self.assertNotIn("@PROJECT_ROOT@", source)
         self.assertNotIn("@PYTHON_EXECUTABLE@", source)
+        self.assertNotIn("@SERVER_FLAGS@", source)
+
+    def test_the_installer_can_restore_the_stamina_meter(self) -> None:
+        """The unit is a systemd host's only chance to pass a launcher flag.
+
+        The meter is off by default, so an operator who wants it back has
+        nowhere to say so but the installer -- and the flag has to survive into
+        `ExecStart` rather than being accepted and dropped.
+        """
+        self.assertIn(
+            "ExecStart=/usr/bin/python3 -m liminal_gate.server_setup --port 8642 --enable-stamina",
+            self.render(" --enable-stamina"),
+        )
+        source = INSTALLER.read_text(encoding="utf-8")
+        self.assertIn('server_flags=" --enable-stamina"', source)
+        self.assertIn("unknown option:", source)
 
     def test_restarts_and_starts_at_normal_boot(self) -> None:
         source = self.render()

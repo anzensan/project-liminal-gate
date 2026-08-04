@@ -21,6 +21,12 @@ class ServerConfigError(ValueError):
 #: progression, not by the launcher.  ``--drop-eligibility`` must stay:
 #: without it the client discards every drop it rolls, so guided setups would
 #: report empty monsters and buddies on every clear.
+#:
+#: ``--enable-stamina`` is deliberately absent for a different reason than
+#: ``--summon-skills``: it is not a recovered feature this set forgot but an
+#: opt-in every launcher leaves off.  A retired game's timer gate exists to
+#: pace a live service, and there is no live service left to pace, so the
+#: meter is pinned full unless an operator asks for the original behaviour.
 STANDARD_POLICY_FLAGS = (
     "--core-story",
     "--pacts",
@@ -59,7 +65,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict", "enable_stamina"}
 
 
 @dataclass(frozen=True)
@@ -85,6 +91,7 @@ class ServerConfig:
     achievements: bool = False
     summon_skills: bool = False
     outcome_strict: bool = False
+    enable_stamina: bool = False
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
@@ -142,6 +149,7 @@ def load_server_config(path: Path) -> ServerConfig:
     achievements = document.get("achievements", False)
     summon_skills = document.get("summon_skills", False)
     outcome_strict = document.get("outcome_strict", False)
+    enable_stamina = document.get("enable_stamina", False)
     if not isinstance(host, str) or not host or "\x00" in host:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
@@ -164,11 +172,12 @@ def load_server_config(path: Path) -> ServerConfig:
         "achievements": achievements,
         "summon_skills": summon_skills,
         "outcome_strict": outcome_strict,
+        "enable_stamina": enable_stamina,
     }
     for field, value in boolean_values.items():
         if type(value) is not bool:
             raise ServerConfigError(f"{field} must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, daily_quests=daily_quests, secondary_worlds=secondary_worlds, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, **paths)
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, daily_quests=daily_quests, secondary_worlds=secondary_worlds, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, enable_stamina=enable_stamina, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:

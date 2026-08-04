@@ -75,6 +75,7 @@ class EventRuntimeTest(unittest.TestCase):
                 state,
                 event_catalog=catalog,
                 hunting_catalog=build_bundled_hunting_policy(),
+                stamina=True,
             )
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
@@ -563,6 +564,7 @@ class TowerRuntimeTest(unittest.TestCase):
             self.profile,
             BootstrapState(self.state_path),
             event_catalog=self.catalog,
+            stamina=True,
         )
 
     def stop_server(self) -> None:
@@ -789,6 +791,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             self.profile,
             BootstrapState(self.state_path),
             event_catalog=self.catalog,
+            stamina=True,
         )
 
     def stop_server(self) -> None:

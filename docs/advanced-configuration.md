@@ -634,6 +634,40 @@ rate table beyond the `RareSlotEnergy` cost. Pass `--pact-draw-catalog` to
 substitute your own. Without `--character-catalog`, `--pacts` falls back to the
 old uniform weights and a flat duplicate gain.
 
+### The stamina meter is off by default
+
+Quest entry does not charge stamina unless you pass `--enable-stamina`. Without
+it the fill origin the client derives its bar from stays at the client's own
+full-meter representation, so the bar reads full, entry is never refused for
+want of stamina, and the refill route answers `NoNeedToRefill` rather than
+selling an Energy for a meter nothing spends.
+
+This is a deliberate departure from the retired service, not a gap in what was
+recovered: `stamina_meter.py` reproduces `GameManager.CalcStamina` and
+`UserData.GetMaxStamina` exactly, and `--enable-stamina` runs that recovered
+model unchanged. A refilling meter exists to pace a live service across a
+population of players. There is no such service left to pace, and a preserved
+single-player archive that makes you wait two minutes a point is enforcing a
+schedule for nobody.
+
+The client always draws the bar. It is `ServerConstants` plus local `UserData`,
+not server-side UI this server could remove, so "off" means a meter that is
+always full rather than a meter that is not displayed.
+
+Turning the policy off returns a save's fill origin to full on the next
+`GET /gd/userdata`, so a save written while the meter was charged does not come
+back as a half-filled bar nothing will ever finish debiting. Turning it back on
+therefore starts from a full meter.
+
+| Launcher | How to charge the meter |
+| --- | --- |
+| `bootstrap_server` | `--enable-stamina` |
+| `server_setup` | `--enable-stamina` |
+| `install_systemd_service.sh` | `./scripts/install_systemd_service.sh PORT --enable-stamina` |
+| local configuration file | `enable_stamina = true` |
+| guided `tester_setup` | not offered; run `bootstrap_server` directly with the flag |
+| combined APK (on-device) | not offered |
+
 ### Recovering the Daily Quest rotation
 
 The final client schedules Daily Quests itself. `DailyQuestManager` picks up to
