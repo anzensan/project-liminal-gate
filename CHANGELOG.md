@@ -117,6 +117,24 @@
 
 ### Fixed
 
+- **`guided derivations` reported FAIL inside an activated virtual environment
+  after an install that had really succeeded.** The same check passed in a plain
+  PowerShell window, which is the shape of the report. The Windows launcher
+  honours an active environment only when no version is spelled out, so
+  `py -3 -m pip install ".[master-import]"` typed at a `(.venv)` prompt installs
+  into the system Python; the check then reads `.venv`, which genuinely lacks
+  the package. Nothing was wrong with either the install or the check — they
+  were looking at different interpreters, and the documentation told the tester
+  to use `py -3` for every command after creating the environment.
+  Both messages raised by that probe now name the interpreter they actually
+  read, quoted for a shell, so the printed remedy can no longer be the command
+  that caused the failure. Inside an environment the message also names
+  `sys.prefix` and says why a `py -3` install went elsewhere. The Windows
+  instructions in `install-tools.md` and `on-device-setup.md` now stop at
+  `py -3 -m venv`, which is correct because no environment exists yet, and use
+  plain `python -m` from the `(.venv)` prompt onward; `troubleshooting.md`
+  carries the symptom under both the setup checks and the PowerShell section.
+
 - **Guided setup could not unpack Google's command line tools on Windows**
   (issue 38). `liminal_gate.doctor --install-missing` downloaded the archive,
   verified it, and then failed with `could not unpack
