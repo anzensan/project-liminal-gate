@@ -180,12 +180,12 @@ dependencies, minimal mocking, per-test tempdirs. The bloat is 97 files with
 - [ ] **Shared adb runner**: six raw `subprocess.run((adb, ...))` sites in
   `tester_setup` each hand-roll returncode/stderr handling;
   `on_device_setup._adb_shell` shows the wrapper works.
-- [ ] **Retire vestigial surface** (confirm first): `choose_local_server_options(ask=…)`
-  is documented as never-interactive; `LocalServerOptions`' 16 constant
-  booleans thread 19 dead parameters into `server_arguments`;
-  `prepare_local_tester(event_catalog=…)` is only a guard;
-  `tool_install._safe_tar_members` backport is unreachable on any current
-  3.11.
+- [x] **Retire vestigial surface**: `choose_local_server_options(ask=…)` and
+  the `LocalServerOptions` constant booleans removed 2026-08-04 with owner
+  approval (see the execution record below); `prepare_local_tester
+  (event_catalog=…)` kept (harmless guard); `tool_install._safe_tar_members`
+  kept deliberately — it is live on interpreters older than 3.11.4, which
+  Debian 12 ships.
 - [x] **Fix the layering inversion**: `tester_setup.py:81` imports
   `DEFAULT_OUTCOME_CATALOG` from `server_setup` (client-build depending on
   server launcher for a filename); move such path constants
@@ -244,11 +244,20 @@ The checked items above were executed in one maintenance pass; the suite was
 green (unittest discover) after every commit. Items examined and deliberately
 **not** executed, with the reasoning:
 
-- **Retiring `choose_local_server_options(ask=…)`, the `LocalServerOptions`
-  constant booleans, and `_safe_tar_members`.** All three carry explicit
-  authorial rationale in comments/docstrings (compatibility API, tar-filter
-  backport for early 3.11 patch releases). Removing documented deliberate
-  surface is the owner's call, not a cleanup.
+- **`_safe_tar_members`.** Kept permanently: the tarfile `filter="data"`
+  parameter is absent from 3.11.0–3.11.3, and Debian 12 pins Python 3.11.2,
+  so the fallback is live for stock Debian testers. The review's
+  "effectively unreachable" assessment was wrong.
+- **`choose_local_server_options(ask=…)` and the `LocalServerOptions`
+  booleans** were initially deferred as documented author decisions, then
+  executed on 2026-08-04 with owner approval: the `ask` compatibility
+  argument is removed (its no-prompt guarantee is now asserted by patching
+  `builtins.input` in tests), and all three launchers derive their policy
+  sets from `server_config.STANDARD_POLICY_FLAGS` — turning the drift class
+  the launch-config test was built to catch into something that cannot be
+  expressed. The structural test now derives the policy universe from
+  `ServerConfig`'s boolean fields, so a new server policy must be made
+  standard, deliberately off, or exempted with a reason.
 - **Shared adb runner.** On inspection the six call sites share only the
   `(adb, "-s", device, …)` prefix; their error handling is deliberately
   different per command (probe vs check=True vs pattern-match-and-retry).

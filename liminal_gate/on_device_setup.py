@@ -30,6 +30,7 @@ from liminal_gate.apk_signer import sign_apk
 from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
 from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASES, hashed_resource_name
 from liminal_gate.pact_banner_importer import PACT_BANNERS
+from liminal_gate.server_config import standard_policy_fields
 from liminal_gate.file_digests import sha256_file
 
 
@@ -304,11 +305,9 @@ def write_server_runtime(path: Path, build_id: str, catalogs: dict[str, Path]) -
     config = {
         "profile": profile, "state_file": "state.json", "host": LOOPBACK_HOST, "port": LOOPBACK_PORT,
         "event_log": "events.jsonl", "public_data_root": "public_data",
-        "core_story": True, "pacts": True, "hunting": True,
-        "daily_quests": True, "secondary_worlds": True, "jobs": True, "rebirth": True,
-        "status_items": True, "companion_draw": True, "companion_sale": True,
-        "companion_strengthen": True, "companion_evolution": True, "trading_post": True,
-        "drop_eligibility": True, "achievements": True,
+        # The one policy source all three launchers share; a policy missing
+        # here would reach on-device players silently turned off.
+        **standard_policy_fields(),
         "story_outcome_catalog": "catalogs/story-outcomes.json",
         "event_catalog": "catalogs/event-catalog.json",
         "character_catalog": "catalogs/character-catalog.json",

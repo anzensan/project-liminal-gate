@@ -15,6 +15,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
+from liminal_gate.server_config import STANDARD_POLICY_FLAGS, ServerConfig
 from liminal_gate.tester_setup import DEFAULT_EVENT_CATALOG, EMULATOR_LOOPBACK_HOST, MINIMUM_KEY_PASSWORD_LENGTH, REQUIRED_RESOURCE_CATEGORIES, TesterSetupError, build_server_origin, check_device_host_suits_device, choose_local_server_options, derive_archive_event_catalog, ensure_keystore, find_build_tools, find_keytools, install_apk, prepare_local_tester, prompt_key_password, resolve_adb, resolve_resource_root, run_server, select_device, server_arguments, write_password_file
 
 
@@ -28,51 +29,54 @@ DELIBERATELY_OFF = {
 }
 
 
-def _policy_fields() -> dict[str, bool]:
-    """Every gameplay policy `LocalServerOptions` carries, and its default.
-
-    Selected by the declared type rather than by name, so a policy added to the
-    dataclass is covered without this helper being touched. The annotation is a
-    string here because the module postpones evaluation.
-    """
-    return {
-        field.name: field.default
-        for field in fields(tester_setup.LocalServerOptions)
-        if field.type in (bool, "bool")
-    }
+#: `ServerConfig` booleans that are not gameplay policies, so the structural
+#: check below does not mistake them for a policy someone forgot to launch.
+NON_POLICY_BOOLEANS = {
+    # An evidence-audit mode, not content; strictness is an operator decision.
+    "outcome_strict",
+}
 
 
 class GuidedServerPolicyTest(unittest.TestCase):
     """The guided path must actually be able to reach each bundled policy.
 
-    These checks are derived from `LocalServerOptions` rather than written out,
-    because a hand-kept list is exactly what let Daily Quests ship complete and
-    unreachable: the field existed, the server honoured it, and the list that
-    was supposed to prove the launcher passed it had never been extended. A new
-    policy field now fails here until `server_arguments` forwards it or it is
-    named in `DELIBERATELY_OFF`.
+    All three launchers now derive their policy sets from one tuple,
+    `server_config.STANDARD_POLICY_FLAGS`, so the risk moves one level up: a
+    policy added to `ServerConfig` and forgotten in that tuple would reach no
+    launcher at all. The universe of policies is therefore derived from
+    `ServerConfig`'s boolean fields rather than written out — a hand-kept list
+    is exactly what let Daily Quests ship complete and unreachable — and every
+    member must be standard, deliberately off, or named a non-policy here.
     """
 
     def arguments(self, **options) -> list[str]:
         return server_arguments(Path("resources"), Path("data"), 8696, **options)
 
-    def test_every_policy_option_defaults_on_unless_deliberately_off(self) -> None:
-        for name, default in _policy_fields().items():
-            with self.subTest(policy=name):
-                if name in DELIBERATELY_OFF:
-                    self.assertFalse(default, f"{name}: {DELIBERATELY_OFF[name]}")
-                else:
-                    self.assertTrue(default, f"{name} is off by default in guided setup")
+    def test_every_server_policy_is_standard_deliberately_off_or_exempt(self) -> None:
+        universe = {
+            field.name for field in fields(ServerConfig)
+            if field.type in (bool, "bool")
+        }
+        standard = {flag.removeprefix("--").replace("-", "_") for flag in STANDARD_POLICY_FLAGS}
+        unaccounted = universe - standard - set(DELIBERATELY_OFF) - NON_POLICY_BOOLEANS
+        self.assertEqual(
+            set(), unaccounted,
+            "server policies neither launched as standard nor exempted with a reason",
+        )
+        self.assertEqual(set(), standard - universe, "standard flags the server does not accept")
 
-    def test_every_policy_that_is_on_reaches_the_server_as_a_flag(self) -> None:
+    def test_every_standard_policy_reaches_the_server_command(self) -> None:
         arguments = self.arguments()
-        for name, default in _policy_fields().items():
+        for flag in STANDARD_POLICY_FLAGS:
+            with self.subTest(flag=flag):
+                self.assertIn(flag, arguments, f"the guided launcher never passes {flag}")
+
+    def test_deliberately_off_policies_stay_off(self) -> None:
+        arguments = self.arguments()
+        for name, reason in DELIBERATELY_OFF.items():
             flag = "--" + name.replace("_", "-")
             with self.subTest(policy=name):
-                if default:
-                    self.assertIn(flag, arguments, f"{name} is on but the launcher never passes {flag}")
-                else:
-                    self.assertNotIn(flag, arguments)
+                self.assertNotIn(flag, arguments, reason)
 
     def test_the_companion_equipment_catalog_is_passed_from_the_data_directory(self) -> None:
         arguments = self.arguments()
@@ -81,20 +85,13 @@ class GuidedServerPolicyTest(unittest.TestCase):
             arguments[arguments.index("--companion-equipment-catalog") + 1],
         )
 
-    def choose(self):
-        """The standard setup has no feature-selection prompt."""
-        return choose_local_server_options(
-            None, ask=lambda _: self.fail("standard setup must not ask an advanced question"),
-        )
-
-    def test_setup_enables_every_built_in_policy(self) -> None:
+    def test_setup_enables_the_standard_policies_without_a_prompt(self) -> None:
         # The mode prompt was removed: it only ever subtracted content from a
         # preservation build, and isolating a feature is a bootstrap_server
         # job, not a setup question.
-        options = self.choose()
-        for name, default in _policy_fields().items():
-            with self.subTest(policy=name):
-                self.assertEqual(default, getattr(options, name))
+        with patch("builtins.input", side_effect=AssertionError("standard setup must not ask an advanced question")):
+            options = choose_local_server_options(None)
+        self.assertIsNone(options.event_catalog)
 
 
 class TesterSetupTest(unittest.TestCase):
@@ -344,16 +341,13 @@ class TesterSetupTest(unittest.TestCase):
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, event_catalog=root / "events.json")
 
     def test_standard_setup_does_not_ask_about_advanced_events(self) -> None:
-        options = choose_local_server_options(
-            None, lambda _: self.fail("the standard path must not prompt"),
-        )
+        with patch("builtins.input", side_effect=AssertionError("the standard path must not prompt")):
+            options = choose_local_server_options(None)
         self.assertIsNone(options.event_catalog)
 
     def test_an_explicit_event_catalog_is_enabled_without_a_prompt(self) -> None:
-        options = choose_local_server_options(
-            Path("local/events.json"),
-            lambda _: self.fail("an explicit option must not be confirmed again"),
-        )
+        with patch("builtins.input", side_effect=AssertionError("an explicit option must not be confirmed again")):
+            options = choose_local_server_options(Path("local/events.json"))
         self.assertEqual(Path("local/events.json"), options.event_catalog)
 
     def test_runs_server_with_argument_sequence(self) -> None:
