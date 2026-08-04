@@ -74,8 +74,23 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-In PowerShell, use `py -3 -m venv .venv` followed by
-`.\.venv\Scripts\Activate.ps1`.
+In PowerShell, that is two commands as well:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Run the first, wait for it to finish, then run the second. If the second is
+refused with `running scripts is disabled on this system`, allow signed scripts
+for your own account once and rerun it:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+The prompt shows `(.venv)` once the environment is active. Keep that window
+open: the remaining commands need it.
 
 Let the project inspect the toolchain and install what it safely can:
 
