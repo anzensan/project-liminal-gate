@@ -158,6 +158,19 @@
 
 ### Fixed
 
+- **A Bahl starter was shown recruiting an Archer and given a Warrior.** The
+  tutorial's Chapter 1-2 recruit is the generic that completes the Circle of
+  Carnage against your starter — an Archer for Bahl, a Warrior for Grace — and
+  the client picks that completion itself and animates it. The bundled profile
+  named the Warrior outright, captured from a Grace run where the Warrior is
+  the right answer, so the signed roster replacement overwrote what a Bahl
+  player had just been shown. Every first-Pact outcome now declares its recruit
+  beside its starter, and the two commit together when the outcome is selected;
+  the grant and every later party projection resolve from that durable pair.
+  Grace runs are unchanged. A save with no recruit field keeps the Warrior it
+  was already granted, whichever starter it holds, rather than switching to a
+  character its client never received.
+
 - **The self-contained build served resources under only one of their two
   names.** Android caches many client bundles under a 32-hex-prefixed filename
   while the client asks for the logical name, so both spellings have to

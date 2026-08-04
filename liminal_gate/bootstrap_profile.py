@@ -115,9 +115,21 @@ MutationOperation = Callable[[], tuple[str, dict[str, Any] | None]]
 BODY_TRANSITION_FIELDS = frozenset({"body", "phase", "next_phase", "response"})
 TUTORIAL_SUMMON_BASE_FIELDS = frozenset({"body", "phase", "next_phase"})
 TUTORIAL_SUMMON_OUTCOME_FIELDS = frozenset({
-    "weight", "starter_character_id", "response",
+    "weight", "starter_character_id", "recruit_character_id", "response",
 })
 TUTORIAL_STARTER_TOKEN = "{{tutorial_starter_id}}"
+#: The tutorial's scripted recruit completes the Circle of Carnage against the
+#: starter the first Pact granted, so it is not one identity but one per
+#: outcome: the client picks the completing class itself and animates recruiting
+#: it, and a server that answers with a different character overwrites what the
+#: player was just shown.  Declaring it beside ``starter_character_id`` keeps
+#: the pairing in the profile rather than encoding a class rule in code.
+TUTORIAL_RECRUIT_TOKEN = "{{tutorial_recruit_id}}"
+#: Saves written before the recruit was declared per outcome were granted this
+#: character on every path, whichever starter they hold.  It is what those
+#: accounts actually own, so it is the only continuation that still matches the
+#: client's own roster.
+LEGACY_TUTORIAL_RECRUIT_ID = 63
 STRUCTURAL_TRANSITION_FIELDS = frozenset({
     "field_names",
     "fixed_fields",
@@ -163,6 +175,8 @@ def _valid_tutorial_summon_transition(item: object) -> bool:
             and outcome["weight"] > 0
             and type(outcome["starter_character_id"]) is int
             and outcome["starter_character_id"] > 0
+            and type(outcome["recruit_character_id"]) is int
+            and outcome["recruit_character_id"] > 0
             and isinstance(outcome["response"], dict)
             and isinstance(outcome["response"].get("chrdata"), list)
             and len(outcome["response"]["chrdata"]) == 1
@@ -189,20 +203,36 @@ def _tutorial_starter_id(account: dict[str, Any]) -> int:
     return 3
 
 
-def _resolve_tutorial_template(value: Any, starter_character_id: int) -> Any:
-    """Resolve the durable starter in profile-declared tutorial projections."""
+def _tutorial_recruit_id(account: dict[str, Any]) -> int:
+    """Resolve the recruit paired with this account's durable starter."""
+    stored = account.get("tutorial_recruit_character_id")
+    if type(stored) is int and stored > 0:
+        return stored
+    return LEGACY_TUTORIAL_RECRUIT_ID
+
+
+def _resolve_tutorial_template(
+    value: Any, starter_character_id: int, recruit_character_id: int,
+) -> Any:
+    """Resolve the durable starter and recruit in tutorial projections."""
     if isinstance(value, str):
         if value == TUTORIAL_STARTER_TOKEN:
             return starter_character_id
-        return value.replace(TUTORIAL_STARTER_TOKEN, str(starter_character_id))
+        if value == TUTORIAL_RECRUIT_TOKEN:
+            return recruit_character_id
+        return (
+            value
+            .replace(TUTORIAL_STARTER_TOKEN, str(starter_character_id))
+            .replace(TUTORIAL_RECRUIT_TOKEN, str(recruit_character_id))
+        )
     if isinstance(value, list):
         return [
-            _resolve_tutorial_template(item, starter_character_id)
+            _resolve_tutorial_template(item, starter_character_id, recruit_character_id)
             for item in value
         ]
     if isinstance(value, dict):
         return {
-            key: _resolve_tutorial_template(item, starter_character_id)
+            key: _resolve_tutorial_template(item, starter_character_id, recruit_character_id)
             for key, item in value.items()
         }
     return copy.deepcopy(value)
