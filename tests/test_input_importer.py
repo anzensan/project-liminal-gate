@@ -8,7 +8,7 @@ import unittest
 import zipfile
 
 from liminal_gate.input_importer import (
-    ImportError,
+    InputImportError,
     REVIEWED_ANDROID_5_5_7_PROFILE,
     build_import_manifest,
     write_import_manifest,
@@ -62,7 +62,7 @@ class InputImporterTest(unittest.TestCase):
         unsafe = self.root / "unsafe.apk"
         with zipfile.ZipFile(unsafe, "w") as archive:
             archive.writestr("../outside.dat", b"no")
-        with self.assertRaisesRegex(ImportError, "unsafe APK member"):
+        with self.assertRaisesRegex(InputImportError, "unsafe APK member"):
             build_import_manifest(unsafe)
 
     def test_validates_reviewed_android_input_structure_without_retaining_content(self) -> None:
@@ -88,7 +88,7 @@ class InputImporterTest(unittest.TestCase):
             archive.writestr("lib/armeabi-v7a/libil2cpp.so", b"armv7")
         resources = self.root / "resources"
         resources.mkdir()
-        with self.assertRaisesRegex(ImportError, "routing-literal"):
+        with self.assertRaisesRegex(InputImportError, "routing-literal"):
             build_import_manifest(reviewed, resources, reviewed_android_5_5_7=True)
 
     def test_rejects_reviewed_mode_with_missing_resource_category(self) -> None:
@@ -99,5 +99,5 @@ class InputImporterTest(unittest.TestCase):
             archive.writestr("lib/armeabi-v7a/libil2cpp.so", b"armv7")
         resources = self.root / "resources"
         resources.mkdir()
-        with self.assertRaisesRegex(ImportError, "missing reviewed Android categories"):
+        with self.assertRaisesRegex(InputImportError, "missing reviewed Android categories"):
             build_import_manifest(reviewed, resources, reviewed_android_5_5_7=True)
