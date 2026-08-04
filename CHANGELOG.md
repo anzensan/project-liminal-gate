@@ -158,6 +158,24 @@
 
 ### Fixed
 
+- **The self-contained build served resources under only one of their two
+  names.** Android caches many client bundles under a 32-hex-prefixed filename
+  while the client asks for the logical name, so both spellings have to
+  resolve. The filesystem manifest the separate server reads has always
+  registered both; the packaged manifest the on-device APK carries registered
+  only the on-disk spelling. Every prefixed resource therefore answered
+  `resource_not_found` on the packaged build and the client reported a network
+  error — the inbox is where testers hit it — while the identical content
+  loaded correctly from a separate server. Nothing was wrong with the mail
+  routes themselves: they are shared by all three launchers and were reached
+  and settled normally. Both manifest builders now derive their URL set from
+  one shared alias rule, and the packaged manifest points every alias at the
+  same stored member rather than packaging the bytes twice. A resource tree
+  that collapses two files onto one client URL is refused at assembly time, as
+  the filesystem builder already refused it. This changes the packaged
+  manifest and so the build id: on-device testers need a rebuilt APK, not a
+  restart.
+
 - **The stamina gauge read full over a meter the entry had already spent**
   (issue 31). Quest settlements answered without `refillStartTime`, and to this
   client that is not an omission: zero is its own representation of a meter that

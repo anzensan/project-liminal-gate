@@ -12,6 +12,8 @@ from liminal_gate.on_device_apk import (
     HOST_ACTIVITY, PACKAGED_MANIFEST, PACKAGED_PREFIX, OnDeviceApkError,
     assemble_on_device_apk, patch_binary_manifest,
 )
+from liminal_gate.resource_catalog import load_resource_catalog_document
+from liminal_gate.resource_catalog_builder import build_resource_manifest
 
 
 def _utf8(value: str) -> bytes:
@@ -124,6 +126,46 @@ class OnDeviceApkTest(unittest.TestCase):
                 )
                 self.assertEqual(info.flag_bits, flags)
                 self.assertEqual((expected_time, expected_date), (time, date))
+
+    def test_packaged_manifest_serves_the_same_urls_as_the_filesystem_manifest(self) -> None:
+        # The client asks for the logical name; Android stores the bundle under
+        # a 32-hex cache prefix. Both deployments must answer both spellings, or
+        # a resource loads from a separate server and 404s on the packaged APK.
+        prefixed = self.resources / "SE" / "bdb3334db029db0ef76e06637e4de9b9sun3.bin"
+        prefixed.parent.mkdir()
+        prefixed.write_bytes(b"local unity bundle")
+        self._assemble()
+        with zipfile.ZipFile(self.output) as combined:
+            manifest = json.loads(combined.read(PACKAGED_MANIFEST))
+        packaged = {entry["path"]: entry for entry in manifest["resources"]}
+        self.assertEqual(
+            {item["path"] for item in build_resource_manifest(self.resources)["resources"]},
+            set(packaged),
+        )
+        member = PACKAGED_PREFIX + "resources/SE/bdb3334db029db0ef76e06637e4de9b9sun3.bin"
+        for path in ("/resources/SE/sun3.bin", "/resources/SE/bdb3334db029db0ef76e06637e4de9b9sun3.bin"):
+            # Both aliases resolve to the one stored member; the bytes are not
+            # packaged twice.
+            self.assertEqual(member, packaged[path]["member"])
+            self.assertEqual(len(b"local unity bundle"), packaged[path]["size"])
+        catalog = load_resource_catalog_document(
+            {"schema_version": 2, "resources": manifest["resources"]}, self.output,
+        )
+        try:
+            resolved = catalog.resolve("/resources/SE/sun3.bin")
+            self.assertIsNotNone(resolved)
+            with catalog.open(resolved) as stream:
+                self.assertEqual(b"local unity bundle", stream.read())
+        finally:
+            catalog.close()
+
+    def test_rejects_resources_that_collapse_onto_one_client_url(self) -> None:
+        banner = self.resources / "Banner"
+        banner.mkdir()
+        (banner / "bdb3334db029db0ef76e06637e4de9b9sun3.bin").write_bytes(b"prefixed")
+        (banner / "sun3.bin").write_bytes(b"logical")
+        with self.assertRaisesRegex(OnDeviceApkError, "maps more than one file to /resources/Banner/sun3.bin"):
+            self._assemble()
 
     def test_rejects_wrong_source_hash_and_collisions(self) -> None:
         with self.assertRaisesRegex(OnDeviceApkError, "SHA-256"):

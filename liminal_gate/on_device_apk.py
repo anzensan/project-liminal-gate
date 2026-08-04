@@ -18,6 +18,8 @@ import struct
 import zlib
 import zipfile
 
+from liminal_gate.resource_catalog_builder import resource_url_aliases
+
 
 SOURCE_ACTIVITY = "com.unity3d.player.UnityPlayerActivity"
 HOST_ACTIVITY = "org.liminalgate.android.HostedActivity"
@@ -245,12 +247,21 @@ def _write_combined(source_path: Path, source: zipfile.ZipFile, output_path: Pat
             added = _new_info(name, None, data, compression)
             emit(added, _local_record(added, data))
         manifest_resources = []
+        # One stored member can answer to more than one URL, so the aliases all
+        # point at the same member rather than packaging the bytes twice.
+        mapped_paths: set[str] = set()
         for name, path in resources:
             data = path.read_bytes()
             added = _new_info(name, None, data, zipfile.ZIP_STORED)
             emit(added, _local_record(added, data))
             relative = name[len(PACKAGED_RESOURCES_PREFIX):]
-            manifest_resources.append({"path": "/resources/" + relative, "member": name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "content_type": mimetypes.guess_type(relative)[0] or "application/octet-stream"})
+            digest = hashlib.sha256(data).hexdigest()
+            content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
+            for url in resource_url_aliases(relative):
+                if url in mapped_paths:
+                    raise OnDeviceApkError(f"resource root maps more than one file to {url}")
+                mapped_paths.add(url)
+                manifest_resources.append({"path": url, "member": name, "sha256": digest, "size": len(data), "content_type": content_type})
         manifest_catalogs = []
         for name, path in catalogs:
             data = path.read_bytes()
