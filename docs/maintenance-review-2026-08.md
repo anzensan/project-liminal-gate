@@ -12,44 +12,44 @@ starting points, not anchors.
 
 These are worth fixing regardless of any refactoring.
 
-- [ ] **`_maxima` has drifted between generator and catalog.**
+- [x] **`_maxima` has drifted between generator and catalog.**
   `story_outcome_catalog.py:217` rejects leading-zero and non-positive IDs;
   the copy in `story_outcome_generator.py:707` does not, and the gap is only
   caught by the round-trip load at the end of `main` — *after* the file is
   written. Adopt the stricter rule in the generator so refusal happens
   pre-write.
-- [ ] **`native_encounter_importer` silently overwrites its output.**
+- [x] **`native_encounter_importer` silently overwrites its output.**
   `scenario_encounter_importer` has a `--force` guard; the native importer's
   `main` (~`:502`) clobbers an existing file without one. Add `--force` for
   parity.
-- [ ] **`event_catalog_generator` docstring promises validation it skips.**
+- [x] **`event_catalog_generator` docstring promises validation it skips.**
   It claims output "is validated by `load_event_catalog`" but never calls it
   (unlike `story_outcome_generator.py:794`, which round-trips its output).
   Add the one-line round-trip.
-- [ ] **`on_device_setup.py:492` hard-codes `"android-35"`** instead of using
+- [x] **`on_device_setup.py:492` hard-codes `"android-35"`** instead of using
   `tool_install.ANDROID_PLATFORM_API` (also consulted by `doctor.py`). Drift
   bug waiting for the next platform bump.
-- [ ] **`LOOPBACK_HOST`/`LOOPBACK_PORT` duplicated** in `on_device_setup.py:39`
+- [x] **`LOOPBACK_HOST`/`LOOPBACK_PORT` duplicated** in `on_device_setup.py:39`
   and `android_entrypoint.py:31` — the packaged APK breaks if they disagree
   and nothing enforces agreement. Single-source or add an equality test.
-- [ ] **`MUTATION_RESULT_STATUSES` gap is a runtime `KeyError`.** A result
+- [x] **`MUTATION_RESULT_STATUSES` gap is a runtime `KeyError`.** A result
   string returned by a state method but absent from the table crashes inside
   `_write_mutation_result` (`bootstrap_server.py:~3937`) instead of producing
   a response. Add a test asserting every dispatchable result string is in the
   table (or a defensive 500 with logging).
-- [ ] **`_bound_locked` hardcodes the four replay buckets**
+- [x] **`_bound_locked` hardcodes the four replay buckets**
   (`bootstrap_server.py:~3116`). Adding a fifth bucket silently makes it
   unbounded. Derive the list from one registry shared with the mutation
   helpers.
-- [ ] **`save_validation.FLOAT_FIELDS` (`:43`) is dead** while
+- [x] **`save_validation.FLOAT_FIELDS` (`:43`) is dead** while
   `_validate_floats` re-lists the same six names inline in three places —
   the constant and the code can drift apart unnoticed. Wire the constant in
   (behavior-preserving today) or delete it.
-- [ ] **`tests/test_on_device_state.py:178-182` hides coverage**: five
+- [x] **`tests/test_on_device_state.py:178-182` hides coverage**: five
   inherited tests are replaced by `unittest.skip(...)(lambda: None)`; a new
   parent test would not be suppressed or reported. Replace with explicit
   per-method skips.
-- [ ] **`input_importer.py:35` defines `class ImportError(ValueError)`**,
+- [x] **`input_importer.py:35` defines `class ImportError(ValueError)`**,
   shadowing the builtin and forcing an alias at the `tester_setup` import
   site. Rename (e.g. `InputImportError`).
 
@@ -59,23 +59,23 @@ references — they read as recovered-but-unwired preservation data.
 
 ## 2. Quick wins — mechanical, low risk
 
-- [ ] **One `sha256_file`.** 12 near-identical definitions
+- [x] **One `sha256_file`.** 12 near-identical definitions
   (`file_digests.py:27` is the natural home): `apk_patcher`, `input_importer`,
   `battledata_importer`, `character_catalog_importer`,
   `event_character_catalog`, `native_encounter_importer`, `on_device_apk`,
   `on_device_setup`, `setup_rehearsal`, plus private `_sha256_file` copies in
   `daily_quest_importer` and `resource_catalog`. Same semantics everywhere;
   fully mechanical.
-- [ ] **Shared inventory constants.** `BUNDLED_ITEM_SLOTS = 181` appears in
+- [x] **Shared inventory constants.** `BUNDLED_ITEM_SLOTS = 181` appears in
   11 modules (+ `save_validation.ITEM_SLOTS`), `BUNDLED_MAX_STACK = 999` in
   4 (+ `save_validation.MAX_ITEM_STACK`). Define once, re-export under the
   existing names so no test changes.
-- [ ] **Name the reviewed-profile string once.** `"terra-battle-android-5.5.7-170"`
+- [x] **Name the reviewed-profile string once.** `"terra-battle-android-5.5.7-170"`
   exists under three constant names and as bare literals inside validators at
   `story_outcome_catalog.py:126` and `story_progression_catalog.py:95` — the
   two spots most likely to drift if the pin ever changes. Same for
   `"assets/bin/Data/data.unity3d"` (three names) and the metadata member path.
-- [ ] **One atomic-write helper.** The temp-file + `os.replace` block is
+- [x] **One atomic-write helper.** The temp-file + `os.replace` block is
   copied ~16×. Extract with an `indent` parameter preserving each site's
   current value — **do not unify indent**: generated-file bytes are hashed
   into provenance chains, so indent changes are behavioral (see §5).
@@ -84,7 +84,7 @@ references — they read as recovered-but-unwired preservation data.
 - [ ] **Shared `_read_json(path, what)`** — verbatim copies in
   `event_catalog_generator.py:55` / `story_outcome_generator.py:252`, variants
   in `setup_rehearsal.py:411` / `tester_setup.py:1282`.
-- [ ] **Collapse the triplicated row-emission block** in
+- [x] **Collapse the triplicated row-emission block** in
   `event_catalog_generator.build_catalog` (archive/tower/eidolon,
   `:106/:138/:178`) — contained in one function, well tested.
 
@@ -94,7 +94,7 @@ The suite is healthy where it counts — no real network, no ordering
 dependencies, minimal mocking, per-test tempdirs. The bloat is 97 files with
 **zero shared infrastructure**: no conftest/support module at all.
 
-- [ ] **Tier 1: create `tests/support.py`** with a server-lifecycle context
+- [x] **Tier 1: create `tests/support.py`** with a server-lifecycle context
   manager plus `post`/`get`/`request` helpers, shared
   `PUBLIC_ROOT`/profile-loader constants, a `write_catalog(dir, name, doc)`
   helper, and an account-document builder with keyword overrides. Replaces:
@@ -136,11 +136,11 @@ dependencies, minimal mocking, per-test tempdirs. The bloat is 97 files with
 
 ### bootstrap_server.py decomposition, in dependency-safe order
 
-1. [ ] **Extract request parsers** (`_parse_*` block, ~740 lines, 37 pure
+1. [x] **Extract request parsers** (`_parse_*` block, ~740 lines, 37 pure
    functions) → `bootstrap_parsers.py`. Highest value, lowest risk.
-2. [ ] **Extract wire encoding** (`_render`, `_signed_json`,
+2. [x] **Extract wire encoding** (`_render`, `_signed_json`,
    `_endpoint_refusal_envelope`, last-update helpers) → `bootstrap_wire.py`.
-3. [ ] **Extract profile schema/loading** (`ProfileError`, dataclasses,
+3. [x] **Extract profile schema/loading** (`ProfileError`, dataclasses,
    validators, `load_profile`) → `bootstrap_profile.py`, re-exporting
    `ProfileError`/`PROFILE_SCHEMA_VERSION` from `bootstrap_server` for the
    four existing external import sites.
@@ -167,14 +167,14 @@ dependencies, minimal mocking, per-test tempdirs. The bloat is 97 files with
   than most whole modules), catalog derivation (`:1175-1283`), preflight
   (`:1470-1622`). Keep re-exports so `doctor`/`on_device_*`/`setup_rehearsal`
   import sites don't all move at once.
-- [ ] **De-fork `resolve_resource_root`**: `server_setup.py:64` is a verbatim
+- [x] **De-fork `resolve_resource_root`**: `server_setup.py:64` is a verbatim
   copy of `tester_setup.py:343` differing only in exception class; every
   other module already imports the `tester_setup` one.
-- [ ] **De-fork Gradle extraction**: `on_device_setup.ensure_gradle:110-155`
+- [x] **De-fork Gradle extraction**: `on_device_setup.ensure_gradle:110-155`
   re-implements `tool_install.extract`'s unsafe-path/exec-bit/long-path
   handling, minus the Windows long-path support — which is why the manual
   chmod repairs exist. Route through `tool_install`.
-- [ ] **Unify the three preflight frameworks** (`tester_setup`,
+- [x] **Unify the three preflight frameworks** (`tester_setup`,
   `on_device_setup`, `doctor` each clone Check/probe/report; only one wraps
   long failure text).
 - [ ] **Shared adb runner**: six raw `subprocess.run((adb, ...))` sites in
@@ -186,7 +186,7 @@ dependencies, minimal mocking, per-test tempdirs. The bloat is 97 files with
   `prepare_local_tester(event_catalog=…)` is only a guard;
   `tool_install._safe_tar_members` backport is unreachable on any current
   3.11.
-- [ ] **Fix the layering inversion**: `tester_setup.py:81` imports
+- [x] **Fix the layering inversion**: `tester_setup.py:81` imports
   `DEFAULT_OUTCOME_CATALOG` from `server_setup` (client-build depending on
   server launcher for a filename); move such path constants
   (`bootstrap-state.json`, `resources.json`, `public_data`, ports…) to one
@@ -238,7 +238,54 @@ dependencies, minimal mocking, per-test tempdirs. The bloat is 97 files with
   untested), the Windows `msvcrt` locking branch (`pragma: no cover`), and
   the whole on-device path is outside `setup_rehearsal`'s coverage.
 
-## 6. Suggested sequencing
+## 6. Execution record (2026-08-03)
+
+The checked items above were executed in one maintenance pass; the suite was
+green (unittest discover) after every commit. Items examined and deliberately
+**not** executed, with the reasoning:
+
+- **Retiring `choose_local_server_options(ask=…)`, the `LocalServerOptions`
+  constant booleans, and `_safe_tar_members`.** All three carry explicit
+  authorial rationale in comments/docstrings (compatibility API, tar-filter
+  backport for early 3.11 patch releases). Removing documented deliberate
+  surface is the owner's call, not a cleanup.
+- **Shared adb runner.** On inspection the six call sites share only the
+  `(adb, "-s", device, …)` prefix; their error handling is deliberately
+  different per command (probe vs check=True vs pattern-match-and-retry).
+  A wrapper would add indirection without removing real duplication.
+- **Catalog-loader template and its rejection-test table-driving; the
+  `test_world_map_special` claim table.** The exact error strings and the
+  individually named tests function as the project's spec language; the
+  strict repeated shape is a deliberate anti-drift device. Consolidation
+  would save lines and lose failure granularity/spec value.
+- **`_read_json` consolidation.** The four variants differ in error class and
+  message per module; a parameterized-exception helper is not clearly better
+  than four honest five-liners.
+- **`setUpClass`-scoped servers.** Blocked on a real design gap: every
+  runtime test seeds accounts into a durable `BootstrapState`, so a shared
+  server shares save state across tests. A safe conversion needs a per-test
+  state reset (plausibly via `replace_document`) — new server surface, not a
+  test cleanup. Designed follow-up.
+- **Tier-3 endpoint-family merge and the 557-line flow-test split.** Both
+  risk silently thinning coverage without an expectation model that does not
+  exist yet; deferred by their own risk notes.
+- **New tests for the ten untested data modules.** Deferred per standing
+  instruction not to add unrequested test scripts; the list in §3 stands as
+  the follow-up inventory.
+- **`sha256_file` in `on_device_apk.py` and `resource_catalog.py`.** Kept:
+  the former is deliberately decoupled from the package (duck-typed assembly
+  module), the latter wraps its own stream-hasher that also serves zip
+  members.
+- **doctor's preflight variant.** Its survey/report operates on a different
+  vocabulary (`ToolStatus`) with install semantics; only the
+  tester/on-device pair were true clones and those now share one reporter.
+
+Still open from §4: the replay-mutation helper (26+28 boilerplate sites) and
+the route dispatch registry. Both modify `BootstrapState` mutation bodies —
+the highest-consequence code in the repo — and deserve their own reviewed
+pass now that the parser/wire/profile seams are out.
+
+## 7. Suggested sequencing
 
 1. §1 defect fixes (each small, each testable) — then full suite + preflight.
 2. §3 Tier 1 test support module — biggest single cleanup, zero behavior risk,
