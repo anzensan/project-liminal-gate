@@ -228,7 +228,8 @@ python3 -m liminal_gate.native_encounter_importer \
 ```
 
 It reports how many stages resolved every spawn and how many rest on an inferred
-variant. **ARM64 only.** The APK also ships `armeabi-v7a`, whose class header and
+variant. Each command on this page refuses to overwrite an output file it
+already wrote; after regenerating an input, re-run with `--force`. **ARM64 only.** The APK also ships `armeabi-v7a`, whose class header and
 vtable stride differ; the two ABIs are compiled from one program, so reading the
 32-bit library would add a second instruction decoder for no additional
 information. Every offset in this project's documentation refers to arm64.

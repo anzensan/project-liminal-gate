@@ -8,7 +8,7 @@ verify line-level detail against the code itself.
 ## What this is
 
 A source-only local compatibility server for a retired mobile game client
-(Android 5.5.7-170). One flat Python package, `liminal_gate/` (~84 modules,
+(Android 5.5.7-170). One flat Python package, `liminal_gate/` (~90 modules,
 stdlib-only at runtime; UnityPy is an optional extra for master-data import),
 plus an Android host app under `android-host/`. Testers supply their own APK
 and resources; importers derive local catalogs from them; the server replays
@@ -55,9 +55,20 @@ The package splits into tiers that flow strictly one direction:
    `save_validation.py`, `on_device_state.py` handle save inspection and
    transfer.
 
-## bootstrap_server.py (the 6,000-line core)
+## bootstrap_server.py (the ~5,000-line core) and its satellite modules
 
-Three classes plus ~150 module-level helper functions:
+Three layers live in their own modules and are re-imported by the server, so
+`bootstrap_server.<name>` still resolves for every helper:
+
+- `bootstrap_profile.py` — `ProfileError`, the profile dataclasses,
+  transition validators, and `load_profile`.
+- `bootstrap_wire.py` — response rendering and signing (`_render`,
+  `_signed_json`, last-update helpers).
+- `bootstrap_parsers.py` — the request-body parsers (`_parse_*`, all pure
+  `bytes -> parsed | None`).
+
+Inside `bootstrap_server.py` itself, three classes plus the remaining
+module-level helpers:
 
 - **`BootstrapState`** — the durable save plus all game logic: account
   binding, tutorial state machine, inbox/messages, exchange, companions,
@@ -71,13 +82,13 @@ Three classes plus ~150 module-level helper functions:
   (`_select_mutation` → `_resolve_mutation` → `_write_mutation_result`).
 - **`BootstrapServer(ThreadingHTTPServer)`** — holds the loaded catalogs.
 
-Free-function regions, in file order: profile schema and `load_profile`;
-persistence primitives (`_lock_exclusive`, `_fsync_directory`,
-`_parse_state_document`); battle/wallet/daily helpers; request-body parsers
-(`_parse_*`, all pure `bytes -> parsed | None`); domain projection helpers
-(messages, exchange, settlement validation); wire encoding (`_render`,
-`_signed_json`); CLI (`parse_args`, `load_launch_config`, `build_server`,
-`main`).
+Free-function regions remaining in the file: persistence primitives
+(`_lock_exclusive`, `_fsync_directory`, `_parse_state_document`);
+battle/wallet/daily helpers; domain projection helpers (messages, exchange,
+settlement validation); the tutorial-response selector and gacha helpers
+(they call `random`/`time`, which tests patch through this module's
+attributes, so they cannot move); CLI (`parse_args`, `load_launch_config`,
+`build_server`, `main`).
 
 A route must be registered in four places that are not automatically
 cross-checked: `MUTATION_ROUTE_NAMES`, the `_select_mutation` dispatch table,
@@ -111,10 +122,14 @@ keystore management, and resolver functions. Other members:
 ## Running tests and checks
 
 ```sh
-.venv/bin/python -m unittest discover -s tests        # NOT pytest; ~160s, ~985 tests
+.venv/bin/python -m unittest discover -s tests        # NOT pytest; ~160s, ~980 tests
 python3 -m liminal_gate.release_preflight             # prohibited-material check
 python3 -m liminal_gate.release_audit                 # releasability check
 ```
+
+Shared test scaffolding (server lifecycle, HTTP helpers, the bundled-profile
+loader, `write_json`) lives in `tests/support.py`; new tests should use it
+rather than hand-rolling a server thread.
 
 The unit suite fakes the IL2CPP dump, master-data import, catalog
 derivations, and signing. After changing any of those, run
@@ -131,10 +146,17 @@ checks on Python 3.11 and 3.13; nothing in CI runs Gradle.
   `provenance: "user-supplied"`; file hashes participate in provenance
   chains, so byte-level output changes (even whitespace/indent) are
   behavioral changes.
-- **Durability**: writes go through temp-file + `os.replace`; account state
-  additionally fsyncs, takes an advisory file lock, and rotates `.bak.1–5`.
-  The account document is an implicit dict schema (~30 string keys) with no
-  dataclass — renaming a key invalidates existing saves.
+- **Durability**: derived JSON is published through
+  `atomic_json.write_json_document` (temp-file + fsync + `os.replace`;
+  indent is per-artifact and must not drift); account state additionally
+  takes an advisory file lock and rotates `.bak.1–5`. The account document
+  is an implicit dict schema (~30 string keys) with no dataclass — renaming
+  a key invalidates existing saves.
+- **Single-source constants**: the reviewed build identity lives in
+  `reviewed_build.py`, file hashing in `file_digests.py`, the client
+  inventory shape in `save_validation.py`, and the launcher policy set in
+  `server_config.STANDARD_POLICY_FLAGS` — modules re-export them under
+  historical names rather than redefining them.
 - **Error classes**: data/catalog modules derive from `ValueError`;
   setup orchestrators derive from `RuntimeError`.
 - **No TODO/FIXME markers anywhere.** Rationale lives in prose comments;
@@ -148,9 +170,8 @@ checks on Python 3.11 and 3.13; nothing in CI runs Gradle.
 - `tests/test_launch_config.py` **reads the source text** of
   `bootstrap_server.py` and regexes `args.*` usage out of
   `load_launch_config`/`main` — those two functions must stay in that file,
-  in that order. It also cross-checks `tester_setup.server_arguments`
-  against `server_setup` and the on-device runtime so policy flags cannot
-  drift.
+  in that order. It also cross-checks the three launchers' policy sets,
+  which all derive from `server_config.STANDARD_POLICY_FLAGS`.
 - Tests monkeypatch module attributes `liminal_gate.bootstrap_server.time`
   and `...bootstrap_server.random...` — functions calling `time.time()` or
   `random.SystemRandom()` cannot move out of that module without retargeting
