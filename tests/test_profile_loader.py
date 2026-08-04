@@ -39,6 +39,31 @@ class ProfileLoaderTest(unittest.TestCase):
         with self.assertRaisesRegex(ProfileError, "tutorial summon values"):
             self._load(wrong_value)
 
+    def test_each_tutorial_outcome_pairs_a_starter_with_its_recruit(self) -> None:
+        # Bahl completes the Circle of Carnage with the Archer and Grace with
+        # the Warrior. An outcome that declares a starter but no recruit would
+        # leave the scripted grant unresolved, so it is not optional.
+        first = self.document["tutorial_summons"][0]
+        self.assertEqual(
+            [(1, 65), (3, 63)],
+            [
+                (outcome["starter_character_id"], outcome["recruit_character_id"])
+                for outcome in first["outcomes"]
+            ],
+        )
+
+        missing = copy.deepcopy(self.document)
+        del missing["tutorial_summons"][0]["outcomes"][0]["recruit_character_id"]
+        with self.assertRaisesRegex(ProfileError, "tutorial summon values"):
+            self._load(missing)
+
+        not_a_character = copy.deepcopy(self.document)
+        not_a_character["tutorial_summons"][0]["outcomes"][0][
+            "recruit_character_id"
+        ] = 0
+        with self.assertRaisesRegex(ProfileError, "tutorial summon values"):
+            self._load(not_a_character)
+
     def test_first_tutorial_summon_declares_equal_bahl_and_grace_weights(self) -> None:
         first = self.document["tutorial_summons"][0]
         self.assertEqual(

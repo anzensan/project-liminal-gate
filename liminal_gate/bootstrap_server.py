@@ -44,6 +44,8 @@ from liminal_gate.bootstrap_profile import (
     STRUCTURAL_TRANSITION_FIELDS,
     SUPPORTED_PROFILE_OPERATIONS,
     TEMPLATED_RESPONSE_OPERATIONS,
+    LEGACY_TUTORIAL_RECRUIT_ID,
+    TUTORIAL_RECRUIT_TOKEN,
     TUTORIAL_STARTER_TOKEN,
     TUTORIAL_SUMMON_BASE_FIELDS,
     TUTORIAL_SUMMON_OUTCOME_FIELDS,
@@ -54,6 +56,7 @@ from liminal_gate.bootstrap_profile import (
     ProfileError,
     SigningProfile,
     _resolve_tutorial_template,
+    _tutorial_recruit_id,
     _tutorial_starter_id,
     _valid_body_transition,
     _valid_structural_transition,
@@ -316,10 +319,16 @@ MUTATION_RESULT_STATUSES = {
 
 def _select_tutorial_response(
     transition: dict[str, Any],
-) -> tuple[dict[str, Any], int | None]:
-    """Select once; the caller commits the chosen response into replay state."""
+) -> tuple[dict[str, Any], int | None, int | None]:
+    """Select once; the caller commits the chosen response into replay state.
+
+    The starter and the recruit that completes its Circle of Carnage are chosen
+    together and committed together: the recruit is not granted until a later
+    chapter, but deriving it then from a durable starter would put the pairing
+    in two places instead of the one outcome that declares it.
+    """
     if "response" in transition:
-        return copy.deepcopy(transition["response"]), None
+        return copy.deepcopy(transition["response"]), None, None
     outcomes = transition["outcomes"]
     threshold = random.SystemRandom().randrange(
         sum(outcome["weight"] for outcome in outcomes)
@@ -329,6 +338,7 @@ def _select_tutorial_response(
             return (
                 copy.deepcopy(outcome["response"]),
                 outcome["starter_character_id"],
+                outcome["recruit_character_id"],
             )
         threshold -= outcome["weight"]
     raise AssertionError("validated tutorial outcome weights must select a response")
@@ -472,6 +482,13 @@ def _parse_state_document(document: object) -> tuple[
                 and (
                     type(account["tutorial_starter_character_id"]) is not int
                     or account["tutorial_starter_character_id"] <= 0
+                )
+            )
+            or (
+                "tutorial_recruit_character_id" in account
+                and (
+                    type(account["tutorial_recruit_character_id"]) is not int
+                    or account["tutorial_recruit_character_id"] <= 0
                 )
             )
             or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
@@ -1333,8 +1350,9 @@ class BootstrapState:
                     return "request_collision", None
                 return "replay", copy.deepcopy(cached["payload"])
             starter_character_id = _tutorial_starter_id(account)
+            recruit_character_id = _tutorial_recruit_id(account)
             transitions = tuple(
-                _resolve_tutorial_template(item, starter_character_id)
+                _resolve_tutorial_template(item, starter_character_id, recruit_character_id)
                 for item in transitions
             )
             if kind in {"summon", "start"}:
@@ -1378,9 +1396,11 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             if account.setdefault("tutorial_phase", "initial") != transition["phase"]:
                 return "tutorial_state_conflict", None
-            payload, selected_starter = _select_tutorial_response(transition)
+            payload, selected_starter, selected_recruit = _select_tutorial_response(transition)
             if selected_starter is not None:
                 account["tutorial_starter_character_id"] = selected_starter
+            if selected_recruit is not None:
+                account["tutorial_recruit_character_id"] = selected_recruit
             # State files sort object keys. Canonicalizing before the first
             # response keeps a retry byte-identical after a full restart,
             # including a weighted result selected only on the first request.

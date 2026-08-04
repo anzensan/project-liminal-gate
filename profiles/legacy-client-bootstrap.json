@@ -95,6 +95,7 @@
         {
           "weight": 1,
           "starter_character_id": 1,
+          "recruit_character_id": 65,
           "response": {
             "success": true,
             "coins": 0,
@@ -116,6 +117,7 @@
         {
           "weight": 1,
           "starter_character_id": 3,
+          "recruit_character_id": 63,
           "response": {
             "success": true,
             "coins": 0,
@@ -366,7 +368,7 @@
           {"id": "{{tutorial_starter_id}}", "jobID": 0, "jobLevels": [3145731.0, 0.0, 0.0], "jobSlots": [], "flags": 0},
           {"id": 25, "jobID": 0, "jobLevels": [347197455.0, 0.0, 0.0], "jobSlots": [], "flags": 0},
           {"id": 64, "jobID": 0, "jobLevels": [69689354.0, 0.0, 0.0], "jobSlots": [], "flags": 1},
-          {"id": 63, "jobID": 0, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [], "flags": 0, "isNew": true, "levelAdded": 1}
+          {"id": "{{tutorial_recruit_id}}", "jobID": 0, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [], "flags": 0, "isNew": true, "levelAdded": 1}
         ],
         "sentMessage": false
       },
@@ -385,7 +387,7 @@
       "phase": "chapter1_3_active",
       "next_phase": "chapter1_3_cleared",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777284, "worldMapNo": 0, "coins": 90, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777284, "worldMapNo": 0, "coins": 90, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, "{{tutorial_recruit_id}}", 0, 0]}
     },
     {
       "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
@@ -394,7 +396,7 @@
       "phase": "chapter1_4_active",
       "next_phase": "chapter1_4_cleared",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777285, "worldMapNo": 0, "coins": 140, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777285, "worldMapNo": 0, "coins": 140, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, "{{tutorial_recruit_id}}", 0, 0]}
     },
     {
       "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
@@ -403,7 +405,7 @@
       "phase": "chapter1_5_active",
       "next_phase": "chapter1_5_cleared",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 50331777, "worldMapNo": 0, "coins": 218, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 50331777, "worldMapNo": 0, "coins": 218, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, "{{tutorial_recruit_id}}", 0, 0]}
     },
     {
       "field_names": ["progressCode", "worldMapNo", "valuables", "chrdata", "itemList", "summonList", "battle_result", "itmp0", "itmp1", "lastUpdate"],
@@ -412,7 +414,7 @@
       "phase": "chapter2_1_active",
       "next_phase": "free_roam",
       "response": {"success": true, "lastupdate": 1.0, "sentMessage": false},
-      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777346, "worldMapNo": 0, "coins": 210, "valuables": {"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 210}, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "progressCode": 16777346, "worldMapNo": 0, "coins": 210, "valuables": {"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 210}, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, "{{tutorial_recruit_id}}", 0, 0]}
     }
   ],
   "structural_writes": [
@@ -450,7 +452,7 @@
       "phase": "warrior_granted",
       "next_phase": "warrior_party",
       "response": {"success": true, "lastupdate": 1.0},
-      "userdata_update": {"lastupdate": 1.0, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, 63, 0, 0]}
+      "userdata_update": {"lastupdate": 1.0, "teamMembers": ["{{tutorial_starter_id}}", 25, 64, "{{tutorial_recruit_id}}", 0, 0]}
     },
     {
       "field_names": ["teamMembers", "teamMembers_VS", "teamBuddies_VS", "teamNo", "teamNo_VS", "summonId", "lastUpdate"],

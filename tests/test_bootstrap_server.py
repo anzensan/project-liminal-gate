@@ -598,6 +598,136 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
             row["id"] for row in persisted["userdata"]["chrdata"]
         ])
 
+    def _seed_knight_party(
+        self, account_id: str, token: str, starter: int, recruit: int | None,
+    ) -> None:
+        """Place an account where the Knight is held and the recruit is next."""
+        self.server.state.create_account(
+            token, account_id, copy.deepcopy(self.server.profile.userdata_seed),
+        )
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "knight_party"
+            account["initial_userdata_served"] = True
+            account["tutorial_starter_character_id"] = starter
+            if recruit is not None:
+                account["tutorial_recruit_character_id"] = recruit
+            account["userdata"]["chrdata"] = [
+                {"id": identifier, "jobID": 0, "jobLevels": [1], "jobSlots": []}
+                for identifier in (starter, 25, 64)
+            ]
+            account["userdata"]["teamMembers"] = [starter, 25, 64, 0, 0, 0]
+            self.server.state._persist_locked()
+        self.restart()
+
+    def _clear_chapter1_2(self, token: str, tag: str) -> tuple[int, dict[str, object]]:
+        status, _ = self.post(
+            f"/gd/start_quest?otk={token}&requestID={tag}-start",
+            "stamina=1&coins=0&chapter=1&section=2&lastUpdate=1",
+        )
+        self.assertEqual(200, status)
+        return self.post(
+            f"/gd/clear_quest?otk={token}&requestID={tag}-clear",
+            urlencode({
+                "progressCode": "16777283", "worldMapNo": "0",
+                "valuables": json.dumps({"coins": 50}),
+                "chrdata": json.dumps([]), "itemList": json.dumps([]),
+                "summonList": json.dumps([]),
+                "battle_result": json.dumps(
+                    {"chapter": 1, "section": 2, "coins": 50, "exp": 1224}
+                ),
+                "itmp0": "0", "itmp1": "0", "lastUpdate": "1",
+            }),
+        )
+
+    def _assert_recruit_completes_the_circle(self, starter: int, recruit: int) -> None:
+        """Clear Chapter 1-2 and prove which character the roster gains."""
+        account_id, token = f"circle-{starter}", f"circle-token-{starter}"
+        self._seed_knight_party(account_id, token, starter, recruit)
+        status, cleared = self._clear_chapter1_2(token, "circle")
+        self.assertEqual(200, status)
+        self.assertEqual(
+            [starter, 25, 64, recruit], [row["id"] for row in cleared["chrdata"]],
+        )
+        granted = cleared["chrdata"][-1]
+        self.assertEqual((True, 1), (granted["isNew"], granted["levelAdded"]))
+
+        # The grant survives a restart and an exact retry unchanged.
+        self.restart()
+        status, replay = self._clear_chapter1_2(token, "circle")
+        self.assertEqual((200, cleared["chrdata"]), (status, replay["chrdata"]))
+
+        # The party the client writes back is the one the server records.
+        status, _ = self.post(
+            f"/gd/userdata?otk={token}&requestID=circle-party",
+            urlencode([
+                ("chrdata", json.dumps([{"id": recruit, "flags": 1}])),
+                ("teamMembers", json.dumps([starter, 25, 64, recruit, 0, 0])),
+                ("teamMembers_VS", json.dumps([0] * 18)),
+                ("teamBuddies_VS", json.dumps([0] * 18)),
+                ("teamNo", "1"), ("teamNo_VS", "1"),
+                ("summonId", "1"), ("lastUpdate", "1"),
+            ]),
+        )
+        self.assertEqual(200, status)
+        status, after = self.request(f"/gd/userdata?otk={token}&requestID=circle-after")
+        self.assertEqual(
+            (200, [starter, 25, 64, recruit, 0, 0]), (status, after["teamMembers"]),
+        )
+
+    def test_bahl_tutorial_recruits_the_archer_that_completes_the_circle(self) -> None:
+        # The client picks the completing class itself and animates recruiting
+        # it, so a server that answers with the other one overwrites what the
+        # player was just shown: a Bahl run displayed an Archer and landed a
+        # Warrior. Bahl already holds the Knight, so the Archer completes it.
+        self._assert_recruit_completes_the_circle(1, 65)
+
+    def test_grace_tutorial_still_recruits_the_warrior(self) -> None:
+        self._assert_recruit_completes_the_circle(3, 63)
+
+    def test_a_save_without_a_recruit_field_keeps_the_character_it_was_granted(self) -> None:
+        # Bahl saves made before the recruit was declared per outcome already
+        # hold the Warrior. Continuing them on the Archer would hand the client
+        # a roster it never received, so the granted character is what counts.
+        account_id, token = "legacy-recruit-account", "legacy-recruit-token"
+        self._seed_knight_party(account_id, token, 1, None)
+        status, cleared = self._clear_chapter1_2(token, "legacy-recruit")
+        self.assertEqual(200, status)
+        self.assertEqual([1, 25, 64, 63], [row["id"] for row in cleared["chrdata"]])
+        persisted = json.loads(self.state_path.read_text(encoding="utf-8"))[
+            "accounts"
+        ][account_id]
+        self.assertNotIn("tutorial_recruit_character_id", persisted)
+
+    def test_first_tutorial_pull_commits_the_recruit_with_the_starter(self) -> None:
+        account_id, token = "pairing-account", "pairing-token"
+        for path in (
+            f"/gd/signup?uuid={account_id}&otk=pairing-signup&requestID=pairing-signup",
+            f"/gd/login?uuid={account_id}&otk={token}&requestID=pairing-login",
+            f"/gd/userdata?otk={token}&requestID=pairing-initial",
+        ):
+            status, _ = self.request(path)
+            self.assertEqual(200, status)
+        with patch(
+            "liminal_gate.bootstrap_server.random.SystemRandom.randrange",
+            return_value=0,
+        ):
+            status, _ = self.post(
+                f"/gd/do_slot?otk={token}&requestID=pairing-first-pact",
+                "kind=10&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+            )
+        self.assertEqual(200, status)
+        persisted = json.loads(self.state_path.read_text(encoding="utf-8"))[
+            "accounts"
+        ][account_id]
+        self.assertEqual(
+            (1, 65),
+            (
+                persisted["tutorial_starter_character_id"],
+                persisted["tutorial_recruit_character_id"],
+            ),
+        )
+
     def test_profile_persists_the_declared_account_flow_and_rejects_later_routes(self) -> None:
         token = "0123456789ABCDEF"
         status, time_payload = self.request(f"/gd/get_current_time?otk={token}&digest2=client-value&requestID=request-id")

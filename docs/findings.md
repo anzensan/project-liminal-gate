@@ -82,13 +82,33 @@ Private inputs, captures, account state, and original assets remain excluded.
   A'misandra result with team `[1, 25]`, and settles the following tutorial save
   without minting or referencing Grace. Thirty-two focused tests and the full
   641-test warning-strict suite passed.
+- **Tester-reported retail behavior:** the scripted Chapter 1-2 recruit is not
+  one character but the generic that completes the Circle of Carnage against
+  the starter — an Archer for Bahl, a Warrior for Grace. Two testers report the
+  rule independently, and the client itself animates recruiting the Archer on a
+  Bahl run, which is the client deciding the completion locally rather than
+  reading it from the response. This is operator- and tester-supplied
+  historical evidence; the public repository holds no retail capture of a Bahl
+  Chapter 1-2 clear.
+- **Confirmed executable behavior:** every first-Pact outcome declares the
+  recruit beside its starter, and both commit together when the outcome is
+  selected. Later tutorial templates resolve the recruit from that durable
+  state, so the grant and every following party projection name the same
+  character the client displayed. Forced real-HTTP tests cover both sides
+  through the Chapter 1-2 clear, restart, exact retry, and the party write the
+  client sends back.
 - **Compatibility boundary:** later tutorial templates resolve their starter
   slot from durable state, while a legacy state with no starter field resolves
-  to Grace because the earlier server could produce no other result. A clean
-  original-client Bahl run through the tutorial remains pending. In particular,
-  the later Chapter 1-2 callback currently applies the captured starter packed
-  level/EXP projection with the durable starter ID; Bahl-specific packed
-  progression has not been independently captured.
+  to Grace because the earlier server could produce no other result. A save
+  with no recruit field resolves to the Warrior for the same reason: every such
+  account was granted that character whichever starter it holds, so it is what
+  the client's own roster already contains. A clean original-client Bahl run
+  through the tutorial remains pending; the earlier server granted the Warrior
+  on the Bahl path, and the mismatch it produced is what the tester report
+  above identified. In particular, the later Chapter 1-2 callback currently
+  applies the captured starter packed level/EXP projection with the durable
+  starter ID; Bahl-specific packed progression has not been independently
+  captured.
 
 ## Quest settlement compatibility
 
