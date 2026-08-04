@@ -102,9 +102,10 @@ compatibility boundary, which is separate from the protocol slice above.
 | API 29 (Android 10) emulator | Cannot install | `INSTALL_FAILED_NO_MATCHING_ABIS`: that image has no ARM translation. Use a Translated ABI image. |
 | Android 16, physical (Samsung Galaxy S24 FE) | Crashes on launch without `--disable-google-services` | Android 16 added an `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload to `ServiceConnection`. Unity's `bitter.jnibridge` proxies that interface, and a `java.lang.reflect.Proxy` dispatches `default` methods to its handler rather than inheriting them, so the first completed Google Play Services bind asks the 2017 bridge for a signature it does not know and it throws `NoSuchMethodError` on the main thread. The bridge is Unity's and cannot be rebuilt. |
 
-`--disable-google-services` rewrites the client's 16 Play Services bind actions
-so they resolve to nothing, which prevents the bind from completing and so
-prevents the crash. It is opt-in: one reporter, one device, and the patch itself
+`--disable-google-services` rewrites 18 bind actions so they resolve to nothing,
+which prevents the bind from completing and so prevents the crash. Two are
+Google Play Billing, which a physical Android 16 log confirmed as the crashing
+bind; the other 16 are Play Services, which share the mechanism. It is opt-in: one reporter, one device, and the patch itself
 is not yet confirmed on Android 16 hardware. Nothing is given up — Play Games,
 the ads SDK, Google auth, and Nearby have no live service to reach — and the
 same reporter established that the client runs normally with Google Play

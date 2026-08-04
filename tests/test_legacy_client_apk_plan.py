@@ -21,10 +21,11 @@ from liminal_gate.legacy_client_apk_plan import (
     CLIENT_DEX_MEMBER,
     FINAL_CLIENT_DEX_SHA256,
     GOOGLE_SERVICE_BIND_ACTIONS,
-    GOOGLE_SERVICE_PREFIX,
+    PLAY_BILLING_BIND_ACTIONS,
+    DISABLED_BIND_ACTIONS,
     INERT_ACTION_BYTE,
     _dex_string_table,
-    _google_service_patches,
+    _disabled_bind_action_patches,
     IAP_MODAL_PATCHES,
     TERMS_CONFIRMATION_PATCHES,
     COIN_CREEPS_BANNER_ALIASES,
@@ -205,7 +206,7 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary_directory.cleanup)
         self.root = Path(self.temporary_directory.name)
-        self.dex = _dex([*GOOGLE_SERVICE_BIND_ACTIONS, *self.DESCRIPTORS, self.BYSTANDER])
+        self.dex = _dex([*DISABLED_BIND_ACTIONS, *self.DESCRIPTORS, self.BYSTANDER])
         self.source = self._apk("source.apk", self.dex)
         self.digest = patch(
             "liminal_gate.legacy_client_apk_plan._sha256_member",
@@ -232,8 +233,8 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
         return bytes(patched)
 
     def test_every_action_becomes_a_single_byte_edit(self) -> None:
-        patches = _google_service_patches(self.source)
-        self.assertEqual(len(GOOGLE_SERVICE_BIND_ACTIONS), len(patches))
+        patches = _disabled_bind_action_patches(self.source)
+        self.assertEqual(len(DISABLED_BIND_ACTIONS), len(patches))
         self.assertEqual({CLIENT_DEX_MEMBER}, {item["member"] for item in patches})
         self.assertEqual(len(patches), len({item["offset"] for item in patches}))
         for item in patches:
@@ -248,7 +249,7 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
         position, and the resulting dex is rejected outright — the app dies
         before any game code runs.
         """
-        patched = self._apply(self.dex, _google_service_patches(self.source))
+        patched = self._apply(self.dex, _disabled_bind_action_patches(self.source))
         values = [value for _offset, value in _dex_string_table(patched)]
         self.assertEqual(sorted(values), values)
 
@@ -257,13 +258,13 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
         # Sorts after the action but before its rewritten form, so the edit
         # would jump the neighbour.
         blocker = action + b"X"
-        source = self._apk("blocked.apk", _dex([*GOOGLE_SERVICE_BIND_ACTIONS, blocker]))
+        source = self._apk("blocked.apk", _dex([*DISABLED_BIND_ACTIONS, blocker]))
         with self.assertRaisesRegex(PlanGenerationError, "unsorted"):
-            _google_service_patches(source)
+            _disabled_bind_action_patches(source)
 
     def test_applying_it_clears_the_actions_and_spares_everything_else(self) -> None:
-        patched = self._apply(self.dex, _google_service_patches(self.source))
-        for action in GOOGLE_SERVICE_BIND_ACTIONS:
+        patched = self._apply(self.dex, _disabled_bind_action_patches(self.source))
+        for action in DISABLED_BIND_ACTIONS:
             self.assertNotIn(action, patched)
         for descriptor in self.DESCRIPTORS:
             self.assertIn(descriptor, patched, "rewriting a binder descriptor would break the handshake")
@@ -273,15 +274,36 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
         self.digest.stop()
         with patch("liminal_gate.legacy_client_apk_plan._sha256_member", return_value="0" * 64):
             with self.assertRaisesRegex(PlanGenerationError, "client dex does not match"):
-                _google_service_patches(self.source)
+                _disabled_bind_action_patches(self.source)
         self.digest.start()
 
     def test_refuses_a_dex_missing_an_action(self) -> None:
-        short = self._apk("short.apk", _dex([*GOOGLE_SERVICE_BIND_ACTIONS[1:], *self.DESCRIPTORS]))
+        short = self._apk("short.apk", _dex([*DISABLED_BIND_ACTIONS[1:], *self.DESCRIPTORS]))
         with self.assertRaisesRegex(PlanGenerationError, "must contain"):
-            _google_service_patches(short)
+            _disabled_bind_action_patches(short)
 
     def test_the_two_binder_descriptors_are_not_in_the_patch_set(self) -> None:
         """Stated once here so shortening the set cannot quietly include them."""
         for descriptor in self.DESCRIPTORS:
-            self.assertNotIn(descriptor, GOOGLE_SERVICE_BIND_ACTIONS)
+            self.assertNotIn(descriptor, DISABLED_BIND_ACTIONS)
+
+    def test_the_billing_bind_is_covered(self) -> None:
+        """The action a physical Android 16 device was observed crashing on.
+
+        `UnityIAP: Billing service connected.` is the last line before the VM
+        dies. Play Billing is `com.android.vending`, so none of the Play
+        Services actions reach it.
+        """
+        billing = b"com.android.vending.billing.InAppBillingService.BIND"
+        self.assertIn(billing, PLAY_BILLING_BIND_ACTIONS)
+        self.assertIn(billing, DISABLED_BIND_ACTIONS)
+        patched = self._apply(self.dex, _disabled_bind_action_patches(self.source))
+        self.assertNotIn(billing, patched)
+        self.assertIn(billing[:-1] + INERT_ACTION_BYTE, patched)
+
+    def test_the_two_action_sets_are_disjoint_and_complete(self) -> None:
+        self.assertEqual(set(), set(GOOGLE_SERVICE_BIND_ACTIONS) & set(PLAY_BILLING_BIND_ACTIONS))
+        self.assertEqual(
+            set(DISABLED_BIND_ACTIONS),
+            set(GOOGLE_SERVICE_BIND_ACTIONS) | set(PLAY_BILLING_BIND_ACTIONS),
+        )
