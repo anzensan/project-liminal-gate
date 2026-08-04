@@ -29,20 +29,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from liminal_gate.bootstrap_server import ACCOUNT_STATE_BACKUP_COUNT, _fsync_directory, _lock_exclusive
+from liminal_gate.bootstrap_server import ACCOUNT_STATE_BACKUP_COUNT, REPLAY_CACHE_FIELDS, _fsync_directory, _lock_exclusive
 from liminal_gate.save_validation import validate_document
 
 
 class AccountStateError(ValueError):
     """A local account save could not be read or safely changed."""
-
-
-REPLAY_CACHE_FIELDS = (
-    "tutorial_requests",
-    "achievement_requests",
-    "message_requests",
-    "exchange_requests",
-)
 
 
 def read_document(path: Path) -> tuple[bytes, dict[str, Any]]:
