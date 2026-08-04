@@ -84,6 +84,11 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         status, cleared = self.post(clear_path, clear)
         self.assertEqual(200, status)
         self.assertEqual(7, cleared["coins"])
+        # The settlement states the refilled meter rather than leaving it to be
+        # inferred from a later read: this is the one clear that legitimately
+        # reports a full bar, and it has to be distinguishable from a clear that
+        # simply said nothing about the meter.
+        self.assertEqual(0.0, cleared["refillStartTime"])
         # Completing the ordinary Chapter 2 boundary is an explicit local
         # preservation policy: the confirmed fill origin returns to the
         # client's full-meter representation.  It is durable before the clear
