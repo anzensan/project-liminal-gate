@@ -67,9 +67,6 @@ identities, enemy record IDs, and spawn counts -- no names, no text, no code.
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
-import os
 from pathlib import Path
 import re
 import shutil
@@ -78,10 +75,13 @@ import tempfile
 from typing import Callable, Iterable, NamedTuple
 import zipfile
 
+from liminal_gate.file_digests import sha256_file
+from liminal_gate.reviewed_build import SOURCE_PROFILE
+from liminal_gate.atomic_json import write_json_document
+
 
 ARM64_LIBRARY_MEMBER = "lib/arm64-v8a/libil2cpp.so"
 SCHEMA_VERSION = 1
-SOURCE_PROFILE = "terra-battle-android-5.5.7-170"
 ABI = "arm64"
 
 #: ``Il2CppClass`` layout for this build's ARM64 library: the managed vtable
@@ -180,14 +180,6 @@ class Spawn(NamedTuple):
     enemy_id: int | None
     exact: bool
     count: int
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def parse_methods(text: str) -> list[Method]:
@@ -447,17 +439,7 @@ def collect_spawns(
 
 
 def write_document(path: Path, document: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json_document(path, document, indent=2)
 
 
 def import_encounters(

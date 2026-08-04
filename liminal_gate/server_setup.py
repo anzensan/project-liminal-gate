@@ -9,12 +9,15 @@ import subprocess
 import sys
 from typing import Sequence
 
+from liminal_gate import tester_setup
 from liminal_gate.companion_equipment_catalog import (
     DEFAULT_COMPANION_EQUIPMENT_CATALOG,
 )
 from liminal_gate.event_catalog import DEFAULT_EVENT_CATALOG
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
+from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
+from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES
 
 
 class ServerSetupError(RuntimeError):
@@ -24,24 +27,6 @@ class ServerSetupError(RuntimeError):
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
 DEFAULT_DATA = Path("user-data")
 DEFAULT_PROFILE = Path("profiles/legacy-client-bootstrap.json")
-#: A story-outcome catalog under this name in the data directory is picked up
-#: automatically.  Story Companion drops are discarded without one -- the client
-#: rolls them and `clear_quest` has no authority to mint them -- and composing
-#: one needs the operator's own APK, so it cannot be bundled.  Naming it by
-#: convention beside the state file lets an operator who has built one enable
-#: drops by dropping the file in place, with no launcher or unit-file change.
-DEFAULT_OUTCOME_CATALOG = "story-outcomes.json"
-REQUIRED_RESOURCE_CATEGORIES = (
-    "BG",
-    "BGM",
-    "Banner",
-    "BuddyImages",
-    "BuddyThumbs",
-    "Illust",
-    "Pieces",
-    "SE",
-    "Scenario",
-)
 STANDARD_POLICY_FLAGS = (
     "--core-story",
     "--pacts",
@@ -62,33 +47,16 @@ STANDARD_POLICY_FLAGS = (
 
 
 def resolve_resource_root(requested: Path) -> Path:
-    """Find and validate the final data_u2017/android resource directory."""
-    candidates = (
-        requested,
-        requested / "android",
-        requested / "data_u2017" / "android",
-        requested / "gdresources" / "data_u2017" / "android",
-    )
-    for candidate in candidates:
-        if candidate.is_dir() and all(
-            (candidate / category).is_dir() for category in REQUIRED_RESOURCE_CATEGORIES
-        ):
-            resolved = candidate.resolve()
-            if resolved != requested.resolve():
-                print(f"Using detected Android resource root: {resolved}")
-            return resolved
-    expected = "data_u2017/android containing " + ", ".join(REQUIRED_RESOURCE_CATEGORIES)
-    if not requested.exists():
-        raise ServerSetupError(f"resource path does not exist: {requested}; expected {expected}")
-    missing = [
-        category
-        for category in REQUIRED_RESOURCE_CATEGORIES
-        if not (requested / category).is_dir()
-    ]
-    raise ServerSetupError(
-        "resource path is not the final Android resource folder; "
-        f"expected {expected} (missing here: {', '.join(missing)})"
-    )
+    """Find and validate the final data_u2017/android resource directory.
+
+    One probe serves both deployment layouts: this delegates to the guided
+    setup's resolver so the two paths can never disagree about what a valid
+    resource root is, and only the error type is this launcher's own.
+    """
+    try:
+        return tester_setup.resolve_resource_root(requested)
+    except tester_setup.TesterSetupError as error:
+        raise ServerSetupError(str(error)) from error
 
 
 def prepare_server(resource_root: Path, data_directory: Path) -> tuple[Path, Path, int]:

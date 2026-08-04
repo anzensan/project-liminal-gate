@@ -12,13 +12,15 @@ from typing import Any, Callable
 import zipfile
 
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError, generate_plan
+from liminal_gate.file_digests import sha256_file
+from liminal_gate.reviewed_build import IL2CPP_METADATA_MEMBER, SOURCE_PROFILE
 
 
 IMPORT_MANIFEST_FILENAME = "liminal-gate-import.json"
 IMPORT_SCHEMA_VERSION = 1
-REVIEWED_ANDROID_5_5_7_PROFILE = "terra-battle-android-5.5.7-170"
+REVIEWED_ANDROID_5_5_7_PROFILE = SOURCE_PROFILE
 _REVIEWED_APK_MEMBERS = (
-    "assets/bin/Data/Managed/Metadata/global-metadata.dat",
+    IL2CPP_METADATA_MEMBER,
     "lib/arm64-v8a/libil2cpp.so",
     "lib/armeabi-v7a/libil2cpp.so",
 )
@@ -34,14 +36,6 @@ _REVIEWED_RESOURCE_CATEGORIES = (
 
 class InputImportError(ValueError):
     """User-supplied input cannot be safely inventoried."""
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def build_import_manifest(

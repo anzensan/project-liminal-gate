@@ -78,7 +78,7 @@ from liminal_gate.scenario_encounter_importer import (
     import_encounters as import_scenario_encounters,
     write_document as write_scenario_document,
 )
-from liminal_gate.server_setup import DEFAULT_OUTCOME_CATALOG
+from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
 from liminal_gate.story_outcome_generator import (
     StoryOutcomeGeneratorError,
@@ -86,6 +86,7 @@ from liminal_gate.story_outcome_generator import (
     build_derivation_source as build_outcome_source,
     write_catalog as write_story_outcome_catalog,
 )
+from liminal_gate.reviewed_build import IL2CPP_METADATA_MEMBER
 
 
 class TesterSetupError(RuntimeError):
@@ -635,7 +636,6 @@ _OBJDUMP_CANDIDATES = ("llvm-objdump", "objdump", "gobjdump")
 #: project records, and a 32-bit dump would produce type trees that parse but
 #: encounter data that does not line up.
 IL2CPP_LIBRARY_MEMBER = "lib/arm64-v8a/libil2cpp.so"
-IL2CPP_METADATA_MEMBER = "assets/bin/Data/Managed/Metadata/global-metadata.dat"
 
 #: Where setup keeps a dump it produced itself, so a second run reuses it rather
 #: than spending the time again.
@@ -1592,14 +1592,22 @@ def preflight_checks(
     ]
 
 
-def report_preflight(checks: Sequence[Check], width: int = 78) -> int:
+def report_preflight(
+    checks: Sequence[Check], width: int = 78, *,
+    environment: str = "the local tester environment",
+    failed_hint: str = "Fix the lines marked FAIL, then run this again.",
+    warned_message: str = "Everything required is ready. The warn line(s) above only matter when you install.",
+    ready_message: str = "Everything is ready. Run the same command without --check to build and install.",
+) -> int:
     """Print the checklist and return the exit status it implies.
 
     A failing check's detail is the whole instruction for fixing it, which is a
     sentence or three rather than a value, so it is wrapped under its own row
-    instead of running off the edge of the terminal.
+    instead of running off the edge of the terminal.  The on-device preflight
+    prints the same checklist with its own surrounding sentences, which is why
+    the wording arrives as parameters.
     """
-    print("Checking the local tester environment; nothing is modified.\n")
+    print(f"Checking {environment}; nothing is modified.\n")
     label = max(len(check.name) for check in checks)
     for check in checks:
         row = f"  {check.marker}  {check.name.ljust(label)}  "
@@ -1613,12 +1621,9 @@ def report_preflight(checks: Sequence[Check], width: int = 78) -> int:
     failed = [check for check in checks if not check.ok and check.required]
     warned = [check for check in checks if not check.ok and not check.required]
     if failed:
-        print(f"\n{len(failed)} required check(s) failed. Fix the lines marked FAIL, then run this again.")
+        print(f"\n{len(failed)} required check(s) failed. {failed_hint}")
         return 1
-    if warned:
-        print("\nEverything required is ready. The warn line(s) above only matter when you install.")
-    else:
-        print("\nEverything is ready. Run the same command without --check to build and install.")
+    print(f"\n{warned_message if warned else ready_message}")
     return 0
 
 

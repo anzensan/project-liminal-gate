@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 from liminal_gate.statusup_character_data import STATUSUP_CHARACTER_ROWS
+from liminal_gate.save_validation import ITEM_SLOTS
 
 
 class StatusupCatalogError(ValueError):
@@ -104,7 +105,7 @@ def _characters(value: object) -> dict[int, StatusupCharacter]:
 
 # The client's own inventory shape and caps: Skill Boost stops at 100.0 percent
 # in tenths, job levels at 90.
-BUNDLED_ITEM_SLOTS = 181
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
 BUNDLED_LEVEL_CAP = 90
 BUNDLED_SKILL_BOOST_CAP = 1000
 # The final client's `statusUpItems` rows: level, displayed Skill Boost,

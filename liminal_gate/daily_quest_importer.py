@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import hashlib
 import io
 import json
 from pathlib import Path
@@ -33,12 +32,15 @@ import re
 import struct
 import zipfile
 
+from liminal_gate.file_digests import sha256_file as _sha256_file
+from liminal_gate.reviewed_build import APK_DATA_MEMBER
+
 
 class DailyQuestImportError(ValueError):
     """The APK does not carry a readable Daily Quest rotation."""
 
 
-UNITY_DATA_MEMBER = "assets/bin/Data/data.unity3d"
+UNITY_DATA_MEMBER = APK_DATA_MEMBER
 DAILY_QUEST_DATA_CLASS = "DailyQuestData"
 STAGE_PATTERN = re.compile(r"\A([1-9][0-9]{0,4})-([1-9][0-9]{0,2})\Z")
 
@@ -102,14 +104,6 @@ def _parse_stage(entry: str) -> tuple[int, int]:
     if not low <= chapter <= high:
         raise DailyQuestImportError(f"the Daily Quest rotation names a non-daily chapter: {chapter}")
     return chapter, section
-
-
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def recover_daily_quest_rotation(apk: Path) -> DailyQuestRotation:

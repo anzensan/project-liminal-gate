@@ -8,32 +8,22 @@ rules.  Those are separate compatibility boundaries.
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
-import os
 from pathlib import Path
-import tempfile
 from typing import Any
 import zipfile
 
+from liminal_gate.file_digests import sha256_file
+from liminal_gate.reviewed_build import APK_DATA_MEMBER, SOURCE_PROFILE
+from liminal_gate.atomic_json import write_json_document
 
-APK_DATA_MEMBER = "assets/bin/Data/data.unity3d"
+
 SERIALIZED_FILE = "resources.assets"
 CHR_DATABASE_PATH_ID = 12688
 SCHEMA_VERSION = 1
-SOURCE_PROFILE = "terra-battle-android-5.5.7-170"
 
 
 class CharacterCatalogImportError(ValueError):
     """A local APK or its locally generated type trees cannot be decoded."""
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def build_character_catalog(tree: dict[str, Any], apk_sha256: str) -> dict[str, object]:
@@ -152,17 +142,7 @@ def _load_trees(apk: Path, dummy_dll_dir: Path, path_ids: dict[str, int]) -> dic
 
 
 def write_character_catalog(path: Path, document: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json_document(path, document, indent=2)
 
 
 def parse_args() -> argparse.Namespace:

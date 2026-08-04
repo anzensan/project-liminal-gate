@@ -6,6 +6,7 @@ from pathlib import Path
 import tomllib
 
 from liminal_gate.trading_post_data import TRADING_POST_WEEKS
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
 class ExchangeCatalogError(ValueError): pass
 
@@ -57,8 +58,8 @@ def _offer(v: object, slots:int)->ExchangeOffer:
     return ExchangeOffer(v['offer_id'],v['target_item_id'],v['coins'],v['target_count'],v['initial_count'],v['weekly_item_count'],ingredients,buddy)
 
 
-BUNDLED_ITEM_SLOTS = 181
-BUNDLED_MAX_STACK = 999
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
+BUNDLED_MAX_STACK = MAX_ITEM_STACK
 BUNDLED_MAX_COINS = 99999999
 BUNDLED_MAX_OWNED = 1000
 

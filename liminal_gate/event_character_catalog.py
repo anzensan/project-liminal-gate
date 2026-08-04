@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import hashlib
 import json
 from pathlib import Path
 import re
 from typing import Any
+
+from liminal_gate.file_digests import sha256_file
 
 
 class EventCharacterCatalogError(ValueError):
@@ -18,14 +19,6 @@ class EventCharacterCatalogError(ValueError):
 @dataclass(frozen=True)
 class EventCharacterCatalog:
     event_characters: dict[str, frozenset[int]]
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_event_character_catalog(path: Path, character_catalog_path: Path) -> EventCharacterCatalog:

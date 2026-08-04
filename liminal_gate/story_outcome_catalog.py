@@ -8,6 +8,17 @@ import json
 from pathlib import Path
 import tomllib
 
+from liminal_gate.reviewed_build import SOURCE_PROFILE
+
+
+#: A story-outcome catalog under this name in the data directory is picked up
+#: automatically.  Story Companion drops are discarded without one -- the client
+#: rolls them and `clear_quest` has no authority to mint them -- and composing
+#: one needs the operator's own APK, so it cannot be bundled.  Naming it by
+#: convention beside the state file lets an operator who has built one enable
+#: drops by dropping the file in place, with no launcher or unit-file change.
+DEFAULT_OUTCOME_CATALOG = "story-outcomes.json"
+
 
 class StoryOutcomeCatalogError(ValueError):
     """A user-local story-outcome catalog is invalid."""
@@ -123,7 +134,7 @@ def _source(value: object) -> None:
         not isinstance(value, dict)
         or not required <= set(value)
         or frozenset(set(value) - required) not in optional
-        or value.get("profile") != "terra-battle-android-5.5.7-170"
+        or value.get("profile") != SOURCE_PROFILE
         or not all(
             _valid_sha256(value.get(field))
             for field in (

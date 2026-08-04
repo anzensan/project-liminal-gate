@@ -20,7 +20,6 @@ import stat
 import subprocess
 import sys
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -31,6 +30,7 @@ from liminal_gate.apk_signer import sign_apk
 from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
 from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASES, hashed_resource_name
 from liminal_gate.pact_banner_importer import PACT_BANNERS
+from liminal_gate.file_digests import sha256_file
 
 
 DEFAULT_APK = tester_setup.DEFAULT_APK
@@ -55,16 +55,9 @@ class OnDeviceSetupError(RuntimeError):
     """The private on-device package cannot safely be prepared or installed."""
 
 
-@dataclass(frozen=True)
-class Check:
-    name: str
-    ok: bool
-    detail: str
-    required: bool = True
-
-    @property
-    def marker(self) -> str:
-        return "ok  " if self.ok else ("FAIL" if self.required else "warn")
+# One preflight vocabulary for both deployment layouts: the shared dataclass
+# keeps the two checklists rendering identically.
+Check = tester_setup.Check
 
 
 def _assembly_module():
@@ -91,14 +84,6 @@ def _call_assembler(module: object, **kwargs: object) -> object:
     except (OSError, ValueError, RuntimeError) as error:
         raise OnDeviceSetupError(str(error)) from error
     return result
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _gradle_path(work_directory: Path) -> Path:
@@ -134,13 +119,10 @@ def ensure_gradle(work_directory: Path, *, download: bool) -> Path:
             f"Gradle {GRADLE_VERSION}",
             tool_install.Checksum("sha256", GRADLE_SHA256),
         )
-        with zipfile.ZipFile(archive) as source:
-            root = (work_directory / "gradle").resolve()
-            for member in source.infolist():
-                target = (root / member.filename).resolve()
-                if target != root and root not in target.parents:
-                    raise OnDeviceSetupError("Gradle distribution contained an unsafe path")
-            source.extractall(root)
+        # One extraction discipline for every vendor archive: the shared
+        # unpacker refuses unsafe members, restores the zip's executable
+        # modes, and keeps a deep tree reachable behind Windows' path limit.
+        tool_install.extract(archive, work_directory / "gradle")
     except (OSError, zipfile.BadZipFile, tool_install.ToolInstallError) as error:
         raise OnDeviceSetupError(
             f"could not download pinned Gradle {GRADLE_VERSION} into {archive.parent}: {error}"
@@ -531,20 +513,18 @@ def preflight_checks(
 
 
 def report_preflight(checks: Sequence[Check]) -> int:
-    print("Checking the private on-device build environment; nothing is modified.\n")
-    width = max(len(check.name) for check in checks)
-    for check in checks:
-        print(f"  {check.marker}  {check.name.ljust(width)}  {check.detail}")
-    failures = [check for check in checks if not check.ok and check.required]
-    if failures:
-        print(f"\n{len(failures)} required check(s) failed. Fix every FAIL before building.")
-        return 1
-    print(
-        "\nEverything required is ready."
-        if all(check.ok for check in checks)
-        else "\nBuild prerequisites are ready; resolve each warning before installing."
+    """Render the on-device checklist through the shared preflight reporter.
+
+    Delegating also gains the wrapping of long failure details, which this
+    copy had lost.
+    """
+    return tester_setup.report_preflight(
+        checks,
+        environment="the private on-device build environment",
+        failed_hint="Fix every FAIL before building.",
+        warned_message="Build prerequisites are ready; resolve each warning before installing.",
+        ready_message="Everything required is ready.",
     )
-    return 0
 
 
 def prepare_on_device_apk(
