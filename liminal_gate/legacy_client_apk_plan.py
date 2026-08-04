@@ -98,7 +98,7 @@ ARM64_SCUDO_ALLOCATOR_PATCHES = (
 # completed bind: an action string that resolves to nothing makes `bindService`
 # return false, and the callback never fires.
 #
-# Only the final byte of each action is rewritten, and `_google_service_patches`
+# Only the final byte of each action is rewritten, and the patch builder below
 # proves the result still sorts between its neighbours before emitting anything.
 # That check is the point: a dex `string_ids` table is *sorted*, and the runtime
 # verifier rejects one that is not. Editing bytes in place preserves every
@@ -115,7 +115,6 @@ ARM64_SCUDO_ALLOCATOR_PATCHES = (
 # would corrupt the binder handshake rather than prevent a bind.
 CLIENT_DEX_MEMBER = "classes.dex"
 FINAL_CLIENT_DEX_SHA256 = "9526a62b2e5fcea2c3d701dd678ad8fe4fd41d755805ee114a589f18f875c898"
-GOOGLE_SERVICE_PREFIX = b"com.google.android.gms."
 #: Replaces each action's last byte. No GMS action ends this way, so the Intent
 #: resolves to nothing; `_` also sorts above every letter, which is what keeps
 #: the rewritten string ahead of the one it already preceded.
@@ -142,6 +141,34 @@ GOOGLE_SERVICE_BIND_ACTIONS = (
     b"com.google.android.gms.signin.service.START",
 )
 
+# The bind that was actually observed crashing an Android 16 device, and the
+# reason this flag exists. A physical Galaxy S24 FE log ends:
+#
+#   W ServiceBindIntentUtils: Dynamic lookup for intent failed for action: ...
+#   I UnityIAP: Billing service connected.
+#   D AndroidRuntime: Shutting down VM
+#   E AndroidRuntime: FATAL EXCEPTION: main
+#     java.lang.NoSuchMethodError: ...ServiceConnection.onServiceConnected(
+#       ComponentName, IBinder, IBinderSession)
+#
+# Play Billing lives in `com.android.vending`, a different package from Play
+# Services, so none of the actions above affect it. Nothing is given up: the
+# store this talked to has been retired for years, and `IAP_MODAL_PATCHES`
+# above already exists because the Unity IAP bootstrap always reports
+# PurchasingUnavailable — the client is built to run without billing.
+#
+# `MarketBillingService.BIND` is the retired v2 billing endpoint, included for
+# the same reason and by the same evidence about the store being gone.
+PLAY_BILLING_BIND_ACTIONS = (
+    b"com.android.vending.billing.InAppBillingService.BIND",
+    b"com.android.vending.billing.MarketBillingService.BIND",
+)
+
+#: Every action the flag neutralizes. Kept as two named tuples above because
+#: the evidence differs: billing is confirmed by a device log, while the Play
+#: Services set is inference from the same crash mechanism.
+DISABLED_BIND_ACTIONS = GOOGLE_SERVICE_BIND_ACTIONS + PLAY_BILLING_BIND_ACTIONS
+
 
 def _dex_string_table(data: bytes) -> list[tuple[int, bytes]]:
     """Every dex string as `(offset of its bytes, its bytes)`, in table order.
@@ -160,7 +187,7 @@ def _dex_string_table(data: bytes) -> list[tuple[int, bytes]]:
     return table
 
 
-def _google_service_patches(source_apk: Path) -> list[dict[str, object]]:
+def _disabled_bind_action_patches(source_apk: Path) -> list[dict[str, object]]:
     """Rewrite each bind action's last byte, proving the table stays sorted.
 
     Offsets are read from the dex rather than recorded, so the digest guard is
@@ -179,9 +206,7 @@ def _google_service_patches(source_apk: Path) -> list[dict[str, object]]:
     positions = {value: index for index, (_offset, value) in enumerate(table)}
     known = set(positions)
     patches: list[dict[str, object]] = []
-    for action in GOOGLE_SERVICE_BIND_ACTIONS:
-        if not action.startswith(GOOGLE_SERVICE_PREFIX):
-            raise PlanGenerationError(f"bind action does not carry the expected prefix: {action!r}")
+    for action in DISABLED_BIND_ACTIONS:
         index = positions.get(action)
         if index is None or index in (0, len(table) - 1):
             raise PlanGenerationError(f"reviewed dex must contain {action.decode()} as a string")
@@ -274,7 +299,7 @@ def generate_legacy_client_plan(
     `disable_google_services` additionally makes the client's Play Services bind
     actions unresolvable. It is off by default: it edits client bytes that no
     other supported path touches, and it exists for devices whose Android
-    version crashes on the bind. See `GOOGLE_SERVICE_BIND_ACTIONS`.
+    version crashes on the bind. See `DISABLED_BIND_ACTIONS`.
     """
     origin = normalize_server_origin(server_origin)
     unity_sha256 = _sha256_member(source_apk, ARM64_UNITY_MEMBER)
@@ -303,7 +328,7 @@ def generate_legacy_client_plan(
         )
     )
     if disable_google_services:
-        plan["patches"].extend(_google_service_patches(source_apk))
+        plan["patches"].extend(_disabled_bind_action_patches(source_apk))
     plan["text_asset_json_aliases"] = [COIN_CREEPS_BANNER_ALIASES]
     return plan
 

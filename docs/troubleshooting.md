@@ -108,11 +108,13 @@ For the separate-server route, pass the same flag to
 both are affected.
 
 **What it does.** The 2017 client's Unity bridge cannot dispatch an interface
-method Android 16 added to `ServiceConnection`, and it fails the moment a Google
-Play Services bind completes. The flag rewrites the client's 16 Play Services
-bind actions so they resolve to nothing, so the bind never completes. Play
-Games, ads, Google auth, and Nearby are all dead services for this game; nothing
-you can use is lost.
+method Android 16 added to `ServiceConnection`, and it fails the moment a bind
+to a Google component completes. The flag rewrites 18 bind actions so they
+resolve to nothing and the bind never completes: Google Play Billing, which a
+physical Android 16 log confirmed as the crash (`UnityIAP: Billing service
+connected.` immediately before the fatal), plus 16 Play Services actions. The
+store, Play Games, ads, Google auth, and Nearby are all retired for this game;
+nothing you can use is lost.
 
 The flag is off by default because it edits client bytes no other supported path
 touches and it is not yet confirmed on Android 16 hardware. Because the edit

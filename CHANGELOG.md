@@ -27,8 +27,12 @@
   methods rather than inheriting them, so the 2017 bridge is asked for a
   signature it does not know. The bridge is Unity's and cannot be rebuilt, but
   the crash needs a *completed* bind, so the flag rewrites the final byte of
-  each of the client's 16 Play Services bind actions and the Intent resolves to
-  nothing. Play Games, the ads SDK, Google auth, and Nearby have no live service
+  each of 18 bind actions and the Intent resolves to nothing. Two are Google
+  Play Billing: a physical Galaxy S24 FE log ends `UnityIAP: Billing service
+  connected.` immediately before the fatal, which makes billing the confirmed
+  cause. Play Billing lives in `com.android.vending`, a different package from
+  Play Services, so the 16 Play Services actions — inferred from the same
+  mechanism rather than observed — do not reach it. Play Games, the ads SDK, Google auth, and Nearby have no live service
   to reach. The two `ICommonService`/`ICommonCallbacks` binder descriptors are
   deliberately untouched. Available on both routes, since both install the same
   client. The patch plan schema is version 2: a dex edit invalidates the
@@ -38,12 +42,15 @@
   in-place edit preserves every offset but not the order, so plan generation
   refuses any replacement that would not still sort between its neighbours —
   an unsorted table is rejected by the runtime and the app dies at load.
-  **Off by default, and it should not stay that way.** It rests on one report
-  from one Samsung Galaxy S24 FE, and the patch itself is unconfirmed on Android
-  16 hardware — what is confirmed is that the same reporter's client runs
-  normally with Play Services disabled device-wide, which is the runtime
-  equivalent. Make it the default once a patched build is confirmed on Android
-  16 *and* one clean Android 14/15 run shows no regression.
+  Not every Google interaction can be stopped this way: once GMS loads a
+  Dynamite module into the app's process, that module binds using its own string
+  constants, which no edit to the client's dex can reach.
+  **Off by default, and it should not stay that way.** It rests on one Android
+  16 device. A build carrying only the Play Services actions got that device
+  past its launch crash and as far as the billing bind, so the mechanism is
+  established; the billing actions that follow from its log are not yet
+  confirmed to finish the job. Make it the default once a patched build reaches
+  gameplay on Android 16 *and* one clean Android 14/15 run shows no regression.
 
 - **The on-device save can be moved off the device.**
   `python3 -m liminal_gate.on_device_state export|import|update --device SERIAL`
