@@ -9,6 +9,9 @@ import android.content.pm.ApplicationInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.InputEvent;
 import android.view.View;
@@ -38,6 +41,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * redistributed Unity classes, while the private APK merger supplies them.
  */
 public final class HostedActivity extends Activity {
+    private static final String TAG = "LiminalGate";
+    /** A storm of these means something else is wrong; stop hiding it. */
+    private static final int GUARD_LIMIT = 64;
     private static final String HEALTH_URL = "http://127.0.0.1:8002/healthz";
     private static final int READY_ATTEMPTS = 240;
     private static final long RETRY_DELAY_MS = 250;
@@ -57,8 +63,63 @@ public final class HostedActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        installServiceConnectionGuard();
         showGate("Starting local service…", false);
         awaitService();
+    }
+
+    /**
+     * Survive a service-connection callback this client cannot dispatch.
+     *
+     * Unity 2017 proxies {@link android.content.ServiceConnection} through
+     * {@code bitter.jnibridge}, and a {@link java.lang.reflect.Proxy} is handed
+     * every interface method including {@code default} ones rather than
+     * inheriting them.  Android 16 added
+     * {@code onServiceConnected(ComponentName, IBinder, IBinderSession)}, so the
+     * first Google bind to *complete* asks the 2017 bridge for a signature it
+     * has never seen and it throws on the main thread.  The bridge is Unity's
+     * and cannot be rebuilt.
+     *
+     * Suppressing the callback is not the same as ignoring a fault: this build
+     * has no use for the connection, and dropping it is exactly the state a
+     * device reaches with Google Play Services disabled — which is the
+     * configuration reported to load the game normally.  Editing the client's
+     * bind actions cannot achieve this, because Play Services loads code into
+     * this process through Dynamite and binds using its own string constants.
+     *
+     * Deliberately narrow. Only this one error is swallowed, only a bounded
+     * number of times, and each one is logged; anything else ends the process
+     * exactly as it would have.
+     */
+    private void installServiceConnectionGuard() {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override public void run() {
+                int swallowed = 0;
+                while (true) {
+                    try {
+                        Looper.loop();
+                        return;  // the queue quit normally; let the thread unwind
+                    } catch (NoSuchMethodError error) {
+                        if (!isUnsupportedServiceConnection(error) || ++swallowed > GUARD_LIMIT) {
+                            throw error;
+                        }
+                        Log.w(
+                            TAG,
+                            "Ignored a service-connection callback this client cannot dispatch ("
+                                + swallowed + " of " + GUARD_LIMIT + ")",
+                            error
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    /** Package-private so the guard's one decision can be tested directly. */
+    static boolean isUnsupportedServiceConnection(NoSuchMethodError error) {
+        String message = error.getMessage();
+        return message != null
+            && message.contains("android.content.ServiceConnection.onServiceConnected");
     }
 
     private void awaitService() {

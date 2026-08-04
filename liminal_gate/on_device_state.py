@@ -280,11 +280,30 @@ def update(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_connection_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
+    """Declare the options that name the device, on the parser and each command.
+
+    They are accepted on both sides of the subcommand because every documented
+    invocation writes them after it -- `export --device SERIAL` -- and argparse
+    otherwise refuses that form with `unrecognized arguments`, which reads as a
+    broken checkout rather than as a word order.  The per-command copies
+    suppress their defaults so that omitting one there leaves whatever the
+    parser before the subcommand parsed, instead of overwriting it with None.
+    """
+    def default(value: object) -> object:
+        return value if defaults else argparse.SUPPRESS
+
+    parser.add_argument("--adb", default=default("adb"))
+    parser.add_argument(
+        "--device", default=default(None),
+        help="adb serial; required only when multiple devices are ready",
+    )
+    parser.add_argument("--data-dir", type=Path, default=default(DEFAULT_DATA))
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="liminal_gate.on_device_state", description=__doc__)
-    parser.add_argument("--adb", default="adb")
-    parser.add_argument("--device", help="adb serial; required only when multiple devices are ready")
-    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA)
+    _add_connection_options(parser, defaults=True)
     subparsers = parser.add_subparsers(dest="command", required=True)
     export_parser = subparsers.add_parser("export", help="copy the on-device save to this computer")
     export_parser.add_argument("--output", type=Path, help="where to write it; defaults under the data directory")
@@ -307,6 +326,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--disable-google-services", action="store_true",
         help="rebuild with the client's Google Play Services bind actions made unresolvable",
     )
+    for command in (export_parser, import_parser, update_parser):
+        _add_connection_options(command, defaults=False)
     return parser.parse_args(argv)
 
 

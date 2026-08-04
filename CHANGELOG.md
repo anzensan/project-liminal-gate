@@ -19,6 +19,25 @@
   standard rewards: its item and Companion identities remain a distinct event
   policy to audit.
 
+- **The combined APK survives the Android 16 service-connection crash.**
+  `HostedActivity` installs a main-thread guard before Unity starts. It drops
+  exactly one error — `NoSuchMethodError` naming
+  `ServiceConnection.onServiceConnected` — logs every occurrence under the
+  `LiminalGate` tag, stops after 64 of them, and lets every other throwable end
+  the process as it would have. Always on: it does nothing until an exception
+  that would otherwise kill the app.
+  This exists because the string patch below cannot finish the job. A device log
+  showed the fatal bind arriving as `com.google.android.gms.ads.service.CACHE`
+  *after* that action had been rewritten in the client, alongside `appset`,
+  `safebrowsing`, `safetynet`, and `dynamiclinks` binds whose strings are absent
+  from the client entirely: Play Services loads code into the process through
+  Dynamite and binds with its own constants, which no edit to the APK can reach.
+  Dropping the callback is equivalent to the bind never completing, which is the
+  state the same reporter confirmed loads the game. Verified on an emulator by
+  throwing the exact error on the main thread: swallowed once, UI still pumping
+  three seconds later, no fatal. The separate-server route has no host DEX and
+  is not covered.
+
 - **`--disable-google-services` gets the client past an Android 16 launch
   crash.** The 2017 client dies on `NoSuchMethodError` in `bitter.jnibridge` the
   moment a Google Play Services bind completes: Android 16 added an

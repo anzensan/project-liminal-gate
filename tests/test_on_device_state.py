@@ -305,5 +305,42 @@ class ImportCommandTest(unittest.TestCase):
         push.assert_not_called()
 
 
+class ConnectionOptionPlacementTest(unittest.TestCase):
+    """Issue 37: every documented command writes `--device` after the subcommand.
+
+    That form was refused with `unrecognized arguments`, which reads as a broken
+    checkout rather than as a word order, and it is the form the on-device setup
+    and save documentation gives in every example.
+    """
+
+    def test_the_documented_form_names_the_device(self) -> None:
+        for command in (["export"], ["update"], ["import", "save.json"]):
+            with self.subTest(command=command[0]):
+                args = on_device_state.parse_args([*command, "--device", "SERIAL"])
+                self.assertEqual(command[0], args.command)
+                self.assertEqual("SERIAL", args.device)
+
+    def test_the_options_still_precede_the_subcommand(self) -> None:
+        args = on_device_state.parse_args([
+            "--adb", "/sdk/adb", "--device", "SERIAL", "--data-dir", "/tmp/dd", "export",
+        ])
+        self.assertEqual(("/sdk/adb", "SERIAL", Path("/tmp/dd")), (args.adb, args.device, args.data_dir))
+
+    def test_an_option_given_only_before_the_subcommand_survives_it(self) -> None:
+        """The subcommand's own copy must not overwrite it with its default."""
+        args = on_device_state.parse_args(["--device", "SERIAL", "export", "--output", "out.json"])
+        self.assertEqual("SERIAL", args.device)
+        self.assertEqual("adb", args.adb)
+        self.assertEqual(on_device_state.DEFAULT_DATA, args.data_dir)
+
+    def test_the_later_placement_wins_when_both_are_given(self) -> None:
+        args = on_device_state.parse_args(["--device", "FIRST", "export", "--device", "SECOND"])
+        self.assertEqual("SECOND", args.device)
+
+    def test_omitting_them_entirely_keeps_every_default(self) -> None:
+        args = on_device_state.parse_args(["export"])
+        self.assertEqual(("adb", None, on_device_state.DEFAULT_DATA), (args.adb, args.device, args.data_dir))
+
+
 if __name__ == "__main__":
     unittest.main()
