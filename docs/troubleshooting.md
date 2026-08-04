@@ -107,9 +107,18 @@ For the separate-server route, pass the same flag to
 `python3 -m liminal_gate.tester_setup`. Both routes install the same client, so
 both are affected.
 
-**What it does.** The 2017 client's Unity bridge cannot dispatch an interface
-method Android 16 added to `ServiceConnection`, and it fails the moment a bind
-to a Google component completes. The flag rewrites 18 bind actions so they
+**The combined APK now survives this without the flag.** The host installs a
+main-thread guard before Unity starts, which drops exactly this one callback and
+keeps the app running. It is always on, logs each occurrence under the
+`LiminalGate` tag, and passes every other error through untouched. That covers
+binds the flag cannot reach: once Play Services loads code into the process
+through Dynamite, that code binds using its own string constants, which no edit
+to the client can change. The separate-server route has no host and so is not
+covered — use the flag there.
+
+**What the flag does.** The 2017 client's Unity bridge cannot dispatch an
+interface method Android 16 added to `ServiceConnection`, and it fails the
+moment a bind to a Google component completes. The flag rewrites 18 bind actions so they
 resolve to nothing and the bind never completes: Google Play Billing, which a
 physical Android 16 log confirmed as the crash (`UnityIAP: Billing service
 connected.` immediately before the fatal), plus 16 Play Services actions. The
