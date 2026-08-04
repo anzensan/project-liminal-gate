@@ -22,7 +22,7 @@ from typing import Any
 import urllib.error
 import urllib.request
 
-from liminal_gate import tester_setup
+from liminal_gate import tester_setup, toolchain
 from liminal_gate.account_state import AccountStateError, read_document
 from liminal_gate.on_device_setup import (
     DEFAULT_APK, DEFAULT_DATA, DEFAULT_HOST_SOURCE, DEFAULT_RESOURCES, LOOPBACK_PORT,
@@ -333,6 +333,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    # Ahead of every resolver, exactly as `tester_setup` and `on_device_setup`
+    # do it. `update` rebuilds the APK through the same code path they use, so
+    # it needs the same SDK, JDK, dumper, and disassembler locations; `export`
+    # and `import` need at least the recorded `adb`. Without this the doctor
+    # could install a tool, `on_device_setup` could use it, and the command
+    # here would still report it missing -- with no flag able to name it.
+    toolchain.load_and_apply(args.data_dir)
     try:
         if args.command == "update":
             return update(args)

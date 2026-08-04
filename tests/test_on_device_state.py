@@ -9,7 +9,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from liminal_gate import on_device_state, tester_setup
+from liminal_gate import on_device_state, tester_setup, toolchain
 from liminal_gate.bootstrap_server import (
     LOCAL_STATE_ROUTE,
     BootstrapServer,
@@ -342,6 +342,40 @@ class ConnectionOptionPlacementTest(unittest.TestCase):
     def test_omitting_them_entirely_keeps_every_default(self) -> None:
         args = on_device_state.parse_args(["export"])
         self.assertEqual(("adb", None, on_device_state.DEFAULT_DATA), (args.adb, args.device, args.data_dir))
+
+
+class RecordedToolchainTest(unittest.TestCase):
+    """Every command here replays what `doctor` recorded, before any resolver.
+
+    This command was the one launcher that did not, so an operator whose tools
+    the doctor had installed privately -- the pinned NDK `llvm-objdump` above
+    all, which is deliberately not on `PATH` -- got `update` failing on a
+    missing disassembler while `doctor` and `on_device_setup` both passed on
+    the same machine.  No flag could correct it: `update` accepts a path for
+    the build tools and nothing for the rest.
+    """
+
+    def _main_replays(self, argv: list[str]) -> None:
+        data = Path("/tmp/liminal-gate-data")
+        with ExitStack() as stack:
+            # Patched on the module itself rather than through the launcher's
+            # name for it, so the test says "the record gets replayed" and not
+            # merely "the launcher imports the module".
+            replay = stack.enter_context(patch.object(toolchain, "load_and_apply"))
+            # Every command's first resolver, made to fail: what is under test
+            # is the ordering, so the run must not need a device or an SDK.
+            stack.enter_context(patch.object(
+                tester_setup, "resolve_adb",
+                side_effect=tester_setup.TesterSetupError("stop here"),
+            ))
+            with self.assertRaises(SystemExit):
+                on_device_state.main(["--data-dir", str(data), *argv])
+        replay.assert_called_once_with(data)
+
+    def test_every_command_replays_the_record_before_resolving_a_tool(self) -> None:
+        for argv in (["export"], ["import", "save.json", "--yes"], ["update"]):
+            with self.subTest(command=argv[0]):
+                self._main_replays(argv)
 
 
 if __name__ == "__main__":
