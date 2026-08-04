@@ -74,23 +74,39 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-In PowerShell, that is two commands as well:
+In PowerShell, that is two commands as well. Run the first, wait for it to
+finish, then run the second:
 
 ```powershell
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Run the first, wait for it to finish, then run the second. If the second is
-refused with `running scripts is disabled on this system`, allow signed scripts
-for your own account once and rerun it:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
-
 The prompt shows `(.venv)` once the environment is active. Keep that window
 open: the remaining commands need it.
+
+**If activation is refused** with `running scripts is disabled on this system`,
+you do not have to change any policy. Activation is a convenience; naming the
+environment's own interpreter does the same thing, because setup installs
+packages with the interpreter running it rather than whatever `pip` is on
+`PATH`. Use this in place of every `python3` below and skip activation
+entirely:
+
+```powershell
+.\.venv\Scripts\python.exe -m liminal_gate.doctor --install-missing
+```
+
+If you would rather activate, relax the policy for the current window only —
+no administrator, nothing persisted:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+```
+
+`-Scope CurrentUser RemoteSigned` makes it persistent for your account. Should
+either be ignored, a policy set by your organization outranks it;
+`Get-ExecutionPolicy -List` names the scope that is winning, and that one needs
+an administrator. Reach for `Unrestricted` last: it is broader than this needs.
 
 Let the project inspect the toolchain and install what it safely can:
 
