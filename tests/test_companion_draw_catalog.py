@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from liminal_gate.companion_draw_catalog import build_bundled_companion_draw_policy, CompanionDrawCatalogError, load_companion_draw_catalog
+from tests.support import write_json
 
 
 class CompanionDrawCatalogTest(unittest.TestCase):
@@ -13,7 +13,7 @@ class CompanionDrawCatalogTest(unittest.TestCase):
         document = {"schema_version": 1, "provenance": "user-supplied", "item_slots": 1, "ticket_item_id": 1, "energy_cost": 3, "max_owned": 10, "draws": [{"companion_id": 1, "weight": 1}]}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "draw.json"
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             catalog = load_companion_draw_catalog(path)
         self.assertEqual((1, 3), (catalog.ticket_item_id, catalog.energy_cost))
 
@@ -39,7 +39,7 @@ weight = 1
         document = {"schema_version": 1, "provenance": "user-supplied", "item_slots": 1, "ticket_item_id": 1, "energy_cost": 1, "max_owned": 1, "draws": [{"companion_id": 2, "weight": 1}, {"companion_id": 1, "weight": 1}]}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "draw.json"
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             with self.assertRaises(CompanionDrawCatalogError):
                 load_companion_draw_catalog(path)
 

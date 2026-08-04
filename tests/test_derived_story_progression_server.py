@@ -1,21 +1,17 @@
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.story_progression_catalog import build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_progression_importer import build_story_progression
 from liminal_gate.settlement_catalog import load_settlement_catalog
+from tests.support import bootstrap_profile, request, start_server, stop_server
 from tests.test_story_progression_importer import _metadata
-
-
-PUBLIC_ROOT = Path(__file__).resolve().parents[1]
 
 
 class DerivedStoryProgressionServerTest(unittest.TestCase):
@@ -33,7 +29,7 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
             "stages": [{"chapter": 2, "section": 5, "character_rewards": [], "item_rewards": {}, "summon_rewards": {}, "clear_coins": 7}],
         }), encoding="utf-8")
         self.settlements = load_settlement_catalog(settlement_path)
-        self.profile = load_profile(PUBLIC_ROOT / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.start_server()
         self.token = "derived-story-token"
         self.account_id = "derived-story-account"
@@ -55,25 +51,16 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
             story_progression_catalog=self.catalog, settlement_catalog=self.settlements,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def post(self, path: str, fields: list[tuple[str, str]]) -> tuple[int, dict[str, object]]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request("POST", path, body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"})
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
+        return request(self.server, "POST", path, urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"})
 
     def test_chapter_boundary_clear_map_reveal_retry_and_restart(self) -> None:
         start = [("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "5"), ("lastUpdate", "1")]
@@ -145,12 +132,10 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
 
     def test_built_in_policy_accepts_client_start_values_for_ordinary_stage(self) -> None:
         self.stop_server()
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
             story_progression_catalog=build_core_story_policy(),
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
         status, payload = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=policy-start-2-5",
             [("stamina", "17"), ("coins", "42"), ("chapter", "2"), ("section", "5"), ("lastUpdate", "1")],

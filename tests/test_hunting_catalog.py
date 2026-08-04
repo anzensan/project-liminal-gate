@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,6 +8,7 @@ from liminal_gate.hunting_catalog import (
     HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds,
     load_hunting_catalog,
 )
+from tests.support import write_json
 
 
 def document(**overrides) -> dict:
@@ -36,7 +36,7 @@ class HuntingCatalogTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def load(self, doc: dict):
-        self.path.write_text(json.dumps(doc), encoding="utf-8")
+        write_json(self.path, doc)
         return load_hunting_catalog(self.path)
 
     def test_loads_a_well_formed_operator_catalog(self) -> None:

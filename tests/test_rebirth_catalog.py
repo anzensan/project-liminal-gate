@@ -1,27 +1,27 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from liminal_gate.rebirth_catalog import build_bundled_rebirth_policy, RebirthCatalogError, load_rebirth_catalog
+from tests.support import write_json
 
 
 class RebirthCatalogTest(unittest.TestCase):
     def test_validates_user_local_recipe_rows(self) -> None:
         document = {"schema_version": 1, "provenance": "user-supplied", "item_slots": 3, "joker_character_id": 9, "recipes": [{"recipe_id": 1, "source_character_id": 2, "destination_character_id": 3, "coins": 10, "items": {"1": 2}, "materials": [{"character_id": 7, "level": 50}, {"character_id": 8, "level": 60}]}]}
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "rebirth.json"; path.write_text(json.dumps(document), encoding="utf-8")
+            path = Path(directory) / "rebirth.json"; write_json(path, document)
             catalog = load_rebirth_catalog(path)
             self.assertEqual((2, 3, {1: 2}), (catalog.recipes[1].source_character_id, catalog.recipes[1].destination_character_id, catalog.recipes[1].items))
             # A recipe may require no Companions: the client's own master rows
             # carry three such recipes with empty requirement slots.
             document["recipes"][0]["materials"] = []
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             self.assertEqual((), load_rebirth_catalog(path).recipes[1].materials)
             document["recipes"][0]["materials"] = [{"character_id": n, "level": 50} for n in (7, 8, 9)]
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             with self.assertRaisesRegex(RebirthCatalogError, "at most two"):
                 load_rebirth_catalog(path)
 

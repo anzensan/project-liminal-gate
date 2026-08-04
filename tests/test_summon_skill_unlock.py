@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.summon_skill_catalog import load_summon_skill_catalog
+from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
 class SummonSkillUnlockTest(unittest.TestCase):
@@ -25,48 +23,29 @@ class SummonSkillUnlockTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            catalog_path = root / "summons.json"
-            catalog_path.write_text(json.dumps(document), encoding="utf-8")
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            catalog_path = write_json(root / "summons.json", document)
+            profile = bootstrap_profile()
             state_path = root / "state.json"
             catalog = load_summon_skill_catalog(catalog_path)
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), summon_skill_catalog=catalog)
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def post(server: BootstrapServer, request_id: str, body: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", f"/gd/summon_skill_unlock?otk=token&requestID={request_id}", body=body)
-                response = connection.getresponse()
-                result = json.loads(response.read())
-                connection.close()
-                return response.status, result
-
-            server, thread = start()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), summon_skill_catalog=catalog)
             try:
                 server.state.create_account("token", "account", {"summonList": [0x101] + [0] * 15, "itemList": [1, 0], "coins": 2})
-                status, first = post(server, "one", "targetID=1")
+                status, first = post(server, "/gd/summon_skill_unlock", "one", "targetID=1")
                 self.assertEqual(200, status)
                 self.assertEqual((True, 0x102, [0, 0], 0), (first["success"], first["summonList"][0], first["itemList"], first["coins"]))
-                self.assertEqual((status, first), post(server, "one", "targetID=1"))
+                self.assertEqual((status, first), post(server, "/gd/summon_skill_unlock", "one", "targetID=1"))
                 # Reusing a spent requestID with a different body is answered on
                 # its own merits: this summon has no unlock available.
-                status, reused = post(server, "one", "targetID=2")
+                status, reused = post(server, "/gd/summon_skill_unlock", "one", "targetID=2")
                 self.assertEqual((200, True, 3), (status, reused["success"], reused["cmdError"]))
-                status, unavailable = post(server, "two", "targetID=1")
+                status, unavailable = post(server, "/gd/summon_skill_unlock", "two", "targetID=1")
                 self.assertEqual((200, True, 3), (status, unavailable["success"], unavailable["cmdError"]))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
-            restarted, restarted_thread = start()
+            restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), summon_skill_catalog=catalog)
             try:
-                self.assertEqual((200, first), post(restarted, "one", "targetID=1"))
+                self.assertEqual((200, first), post(restarted, "/gd/summon_skill_unlock", "one", "targetID=1"))
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)

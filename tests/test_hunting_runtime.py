@@ -2,18 +2,16 @@ from __future__ import annotations
 
 import copy
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.hunting_catalog import load_hunting_catalog
+from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
 
-PUBLIC_ROOT = Path(__file__).resolve().parents[1]
 PROGRESS = 0x01000000 | (9 << 6) | 1
 LOCKED_STAGE = (1002, 3)
 
@@ -83,7 +81,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             ],
         }), encoding="utf-8")
         self.catalog = load_hunting_catalog(catalog_path)
-        self.profile = load_profile(PUBLIC_ROOT / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.token, self.account_id = "hunt-token", "hunt-account"
         self.character = {
             "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
@@ -107,17 +105,13 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
             hunting_catalog=self.catalog, outcome_strict=self.outcome_strict,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def restart(self) -> None:
         self.stop_server()
@@ -128,41 +122,28 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.server.outcome_strict = True
 
     def post(self, route: str, request_id: str, fields: list[tuple[str, str]]) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "POST", f"{route}?otk={self.token}&requestID={request_id}",
-            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        return post(
+            self.server, route, request_id, urlencode(fields), token=self.token,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
 
     def userdata(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]["userdata"]
 
     def server_status(self, token: str) -> dict:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "GET",
+        status, payload = get(
+            self.server,
             f"/gd/get_server_status?platform=GooglePlay&app_version=5.57&otk={token}",
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        self.assertEqual(200, response.status)
+        self.assertEqual(200, status)
         return payload
 
     def login(self, token: str) -> dict:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "GET",
+        status, payload = get(
+            self.server,
             f"/gd/login?otk={token}&uuid={self.account_id}",
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        self.assertEqual(200, response.status)
+        self.assertEqual(200, status)
         return payload
 
     def account(self) -> dict:
@@ -682,9 +663,7 @@ class HuntingRuntimeTest(unittest.TestCase):
     def test_hunting_is_unavailable_without_a_catalog(self) -> None:
         self.stop_server()
         self.catalog = None
-        self.server = BootstrapServer(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path))
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.server, self.thread = start_server(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path))
         status, refused = self.start("no-catalog", 1001, 1, 3)
         self.assertEqual(501, status, refused)
 

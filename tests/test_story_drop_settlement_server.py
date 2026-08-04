@@ -9,18 +9,17 @@ and still refuses a roll above the recovered ceiling.
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS
 from liminal_gate.story_catalog import load_story_catalog
 from liminal_gate.story_outcome_catalog import load_story_outcome_catalog
 from liminal_gate.story_outcome_generator import DEFAULT_COMPANION_DROP_LEVEL, build_catalog, build_derivation_source, write_catalog
+from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
 BOMBORG, ELECTROTICK = 95, 92
@@ -111,29 +110,15 @@ class StoryDropSettlementServerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             story_path, outcome_path, state_path = root / "story.json", root / "outcome.json", root / "state.json"
-            story_path.write_text(json.dumps(story_document), encoding="utf-8")
+            write_json(story_path, story_document)
             write_catalog(outcome_path, self._generated_catalog())
             outcomes = load_story_outcome_catalog(outcome_path)
             # The union, not either source alone: the section list allows one.
             self.assertEqual({COMPANION: 2}, outcomes.rules[(2, 2)].companion_maxima)
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             story = load_story_catalog(story_path)
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), story_catalog=story, story_outcome_catalog=outcomes)
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def post(server: BootstrapServer, path: str, fields: list[tuple[str, str]]) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", path, body=urlencode(fields))
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
-
-            server, thread = start()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), story_catalog=story, story_outcome_catalog=outcomes)
             try:
                 server.state.create_account("token", "account", {
                     "coins": 0, "worldMapNo": 0, "progressCode": 9, "chrdata": [character],
@@ -143,16 +128,16 @@ class StoryDropSettlementServerTest(unittest.TestCase):
                 with server.state.lock:
                     server.state.accounts["account"]["tutorial_phase"] = "free_roam"
                     server.state._persist_locked()
-                self.assertEqual(200, post(server, "/gd/start_quest?otk=token&requestID=start", [
+                self.assertEqual(200, post(server, "/gd/start_quest", "start", urlencode([
                     ("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "2"), ("lastUpdate", "1"),
-                ])[0])
+                ]))[0])
 
                 over = self._clear_fields([COMPANION, COMPANION, COMPANION])
-                status, payload = post(server, "/gd/clear_quest?otk=token&requestID=over", over)
+                status, payload = post(server, "/gd/clear_quest", "over", urlencode(over))
                 self.assertEqual((409, "invalid_local_outcome"), (status, payload["error"]))
 
                 clear = self._clear_fields([COMPANION, COMPANION])
-                status, payload = post(server, "/gd/clear_quest?otk=token&requestID=clear", clear)
+                status, payload = post(server, "/gd/clear_quest", "clear", urlencode(clear))
                 self.assertEqual(200, status)
                 minted = payload["buddyInfo"]["list"]
                 self.assertEqual(
@@ -161,19 +146,15 @@ class StoryDropSettlementServerTest(unittest.TestCase):
                 )
                 self.assertEqual([1, 2], [row["iid"] for row in minted])
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
-            restarted, restarted_thread = start()
+            restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), story_catalog=story, story_outcome_catalog=outcomes)
             try:
                 self.assertEqual(
                     (200, payload),
-                    post(restarted, "/gd/clear_quest?otk=token&requestID=clear", clear),
+                    post(restarted, "/gd/clear_quest", "clear", urlencode(clear)),
                 )
                 stored = restarted.state.accounts["account"]["userdata"]["buddyInfo"]["list"]
                 self.assertEqual(2, len(stored))
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)

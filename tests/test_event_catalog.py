@@ -8,6 +8,7 @@ from liminal_gate.event_catalog import (
     load_event_catalog,
     merge_event_catalogs,
 )
+from tests.support import write_json
 class EventCatalogTest(unittest.TestCase):
  def test_local_event_grant_matches_catalog(self):
   with tempfile.TemporaryDirectory() as d:
@@ -55,14 +56,14 @@ class EventFlagRuleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             characters = root / "characters.json"
-            characters.write_text(json.dumps({"characters": [{"character_id": 3}]}), encoding="utf-8")
+            write_json(characters, {"characters": [{"character_id": 3}]})
             events = root / "events.json"
-            events.write_text(json.dumps({
+            write_json(events, {
                 "schema_version": 1, "provenance": "user-supplied",
                 "character_catalog_sha256": hashlib.sha256(characters.read_bytes()).hexdigest(),
                 "stages": [{"event_id": "test", "flag": flag, "chapter": chapter, "section": section,
                             "stamina": 1, "coins": 0, "clear_coins": 0, "character_ids": [3]}],
-            }), encoding="utf-8")
+            })
             return load_event_catalog(events, characters)
 
     def test_accepts_the_chapter_and_stage_keys_the_client_builds(self) -> None:

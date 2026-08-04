@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.companion_catalog import build_bundled_companion_policy, load_companion_catalog
+from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
 class CompanionSaleTest(unittest.TestCase):
@@ -16,27 +14,12 @@ class CompanionSaleTest(unittest.TestCase):
         document = {"schema_version": 1, "provenance": "user-supplied", "coin_cap": 50, "masters": [{"companion_id": 10, "base_coins": 3}, {"companion_id": 11, "base_coins": 5}]}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            catalog_path = root / "companions.json"
-            catalog_path.write_text(json.dumps(document), encoding="utf-8")
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            catalog_path = write_json(root / "companions.json", document)
+            profile = bootstrap_profile()
             state_path = root / "state.json"
             catalog = load_companion_catalog(catalog_path)
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), companion_catalog=catalog)
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def post(server: BootstrapServer, path: str, request_id: str, body: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", f"{path}?otk=token&requestID={request_id}", body=body)
-                response = connection.getresponse()
-                result = json.loads(response.read())
-                connection.close()
-                return response.status, result
-
-            server, thread = start()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), companion_catalog=catalog)
             try:
                 server.state.create_account("token", "account", {
                     "coins": 1,
@@ -62,42 +45,32 @@ class CompanionSaleTest(unittest.TestCase):
                 status, batch = post(server, "/gd/sell_buddies", "three", "sellList=[2]")
                 self.assertEqual((200, True, 12, [3]), (status, batch["success"], batch["coins"], [row["iid"] for row in batch["buddyInfo"]["list"]]))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
-            restarted, restarted_thread = start()
+            restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), companion_catalog=catalog)
             try:
                 self.assertEqual((200, first), post(restarted, "/gd/sell_buddy", "one", "inventoryID=1"))
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
 
 class BundledCompanionSaleRuntimeTest(unittest.TestCase):
     def test_bundled_values_are_paid_through_the_real_route(self) -> None:
         """The bundled masters must settle a real sale, not merely load."""
         with tempfile.TemporaryDirectory() as directory:
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             state = BootstrapState(Path(directory) / "state.json")
             # Master 3's base value is 400, so a level 7 instance pays 2800.
             state.create_account("token", "account", {
                 "coins": 100, "chrdata": [],
                 "buddyInfo": {"list": [{"iid": 1, "bid": 3, "lv": 7, "exp": 0, "flag": 0, "chrID": 0}], "record": []},
             })
-            server = BootstrapServer(("127.0.0.1", 0), profile, state, companion_catalog=build_bundled_companion_policy())
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
+            server, thread = start_server(("127.0.0.1", 0), profile, state, companion_catalog=build_bundled_companion_policy())
             try:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", "/gd/sell_buddy?otk=token&requestID=bundled", body="inventoryID=1")
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
+                status, payload = post(server, "/gd/sell_buddy", "bundled", "inventoryID=1")
             finally:
-                server.shutdown(); thread.join(); server.server_close()
-            self.assertEqual(200, response.status)
+                stop_server(server, thread)
+            self.assertEqual(200, status)
             self.assertTrue(payload["success"], payload)
             self.assertEqual(2900, payload["coins"])
             self.assertEqual([], payload["buddyInfo"]["list"])

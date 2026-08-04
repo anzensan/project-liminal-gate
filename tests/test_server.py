@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import threading
 import unittest
-from http.client import HTTPConnection
 from pathlib import Path
 
 from liminal_gate.release_preflight import inspect_release_tree
 from liminal_gate.server import LiminalGateServer
+from tests.support import request as http_request, write_json
 
 
 class PublicServerTest(unittest.TestCase):
@@ -30,12 +29,7 @@ class PublicServerTest(unittest.TestCase):
     def request_to(
         self, server: LiminalGateServer, method: str, path: str
     ) -> tuple[int, dict[str, str]]:
-        connection = HTTPConnection(*server.server_address)
-        connection.request(method, path)
-        response = connection.getresponse()
-        body = json.loads(response.read())
-        connection.close()
-        return response.status, body
+        return http_request(server, method, path)
 
     def test_health_endpoint_starts_without_private_data(self) -> None:
         status, body = self.request("GET", "/healthz")
@@ -50,7 +44,7 @@ class PublicServerTest(unittest.TestCase):
     def test_user_manifest_is_metadata_only(self) -> None:
         data_directory = Path(self.temporary_directory.name) / "user-data"
         data_directory.mkdir()
-        (data_directory / "liminal-gate-data.json").write_text(json.dumps({
+        write_json(data_directory / "liminal-gate-data.json", {
             "schema_version": 1,
             "provenance": "user-supplied",
             "datasets": [{
@@ -58,7 +52,7 @@ class PublicServerTest(unittest.TestCase):
                 "path": "datasets/local-data.bin",
                 "sha256": "0" * 64,
             }],
-        }), encoding="utf-8")
+        })
         server = LiminalGateServer(("127.0.0.1", 0), data_directory)
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
@@ -74,7 +68,7 @@ class PublicServerTest(unittest.TestCase):
     def test_unsafe_user_manifest_is_rejected_before_server_start(self) -> None:
         data_directory = Path(self.temporary_directory.name) / "unsafe-user-data"
         data_directory.mkdir()
-        (data_directory / "liminal-gate-data.json").write_text(json.dumps({
+        write_json(data_directory / "liminal-gate-data.json", {
             "schema_version": 1,
             "provenance": "user-supplied",
             "datasets": [{
@@ -82,7 +76,7 @@ class PublicServerTest(unittest.TestCase):
                 "path": "../outside.bin",
                 "sha256": "0" * 64,
             }],
-        }), encoding="utf-8")
+        })
         with self.assertRaisesRegex(ValueError, "safe relative"):
             LiminalGateServer(("127.0.0.1", 0), data_directory)
 

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from http.client import HTTPConnection
 import json
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from unittest import mock
 from urllib.parse import urlencode
@@ -18,15 +16,14 @@ from liminal_gate.daily_quest_data import (
     daily_quest_rotation,
 )
 from liminal_gate.bootstrap_server import (
-    BootstrapServer,
     BootstrapState,
     _apply_hunting_character_grants,
     _daily_quest_played_today,
     _stamp_daily_quest_clear,
     daily_quest_login_fields,
-    load_profile,
 )
 from liminal_gate.hunting_catalog import HuntingCatalog, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, hunting_settlement_within_bounds
+from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
 
 def result(items=None, coins=0, exp=0, buddies=(), summons=(), monsters=()):
@@ -322,33 +319,15 @@ class DailyQuestLoginTest(unittest.TestCase):
     """The category is useless unless the client is told it is on."""
 
     def test_login_advertises_the_category_and_every_stage(self) -> None:
-        import json
-        import tempfile
-        import threading
-        from http.client import HTTPConnection
-        from pathlib import Path
-
-        from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-
         catalog = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
         with tempfile.TemporaryDirectory() as directory:
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
-            server = BootstrapServer(
-                ("127.0.0.1", 0), profile, BootstrapState(Path(directory) / "state.json"),
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(Path(directory) / "state.json"),
                 hunting_catalog=catalog, daily_quests=True,
             )
-            thread = threading.Thread(target=server.serve_forever); thread.start()
-
-            def get(path: str) -> tuple[int, dict]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("GET", path)
-                response = connection.getresponse()
-                payload = json.loads(response.read()); connection.close()
-                return response.status, payload
-
             try:
-                self.assertEqual(200, get("/gd/signup?uuid=acct&otk=sig&requestID=s1")[0])
-                status, payload = get("/gd/login?uuid=acct&otk=tok&requestID=l1")
+                self.assertEqual(200, get(server, "/gd/signup?uuid=acct&otk=sig&requestID=s1")[0])
+                status, payload = get(server, "/gd/login?uuid=acct&otk=tok&requestID=l1")
                 self.assertEqual(200, status)
                 flags = payload["eventFlags"]
                 self.assertTrue(flags[DAILY_QUEST_EVENT_FLAG]["value"])
@@ -368,39 +347,21 @@ class DailyQuestLoginTest(unittest.TestCase):
                 # here disables the Huntland button whatever else is sent.
                 self.assertGreater(payload["lastLogin"], 0.0)
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
     def test_the_category_stays_off_unless_asked_for(self) -> None:
-        import json
-        import tempfile
-        import threading
-        from http.client import HTTPConnection
-        from pathlib import Path
-
-        from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
-
         with tempfile.TemporaryDirectory() as directory:
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
-            server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(Path(directory) / "state.json"))
-            thread = threading.Thread(target=server.serve_forever); thread.start()
-
-            def get(path: str) -> tuple[int, dict]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("GET", path)
-                response = connection.getresponse()
-                payload = json.loads(response.read()); connection.close()
-                return response.status, payload
-
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), BootstrapState(Path(directory) / "state.json"))
             try:
-                get("/gd/signup?uuid=acct&otk=sig&requestID=s1")
-                _, payload = get("/gd/login?uuid=acct&otk=tok&requestID=l1")
+                get(server, "/gd/signup?uuid=acct&otk=sig&requestID=s1")
+                _, payload = get(server, "/gd/login?uuid=acct&otk=tok&requestID=l1")
                 self.assertNotIn(DAILY_QUEST_EVENT_FLAG, payload.get("eventFlags", {}))
                 # Naming today's quests to a client whose category is off would
                 # advertise a menu it must not open.
                 self.assertNotIn("dailyQuest1", payload)
                 self.assertNotIn("lastDailyQuestPlayTime1", payload)
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
 
 class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
@@ -433,14 +394,12 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
             "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
             "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
         }
-        profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        profile = bootstrap_profile()
         catalog = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0), profile, BootstrapState(self.state_path),
             hunting_catalog=catalog, daily_quests=True,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
         self.addCleanup(self.stop_server)
         self.server.state.create_account(self.token, self.account_id, {
             "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
@@ -454,20 +413,13 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
             self.server.state._persist_locked()
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def post(self, route: str, request_id: str, fields: list) -> tuple:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "POST", f"{route}?otk={self.token}&requestID={request_id}",
-            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        return post(
+            self.server, route, request_id, urlencode(fields), token=self.token,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
 
     def account(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]
@@ -612,14 +564,12 @@ class DailyQuestGameOverContinueTest(unittest.TestCase):
             "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
             "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
         }
-        profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        profile = bootstrap_profile()
         catalog = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0), profile, BootstrapState(self.state_path),
             hunting_catalog=catalog, daily_quests=True,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
         self.addCleanup(self.stop_server)
         self.server.state.create_account(self.token, self.account_id, {
             "coins": 14_722, "energy": 0, "freeEnergy": 19, "worldMapNo": 0,
@@ -633,20 +583,13 @@ class DailyQuestGameOverContinueTest(unittest.TestCase):
             self.server.state._persist_locked()
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def post(self, route: str, request_id: str, fields: list) -> tuple:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "POST", f"{route}?otk={self.token}&requestID={request_id}",
-            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        return post(
+            self.server, route, request_id, urlencode(fields), token=self.token,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
 
     def account(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]

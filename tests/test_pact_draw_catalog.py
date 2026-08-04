@@ -4,9 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import json
-
 from liminal_gate.pact_draw_catalog import PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog
+from tests.support import write_json
 
 
 class PactDrawCatalogTest(unittest.TestCase):
@@ -97,6 +96,6 @@ duplicate_skill_boost = 5
         ):
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "characters.json"
-                path.write_text(json.dumps(document), encoding="utf-8")
+                write_json(path, document)
                 with self.assertRaises(PactDrawCatalogError):
                     load_character_rarity(path)
