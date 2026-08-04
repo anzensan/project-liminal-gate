@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import struct
 from urllib.parse import urlsplit
 import zipfile
 
@@ -97,10 +98,16 @@ ARM64_SCUDO_ALLOCATOR_PATCHES = (
 # completed bind: an action string that resolves to nothing makes `bindService`
 # return false, and the callback never fires.
 #
-# Every action below shares a 23-byte prefix, and the inert replacement is the
-# same 23 bytes, so each edit is one fixed-length prefix rewrite with no dex
-# reflow. Nothing is lost: this is an offline preservation build, and Play
-# Games, the ads SDK, Google auth, and Nearby have no live service to reach.
+# Only the final byte of each action is rewritten, and `_google_service_patches`
+# proves the result still sorts between its neighbours before emitting anything.
+# That check is the point: a dex `string_ids` table is *sorted*, and the runtime
+# verifier rejects one that is not. Editing bytes in place preserves every
+# offset in the file but not the table's order, so a replacement that changes an
+# early byte — say rewriting the shared `com.google.android.gms.` prefix — loads
+# nowhere and takes the whole process down before any game code runs.
+#
+# Nothing is lost: this is an offline preservation build, and Play Games, the
+# ads SDK, Google auth, and Nearby have no live service to reach.
 #
 # `com.google.android.gms.common.internal.service.ICommonService` and
 # `.ICommonCallbacks` are deliberately absent. They are AIDL interface
@@ -109,7 +116,13 @@ ARM64_SCUDO_ALLOCATOR_PATCHES = (
 CLIENT_DEX_MEMBER = "classes.dex"
 FINAL_CLIENT_DEX_SHA256 = "9526a62b2e5fcea2c3d701dd678ad8fe4fd41d755805ee114a589f18f875c898"
 GOOGLE_SERVICE_PREFIX = b"com.google.android.gms."
-INERT_SERVICE_PREFIX = b"org.liminalgate.unused."
+#: Replaces each action's last byte. No GMS action ends this way, so the Intent
+#: resolves to nothing; `_` also sorts above every letter, which is what keeps
+#: the rewritten string ahead of the one it already preceded.
+INERT_ACTION_BYTE = b"_"
+#: `string_ids_size`, `string_ids_off`: the two fields at this fixed header
+#: offset in every dex version this client ships.
+DEX_STRING_IDS_HEADER_OFFSET = 56
 GOOGLE_SERVICE_BIND_ACTIONS = (
     b"com.google.android.gms.ads.identifier.service.PERSISTENT_START",
     b"com.google.android.gms.ads.identifier.service.START",
@@ -130,15 +143,29 @@ GOOGLE_SERVICE_BIND_ACTIONS = (
 )
 
 
-def _google_service_patches(source_apk: Path) -> list[dict[str, object]]:
-    """Locate each bind action in the reviewed dex and rewrite only its prefix.
+def _dex_string_table(data: bytes) -> list[tuple[int, bytes]]:
+    """Every dex string as `(offset of its bytes, its bytes)`, in table order.
 
-    Offsets are searched rather than recorded so the digest guard above is the
-    single source of truth about which dex this applies to; a hardcoded table
-    could disagree with it silently. Each action must appear exactly once, which
-    is what makes an offset rewrite safe: the same 23-byte prefix occurs
-    hundreds of times elsewhere in this dex as class names, and none of those
-    are touched.
+    The table is sorted, and the runtime enforces that. Reading it is what lets
+    an edit be checked against the order rather than assumed safe.
+    """
+    size, offset = struct.unpack_from("<II", data, DEX_STRING_IDS_HEADER_OFFSET)
+    table = []
+    for start in struct.unpack_from(f"<{size}I", data, offset):
+        cursor = start
+        while data[cursor] & 0x80:  # ULEB128 length, then MUTF-8 bytes and a NUL
+            cursor += 1
+        cursor += 1
+        table.append((cursor, data[cursor:data.index(b"\0", cursor)]))
+    return table
+
+
+def _google_service_patches(source_apk: Path) -> list[dict[str, object]]:
+    """Rewrite each bind action's last byte, proving the table stays sorted.
+
+    Offsets are read from the dex rather than recorded, so the digest guard is
+    the single source of truth about which dex this applies to; a hardcoded
+    table could disagree with it silently.
     """
     dex_sha256 = _sha256_member(source_apk, CLIENT_DEX_MEMBER)
     if dex_sha256 != FINAL_CLIENT_DEX_SHA256:
@@ -148,20 +175,36 @@ def _google_service_patches(source_apk: Path) -> list[dict[str, object]]:
         )
     with zipfile.ZipFile(source_apk) as archive:
         data = archive.read(CLIENT_DEX_MEMBER)
+    table = _dex_string_table(data)
+    positions = {value: index for index, (_offset, value) in enumerate(table)}
+    known = set(positions)
     patches: list[dict[str, object]] = []
     for action in GOOGLE_SERVICE_BIND_ACTIONS:
         if not action.startswith(GOOGLE_SERVICE_PREFIX):
             raise PlanGenerationError(f"bind action does not carry the expected prefix: {action!r}")
-        first = data.find(action)
-        if first < 0 or data.find(action, first + 1) >= 0:
+        index = positions.get(action)
+        if index is None or index in (0, len(table) - 1):
+            raise PlanGenerationError(f"reviewed dex must contain {action.decode()} as a string")
+        previous, following = table[index - 1][1], table[index + 1][1]
+        replacement = action[:-1] + INERT_ACTION_BYTE
+        # Byte order equals the dex's UTF-16 order only while all three strings
+        # are ASCII. Requiring the *original* to satisfy the same comparison
+        # proves that here, and fails closed on a neighbour where it would not.
+        if not previous < action < following:
             raise PlanGenerationError(
-                f"reviewed dex must contain exactly one {action.decode()}"
+                f"cannot order-check {action.decode()} against its neighbours in the reviewed dex"
             )
+        if not previous < replacement < following or replacement in known:
+            raise PlanGenerationError(
+                f"replacing {action.decode()} would leave the dex string table unsorted; "
+                "the runtime rejects that dex outright"
+            )
+        known.add(replacement)
         patches.append({
             "member": CLIENT_DEX_MEMBER,
-            "offset": first,
-            "expected_hex": GOOGLE_SERVICE_PREFIX.hex(),
-            "replacement_hex": INERT_SERVICE_PREFIX.hex(),
+            "offset": table[index][0] + len(action) - 1,
+            "expected_hex": action[-1:].hex(),
+            "replacement_hex": INERT_ACTION_BYTE.hex(),
             "repair_dex_header": True,
         })
     return patches

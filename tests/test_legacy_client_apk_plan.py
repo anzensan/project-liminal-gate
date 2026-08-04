@@ -22,7 +22,8 @@ from liminal_gate.legacy_client_apk_plan import (
     FINAL_CLIENT_DEX_SHA256,
     GOOGLE_SERVICE_BIND_ACTIONS,
     GOOGLE_SERVICE_PREFIX,
-    INERT_SERVICE_PREFIX,
+    INERT_ACTION_BYTE,
+    _dex_string_table,
     _google_service_patches,
     IAP_MODAL_PATCHES,
     TERMS_CONFIRMATION_PATCHES,
@@ -164,6 +165,26 @@ class LegacyClientApkPlanTest(unittest.TestCase):
         self.assertNotEqual(bytes.fromhex(expected), patched[offset:offset + len(bytes.fromhex(expected))])
 
 
+#: A real dex has thousands of strings, so no patched action is ever the first
+#: or last entry. These keep the minimal fixtures honest about that.
+DEX_SENTINELS = (b"!first", b"~last")
+
+
+def _dex(strings: list[bytes]) -> bytes:
+    """A minimal dex whose string_ids table is sorted, as the format requires."""
+    ordered = sorted({*strings, *DEX_SENTINELS})
+    header = bytearray(112)
+    header[0:8] = b"dex\n035\0"
+    ids_offset = len(header)
+    data_offset = ids_offset + 4 * len(ordered)
+    blobs, offsets = bytearray(), []
+    for value in ordered:
+        offsets.append(data_offset + len(blobs))
+        blobs += bytes([len(value)]) + value + b"\0"   # ULEB128 length under 128
+    struct.pack_into("<II", header, 56, len(ordered), ids_offset)
+    return bytes(header) + struct.pack(f"<{len(ordered)}I", *offsets) + bytes(blobs)
+
+
 class GoogleServiceBindPatchTest(unittest.TestCase):
     """The opt-in patch that makes Play Services binds unresolvable.
 
@@ -177,21 +198,15 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
         b"com.google.android.gms.common.internal.service.ICommonService",
         b"com.google.android.gms.common.internal.service.ICommonCallbacks",
     )
+    #: An unrelated class name sharing the 23-byte prefix, which must survive.
+    BYSTANDER = b"com.google.android.gms.common.api.internal.LifecycleCallback"
 
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary_directory.cleanup)
         self.root = Path(self.temporary_directory.name)
-        self.source = self.root / "source.apk"
-        # A dex-shaped fixture holding every action once, the two descriptors,
-        # and an unrelated class name sharing the same 23-byte prefix.
-        body = b"\0".join((
-            *GOOGLE_SERVICE_BIND_ACTIONS, *self.DESCRIPTORS,
-            b"com.google.android.gms.common.api.internal.LifecycleCallback",
-        ))
-        self.dex = b"dex\n035\0" + b"\0" * 24 + body
-        with zipfile.ZipFile(self.source, "w") as archive:
-            archive.writestr("classes.dex", self.dex)
+        self.dex = _dex([*GOOGLE_SERVICE_BIND_ACTIONS, *self.DESCRIPTORS, self.BYSTANDER])
+        self.source = self._apk("source.apk", self.dex)
         self.digest = patch(
             "liminal_gate.legacy_client_apk_plan._sha256_member",
             side_effect=lambda apk, member: (
@@ -201,29 +216,58 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
         self.digest.start()
         self.addCleanup(self.digest.stop)
 
-    def test_every_action_is_rewritten_exactly_once(self) -> None:
+    def _apk(self, name: str, dex: bytes) -> Path:
+        path = self.root / name
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr(CLIENT_DEX_MEMBER, dex)
+        return path
+
+    def _apply(self, dex: bytes, patches: list[dict]) -> bytes:
+        patched = bytearray(dex)
+        for item in patches:
+            offset = item["offset"]
+            expected = bytes.fromhex(item["expected_hex"])
+            self.assertEqual(expected, patched[offset:offset + len(expected)])
+            patched[offset:offset + len(expected)] = bytes.fromhex(item["replacement_hex"])
+        return bytes(patched)
+
+    def test_every_action_becomes_a_single_byte_edit(self) -> None:
         patches = _google_service_patches(self.source)
         self.assertEqual(len(GOOGLE_SERVICE_BIND_ACTIONS), len(patches))
         self.assertEqual({CLIENT_DEX_MEMBER}, {item["member"] for item in patches})
         self.assertEqual(len(patches), len({item["offset"] for item in patches}))
         for item in patches:
-            self.assertEqual(GOOGLE_SERVICE_PREFIX.hex(), item["expected_hex"])
-            self.assertEqual(INERT_SERVICE_PREFIX.hex(), item["replacement_hex"])
+            self.assertEqual(1, len(bytes.fromhex(item["expected_hex"])))
+            self.assertEqual(INERT_ACTION_BYTE.hex(), item["replacement_hex"])
             self.assertTrue(item["repair_dex_header"])
 
-    def test_the_replacement_is_the_same_length_so_the_dex_cannot_reflow(self) -> None:
-        self.assertEqual(len(GOOGLE_SERVICE_PREFIX), len(INERT_SERVICE_PREFIX))
+    def test_the_patched_string_table_is_still_sorted(self) -> None:
+        """The dex string table is sorted and the runtime enforces that.
 
-    def test_applying_it_clears_the_actions_and_spares_the_descriptors(self) -> None:
-        patched = bytearray(self.dex)
-        for item in _google_service_patches(self.source):
-            offset = item["offset"]
-            patched[offset:offset + len(GOOGLE_SERVICE_PREFIX)] = INERT_SERVICE_PREFIX
+        An edit that preserves every offset can still move a string's sort
+        position, and the resulting dex is rejected outright — the app dies
+        before any game code runs.
+        """
+        patched = self._apply(self.dex, _google_service_patches(self.source))
+        values = [value for _offset, value in _dex_string_table(patched)]
+        self.assertEqual(sorted(values), values)
+
+    def test_refuses_an_edit_that_would_unsort_the_table(self) -> None:
+        action = b"com.google.android.gms.games.service.START"
+        # Sorts after the action but before its rewritten form, so the edit
+        # would jump the neighbour.
+        blocker = action + b"X"
+        source = self._apk("blocked.apk", _dex([*GOOGLE_SERVICE_BIND_ACTIONS, blocker]))
+        with self.assertRaisesRegex(PlanGenerationError, "unsorted"):
+            _google_service_patches(source)
+
+    def test_applying_it_clears_the_actions_and_spares_everything_else(self) -> None:
+        patched = self._apply(self.dex, _google_service_patches(self.source))
         for action in GOOGLE_SERVICE_BIND_ACTIONS:
             self.assertNotIn(action, patched)
         for descriptor in self.DESCRIPTORS:
             self.assertIn(descriptor, patched, "rewriting a binder descriptor would break the handshake")
-        self.assertIn(b"com.google.android.gms.common.api.internal.LifecycleCallback", patched)
+        self.assertIn(self.BYSTANDER, patched)
 
     def test_refuses_a_dex_that_was_not_reviewed(self) -> None:
         self.digest.stop()
@@ -232,12 +276,10 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
                 _google_service_patches(self.source)
         self.digest.start()
 
-    def test_refuses_a_dex_holding_an_action_twice(self) -> None:
-        doubled = self.root / "doubled.apk"
-        with zipfile.ZipFile(doubled, "w") as archive:
-            archive.writestr(CLIENT_DEX_MEMBER, self.dex + b"\0" + GOOGLE_SERVICE_BIND_ACTIONS[0])
-        with self.assertRaisesRegex(PlanGenerationError, "exactly one"):
-            _google_service_patches(doubled)
+    def test_refuses_a_dex_missing_an_action(self) -> None:
+        short = self._apk("short.apk", _dex([*GOOGLE_SERVICE_BIND_ACTIONS[1:], *self.DESCRIPTORS]))
+        with self.assertRaisesRegex(PlanGenerationError, "must contain"):
+            _google_service_patches(short)
 
     def test_the_two_binder_descriptors_are_not_in_the_patch_set(self) -> None:
         """Stated once here so shortening the set cannot quietly include them."""

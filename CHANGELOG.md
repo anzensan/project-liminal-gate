@@ -26,15 +26,18 @@
   Unity's `java.lang.reflect.Proxy` for `ServiceConnection` is handed `default`
   methods rather than inheriting them, so the 2017 bridge is asked for a
   signature it does not know. The bridge is Unity's and cannot be rebuilt, but
-  the crash needs a *completed* bind, so the flag rewrites the client's 16 Play
-  Services bind actions to an inert same-length prefix and the bind resolves to
+  the crash needs a *completed* bind, so the flag rewrites the final byte of
+  each of the client's 16 Play Services bind actions and the Intent resolves to
   nothing. Play Games, the ads SDK, Google auth, and Nearby have no live service
   to reach. The two `ICommonService`/`ICommonCallbacks` binder descriptors are
   deliberately untouched. Available on both routes, since both install the same
   client. The patch plan schema is version 2: a dex edit invalidates the
   `checksum` the runtime enforces and the `signature` ART reports as
   `dex-id-...` and caches against, so patches declare `repair_dex_header` and
-  both fields are recomputed.
+  both fields are recomputed. A dex `string_ids` table is also *sorted*, and an
+  in-place edit preserves every offset but not the order, so plan generation
+  refuses any replacement that would not still sort between its neighbours —
+  an unsorted table is rejected by the runtime and the app dies at load.
   **Off by default, and it should not stay that way.** It rests on one report
   from one Samsung Galaxy S24 FE, and the patch itself is unconfirmed on Android
   16 hardware — what is confirmed is that the same reporter's client runs
