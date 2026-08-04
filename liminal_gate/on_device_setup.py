@@ -550,6 +550,7 @@ def report_preflight(checks: Sequence[Check]) -> int:
 def prepare_on_device_apk(
     apk: Path, resource_root: Path, data_directory: Path, host_source: Path,
     build_tools: Path | None, seed_state: bool, dummy_dll_dir: Path | None = None,
+    disable_google_services: bool = False,
 ) -> Path:
     """Prepare the combined APK using the assembly module and stable local signing key."""
     resource_root = tester_setup.resolve_resource_root(resource_root)
@@ -574,6 +575,7 @@ def prepare_on_device_apk(
     tester_setup.prepare_local_tester(
         source, resource_root, data_directory, LOOPBACK_PORT, build_tools,
         dummy_dll_dir=dummy_dll_dir, device_host=tester_setup.EMULATOR_LOOPBACK_HOST,
+        disable_google_services=disable_google_services,
     )
     catalogs = catalog_inputs(data_directory)
     public_data = public_data_inputs(data_directory)
@@ -581,7 +583,9 @@ def prepare_on_device_apk(
     # bytes before any combined-APK work and keeps both original ABIs intact.
     plan_path = work_directory / "loopback-patch-plan.json"
     plan_path.write_text(json.dumps(
-        generate_legacy_client_plan(source, f"http://{LOOPBACK_HOST}:{LOOPBACK_PORT}"),
+        generate_legacy_client_plan(
+            source, f"http://{LOOPBACK_HOST}:{LOOPBACK_PORT}", disable_google_services,
+        ),
         sort_keys=True,
     ), encoding="utf-8")
     patched = work_directory / "patched-base.apk"
@@ -653,6 +657,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prepare-only", action="store_true", help="build the private APK but do not install or launch it")
     parser.add_argument("--seed-state", action="store_true", help="include the optional first-install-only seed state")
     parser.add_argument("--replace-existing", action="store_true", help="allow replacing a differently signed install; this clears its app data")
+    parser.add_argument(
+        "--disable-google-services", action="store_true",
+        help=(
+            "make the client's Google Play Services bind actions unresolvable. Needed on Android "
+            "versions whose ServiceConnection interface the 2017 client cannot proxy, where the app "
+            "crashes on launch with NoSuchMethodError in bitter.jnibridge"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -678,6 +690,7 @@ def main() -> int:
         signed = prepare_on_device_apk(
             args.apk, args.resource_root, args.data_dir, args.host_source,
             args.build_tools, args.seed_state, args.dummy_dll_dir,
+            args.disable_google_services,
         )
         print(f"Prepared private on-device APK: {signed}")
         if device is None:

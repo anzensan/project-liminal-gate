@@ -16,9 +16,10 @@ port, Wi-Fi routing, or firewall access.
 | The device check reports API below 24, no supported ABI, or less than 4 GiB free | Use an API 24+ device with `arm64-v8a` or `armeabi-v7a`, or free space before building. The full validated package is roughly 1.0 GiB and setup deliberately requires more installation headroom. |
 | `on-device setup failed: Android host Gradle build failed` | Keep the complete trailing Gradle message. Rerun `python3 -m liminal_gate.on_device_setup --check --device YOUR_ADB_SERIAL`; confirm Android SDK Platform 35 and Java 17–23 are reported ready. The host source must exist at `android-host/` unless `--host-source` names another complete copy. |
 | A large APK install appears successful but the package is absent | Update the checkout and use `liminal_gate.on_device_setup`; it forces ADB `--no-incremental` because incremental installation falsely reported success for the validated 1-GiB package. Do not substitute a manual incremental install. |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` or `signatures do not match` | The installed app and this checkout use different local signing keys. **Do not use `--replace-existing` if the installed app has progress you need:** uninstalling clears its app-private save, and no supported export exists yet. Use the original checkout/data directory and key, or treat the installed save as non-recoverable before replacing it. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` or `signatures do not match` | The installed app and this checkout use different local signing keys. **Do not use `--replace-existing` if the installed app has progress you need:** uninstalling clears its app-private save. Export it first with `python3 -m liminal_gate.on_device_state export --device YOUR_ADB_SERIAL`, then restore it afterwards — a cleared install needs [`adopt`](saves.md#the-on-device-save) for the client's regenerated UUID. Otherwise use the original checkout/data directory and key. |
 | The app stays at **Starting local service…** and then shows **Local service failed to start.** | Tap **Copy diagnostics**, preserve the copied text, then tap **Retry** once. The gate waits up to about 60 seconds for a matching loopback build ID. Do not start a LAN server; this package only uses `127.0.0.1:8002`. If retry fails, report the copied diagnostics and the exact setup command. |
 | The app says **Unity player is unavailable in this package.** | The embedded server passed readiness, but the combined package does not contain the expected Unity player. Update the checkout, rerun the complete build from the reviewed source APK, and reinstall with the same signing key. Do not replace the launcher or assemble host/client APKs by hand. |
+| The app closes instantly on launch, with `NoSuchMethodError` / `onServiceConnected` / `bitter.jnibridge` in the crash log | Rebuild with `--disable-google-services`. See [The app crashes instantly on recent Android](#the-app-crashes-instantly-on-recent-android) below; this affects both routes. |
 | The game later shows Network Error | Force-stop and reopen the app so the embedded service starts in a new process. There is no computer-side server or changing LAN address to repair. If the startup gate fails, copy its diagnostics; if Unity starts and only a game action fails, report the last action and a privacy-reviewed log rather than guessing an endpoint response. |
 
 The generated package is `user-data/on-device-liminal-gate.apk`. A successful
@@ -89,6 +90,39 @@ using `--replace-existing`.
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the [optional dependency](install-tools.md#optional-the-python-image-extraction-dependency) if you want the images. |
 | A request fails after Chapter 9 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
 | An optional area (Hunting, Arena, Tower) is empty or greyed out | Expected on a new account: these open on story progress. See [What works right now](scope-and-status.md#optional-areas-open-on-story-progress-so-most-are-locked-at-first). |
+
+### The app crashes instantly on recent Android
+
+The crash log names `NoSuchMethodError`, `onServiceConnected`, and
+`bitter.jnibridge`, and the app closes before it reaches the title screen. The
+server log shows no incoming connection, because the client never gets that far.
+
+Rebuild with `--disable-google-services` and reinstall:
+
+```sh
+python3 -m liminal_gate.on_device_setup --device YOUR_ADB_SERIAL --disable-google-services
+```
+
+For the separate-server route, pass the same flag to
+`python3 -m liminal_gate.tester_setup`. Both routes install the same client, so
+both are affected.
+
+**What it does.** The 2017 client's Unity bridge cannot dispatch an interface
+method Android 16 added to `ServiceConnection`, and it fails the moment a Google
+Play Services bind completes. The flag rewrites the client's 16 Play Services
+bind actions so they resolve to nothing, so the bind never completes. Play
+Games, ads, Google auth, and Nearby are all dead services for this game; nothing
+you can use is lost.
+
+The flag is off by default because it edits client bytes no other supported path
+touches and it is not yet confirmed on Android 16 hardware. Because the edit
+changes the build ID, `/healthz` identifies which variant an install is running
+— worth quoting in a bug report.
+
+**To confirm the diagnosis before rebuilding**, disable Google Play Services in
+Android's app settings and relaunch. If the game starts, this is the fault. That
+is a heavy, device-wide change that affects your other apps; re-enable it once
+you have a patched build.
 
 ## Graphics and sound
 

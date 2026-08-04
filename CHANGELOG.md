@@ -19,6 +19,29 @@
   standard rewards: its item and Companion identities remain a distinct event
   policy to audit.
 
+- **`--disable-google-services` gets the client past an Android 16 launch
+  crash.** The 2017 client dies on `NoSuchMethodError` in `bitter.jnibridge` the
+  moment a Google Play Services bind completes: Android 16 added an
+  `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload, and
+  Unity's `java.lang.reflect.Proxy` for `ServiceConnection` is handed `default`
+  methods rather than inheriting them, so the 2017 bridge is asked for a
+  signature it does not know. The bridge is Unity's and cannot be rebuilt, but
+  the crash needs a *completed* bind, so the flag rewrites the client's 16 Play
+  Services bind actions to an inert same-length prefix and the bind resolves to
+  nothing. Play Games, the ads SDK, Google auth, and Nearby have no live service
+  to reach. The two `ICommonService`/`ICommonCallbacks` binder descriptors are
+  deliberately untouched. Available on both routes, since both install the same
+  client. The patch plan schema is version 2: a dex edit invalidates the
+  `checksum` the runtime enforces and the `signature` ART reports as
+  `dex-id-...` and caches against, so patches declare `repair_dex_header` and
+  both fields are recomputed.
+  **Off by default, and it should not stay that way.** It rests on one report
+  from one Samsung Galaxy S24 FE, and the patch itself is unconfirmed on Android
+  16 hardware — what is confirmed is that the same reporter's client runs
+  normally with Play Services disabled device-wide, which is the runtime
+  equivalent. Make it the default once a patched build is confirmed on Android
+  16 *and* one clean Android 14/15 run shows no regression.
+
 - **The on-device save can be moved off the device.**
   `python3 -m liminal_gate.on_device_state export|import|update --device SERIAL`
   reaches the packaged Android build's save through the embedded server's new

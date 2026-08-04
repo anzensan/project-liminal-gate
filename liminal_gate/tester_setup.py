@@ -1254,6 +1254,7 @@ def prepare_local_tester(
     dummy_dll_dir: Path | None = None, event_catalog: Path | None = None,
     device_host: str = EMULATOR_LOOPBACK_HOST,
     dump_cs: Path | None = None, prompt_for_key_password: bool = False,
+    disable_google_services: bool = False,
 ) -> Path:
     """Build the redirected, locally signed APK and return its path."""
     validate_port(port)
@@ -1322,7 +1323,7 @@ def prepare_local_tester(
         except PactBannerImportError as error:
             print(f"Pact banner preparation skipped: {error}")
         prepare_coin_creeps_banners(apk, resource_root, data_directory / "public_data")
-        plan = generate_legacy_client_plan(apk, server_origin)
+        plan = generate_legacy_client_plan(apk, server_origin, disable_google_services)
         plan_path = data_directory / "local-server-plan.json"
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         unsigned = data_directory / "liminal-gate-unsigned.apk"
@@ -1633,6 +1634,14 @@ def parse_args() -> argparse.Namespace:
         "--prompt-key-password", dest="prompt_key_password", action="store_true",
         help="choose the local test-key password yourself instead of having one generated",
     )
+    parser.add_argument(
+        "--disable-google-services", action="store_true",
+        help=(
+            "make the client's Google Play Services bind actions unresolvable. Needed on Android "
+            "versions whose ServiceConnection interface the 2017 client cannot proxy, where the app "
+            "crashes on launch with NoSuchMethodError in bitter.jnibridge"
+        ),
+    )
     parser.add_argument("--prepare-only", action="store_true", help="build the APK but do not install it or start the server")
     parser.add_argument(
         "--replace-existing", action="store_true",
@@ -1747,6 +1756,7 @@ def main() -> int:
             args.apk, resource_root, args.data_dir, args.port, args.build_tools,
             args.dummy_dll_dir, options.event_catalog, args.device_host,
             dump_cs=args.dump_cs, prompt_for_key_password=args.prompt_key_password,
+            disable_google_services=args.disable_google_services,
         )
         if device is None:
             return 0

@@ -91,6 +91,28 @@ value, unrelated mutations can share one; the body hash therefore scopes the
 identity, and the same request ID with a different body is evaluated as a
 distinct request. The file is not a session or cookie store.
 
+## Android host compatibility
+
+The client is a 2017 Unity build and carries that engine's own Android
+compatibility boundary, which is separate from the protocol slice above.
+
+| Android target | State | Detail |
+| --- | --- | --- |
+| API 34 (Android 14) emulator, Google Play image with Translated ABI | Confirmed working | Reaches the title screen and streams local resources. Reported by an operator on a Pixel 4 image. |
+| API 29 (Android 10) emulator | Cannot install | `INSTALL_FAILED_NO_MATCHING_ABIS`: that image has no ARM translation. Use a Translated ABI image. |
+| Android 16, physical (Samsung Galaxy S24 FE) | Crashes on launch without `--disable-google-services` | Android 16 added an `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload to `ServiceConnection`. Unity's `bitter.jnibridge` proxies that interface, and a `java.lang.reflect.Proxy` dispatches `default` methods to its handler rather than inheriting them, so the first completed Google Play Services bind asks the 2017 bridge for a signature it does not know and it throws `NoSuchMethodError` on the main thread. The bridge is Unity's and cannot be rebuilt. |
+
+`--disable-google-services` rewrites the client's 16 Play Services bind actions
+so they resolve to nothing, which prevents the bind from completing and so
+prevents the crash. It is opt-in: one reporter, one device, and the patch itself
+is not yet confirmed on Android 16 hardware. Nothing is given up — Play Games,
+the ads SDK, Google auth, and Nearby have no live service to reach — and the
+same reporter established that the client runs normally with Google Play
+Services disabled device-wide, which is the runtime equivalent.
+
+This is an engine boundary, not a protocol one: it applies equally to the
+separate-server and self-hosted routes, because both install the same client.
+
 ## Evidence labels
 
 - Route names, method, status request order, minimal response shape, and the
