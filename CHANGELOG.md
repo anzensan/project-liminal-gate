@@ -91,6 +91,21 @@
 
 ### Fixed
 
+- **Guided setup could not unpack Google's command line tools on Windows**
+  (issue 38). `liminal_gate.doctor --install-missing` downloaded the archive,
+  verified it, and then failed with `could not unpack
+  commandlinetools-win-...zip: [Errno 2] No such file or directory` naming a
+  file it was in the middle of creating. The archive names both a directory and
+  the jar inside it `listenablefuture-9999.0-empty-to-avoid-conflict-with-guava`,
+  which spends 165 characters before the destination contributes any; unpacking
+  beneath a checkout in `Documents\GitHub` crossed Windows' 260-character path
+  limit, and Win32 reports that as a missing file. Extraction, and the moves and
+  deletions that follow it, now address the filesystem through the `\\?\` prefix
+  that lifts the limit, and the staging directory has been shortened by twelve
+  characters so the unprefixed path has room to spare as well. Archive members
+  are still checked against the plain destination before anything is written, so
+  nothing an archive may write has widened. Reported by @Cryo6325.
+
 - **Hunting and Daily Quest clears no longer reject the original client's
   rewards just because a reconstructed ceiling is incomplete.** The client
   executes these battles and reports their Coins, EXP, items, recruits, and
