@@ -4585,6 +4585,8 @@ def _parse_sell_companions(body: bytes, *, multiple: bool) -> list[int] | None:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
         return None
+    if len(pairs) == 2 and pairs[-1] == ("lastUpdate", "1"):
+        pairs = pairs[:-1]
     field = "sellList" if multiple else "inventoryID"
     if tuple(name for name, _ in pairs) != (field,):
         return None

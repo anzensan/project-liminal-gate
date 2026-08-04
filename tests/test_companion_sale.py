@@ -47,19 +47,22 @@ class CompanionSaleTest(unittest.TestCase):
                         {"iid": 3, "bid": 10, "lv": 1, "flag": 2, "chrID": 0},
                     ], "record": []},
                 })
-                status, first = post(server, "/gd/sell_buddy", "one", "inventoryID=1")
+                # The real client always appends lastUpdate to every POST body;
+                # see test_a_trailing_lastupdate_field_is_accepted below for the
+                # regression this once broke.
+                status, first = post(server, "/gd/sell_buddy", "one", "inventoryID=1&lastUpdate=1")
                 self.assertEqual(200, status)
                 self.assertEqual((True, 7, [2, 3], 0), (first["success"], first["coins"], [row["iid"] for row in first["buddyInfo"]["list"]], first["chrdata"][0]["buddy"]))
-                self.assertEqual((status, first), post(server, "/gd/sell_buddy", "one", "inventoryID=1"))
+                self.assertEqual((status, first), post(server, "/gd/sell_buddy", "one", "inventoryID=1&lastUpdate=1"))
                 # Reusing a spent requestID with a different body is answered on
                 # its own merits now.  This names a companion the account does
                 # not own, so it is refused for that reason and leaves the
                 # inventory intact for the locked and batch cases below.
-                status, reused = post(server, "/gd/sell_buddy", "one", "inventoryID=99")
+                status, reused = post(server, "/gd/sell_buddy", "one", "inventoryID=99&lastUpdate=1")
                 self.assertEqual((200, True, 2), (status, reused["success"], reused["cmdError"]))
-                status, locked = post(server, "/gd/sell_buddy", "two", "inventoryID=3")
+                status, locked = post(server, "/gd/sell_buddy", "two", "inventoryID=3&lastUpdate=1")
                 self.assertEqual((200, True, 2), (status, locked["success"], locked["cmdError"]))
-                status, batch = post(server, "/gd/sell_buddies", "three", "sellList=[2]")
+                status, batch = post(server, "/gd/sell_buddies", "three", "sellList=[2]&lastUpdate=1")
                 self.assertEqual((200, True, 12, [3]), (status, batch["success"], batch["coins"], [row["iid"] for row in batch["buddyInfo"]["list"]]))
             finally:
                 server.shutdown()
@@ -68,11 +71,51 @@ class CompanionSaleTest(unittest.TestCase):
 
             restarted, restarted_thread = start()
             try:
-                self.assertEqual((200, first), post(restarted, "/gd/sell_buddy", "one", "inventoryID=1"))
+                self.assertEqual((200, first), post(restarted, "/gd/sell_buddy", "one", "inventoryID=1&lastUpdate=1"))
             finally:
                 restarted.shutdown()
                 restarted_thread.join()
                 restarted.server_close()
+
+    def test_a_trailing_lastupdate_field_is_accepted(self) -> None:
+        """A real sell request was refused as unsupported_companion_sale.
+
+        The client sends `sellList`/`inventoryID` with a trailing `lastUpdate`
+        on every call, the same as every other endpoint. The parser demanded
+        that field alone, so every real sale -- one companion or a batch --
+        was refused with a 501 the client shows as a Network Error.
+        """
+        document = {"schema_version": 1, "provenance": "user-supplied", "coin_cap": 50, "masters": [{"companion_id": 10, "base_coins": 3}]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog_path = root / "companions.json"
+            catalog_path.write_text(json.dumps(document), encoding="utf-8")
+            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            catalog = load_companion_catalog(catalog_path)
+            server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(root / "state.json"), companion_catalog=catalog)
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                server.state.create_account("token", "account", {
+                    "coins": 0, "chrdata": [],
+                    "buddyInfo": {"list": [
+                        {"iid": 1, "bid": 10, "lv": 1, "flag": 0, "chrID": 0},
+                        {"iid": 2, "bid": 10, "lv": 1, "flag": 0, "chrID": 0},
+                    ], "record": []},
+                })
+                connection = HTTPConnection(*server.server_address)
+                connection.request(
+                    "POST", "/gd/sell_buddies?otk=token&requestID=all",
+                    body="sellList=[1,2]&lastUpdate=1",
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            self.assertEqual(200, response.status)
+            self.assertTrue(payload["success"], payload)
+            self.assertEqual([], payload["buddyInfo"]["list"])
 
 
 class BundledCompanionSaleRuntimeTest(unittest.TestCase):
