@@ -13,11 +13,19 @@ import hashlib
 import json
 from pathlib import Path
 import zipfile
+import zlib
 
 
-PATCH_PLAN_SCHEMA_VERSION = 1
+# Version 2 added `repair_dex_header`. The bump is not cosmetic: a version 2
+# plan read by a version 1 loader would apply the byte edits and silently skip
+# the header repair, producing a dex whose checksum no longer describes it.
+PATCH_PLAN_SCHEMA_VERSION = 2
 SIGNATURE_SUFFIXES = (".EC", ".RSA", ".DSA", ".SF")
 NATIVE_LIBRARY_PREFIX = "lib/"
+DEX_MAGIC_PREFIX = b"dex\n"
+DEX_HEADER_BYTES = 32
+DEX_CHECKSUM_OFFSET = 8
+DEX_SIGNATURE_OFFSET = 12
 
 
 class PatchPlanError(ValueError):
@@ -47,6 +55,10 @@ class BinaryPatch:
     offset: int
     expected: bytes
     replacement: bytes
+    #: Recompute this member's dex header after every edit to it is applied.
+    #: Declared per patch rather than detected from the member's magic, so a
+    #: plan states what it intends to rewrite instead of the applier guessing.
+    repair_dex_header: bool = False
 
 
 @dataclass(frozen=True)
@@ -146,9 +158,15 @@ def apply_patch_plan(
             if _member_abi(source_info.filename) in drop_abis:
                 continue
             data = source.read(source_info.filename)
+            repair_dex = False
             for patch in patches_by_member.get(source_info.filename, []):
                 data = _apply_patch(data, patch)
+                repair_dex = repair_dex or patch.repair_dex_header
                 seen_members.add(patch.member)
+            # Once, after every edit to this member: the header describes the
+            # whole file, so repairing it between patches would only be undone.
+            if repair_dex:
+                data = _repair_dex_header(data, source_info.filename)
             for aliases in aliases_by_member.get(source_info.filename, []):
                 data = _apply_text_asset_json_aliases(data, aliases)
                 seen_members.add(aliases.member)
@@ -174,7 +192,10 @@ def _parse_patch(value: object) -> BinaryPatch:
     replacement = _decode_hex(replacement_hex, "replacement_hex")
     if len(expected) != len(replacement):
         raise PatchPlanError("replacement_hex must have the same length as expected_hex")
-    return BinaryPatch(member, offset, expected, replacement)
+    repair = value.get("repair_dex_header", False)
+    if type(repair) is not bool:
+        raise PatchPlanError("repair_dex_header must be a boolean")
+    return BinaryPatch(member, offset, expected, replacement, repair)
 
 
 def _parse_text_asset_json_aliases(value: object) -> TextAssetJsonAliases:
@@ -223,6 +244,31 @@ def _apply_patch(data: bytes, patch: BinaryPatch) -> bytes:
     if end > len(data) or data[patch.offset:end] != patch.expected:
         raise PatchPlanError(f"patch expectation did not match {patch.member} at offset {patch.offset}")
     return data[:patch.offset] + patch.replacement + data[end:]
+
+
+def _repair_dex_header(data: bytes, member: str) -> bytes:
+    """Rewrite a patched dex file's identity and integrity header fields.
+
+    Two separate reasons, and both matter:
+
+    * `checksum` is an adler32 over everything after it, and the runtime does
+      check it.  An edited dex with a stale checksum is a rejected dex.
+    * `signature` is a SHA-1 over everything after it.  The runtime does not
+      validate it — the shipped client's own signature does not match a
+      recomputation — but it *is* the identity ART reports as `dex-id-...` and
+      caches compiled output against.  Leaving it would give an edited dex the
+      same identity as the original, so a device that had already run the
+      unpatched package could serve compiled code for bytes that no longer
+      exist.
+    """
+    if len(data) < DEX_HEADER_BYTES or not data.startswith(DEX_MAGIC_PREFIX):
+        raise PatchPlanError(f"repair_dex_header names {member}, which is not a dex file")
+    repaired = bytearray(data)
+    repaired[DEX_SIGNATURE_OFFSET:DEX_HEADER_BYTES] = hashlib.sha1(bytes(repaired[DEX_HEADER_BYTES:])).digest()
+    # Computed last: the checksum covers the signature written just above.
+    checksum = zlib.adler32(bytes(repaired[DEX_SIGNATURE_OFFSET:])) & 0xFFFFFFFF
+    repaired[DEX_CHECKSUM_OFFSET:DEX_SIGNATURE_OFFSET] = checksum.to_bytes(4, "little")
+    return bytes(repaired)
 
 
 def _apply_text_asset_json_aliases(data: bytes, patch: TextAssetJsonAliases) -> bytes:

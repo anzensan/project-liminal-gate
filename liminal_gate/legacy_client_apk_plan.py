@@ -86,6 +86,87 @@ ARM64_SCUDO_ALLOCATOR_PATCHES = (
 )
 
 
+# Optional, off by default. Unity 2017's `bitter.jnibridge` builds a
+# `java.lang.reflect.Proxy` for `ServiceConnection`, and a Proxy receives every
+# interface method through its InvocationHandler — including `default` ones,
+# whose implementations it does not inherit. Android 16 added the
+# `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload, so the
+# first Google Play Services bind to *complete* asks the 2017 bridge to dispatch
+# a signature it has never seen and it throws NoSuchMethodError on the main
+# thread. The bridge is Unity's and cannot be rebuilt, but the crash needs a
+# completed bind: an action string that resolves to nothing makes `bindService`
+# return false, and the callback never fires.
+#
+# Every action below shares a 23-byte prefix, and the inert replacement is the
+# same 23 bytes, so each edit is one fixed-length prefix rewrite with no dex
+# reflow. Nothing is lost: this is an offline preservation build, and Play
+# Games, the ads SDK, Google auth, and Nearby have no live service to reach.
+#
+# `com.google.android.gms.common.internal.service.ICommonService` and
+# `.ICommonCallbacks` are deliberately absent. They are AIDL interface
+# descriptors used by `Binder.attachInterface`, not bind actions; rewriting them
+# would corrupt the binder handshake rather than prevent a bind.
+CLIENT_DEX_MEMBER = "classes.dex"
+FINAL_CLIENT_DEX_SHA256 = "9526a62b2e5fcea2c3d701dd678ad8fe4fd41d755805ee114a589f18f875c898"
+GOOGLE_SERVICE_PREFIX = b"com.google.android.gms."
+INERT_SERVICE_PREFIX = b"org.liminalgate.unused."
+GOOGLE_SERVICE_BIND_ACTIONS = (
+    b"com.google.android.gms.ads.identifier.service.PERSISTENT_START",
+    b"com.google.android.gms.ads.identifier.service.START",
+    b"com.google.android.gms.ads.service.CACHE",
+    b"com.google.android.gms.ads.service.HTTP",
+    b"com.google.android.gms.ads.service.START",
+    b"com.google.android.gms.auth.api.accounttransfer.service.START",
+    b"com.google.android.gms.auth.api.credentials.service.START",
+    b"com.google.android.gms.auth.api.phone.service.SmsRetrieverApiService.START",
+    b"com.google.android.gms.auth.api.signin.service.START",
+    b"com.google.android.gms.auth.service.START",
+    b"com.google.android.gms.common.service.START",
+    b"com.google.android.gms.games.service.START",
+    b"com.google.android.gms.nearby.bootstrap.service.NearbyBootstrapService.START",
+    b"com.google.android.gms.nearby.connection.service.START",
+    b"com.google.android.gms.nearby.messages.service.NearbyMessagesService.START",
+    b"com.google.android.gms.signin.service.START",
+)
+
+
+def _google_service_patches(source_apk: Path) -> list[dict[str, object]]:
+    """Locate each bind action in the reviewed dex and rewrite only its prefix.
+
+    Offsets are searched rather than recorded so the digest guard above is the
+    single source of truth about which dex this applies to; a hardcoded table
+    could disagree with it silently. Each action must appear exactly once, which
+    is what makes an offset rewrite safe: the same 23-byte prefix occurs
+    hundreds of times elsewhere in this dex as class names, and none of those
+    are touched.
+    """
+    dex_sha256 = _sha256_member(source_apk, CLIENT_DEX_MEMBER)
+    if dex_sha256 != FINAL_CLIENT_DEX_SHA256:
+        raise PlanGenerationError(
+            "selected APK's client dex does not match the supported final client "
+            f"(member SHA-256 {dex_sha256}); refusing to rewrite bytes that were not reviewed"
+        )
+    with zipfile.ZipFile(source_apk) as archive:
+        data = archive.read(CLIENT_DEX_MEMBER)
+    patches: list[dict[str, object]] = []
+    for action in GOOGLE_SERVICE_BIND_ACTIONS:
+        if not action.startswith(GOOGLE_SERVICE_PREFIX):
+            raise PlanGenerationError(f"bind action does not carry the expected prefix: {action!r}")
+        first = data.find(action)
+        if first < 0 or data.find(action, first + 1) >= 0:
+            raise PlanGenerationError(
+                f"reviewed dex must contain exactly one {action.decode()}"
+            )
+        patches.append({
+            "member": CLIENT_DEX_MEMBER,
+            "offset": first,
+            "expected_hex": GOOGLE_SERVICE_PREFIX.hex(),
+            "replacement_hex": INERT_SERVICE_PREFIX.hex(),
+            "repair_dex_header": True,
+        })
+    return patches
+
+
 def _sha256_member(source_apk: Path, member: str) -> str:
     digest = hashlib.sha256()
     with zipfile.ZipFile(source_apk) as archive:
@@ -142,8 +223,16 @@ def normalize_server_origin(value: str) -> str:
     return origin
 
 
-def generate_legacy_client_plan(source_apk: Path, server_origin: str) -> dict[str, object]:
-    """Generate only local routing edits for a selected APK."""
+def generate_legacy_client_plan(
+    source_apk: Path, server_origin: str, disable_google_services: bool = False,
+) -> dict[str, object]:
+    """Generate only local routing edits for a selected APK.
+
+    `disable_google_services` additionally makes the client's Play Services bind
+    actions unresolvable. It is off by default: it edits client bytes that no
+    other supported path touches, and it exists for devices whose Android
+    version crashes on the bind. See `GOOGLE_SERVICE_BIND_ACTIONS`.
+    """
     origin = normalize_server_origin(server_origin)
     unity_sha256 = _sha256_member(source_apk, ARM64_UNITY_MEMBER)
     if unity_sha256 != FINAL_ARM64_UNITY_SHA256:
@@ -170,6 +259,8 @@ def generate_legacy_client_plan(source_apk: Path, server_origin: str) -> dict[st
             *ARM64_SCUDO_ALLOCATOR_PATCHES,
         )
     )
+    if disable_google_services:
+        plan["patches"].extend(_google_service_patches(source_apk))
     plan["text_asset_json_aliases"] = [COIN_CREEPS_BANNER_ALIASES]
     return plan
 
@@ -179,13 +270,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-apk", required=True, type=Path)
     parser.add_argument("--server-origin", required=True, help="for example: http://192.168.1.10:8642")
     parser.add_argument("--output-plan", required=True, type=Path)
+    parser.add_argument(
+        "--disable-google-services", action="store_true",
+        help="also make the client's Play Services bind actions unresolvable; needed on Android versions whose ServiceConnection interface the 2017 client cannot proxy",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
-        plan = generate_legacy_client_plan(args.source_apk, args.server_origin)
+        plan = generate_legacy_client_plan(
+            args.source_apk, args.server_origin, args.disable_google_services,
+        )
         args.output_plan.parent.mkdir(parents=True, exist_ok=True)
         args.output_plan.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     except (OSError, PlanGenerationError) as error:

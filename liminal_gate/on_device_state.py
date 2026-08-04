@@ -251,6 +251,7 @@ def update(args: argparse.Namespace) -> int:
     signed = prepare_on_device_apk(
         args.apk, args.resource_root, args.data_dir, args.host_source,
         args.build_tools, args.seed_state, args.dummy_dll_dir,
+        args.disable_google_services,
     )
     print(f"Prepared private on-device APK: {signed}")
     try:
@@ -301,6 +302,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     update_parser.add_argument(
         "--allow-missing-backup", action="store_true",
         help="update even though the installed build predates the save-transfer route and cannot be exported",
+    )
+    update_parser.add_argument(
+        "--disable-google-services", action="store_true",
+        help="rebuild with the client's Google Play Services bind actions made unresolvable",
     )
     return parser.parse_args(argv)
 

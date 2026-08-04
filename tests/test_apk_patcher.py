@@ -6,8 +6,10 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
+import zlib
 
 from liminal_gate.apk_patcher import (
+    PATCH_PLAN_SCHEMA_VERSION,
     PatchPlan,
     PatchPlanError,
     TextAssetJsonAliases,
@@ -35,7 +37,7 @@ class ApkPatcherTest(unittest.TestCase):
     def write_plan(self, source_sha256: str, expected_hex: str = "6265666f7265") -> Path:
         plan = self.root / "plan.json"
         plan.write_text(json.dumps({
-            "schema_version": 1,
+            "schema_version": PATCH_PLAN_SCHEMA_VERSION,
             "source_sha256": source_sha256,
             "patches": [{
                 "member": "assets/payload.dat",
@@ -114,7 +116,7 @@ class DropAbiTest(unittest.TestCase):
 
     def _plan(self, directory: Path, source: Path, patches: list[dict]) -> PatchPlan:
         document = {
-            "schema_version": 1,
+            "schema_version": PATCH_PLAN_SCHEMA_VERSION,
             "source_sha256": sha256_file(source),
             "patches": patches or [self.KEEPALIVE],
         }
@@ -176,3 +178,89 @@ class DropAbiTest(unittest.TestCase):
             apply_patch_plan(source, output, self._plan(root, source, []))
             with zipfile.ZipFile(source) as a, zipfile.ZipFile(output) as b:
                 self.assertEqual(set(a.namelist()), set(b.namelist()))
+
+
+def _dex(body: bytes) -> bytes:
+    """A minimal dex whose header fields are correct for its own contents."""
+    data = bytearray(b"dex\n035\0" + b"\0" * 24 + body)
+    data[12:32] = hashlib.sha1(bytes(data[32:])).digest()
+    data[8:12] = (zlib.adler32(bytes(data[12:])) & 0xFFFFFFFF).to_bytes(4, "little")
+    return bytes(data)
+
+
+class DexHeaderRepairTest(unittest.TestCase):
+    """Editing a dex invalidates its header; the plan must declare the repair."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.root = Path(self.temporary_directory.name)
+        self.source = self.root / "source.apk"
+        self.original = _dex(b"com.google.android.gms.games.service.START")
+        with zipfile.ZipFile(self.source, "w") as archive:
+            archive.writestr("classes.dex", self.original)
+            # Patchable at offset 0, so the repair is what fails, not the edit.
+            archive.writestr("assets/payload.dat", b"com.google.android.gms.but not a dex")
+
+    def _plan(self, member: str, repair: bool, offset: int = 32) -> Path:
+        plan = self.root / "plan.json"
+        plan.write_text(json.dumps({
+            "schema_version": PATCH_PLAN_SCHEMA_VERSION,
+            "source_sha256": sha256_file(self.source),
+            "patches": [{
+                "member": member,
+                "offset": offset,
+                "expected_hex": b"com.google.android.gms.".hex(),
+                "replacement_hex": b"org.liminalgate.unused.".hex(),
+                "repair_dex_header": repair,
+            }],
+        }), encoding="utf-8")
+        return plan
+
+    def _patched(self, member: str, repair: bool, offset: int = 32) -> bytes:
+        output = self.root / "out.apk"
+        output.unlink(missing_ok=True)
+        apply_patch_plan(self.source, output, load_patch_plan(self._plan(member, repair, offset)))
+        with zipfile.ZipFile(output) as archive:
+            return archive.read(member)
+
+    def test_repair_restores_the_checksum_and_changes_the_identity(self) -> None:
+        patched = self._patched("classes.dex", repair=True)
+        self.assertEqual(len(self.original), len(patched))
+        self.assertEqual(
+            zlib.adler32(patched[12:]) & 0xFFFFFFFF,
+            int.from_bytes(patched[8:12], "little"),
+            "the runtime checks this checksum; a stale one is a rejected dex",
+        )
+        self.assertEqual(hashlib.sha1(patched[32:]).digest(), patched[12:32])
+        self.assertNotEqual(
+            self.original[12:32], patched[12:32],
+            "ART caches compiled output against this field, so an edited dex needs a new identity",
+        )
+        self.assertIn(b"org.liminalgate.unused.games.service.START", patched)
+
+    def test_without_the_declaration_the_header_is_left_stale(self) -> None:
+        """The repair is opt-in per patch, so its absence must be observable."""
+        patched = self._patched("classes.dex", repair=False)
+        self.assertEqual(self.original[:32], patched[:32])
+        self.assertNotEqual(
+            zlib.adler32(patched[12:]) & 0xFFFFFFFF, int.from_bytes(patched[8:12], "little"),
+        )
+
+    def test_repair_refuses_a_member_that_is_not_a_dex(self) -> None:
+        with self.assertRaisesRegex(PatchPlanError, "not a dex file"):
+            self._patched("assets/payload.dat", repair=True, offset=0)
+
+    def test_repair_declaration_must_be_a_boolean(self) -> None:
+        plan = self.root / "bad.json"
+        plan.write_text(json.dumps({
+            "schema_version": PATCH_PLAN_SCHEMA_VERSION,
+            "source_sha256": sha256_file(self.source),
+            "patches": [{
+                "member": "classes.dex", "offset": 32,
+                "expected_hex": "00", "replacement_hex": "01",
+                "repair_dex_header": "yes",
+            }],
+        }), encoding="utf-8")
+        with self.assertRaisesRegex(PatchPlanError, "repair_dex_header must be a boolean"):
+            load_patch_plan(plan)
