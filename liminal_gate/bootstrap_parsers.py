@@ -265,6 +265,7 @@ def _parse_sell_companions(body: bytes, *, multiple: bool) -> list[int] | None:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
     except (UnicodeDecodeError, ValueError):
         return None
+    pairs = _drop_trailing_last_update(pairs)
     field = "sellList" if multiple else "inventoryID"
     if tuple(name for name, _ in pairs) != (field,):
         return None
