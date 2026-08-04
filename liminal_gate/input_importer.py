@@ -32,7 +32,7 @@ _REVIEWED_RESOURCE_CATEGORIES = (
 )
 
 
-class ImportError(ValueError):
+class InputImportError(ValueError):
     """User-supplied input cannot be safely inventoried."""
 
 
@@ -71,7 +71,7 @@ def build_import_manifest(
         manifest["resources"] = resources
     if reviewed_android_5_5_7:
         if resource_root is None:
-            raise ImportError("reviewed Android 5.5.7 import requires --resource-root")
+            raise InputImportError("reviewed Android 5.5.7 import requires --resource-root")
         _validate_reviewed_android_5_5_7(apk, resource_root.resolve(strict=True))
         manifest["reviewed_input"] = {
             "profile": REVIEWED_ANDROID_5_5_7_PROFILE,
@@ -105,11 +105,11 @@ def _inspect_apk(apk: Path) -> dict[str, Any]:
             for info in archive.infolist():
                 _validate_member_name(info.filename)
                 if info.filename in names:
-                    raise ImportError(f"duplicate APK member: {info.filename}")
+                    raise InputImportError(f"duplicate APK member: {info.filename}")
                 names.add(info.filename)
                 records.append({"name": info.filename, "size": info.file_size})
     except (OSError, zipfile.BadZipFile) as error:
-        raise ImportError("APK must be a readable ZIP archive") from error
+        raise InputImportError("APK must be a readable ZIP archive") from error
     digest = hashlib.sha256(
         json.dumps(records, separators=(",", ":"), sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -120,11 +120,11 @@ def _inspect_resources(
     resource_root: Path, hash_file: Callable[[Path], str] = sha256_file,
 ) -> dict[str, Any]:
     if not resource_root.is_dir():
-        raise ImportError("resource root must be a directory")
+        raise InputImportError("resource root must be a directory")
     records: list[dict[str, int | str]] = []
     for path in sorted(resource_root.rglob("*")):
         if path.is_symlink():
-            raise ImportError(f"resource root contains symbolic link: {path.name}")
+            raise InputImportError(f"resource root contains symbolic link: {path.name}")
         if path.is_file():
             records.append({
                 "path": path.relative_to(resource_root).as_posix(),
@@ -144,9 +144,9 @@ def _validate_reviewed_android_5_5_7(apk: Path, resource_root: Path) -> None:
             names = set(archive.namelist())
             missing = sorted(set(_REVIEWED_APK_MEMBERS) - names)
             if missing:
-                raise ImportError(f"APK is missing reviewed Android members: {', '.join(missing)}")
+                raise InputImportError(f"APK is missing reviewed Android members: {', '.join(missing)}")
     except (OSError, zipfile.BadZipFile) as error:
-        raise ImportError("APK must be a readable ZIP archive") from error
+        raise InputImportError("APK must be a readable ZIP archive") from error
     try:
         generate_plan(
             apk,
@@ -154,13 +154,13 @@ def _validate_reviewed_android_5_5_7(apk: Path, resource_root: Path) -> None:
             ((literal, b"x") for literal in _REVIEWED_METADATA_LITERALS),
         )
     except PlanGenerationError as error:
-        raise ImportError("APK does not match the reviewed routing-literal structure") from error
+        raise InputImportError("APK does not match the reviewed routing-literal structure") from error
     missing_categories = [
         category for category in _REVIEWED_RESOURCE_CATEGORIES
         if not (resource_root / category).is_dir()
     ]
     if missing_categories:
-        raise ImportError(
+        raise InputImportError(
             "resource root is missing reviewed Android categories: " + ", ".join(missing_categories)
         )
 
@@ -168,7 +168,7 @@ def _validate_reviewed_android_5_5_7(apk: Path, resource_root: Path) -> None:
 def _validate_member_name(name: str) -> None:
     path = PurePosixPath(name)
     if path.is_absolute() or ".." in path.parts or not name:
-        raise ImportError(f"unsafe APK member: {name!r}")
+        raise InputImportError(f"unsafe APK member: {name!r}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -190,7 +190,7 @@ def main() -> int:
             args.apk, args.resource_root, reviewed_android_5_5_7=args.reviewed_android_5_5_7,
         )
         output = write_import_manifest(args.output_dir, manifest)
-    except (ImportError, OSError) as error:
+    except (InputImportError, OSError) as error:
         raise SystemExit(f"input import failed: {error}") from error
     print(f"wrote local input manifest: {output}")
     return 0

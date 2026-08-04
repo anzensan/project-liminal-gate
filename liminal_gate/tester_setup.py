@@ -33,7 +33,7 @@ from liminal_gate.battledata_importer import (
     build_stage_metadata,
 )
 from liminal_gate.file_digests import DigestCache, count_files
-from liminal_gate.input_importer import ImportError, build_import_manifest, write_import_manifest
+from liminal_gate.input_importer import build_import_manifest, write_import_manifest
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError
 from liminal_gate.legacy_client_apk_plan import METADATA_MEMBER, generate_legacy_client_plan, normalize_server_origin
 from liminal_gate.master_strings import (

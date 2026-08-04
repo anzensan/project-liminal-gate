@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from liminal_gate import tester_setup, tool_install, toolchain
+from liminal_gate.android_entrypoint import LOOPBACK_HOST, LOOPBACK_PORT
 from liminal_gate.apk_patcher import apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import sign_apk
 from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
@@ -36,8 +37,6 @@ DEFAULT_APK = tester_setup.DEFAULT_APK
 DEFAULT_RESOURCES = tester_setup.DEFAULT_RESOURCES
 DEFAULT_DATA = tester_setup.DEFAULT_DATA
 DEFAULT_HOST_SOURCE = Path("android-host")
-LOOPBACK_HOST = "127.0.0.1"
-LOOPBACK_PORT = 8002
 HOST_ACTIVITY = "org.liminalgate.android.HostedActivity"
 MINIMUM_DEVICE_API = 24
 MINIMUM_DEVICE_FREE_BYTES = 4 * 1024**3
@@ -489,12 +488,13 @@ def preflight_checks(
     def tools() -> str:
         zipalign, apksigner = tester_setup.find_build_tools(build_tools)
         sdk = zipalign.parent.parent.parent
-        platform = sdk / "platforms" / "android-35" / "android.jar"
+        platform = sdk / "platforms" / f"android-{tool_install.ANDROID_PLATFORM_API}" / "android.jar"
         if not platform.is_file():
             raise OnDeviceSetupError(
-                f"Android SDK platform 35 is unavailable below {sdk}; install it with Android Studio"
+                f"Android SDK platform {tool_install.ANDROID_PLATFORM_API} is unavailable below {sdk};"
+                " install it with Android Studio"
             )
-        return f"{zipalign.parent} ({apksigner.name}); SDK {sdk} with platform 35"
+        return f"{zipalign.parent} ({apksigner.name}); SDK {sdk} with platform {tool_install.ANDROID_PLATFORM_API}"
 
     def keytool() -> str:
         return str(tester_setup.find_keytools()[0])
