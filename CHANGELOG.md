@@ -117,6 +117,20 @@
 
 ### Fixed
 
+- **`on_device_state` could not find the toolchain `doctor` had installed.**
+  `liminal_gate.doctor` and `liminal_gate.on_device_setup` both succeeded on a
+  machine where `on_device_state update` failed on a missing AArch64
+  disassembler — and earlier, on missing build tools and SDK platform — with no
+  flag able to correct it, since that command names only `--adb` and
+  `--build-tools`. The doctor records where it put each tool in
+  `user-data/toolchain.json`, and every launcher replays that record into its
+  own environment before its first resolver runs; this one never did. It was
+  the only entry point that missed the step, so the tools it needed were the
+  ones deliberately kept off `PATH` — the privately installed pinned NDK
+  `llvm-objdump` above all. `main` now replays the record ahead of everything
+  else, for `export` and `import` as well as `update`, and a test asserts that
+  ordering for all three.
+
 - **`guided derivations` reported FAIL inside an activated virtual environment
   after an install that had really succeeded.** The same check passed in a plain
   PowerShell window, which is the shape of the report. The Windows launcher
