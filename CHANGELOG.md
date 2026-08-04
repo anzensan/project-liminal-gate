@@ -142,6 +142,26 @@
 
 ### Fixed
 
+- **The stamina gauge read full over a meter the entry had already spent**
+  (issue 31). Quest settlements answered without `refillStartTime`, and to this
+  client that is not an omission: zero is its own representation of a meter that
+  refilled at the epoch, so a silent settlement and a full bar are the same
+  statement. A tester saw the bar return to full on leaving a cleared stage and
+  stay full across a relaunch, then watched the next entry refused as
+  insufficient against a gauge still showing maximum. The server's arithmetic
+  was never wrong: entry debited the meter correctly, the durable origin
+  survived restart, `GET /gd/userdata` reported it accurately, and the refusal
+  was correct. Only the settlement callbacks were silent. All three now restate
+  the post-clear origin — generic story and event, Hunting, and World Map
+  Special — which is the entry's own post-spend value everywhere except an
+  ordinary chapter boundary, where it is the full meter that boundary already
+  grants. The tutorial's Chapter 1 clears are unchanged: those stages charge
+  nothing, so a full bar is what their meter actually holds.
+  This widens three response shapes beyond what capture confirmed. The
+  justification is the same one behind the chapter-boundary refill already
+  documented as local policy: the server knows the meter and the client cannot
+  derive it, so declining to send it is a choice to let the bar go wrong.
+
 - **`on_device_state` could not find the toolchain `doctor` had installed.**
   `liminal_gate.doctor` and `liminal_gate.on_device_setup` both succeeded on a
   machine where `on_device_state update` failed on a missing AArch64

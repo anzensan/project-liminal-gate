@@ -445,6 +445,16 @@ Private inputs, captures, account state, and original assets remain excluded.
   `refillStartTime: 0.0`, the client's full-meter representation. The rule is
   replay- and restart-safe and excludes intermediate story stages, Hunting,
   events, and World Map Special; it is not a claim about historical rewards.
+- **Local policy over confirmed client meter semantics:** every quest
+  settlement reports the post-clear `refillStartTime`, which capture does not
+  show the retired service sending. The field defaults to zero and zero is the
+  client's assertion of a meter refilled at the epoch, so a settlement that
+  says nothing about the meter is read as one that says the meter is full — a
+  bar restored to maximum over stamina the entry had just spent, persisting
+  until the next start callback restated it. The server holds the only correct
+  value and the client cannot derive it, so this states it rather than leaving
+  the bar wrong. Chapter 1's tutorial clears stay on their captured shape:
+  those stages charge no stamina, so a full bar there is accurate.
 
 ## Account and mutation behavior
 
