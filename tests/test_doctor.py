@@ -65,6 +65,27 @@ class ArchiveTest(unittest.TestCase):
             with self.assertRaisesRegex(ToolInstallError, "unsupported archive type"):
                 tool_install.extract(archive, Path(temporary) / "unpacked")
 
+    def test_a_member_deeper_than_the_windows_path_limit_is_unpacked(self) -> None:
+        # The command line tools archive nests a guava placeholder whose
+        # directory and file name are each 58 characters, which put a checkout
+        # under Documents\GitHub past MAX_PATH and made setup fail on Windows
+        # with a claim that the file it was creating did not exist.
+        guava = "listenablefuture-9999.0-empty-to-avoid-conflict-with-guava"
+        member = f"cmdline-tools/lib/external/com/google/guava/{guava}/{guava}.jar"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = self._zip(root, {member: "placeholder"})
+            unpacked = tool_install.extract(archive, root / "unpacked")
+            self.assertTrue((unpacked / member).is_file())
+
+    def test_the_long_path_escape_is_applied_only_on_windows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "toolchain"
+            with patch.object(tool_install.os, "name", "posix"):
+                self.assertEqual(path, tool_install.long_path(path))
+            if os.name == "nt":
+                self.assertTrue(str(tool_install.long_path(path)).startswith("\\\\?\\"))
+
     def test_tar_symlink_escaping_the_destination_is_refused_by_compatibility_filter(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -215,15 +215,51 @@ def _restore_zip_modes(archive: zipfile.ZipFile, root: Path) -> None:
             target.chmod(stat.S_IMODE(mode))
 
 
+def long_path(path: Path) -> Path:
+    r"""Return `path` in the form Windows accepts beyond its 260 character limit.
+
+    Win32 refuses a longer path with `ENOENT`, which surfaces from an unpack as
+    the baffling claim that a file being *created* does not exist.  The `\\?\`
+    prefix opts individual calls out of that limit.  Google's command line tools
+    reach it unaided: the archive carries a `lib/external/com/google/guava/`
+    entry whose directory and file both spell out
+    `listenablefuture-9999.0-empty-to-avoid-conflict-with-guava`, which is 244
+    characters below a checkout before the checkout's own location is counted.
+
+    The prefix also suppresses all path normalisation, so what it is given must
+    be absolute and separator-clean already -- hence `resolve()`.  Archive
+    members are still vetted against the unprefixed root before extraction, so
+    this widens nothing an archive is permitted to write.
+    """
+    if os.name != "nt":
+        return path
+    resolved = path.resolve()
+    text = str(resolved)
+    if text.startswith("\\\\?\\"):
+        return resolved
+    # A UNC path spells the prefix differently: \\server\share becomes
+    # \\?\UNC\server\share rather than growing a second pair of backslashes.
+    if text.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + text[2:])
+    return Path("\\\\?\\" + text)
+
+
 def extract(archive: Path, root: Path) -> Path:
-    """Unpack one `.zip` or `.tar.gz` beneath `root`, refusing unsafe members."""
-    root.mkdir(parents=True, exist_ok=True)
+    """Unpack one `.zip` or `.tar.gz` beneath `root`, refusing unsafe members.
+
+    Returns the root the members were written under, which on Windows carries
+    the long-path prefix.  A caller that goes on to read, move, or delete what
+    was unpacked should use the returned path rather than the one it passed, so
+    that a deep archive stays reachable to those calls too.
+    """
+    destination = long_path(root)
+    destination.mkdir(parents=True, exist_ok=True)
     try:
         if archive.name.endswith(".zip"):
             with zipfile.ZipFile(archive) as source:
                 _reject_unsafe(source.namelist(), root)
-                source.extractall(root)
-                _restore_zip_modes(source, root)
+                source.extractall(destination)
+                _restore_zip_modes(source, destination)
         elif archive.name.endswith((".tar.gz", ".tgz")):
             with tarfile.open(archive, "r:gz") as source:
                 _reject_unsafe(source.getnames(), root)
@@ -233,14 +269,14 @@ def extract(archive: Path, root: Path) -> Path:
                 # The parameter arrived during 3.11, so the earliest supported
                 # interpreters fall back to the member check just performed.
                 try:
-                    source.extractall(root, filter="data")
+                    source.extractall(destination, filter="data")
                 except TypeError:
-                    source.extractall(root, members=_safe_tar_members(source, root))
+                    source.extractall(destination, members=_safe_tar_members(source, root))
         else:
             raise ToolInstallError(f"unsupported archive type: {archive.name}")
     except (OSError, zipfile.BadZipFile, tarfile.TarError) as error:
         raise ToolInstallError(f"could not unpack {archive.name}: {error}") from error
-    return root
+    return destination
 
 
 def _safe_tar_members(source: tarfile.TarFile, root: Path) -> list[tarfile.TarInfo]:
@@ -327,8 +363,11 @@ def install_jdk(root: Path, host: Host) -> Path:
     download(link, destination, "JDK", checksum)
     unpacked = root / "jdk"
     if unpacked.exists():
-        shutil.rmtree(unpacked, ignore_errors=True)
+        shutil.rmtree(long_path(unpacked), ignore_errors=True)
     extract(destination, unpacked)
+    # Deliberately the unprefixed root: this path becomes `JAVA_HOME` and is
+    # handed to Gradle, and a `\\?\` prefix means nothing to a JVM launcher.
+    # The JDK's own layout is shallow, so it does not need the escape hatch.
     java_home = _java_home_within(unpacked)
     print(f"  JDK ready: {java_home}")
     return java_home
@@ -420,8 +459,15 @@ def install_command_line_tools(sdk_root: Path, root: Path, host: Host) -> Path:
         Checksum("sha1", digest),
     )
     home = command_line_tools_home(sdk_root)
-    with tempfile.TemporaryDirectory(dir=root) as staging:
-        unpacked = extract(archive, Path(staging) / "unpacked")
+    # Every character spent on the staging directory is a character the deepest
+    # archive member cannot afford, so the usual `tmp` prefix and an `unpacked`
+    # subdirectory are both dropped: the archive's own `cmdline-tools` top level
+    # already separates it from anything else here.  `TemporaryDirectory` is not
+    # used because it cleans up through the unprefixed path, which on Windows
+    # cannot delete what a long-path extraction wrote.
+    staging = Path(tempfile.mkdtemp(dir=root, prefix=""))
+    try:
+        unpacked = extract(archive, staging)
         source = unpacked / "cmdline-tools"
         if not source.is_dir():
             raise ToolInstallError("the command line tools archive did not contain a cmdline-tools directory")
@@ -430,8 +476,10 @@ def install_command_line_tools(sdk_root: Path, root: Path, host: Host) -> Path:
         # which would bury `bin/sdkmanager` one level deeper than it belongs, so
         # the destination has to be absent before the move.
         if home.exists():
-            shutil.rmtree(home, ignore_errors=True)
+            shutil.rmtree(long_path(home), ignore_errors=True)
         shutil.move(str(source), str(home))
+    finally:
+        shutil.rmtree(long_path(staging), ignore_errors=True)
     if not manager.is_file():
         raise ToolInstallError(f"the command line tools archive did not provide {manager}")
     _make_executable(manager)
@@ -598,7 +646,7 @@ def install_il2cpp_dumper(root: Path, host: Host) -> Path:
     )
     unpacked = root / "il2cpp-dumper"
     if unpacked.exists():
-        shutil.rmtree(unpacked, ignore_errors=True)
+        shutil.rmtree(long_path(unpacked), ignore_errors=True)
     extract(archive, unpacked)
     executable = unpacked / member
     if not executable.is_file():
@@ -658,7 +706,7 @@ def install_dotnet_runtime(root: Path, host: Host) -> Path:
     download(url, destination, ".NET runtime", checksum)
     unpacked = root / "dotnet"
     if unpacked.exists():
-        shutil.rmtree(unpacked, ignore_errors=True)
+        shutil.rmtree(long_path(unpacked), ignore_errors=True)
     extract(destination, unpacked)
     launcher = unpacked / f"dotnet{host.executable_suffix}"
     if not launcher.is_file():
