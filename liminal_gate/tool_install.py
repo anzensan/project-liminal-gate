@@ -221,10 +221,11 @@ def long_path(path: Path) -> Path:
     Win32 refuses a longer path with `ENOENT`, which surfaces from an unpack as
     the baffling claim that a file being *created* does not exist.  The `\\?\`
     prefix opts individual calls out of that limit.  Google's command line tools
-    reach it unaided: the archive carries a `lib/external/com/google/guava/`
-    entry whose directory and file both spell out
-    `listenablefuture-9999.0-empty-to-avoid-conflict-with-guava`, which is 244
-    characters below a checkout before the checkout's own location is counted.
+    very nearly reach it unaided: under `cmdline-tools/lib/external/com/google/
+    guava/` the archive names both a directory and the jar inside it
+    `listenablefuture-9999.0-empty-to-avoid-conflict-with-guava`, spending 165
+    characters before the destination contributes any.  A checkout under
+    `Documents\GitHub` is then enough to go over.
 
     The prefix also suppresses all path normalisation, so what it is given must
     be absolute and separator-clean already -- hence `resolve()`.  Archive
