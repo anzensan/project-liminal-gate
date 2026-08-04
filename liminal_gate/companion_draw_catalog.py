@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import tomllib
 
+from liminal_gate.save_validation import ITEM_SLOTS
+
 
 class CompanionDrawCatalogError(ValueError):
     """A user-local Companion-draw catalog is invalid."""
@@ -58,7 +60,7 @@ def _draw(value: object) -> CompanionDraw:
 
 # The client's inventory shape, its Companion Ticket master item, the displayed
 # Energy fallback, and the Companion box ceiling.
-BUNDLED_ITEM_SLOTS = 181
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
 BUNDLED_TICKET_ITEM_ID = 112
 BUNDLED_ENERGY_COST = 3
 BUNDLED_MAX_OWNED = 1000

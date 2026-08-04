@@ -14,9 +14,10 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
+from liminal_gate.reviewed_build import SOURCE_PROFILE
+
 
 SCHEMA_VERSION = 1
-SOURCE_PROFILE = "terra-battle-android-5.5.7-170"
 DEFAULT_COMPANION_EQUIPMENT_CATALOG = "companion-equipment.json"
 
 

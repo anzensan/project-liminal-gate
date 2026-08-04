@@ -31,9 +31,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
-import tempfile
 from typing import Any
 
 from liminal_gate.event_catalog import EventCatalogError, load_event_catalog
@@ -47,6 +45,7 @@ from liminal_gate.event_manifest_data import (
     FOLDED_ARCHIVE_CHAPTERS,
     TOWER_MANIFEST_ROWS,
 )
+from liminal_gate.atomic_json import write_json_document
 
 
 class EventCatalogGeneratorError(ValueError):
@@ -77,6 +76,30 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
 
     notes: list[str] = []
     rows: list[dict[str, Any]] = []
+
+    def row(event_id: str, flag: str, chapter: int, unlock_after: int, section: dict[str, Any], **extra: Any) -> dict[str, Any]:
+        """One stage row: the shared economics plus each family's own fields.
+
+        The flag check lives here so no family can emit a row whose recovered
+        flag cannot gate its stage.
+        """
+        number = section["section"]
+        if flag not in event_flags_for(chapter, number):
+            raise EventCatalogGeneratorError(
+                f"{event_id}: recovered flag {flag!r} cannot gate {chapter}-{number}"
+            )
+        return {
+            "event_id": event_id,
+            "flag": flag,
+            "chapter": chapter,
+            "section": number,
+            "stamina": int(section.get("stamina", 0)),
+            "coins": int(section.get("coins", 0)),
+            "clear_coins": EVENT_CLEAR_COINS,
+            "unlock_after_chapter": unlock_after,
+            **extra,
+        }
+
     for event_id, flag, chapter, unlock_after, character_ids in EVENT_MANIFEST_ROWS:
         sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
         allowed_sections = ARCHIVE_SECTION_ALLOWLIST.get(chapter)
@@ -99,31 +122,19 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
 
         for section in sections:
             number = section["section"]
-            permitted = event_flags_for(chapter, number)
-            if flag not in permitted:
-                raise EventCatalogGeneratorError(
-                    f"{event_id}: recovered flag {flag!r} cannot gate {chapter}-{number}"
-                )
-            rows.append({
-                "event_id": event_id,
-                "flag": flag,
-                "chapter": chapter,
-                "section": number,
-                "stamina": int(section.get("stamina", 0)),
-                "coins": int(section.get("coins", 0)),
-                "clear_coins": EVENT_CLEAR_COINS,
-                # This is the permanent archive cadence declared beside the
-                # recovered identities, not a recovered historical schedule.
-                "unlock_after_chapter": unlock_after,
-                "selector_id": (
+            rows.append(row(
+                event_id, flag, chapter, unlock_after, section,
+                # The permanent archive cadence declared beside the recovered
+                # identities, not a recovered historical schedule.
+                selector_id=(
                     str(chapter)
                     if chapter in FOLDED_ARCHIVE_CHAPTERS
                     else f"{chapter}-{number}"
                 ),
                 # Grants ride the first section only; repeating them per section
                 # would grant the character once per stage rather than once.
-                "character_ids": granted if number == sections[0]["section"] else [],
-            })
+                character_ids=granted if number == sections[0]["section"] else [],
+            ))
 
     for event_id, flag, chapter, unlock_after in TOWER_MANIFEST_ROWS:
         sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
@@ -131,22 +142,7 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
             notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
             continue
         for section in sections:
-            number = section["section"]
-            if flag not in event_flags_for(chapter, number):
-                raise EventCatalogGeneratorError(
-                    f"{event_id}: recovered flag {flag!r} cannot gate {chapter}-{number}"
-                )
-            rows.append({
-                "event_id": event_id,
-                "flag": flag,
-                "chapter": chapter,
-                "section": number,
-                "stamina": int(section.get("stamina", 0)),
-                "coins": int(section.get("coins", 0)),
-                "clear_coins": EVENT_CLEAR_COINS,
-                "unlock_after_chapter": unlock_after,
-                "character_ids": [],
-            })
+            rows.append(row(event_id, flag, chapter, unlock_after, section, character_ids=[]))
 
     for event_id, flag, chapter, unlock_after, drops in EIDOLON_MANIFEST_ROWS:
         imported = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
@@ -172,24 +168,11 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
         drops_by_section = dict(drops)
         for section in sections:
             number = section["section"]
-            if flag not in event_flags_for(chapter, number):
-                raise EventCatalogGeneratorError(
-                    f"{event_id}: recovered flag {flag!r} cannot gate {chapter}-{number}"
-                )
-            rows.append({
-                "event_id": event_id,
-                "flag": flag,
-                "chapter": chapter,
-                "section": number,
-                "stamina": int(section.get("stamina", 0)),
-                "coins": int(section.get("coins", 0)),
-                "clear_coins": EVENT_CLEAR_COINS,
-                "unlock_after_chapter": unlock_after,
-                "character_ids": [],
-                "summon_ids": (
-                    [drops_by_section[number]] if number in drops_by_section else []
-                ),
-            })
+            rows.append(row(
+                event_id, flag, chapter, unlock_after, section,
+                character_ids=[],
+                summon_ids=[drops_by_section[number]] if number in drops_by_section else [],
+            ))
 
     if not rows:
         raise EventCatalogGeneratorError("no event chapter in the manifest set is present in this BattleData import")
@@ -204,17 +187,7 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
 
 def write_catalog(path: Path, document: dict[str, Any]) -> None:
     """Atomically write a generated catalog beside the other local projections."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json_document(path, document, indent=1)
 
 
 def main() -> int:

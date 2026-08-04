@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from liminal_gate.reviewed_build import SOURCE_PROFILE
+
 
 class StoryProgressionCatalogError(ValueError):
     pass
@@ -92,7 +94,7 @@ def load_story_progression_catalog(path: Path) -> StoryProgressionCatalog:
         or document.get("schema_version") != 1
         or document.get("provenance") != "user-derived"
         or not isinstance(source, dict)
-        or source.get("profile") != "terra-battle-android-5.5.7-170"
+        or source.get("profile") != SOURCE_PROFILE
         or source.get("kind") != "battledata-core-story-progression"
         or not isinstance(document.get("stages"), list)
     ):

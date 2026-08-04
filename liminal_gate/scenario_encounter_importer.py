@@ -67,17 +67,15 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
-import json
-import os
 from pathlib import Path
 import re
 import struct
-import tempfile
 from typing import Any
 import zipfile
 
 from liminal_gate.character_catalog_importer import APK_DATA_MEMBER
 from liminal_gate.native_encounter_importer import SOURCE_PROFILE, parse_enemies_enum, sha256_file
+from liminal_gate.atomic_json import write_json_document
 
 
 class ScenarioEncounterImportError(ValueError):
@@ -517,17 +515,7 @@ def import_encounters(apk: Path, dump_cs: Path) -> tuple[dict[str, Any], dict[st
 
 
 def write_document(path: Path, document: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json_document(path, document, indent=1)
 
 
 def parse_args() -> argparse.Namespace:

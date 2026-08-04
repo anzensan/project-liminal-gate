@@ -15,6 +15,8 @@ from pathlib import Path
 import zipfile
 import zlib
 
+from liminal_gate.file_digests import sha256_file
+
 
 # Version 2 added `repair_dex_header`. The bump is not cosmetic: a version 2
 # plan read by a version 1 loader would apply the byte edits and silently skip
@@ -77,14 +79,6 @@ class PatchPlan:
     source_sha256: str
     patches: tuple[BinaryPatch, ...]
     text_asset_json_aliases: tuple[TextAssetJsonAliases, ...] = ()
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_patch_plan(path: Path) -> PatchPlan:

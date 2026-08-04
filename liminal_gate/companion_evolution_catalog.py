@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from liminal_gate.companion_evolution_data import COMPANION_EVOLUTION_ROWS
+from liminal_gate.save_validation import ITEM_SLOTS
 
 
 class CompanionEvolutionCatalogError(ValueError):
@@ -68,7 +69,7 @@ def _recipe(value: object) -> CompanionEvolution:
     return CompanionEvolution(value["source_companion_id"], value["destination_companion_id"], value["max_level"], value["coins"], items, value["duplicate_source_count"])
 
 
-BUNDLED_ITEM_SLOTS = 181
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
 
 
 def build_bundled_companion_evolution_policy() -> CompanionEvolutionCatalog:

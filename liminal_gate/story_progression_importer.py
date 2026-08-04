@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
-import tempfile
 from typing import Any
+
+from liminal_gate.reviewed_build import SOURCE_PROFILE
+from liminal_gate.atomic_json import write_json_document
 
 
 SCHEMA_VERSION = 1
-SOURCE_PROFILE = "terra-battle-android-5.5.7-170"
 CORE_CHAPTERS = range(2, 43)
 _EXPECTED_SECTIONS = {
     chapter: (5 if chapter == 2 or chapter == 3 else 3 if chapter == 42 else 10)
@@ -73,17 +73,7 @@ def build_story_progression(document: dict[str, Any]) -> dict[str, object]:
 
 
 def write_story_progression(path: Path, document: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json_document(path, document, indent=2)
 
 
 def parse_args() -> argparse.Namespace:

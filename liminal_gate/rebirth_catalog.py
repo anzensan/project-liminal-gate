@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from liminal_gate.rebirth_recipe_data import REBIRTH_RECIPE_ROWS
+from liminal_gate.save_validation import ITEM_SLOTS
 
 
 class RebirthCatalogError(ValueError):
@@ -87,7 +88,7 @@ def _counts(value: object, label: str) -> dict[int, int]:
 
 # The client's own inventory shape, and the final master's Joker Lambda, which
 # may stand in for one missing Companion requirement exactly once.
-BUNDLED_ITEM_SLOTS = 181
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
 BUNDLED_JOKER_CHARACTER_ID = 1018
 
 

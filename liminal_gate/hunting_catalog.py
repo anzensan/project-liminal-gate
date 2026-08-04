@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
+
 
 class HuntingCatalogError(ValueError):
     """A user-local Hunting catalog is malformed."""
@@ -311,8 +313,8 @@ def hunting_settlement_within_bounds(stage: HuntingStage, result: dict[str, Any]
 
 
 # The client's own inventory shape: 181 item counts, stacking to 999.
-BUNDLED_ITEM_SLOTS = 181
-BUNDLED_MAX_STACK = 999
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
+BUNDLED_MAX_STACK = MAX_ITEM_STACK
 # Availability is a preservation policy, not a recovered schedule: the retired
 # rotations were never captured, so each tier simply becomes permanent once the
 # story has passed the chapter recorded here.

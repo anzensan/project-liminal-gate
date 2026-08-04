@@ -16,10 +16,11 @@ from urllib.parse import urlsplit
 import zipfile
 
 from liminal_gate.il2cpp_plan_generator import PlanGenerationError, generate_plan
+from liminal_gate.reviewed_build import APK_DATA_MEMBER, IL2CPP_METADATA_MEMBER
 
 
-METADATA_MEMBER = "assets/bin/Data/Managed/Metadata/global-metadata.dat"
-DATA_BUNDLE_MEMBER = "assets/bin/Data/data.unity3d"
+METADATA_MEMBER = IL2CPP_METADATA_MEMBER
+DATA_BUNDLE_MEMBER = APK_DATA_MEMBER
 API_BASE_LITERAL = b"https://gdappserver.appspot.com/"
 RESOURCE_BASE_LITERAL = b"http://storage.googleapis.com/gdresources/data_u2017/android/"
 WEBSITE_BASE_LITERAL = b"http://www.terra-battle.com"

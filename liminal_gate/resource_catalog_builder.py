@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import mimetypes
-import os
 from pathlib import Path
 import re
-import tempfile
 from typing import Callable
 
 from liminal_gate.resource_catalog import RESOURCE_MANIFEST_SCHEMA_VERSION, ResourceCatalogError, _sha256_file
+from liminal_gate.atomic_json import write_json_document
 
 
 _CACHE_PREFIX = re.compile(r"^[0-9a-f]{32}(?P<name>.+)$")
@@ -72,17 +70,7 @@ def build_resource_manifest(
 
 def write_resource_manifest(path: Path, manifest: dict[str, object]) -> None:
     """Atomically write a derived local manifest without copying resource data."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json_document(path, manifest, indent=2)
 
 
 def parse_args() -> argparse.Namespace:

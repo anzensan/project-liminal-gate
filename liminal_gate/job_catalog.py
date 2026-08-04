@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from liminal_gate.job_unlock_data import JOB_UNLOCK_ROWS
+from liminal_gate.save_validation import ITEM_SLOTS
 
 
 class JobCatalogError(ValueError):
@@ -73,7 +74,7 @@ def _unlock(value: object) -> JobUnlock:
 
 
 # The client's own inventory shape; every bundled material falls inside it.
-BUNDLED_ITEM_SLOTS = 181
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
 
 
 def build_bundled_job_policy() -> JobCatalog:

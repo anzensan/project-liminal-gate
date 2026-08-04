@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from liminal_gate.summon_skill_data import SUMMON_SKILL_ROWS
+from liminal_gate.save_validation import ITEM_SLOTS
 
 
 class SummonSkillCatalogError(ValueError):
@@ -83,7 +84,7 @@ def _level(value: object) -> SummonSkillLevel:
 
 
 # The client's own 181 item slots, matching the other bundled policies.
-BUNDLED_ITEM_SLOTS = 181
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
 
 
 def build_bundled_summon_skill_policy() -> SummonSkillCatalog:

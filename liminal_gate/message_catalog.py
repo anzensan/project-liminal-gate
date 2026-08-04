@@ -8,6 +8,8 @@ import math
 from pathlib import Path
 import tomllib
 
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_COINS, MAX_ITEM_STACK
+
 
 class MessageCatalogError(ValueError):
     """A user-local message catalog is invalid."""
@@ -88,10 +90,10 @@ OVERALL_LOGIN_REWARDS: dict[int, tuple[int, int]] = {
     60: (0, 3),
     100: (0, 5),
 }
-BUNDLED_ITEM_SLOTS = 181
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
 BUNDLED_MAX_FREE_ENERGY = 9_999
-BUNDLED_MAX_COINS = 99_999_999
-BUNDLED_MAX_STACK = 999
+BUNDLED_MAX_COINS = MAX_COINS
+BUNDLED_MAX_STACK = MAX_ITEM_STACK
 
 
 def load_message_catalog(path: Path) -> MessageCatalog:

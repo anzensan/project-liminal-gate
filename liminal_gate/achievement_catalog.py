@@ -13,6 +13,7 @@ from liminal_gate.achievement_data import (
     ACHIEVEMENT_ITEM_ID,
     ACHIEVEMENT_ROWS,
 )
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_COINS, MAX_ITEM_STACK
 
 
 class AchievementCatalogError(ValueError):
@@ -80,9 +81,9 @@ def _achievement(value: object, item_slots: int) -> Achievement:
 
 # Matching the other bundled policies' limits: the client's own 181 item slots,
 # 999 stack ceiling, and Coin cap.
-BUNDLED_ITEM_SLOTS = 181
-BUNDLED_MAX_STACK = 999
-BUNDLED_MAX_COINS = 99999999
+BUNDLED_ITEM_SLOTS = ITEM_SLOTS
+BUNDLED_MAX_STACK = MAX_ITEM_STACK
+BUNDLED_MAX_COINS = MAX_COINS
 
 
 def build_bundled_achievement_policy() -> AchievementCatalog:

@@ -76,9 +76,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
-import tempfile
 from typing import Any
 
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, SOURCE_PROFILE, load_master_trees, sha256_file
@@ -86,6 +84,7 @@ from liminal_gate.companion_master_data import COMPANION_MASTER_ROWS
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK
 from liminal_gate.server_constants import build_server_constants
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
+from liminal_gate.atomic_json import write_json_document
 
 
 SCHEMA_VERSION = 1
@@ -724,17 +723,7 @@ def _maxima_document(value: object, ceiling: int | None, allowed: set[int] | Non
 
 
 def write_catalog(path: Path, document: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write(encoded)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json_document(path, document, indent=1)
 
 
 def _chapters(values: list[int]) -> str:

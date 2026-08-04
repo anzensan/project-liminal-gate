@@ -48,6 +48,7 @@ from liminal_gate.tester_setup import (
     resolve_resource_root,
 )
 from liminal_gate.toolchain import TOOLCHAIN_FILE
+from liminal_gate.file_digests import sha256_file
 
 
 REHEARSAL_SCHEMA_VERSION = 1
@@ -170,14 +171,6 @@ class RehearsalRun:
         self.source = self.root / "source"
         self.data_directory = self.root / "user-data"
         self.logs = self.root / "logs"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _git(repository: Path, *arguments: str) -> str:

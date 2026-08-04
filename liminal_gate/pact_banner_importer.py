@@ -8,12 +8,14 @@ from pathlib import Path
 import tempfile
 import zipfile
 
+from liminal_gate.reviewed_build import IL2CPP_METADATA_MEMBER
+
 
 class PactBannerImportError(ValueError):
     """User-local banner inputs or optional extraction tooling are unavailable."""
 
 
-METADATA_MEMBER = "assets/bin/Data/Managed/Metadata/global-metadata.dat"
+METADATA_MEMBER = IL2CPP_METADATA_MEMBER
 MAGIC = b"ENCA"
 FORWARD_TABLE_OFFSET = 0x601BAD
 INVERSE_TABLE_OFFSET = 0x601CAD
