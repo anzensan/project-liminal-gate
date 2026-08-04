@@ -147,6 +147,13 @@ If `python3 --version` works on your Windows installation, you can use the
 commands in this documentation exactly as written. Otherwise replace each
 `python3 -m` with `py -3 -m`.
 
+**Stop using `py -3` once a virtual environment is active.** Spelling out a
+version makes the Windows launcher skip the active environment and run the
+system Python instead, so `py -3 -m pip install` typed at a `(.venv)` prompt
+installs somewhere the environment cannot see. Inside `(.venv)`, use plain
+`python -m`, or name the interpreter directly as
+`.\.venv\Scripts\python.exe -m`.
+
 If `adb` or `keytool` is still not found after the lines above, install the
 missing SDK/JDK component in Android Studio, reopen PowerShell, and repeat these
 checks.
@@ -243,10 +250,15 @@ python3 -m pip install ".[master-import]"
 
 Once activated, run the setup command from that same terminal, or it will not
 find the newly installed package. Activate it again with
-`source .venv/bin/activate` in any new terminal. On Windows the activation
-command is `.venv\Scripts\activate` instead, and use
-`py -3 -m pip install ".[master-import]"` when you use `py -3` for the other
-commands.
+`source .venv/bin/activate` in any new terminal.
+
+On Windows the activation command is `.venv\Scripts\activate` instead, and from
+that `(.venv)` prompt install with plain `python -m pip install
+".[master-import]"` — **not** `py -3`. The launcher skips the active environment
+whenever a version is spelled out, so `py -3` installs into the system Python
+while every later check reads `.venv`, which really is missing it. That reads as
+a failed install even though the install succeeded; the giveaway is a check that
+fails inside `(.venv)` and passes in a plain window.
 
 If PowerShell refuses to activate with `running scripts is disabled on this
 system`, skip activation rather than changing a policy: name the environment's

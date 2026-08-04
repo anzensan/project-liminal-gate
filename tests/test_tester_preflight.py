@@ -458,5 +458,51 @@ class ConfiguredDumperTest(unittest.TestCase):
             self.assertIn(str(absent), tester_setup.describe_missing_il2cpp_dumper("install it"))
 
 
+class MasterImportRemedyTest(unittest.TestCase):
+    """The remedy has to name the interpreter the check actually read.
+
+    A tester installed the master-import extra with `py -3` from an activated
+    `.venv`, which the Windows launcher resolves to the system Python, and then
+    saw `guided derivations` FAIL inside the environment and pass outside it.
+    The old message printed `py -3 -m pip install` as the fix -- the command
+    that caused it.
+    """
+
+    WINDOWS_VENV = r"C:\Users\Lem Stan\project\.venv\Scripts\python.exe"
+
+    def test_the_remedy_names_the_running_interpreter(self) -> None:
+        with patch.object(tester_setup.sys, "executable", self.WINDOWS_VENV):
+            message = tester_setup.describe_missing_master_import(("UnityPy",))
+        self.assertIn(f'"{self.WINDOWS_VENV}" -m pip install ".[master-import]"', message)
+
+    def test_the_remedy_no_longer_recommends_the_launcher(self) -> None:
+        """`py -3` may only appear as the mistake, never as the instruction."""
+        message = tester_setup.describe_missing_master_import(("UnityPy",))
+        self.assertNotIn('py -3 -m pip install', message)
+
+    def test_a_path_without_spaces_is_left_unquoted(self) -> None:
+        with patch.object(tester_setup.sys, "executable", "/usr/bin/python3"):
+            self.assertEqual("/usr/bin/python3", tester_setup.interpreter_command())
+
+    def test_a_virtual_environment_is_named_as_the_thing_being_read(self) -> None:
+        with (
+            patch.object(tester_setup.sys, "prefix", "/project/.venv"),
+            patch.object(tester_setup.sys, "base_prefix", "/usr"),
+        ):
+            self.assertTrue(tester_setup.in_virtual_environment())
+            message = tester_setup.describe_missing_master_import(("UnityPy",))
+        self.assertIn("/project/.venv", message)
+        self.assertIn("py -3", message)
+
+    def test_no_environment_note_outside_one(self) -> None:
+        with (
+            patch.object(tester_setup.sys, "prefix", "/usr"),
+            patch.object(tester_setup.sys, "base_prefix", "/usr"),
+        ):
+            self.assertFalse(tester_setup.in_virtual_environment())
+            message = tester_setup.describe_missing_master_import(("UnityPy",))
+        self.assertNotIn("py -3", message)
+
+
 if __name__ == "__main__":
     unittest.main()

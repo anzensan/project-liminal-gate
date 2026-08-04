@@ -37,6 +37,11 @@ The examples use a Unix shell and `python3`. In PowerShell, use `py -3`, replace
 a trailing `\` with a backtick, use `New-Item -ItemType Directory -Force` for
 `mkdir -p`, and use `Copy-Item` for `cp`.
 
+One exception, and it is the one that misleads: after step 2 activates the
+virtual environment, use plain `python` rather than `py -3`. Naming a version
+makes the launcher skip the active environment, so `py -3` from a `(.venv)`
+prompt runs the system Python instead.
+
 ## 1. Put your private inputs in place
 
 The default paths are:
@@ -84,6 +89,13 @@ py -3 -m venv .venv
 
 The prompt shows `(.venv)` once the environment is active. Keep that window
 open: the remaining commands need it.
+
+**From here on, `py -3` is the wrong command.** `py -3 -m venv` above was
+correct — there was no environment yet — but once `(.venv)` is showing, spelling
+out a version makes the launcher skip the environment and run the system Python.
+Anything installed that way lands where `.venv` cannot see it, and the checks
+below then report it missing. Use plain `python -m`, or
+`.\.venv\Scripts\python.exe -m`.
 
 **If activation is refused** with `running scripts is disabled on this system`,
 you do not have to change any policy. Activation is a convenience; naming the

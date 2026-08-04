@@ -690,9 +690,34 @@ _READKEY_ADVICE = (
 #: Reading master data out of the APK needs both, so the guided path needs both.
 MASTER_IMPORT_DISTRIBUTIONS = ("UnityPy", "TypeTreeGeneratorAPI")
 
+
+def interpreter_command() -> str:
+    """The exact interpreter running this check, quoted for a shell.
+
+    Naming `python3` or `py -3` here is what let a correct install read as a
+    failed one. `_installed` can only report on the interpreter it runs in, but
+    the Windows launcher ignores an activated virtual environment whenever a
+    version is spelled out, so `py -3 -m pip install` typed inside `.venv`
+    installs into the system Python instead. The check then truthfully fails
+    against `.venv` while the same check in a plain window passes, and the
+    printed remedy is the command that caused it. An interpreter cannot
+    disagree with itself.
+    """
+    executable = sys.executable or "python3"
+    return f'"{executable}"' if " " in executable else executable
+
+
+def in_virtual_environment() -> bool:
+    """Whether this interpreter is a virtual environment rather than its base."""
+    return sys.prefix != sys.base_prefix
+
+
+#: Raised from the same guided-derivations probe as the master-import message,
+#: and names the running interpreter for the same reason: `doctor` installs into
+#: whichever interpreter runs it.
 AARCH64_DISASSEMBLER_MISSING = (
     "complete guided setup requires an AArch64 disassembler; run "
-    "python3 -m liminal_gate.doctor --install-missing to install the pinned "
+    f"{interpreter_command()} -m liminal_gate.doctor --install-missing to install the pinned "
     "Android NDK llvm-objdump privately, or install LLVM/binutils-multiarch by hand, "
     "then re-run setup"
 )
@@ -722,11 +747,20 @@ def find_missing_master_import() -> tuple[str, ...]:
 
 
 def describe_missing_master_import(missing: Sequence[str]) -> str:
-    return (
+    detail = (
         f"complete guided setup reads master data out of your own APK with {', '.join(missing)}, "
-        'which is not installed. Install it with: python3 -m pip install ".[master-import]" '
-        "(on Windows, py -3 -m pip install \".[master-import]\")"
+        "which is not installed for the interpreter running this check. Install it with: "
+        f'{interpreter_command()} -m pip install ".[master-import]"'
     )
+    if in_virtual_environment():
+        # The reported symptom exactly: FAIL inside the environment, pass
+        # outside it, after an install the operator really did run.
+        detail += (
+            f"\n      This check can only see {sys.prefix}. An install run as `py -3` or `python3` "
+            "from this window went to a different interpreter, because naming a version makes the "
+            "Windows launcher skip the active environment; use the command above instead."
+        )
+    return detail
 
 
 def reusable_il2cpp_dump(
