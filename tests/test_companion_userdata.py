@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
 import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState
+from tests.support import bootstrap_profile, start_server, stop_server
+from tests.support import post as support_post
 from liminal_gate.companion_equipment_catalog import (
     CharacterEquipmentMaster,
     CompanionEquipmentCatalog,
@@ -39,36 +40,20 @@ class CompanionUserdataTest(unittest.TestCase):
     def test_http_equip_commits_both_links_atomically_and_replays_after_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "state.json"
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
+            profile = bootstrap_profile()
 
             def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
+                return start_server(
                     ("127.0.0.1", 0),
                     profile,
                     BootstrapState(state_path),
                     companion_equipment_catalog=equipment_catalog(),
                 )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
 
             def post(
                 server: BootstrapServer, request_id: str, body: str,
             ) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST",
-                    f"/gd/userdata?otk=token&requestID={request_id}",
-                    body=body,
-                )
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
+                return support_post(server, "/gd/userdata", request_id, body)
 
             roster = [
                 {"id": 3, "buddy": 1, "jobID": 0, "jobLevels": [10.0]},
@@ -148,9 +133,7 @@ class CompanionUserdataTest(unittest.TestCase):
                     ),
                 )
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
             restarted, restarted_thread = start()
             try:
@@ -168,26 +151,18 @@ class CompanionUserdataTest(unittest.TestCase):
                     ),
                 )
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
     def test_http_equip_enforces_only_character_family_and_species(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "state.json"
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
-            server = BootstrapServer(
+            profile = bootstrap_profile()
+            server, thread = start_server(
                 ("127.0.0.1", 0),
                 profile,
                 BootstrapState(state_path),
                 companion_equipment_catalog=equipment_catalog(),
             )
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
 
             roster = [
                 {
@@ -243,16 +218,7 @@ class CompanionUserdataTest(unittest.TestCase):
                     ),
                     ("lastUpdate", "1"),
                 ])
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST",
-                    f"/gd/userdata?otk=token&requestID={request_id}",
-                    body=body,
-                )
-                response = connection.getresponse()
-                result = json.loads(response.read())
-                connection.close()
-                return response.status, result
+                return support_post(server, "/gd/userdata", request_id, body)
 
             try:
                 server.state.create_account(
@@ -331,24 +297,16 @@ class CompanionUserdataTest(unittest.TestCase):
                 )
                 self.assertEqual(before, server.state.userdata_for("token"))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
     def test_http_missing_catalog_preserves_existing_link_and_unequip_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
-            server = BootstrapServer(
+            profile = bootstrap_profile()
+            server, thread = start_server(
                 ("127.0.0.1", 0),
                 profile,
                 BootstrapState(Path(directory) / "state.json"),
             )
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
             companion = {
                 "bid": 1, "lv": 1, "date": 0.0, "iid": 1,
                 "exp": 0, "flag": 0, "chrID": 3,
@@ -373,16 +331,7 @@ class CompanionUserdataTest(unittest.TestCase):
                     ),
                     ("lastUpdate", "1"),
                 ])
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST",
-                    f"/gd/userdata?otk=token&requestID={request_id}",
-                    body=body,
-                )
-                response = connection.getresponse()
-                result = json.loads(response.read())
-                connection.close()
-                return response.status, result
+                return support_post(server, "/gd/userdata", request_id, body)
 
             try:
                 server.state.create_account(
@@ -435,32 +384,22 @@ class CompanionUserdataTest(unittest.TestCase):
                 )
                 self.assertEqual(before, server.state.userdata_for("token"))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
     def test_http_delta_write_persists_flag_and_replays_after_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             state_path = root / "state.json"
 
             def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path))
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
+                return start_server(("127.0.0.1", 0), profile, BootstrapState(state_path))
 
             submitted = [{"bid": 1, "lv": 1, "date": 0.0, "iid": 1, "exp": 0, "flag": 1, "chrID": 0}]
             body = urlencode({"buddyInfo": json.dumps(submitted, separators=(",", ":")), "lastUpdate": "1"})
 
             def post(server: BootstrapServer, request_id: str, value: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", f"/gd/userdata?otk=token&requestID={request_id}", body=value)
-                response = connection.getresponse()
-                result = json.loads(response.read())
-                connection.close()
-                return response.status, result
+                return support_post(server, "/gd/userdata", request_id, value)
 
             server, thread = start()
             try:
@@ -470,14 +409,10 @@ class CompanionUserdataTest(unittest.TestCase):
                 self.assertEqual(1, server.state.userdata_for("token")["buddyInfo"]["list"][0]["flag"])
                 self.assertEqual((status, first), post(server, "one", body))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
             restarted, restarted_thread = start()
             try:
                 self.assertEqual((200, first), post(restarted, "one", body))
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)

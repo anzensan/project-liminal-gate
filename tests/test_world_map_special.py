@@ -9,24 +9,20 @@ acceptance the community record supports.
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import time
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.world_map_special import (
     UNLOCK_AFTER_CHAPTER,
     WORLD_MAP_SPECIAL_CHAPTER,
     WORLD_MAP_SPECIAL_STAMINA,
     build_bundled_world_map_special_policy,
 )
-
-
-PUBLIC_ROOT = Path(__file__).resolve().parents[1]
+from tests.support import bootstrap_profile, post, start_server, stop_server
 
 
 def progress_code(chapter: int, section: int = 1) -> int:
@@ -94,7 +90,7 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
         self.state_path = self.root / "state.json"
-        self.profile = load_profile(PUBLIC_ROOT / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.token, self.account_id = "wms-token", "wms-account"
         self.character = {
             "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
@@ -122,29 +118,20 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
             self.server.state._persist_locked()
 
     def start_server(self) -> None:
-        self.server = BootstrapServer(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path))
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.server, self.thread = start_server(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path))
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def restart(self) -> None:
         self.stop_server()
         self.start_server()
 
     def post(self, route: str, request_id: str, fields: list[tuple[str, str]]) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "POST", f"{route}?otk={self.token}&requestID={request_id}",
-            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        return post(
+            self.server, route, request_id, urlencode(fields), token=self.token,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
 
     def account(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]

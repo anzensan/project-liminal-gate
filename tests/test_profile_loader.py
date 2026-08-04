@@ -9,26 +9,17 @@ import tempfile
 import unittest
 
 from liminal_gate.bootstrap_server import ProfileError, load_profile
-
-
-PROFILE = (
-    Path(__file__).resolve().parents[1]
-    / "profiles"
-    / "legacy-client-bootstrap.json"
-)
+from tests.support import DEFAULT_PROFILE_PATH, write_json
 
 
 class ProfileLoaderTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.document = json.loads(PROFILE.read_text(encoding="utf-8"))
+        self.document = json.loads(DEFAULT_PROFILE_PATH.read_text(encoding="utf-8"))
 
     def _load(self, document: dict | None = None):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "profile.json"
-            path.write_text(
-                json.dumps(self.document if document is None else document),
-                encoding="utf-8",
-            )
+            write_json(path, self.document if document is None else document)
             return load_profile(path)
 
     def test_the_bundled_profile_survives_shared_validation(self) -> None:

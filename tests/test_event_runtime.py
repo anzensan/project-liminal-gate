@@ -6,13 +6,15 @@ import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState
 from liminal_gate.event_catalog import (
     EventCatalog,
     EventStage,
     build_bundled_counter_descent_policy,
 )
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
+from tests.support import bootstrap_profile, get, request, start_server, stop_server
+from tests.support import post as support_post, request as support_request
 
 
 def character(character_id: int) -> dict[str, object]:
@@ -30,7 +32,7 @@ class EventRuntimeTest(unittest.TestCase):
                 EventStage("yamamoto", "sp_ch_2007", 2007, 2, 30, 0, 0, (), unlock_after_chapter=10, selector_id="2007"),
                 EventStage("mechtula", "sp_ch_2017", 2017, 5, 35, 0, 0, (), unlock_after_chapter=20, selector_id="2017-5"),
             ))
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
@@ -66,7 +68,7 @@ class EventRuntimeTest(unittest.TestCase):
             state.create_account(token, "account", {"coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777473, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
             state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             server = BootstrapServer(
                 ("127.0.0.1", 0),
                 profile,
@@ -123,7 +125,7 @@ class EventRuntimeTest(unittest.TestCase):
             state.create_account(token, "account", {"coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777346, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
             state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
             thread = threading.Thread(target=server.serve_forever); thread.start()
             start = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
@@ -152,7 +154,7 @@ class EventRuntimeTest(unittest.TestCase):
             state.create_account(token, "account", {"coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 77, "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": []})
             state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
             thread = threading.Thread(target=server.serve_forever); thread.start()
             start = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
@@ -221,43 +223,16 @@ class EventRuntimeTest(unittest.TestCase):
                     15, 0, 0, (673,), unlock_after_chapter=4,
                 ),
             ))
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
-
-            def start_server() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
-                    ("127.0.0.1", 0), profile, BootstrapState(path),
-                    event_catalog=catalog,
-                )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def stop_server(
-                server: BootstrapServer, thread: threading.Thread,
-            ) -> None:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+            profile = bootstrap_profile()
 
             def post(
                 server: BootstrapServer, request_id: str, body: bytes,
                 route: str = "clear_quest",
             ) -> tuple[int, dict]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST",
-                    f"/gd/{route}?otk={token}&requestID={request_id}",
-                    body=body,
+                return support_post(
+                    server, f"/gd/{route}", request_id, body, token=token,
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
 
             def clear_body(*, wallet_coins: int = 11824, itmp0: int = -1) -> bytes:
                 advanced = character(3)
@@ -299,7 +274,10 @@ class EventRuntimeTest(unittest.TestCase):
                 }).encode()
 
             state.close()
-            server, thread = start_server()
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(path),
+                event_catalog=catalog,
+            )
             start = b"stamina=15&coins=0&chapter=2004&section=1&lastUpdate=1"
             try:
                 start_status, start_payload = post(
@@ -342,7 +320,10 @@ class EventRuntimeTest(unittest.TestCase):
             self.assertEqual(1, durable["userdata"]["itemList"][15])
             self.assertEqual(8, durable["userdata"]["itemList"][180])
 
-            restarted, restarted_thread = start_server()
+            restarted, restarted_thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(path),
+                event_catalog=catalog,
+            )
             try:
                 self.assertEqual(
                     (status, payload),
@@ -386,34 +367,16 @@ class EidolonRuntimeTest(unittest.TestCase):
                     unlock_after_chapter=3,
                 ),
             ))
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
-
-            def start_server() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
-                    ("127.0.0.1", 0), profile, BootstrapState(state_path),
-                    event_catalog=catalog,
-                )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
+            profile = bootstrap_profile()
 
             def request(
                 server: BootstrapServer, method: str, path: str,
                 body: bytes | None = None,
             ) -> tuple[int, dict]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    method, path, body=body,
+                return support_request(
+                    server, method, path, body,
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
 
             clear = urlencode({
                 "progressCode": initial["progressCode"],
@@ -436,7 +399,10 @@ class EidolonRuntimeTest(unittest.TestCase):
             }).encode()
             start = b"stamina=10&coins=0&chapter=4100&section=1&lastUpdate=1"
 
-            server, thread = start_server()
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                event_catalog=catalog,
+            )
             try:
                 status, server_status = request(
                     server, "GET", f"/gd/get_server_status?otk={token}"
@@ -466,7 +432,10 @@ class EidolonRuntimeTest(unittest.TestCase):
             finally:
                 server.shutdown(); thread.join(); server.server_close()
 
-            server, thread = start_server()
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                event_catalog=catalog,
+            )
             try:
                 status, replayed = request(
                     server, "POST",
@@ -548,11 +517,7 @@ class TowerRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.state_path = Path(self.temporary_directory.name) / "state.json"
-        self.profile = load_profile(
-            Path(__file__).resolve().parents[1]
-            / "profiles"
-            / "legacy-client-bootstrap.json"
-        )
+        self.profile = bootstrap_profile()
         self.catalog = EventCatalog((
             EventStage(
                 "tower_of_temptation",
@@ -593,44 +558,28 @@ class TowerRuntimeTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0),
             self.profile,
             BootstrapState(self.state_path),
             event_catalog=self.catalog,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def restart(self) -> None:
         self.stop_server()
         self.start_server()
 
     def get(self, path: str) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request("GET", path)
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
+        return get(self.server, path)
 
     def post(self, path: str, body: bytes) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "POST",
-            path,
-            body=body,
+        return request(
+            self.server, "POST", path, body,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
 
     def account(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))[
@@ -807,11 +756,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.state_path = Path(self.temporary_directory.name) / "state.json"
-        self.profile = load_profile(
-            Path(__file__).resolve().parents[1]
-            / "profiles"
-            / "legacy-client-bootstrap.json"
-        )
+        self.profile = bootstrap_profile()
         self.catalog = build_bundled_counter_descent_policy()
         self.token, self.account_id = "descent-token", "descent-account"
         state = BootstrapState(self.state_path)
@@ -839,44 +784,28 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0),
             self.profile,
             BootstrapState(self.state_path),
             event_catalog=self.catalog,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def restart(self) -> None:
         self.stop_server()
         self.start_server()
 
     def get(self, path: str) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request("GET", path)
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
+        return get(self.server, path)
 
     def post(self, path: str, body: bytes) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "POST",
-            path,
-            body=body,
+        return request(
+            self.server, "POST", path, body,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
 
     def account(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))[

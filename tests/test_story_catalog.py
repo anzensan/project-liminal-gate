@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from liminal_gate.story_catalog import StoryCatalogError, load_story_catalog
+from tests.support import write_json
 
 
 class StoryCatalogTest(unittest.TestCase):
@@ -17,7 +17,7 @@ class StoryCatalogTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def write(self, stages: list[dict[str, int]], *, provenance: str = "user-supplied") -> None:
-        self.path.write_text(json.dumps({"schema_version": 1, "provenance": provenance, "stages": stages}), encoding="utf-8")
+        write_json(self.path, {"schema_version": 1, "provenance": provenance, "stages": stages})
 
     def test_accepts_ordered_user_supplied_stages(self) -> None:
         self.write([

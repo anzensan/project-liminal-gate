@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from liminal_gate.statusup_catalog import build_bundled_statusup_policy, StatusupCatalogError, load_statusup_catalog
+from tests.support import write_json
 
 
 class StatusupCatalogTest(unittest.TestCase):
@@ -18,7 +18,7 @@ class StatusupCatalogTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "catalog.json"
-            path.write_text(json.dumps(value), encoding="utf-8")
+            write_json(path, value)
             catalog = load_statusup_catalog(path)
         self.assertEqual((3, 90, 1000), (catalog.item_slots, catalog.level_cap, catalog.skill_boost_cap))
         self.assertEqual(1, catalog.items[1].level)
@@ -35,7 +35,7 @@ class StatusupCatalogTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "catalog.json"
-            path.write_text(json.dumps(value), encoding="utf-8")
+            write_json(path, value)
             with self.assertRaisesRegex(StatusupCatalogError, "ordered"):
                 load_statusup_catalog(path)
 

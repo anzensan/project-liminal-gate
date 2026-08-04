@@ -11,6 +11,7 @@ from liminal_gate.companion_equipment_catalog import (
     load_companion_equipment_catalog,
     write_companion_equipment_catalog,
 )
+from tests.support import write_json
 
 
 class CompanionEquipmentCatalogTest(unittest.TestCase):
@@ -125,14 +126,14 @@ class CompanionEquipmentCatalogTest(unittest.TestCase):
         document["characters"] = list(reversed(document["characters"]))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "equipment.json"
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             with self.assertRaisesRegex(
                 CompanionEquipmentCatalogError, "ordered and unique",
             ):
                 load_companion_equipment_catalog(path)
             document["characters"] = list(reversed(document["characters"]))
             document["provenance"] = "user-supplied"
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             with self.assertRaisesRegex(
                 CompanionEquipmentCatalogError, "user-derived",
             ):

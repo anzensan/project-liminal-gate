@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.statusup_catalog import build_bundled_statusup_policy, load_statusup_catalog
+from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
 class StatusupItemTest(unittest.TestCase):
@@ -28,27 +26,12 @@ class StatusupItemTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            catalog_path = root / "statusup.json"
-            catalog_path.write_text(json.dumps(catalog_document), encoding="utf-8")
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            catalog_path = write_json(root / "statusup.json", catalog_document)
+            profile = bootstrap_profile()
             state_path = root / "state.json"
             catalog = load_statusup_catalog(catalog_path)
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), statusup_catalog=catalog)
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def post(server: BootstrapServer, request_id: str, body: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", f"/gd/use_statusup_item?otk=token&requestID={request_id}", body=body)
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
-
-            server, thread = start()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), statusup_catalog=catalog)
             try:
                 server.state.create_account("token", "account", {
                     "chrdata": [
@@ -57,25 +40,25 @@ class StatusupItemTest(unittest.TestCase):
                     ],
                     "itemList": [2, 2, 20],
                 })
-                status, level = post(server, "level", "targetChrID=3&useItemID=1&useAmount=2")
+                status, level = post(server, "/gd/use_statusup_item", "level", "targetChrID=3&useItemID=1&useAmount=2")
                 self.assertEqual(200, status)
                 self.assertEqual({"chrdata", "itemList", "resultValues", "digest"}, set(level))
                 changed = next(item for item in level["chrdata"] if item["id"] == 3)
                 self.assertEqual([111, 0], [int(value) >> 12 for value in changed["jobLevels"]])
                 self.assertEqual([90, 0], [int(value) & 0xFFF for value in changed["jobLevels"]])
                 self.assertEqual({"0": 1}, level["resultValues"]["addedLevels"])
-                self.assertEqual((200, level), post(server, "level", "targetChrID=3&useItemID=1&useAmount=2"))
+                self.assertEqual((200, level), post(server, "/gd/use_statusup_item", "level", "targetChrID=3&useItemID=1&useAmount=2"))
                 # Reusing a spent requestID with a different body is no longer
                 # read as a tampered retry: this is a genuine second use, of a
                 # luck item, so it applies -- and its own retry still replays
                 # rather than spending a second one.
-                status, luck = post(server, "level", "targetChrID=3&useItemID=3&useAmount=1")
+                status, luck = post(server, "/gd/use_statusup_item", "level", "targetChrID=3&useItemID=3&useAmount=1")
                 self.assertEqual((200, 1), (status, luck["resultValues"]["addedLuck"]))
                 self.assertEqual(30, next(item for item in luck["chrdata"] if item["id"] == 3)["luck"])
-                self.assertEqual((status, luck), post(server, "level", "targetChrID=3&useItemID=3&useAmount=1"))
-                status, wrong_species = post(server, "species", "targetChrID=3&useItemID=2&useAmount=1")
+                self.assertEqual((status, luck), post(server, "/gd/use_statusup_item", "level", "targetChrID=3&useItemID=3&useAmount=1"))
+                status, wrong_species = post(server, "/gd/use_statusup_item", "species", "targetChrID=3&useItemID=2&useAmount=1")
                 self.assertEqual((200, True, 3), (status, wrong_species["success"], wrong_species["cmdError"]))
-                status, unknown = post(server, "unknown", "targetChrID=999&useItemID=1&useAmount=1")
+                status, unknown = post(server, "/gd/use_statusup_item", "unknown", "targetChrID=999&useItemID=1&useAmount=1")
                 self.assertEqual((200, True, 4), (status, unknown["success"], unknown["cmdError"]))
                 # A semantically invalid account record must not retain the
                 # speculative level update attempted before its bad scalar is
@@ -83,7 +66,7 @@ class StatusupItemTest(unittest.TestCase):
                 bad = {"id": 3, "jobLevels": [89], "skillBoost": "bad", "luck": 0}
                 server.state.accounts["account"]["userdata"]["chrdata"] = [bad]
                 server.state.accounts["account"]["userdata"]["itemList"] = [2, 0, 0]
-                status, invalid_state = post(server, "bad-state", "targetChrID=3&useItemID=1&useAmount=1")
+                status, invalid_state = post(server, "/gd/use_statusup_item", "bad-state", "targetChrID=3&useItemID=1&useAmount=1")
                 self.assertEqual((200, True, 3), (status, invalid_state["success"], invalid_state["cmdError"]))
                 self.assertEqual(([89], 2), (bad["jobLevels"], server.state.accounts["account"]["userdata"]["itemList"][0]))
                 server.state.accounts["account"]["userdata"]["chrdata"] = [
@@ -91,25 +74,25 @@ class StatusupItemTest(unittest.TestCase):
                     {"id": 91, "jobLevels": [1.0], "skillBoost": 0, "luck": 0},
                 ]
                 server.state.accounts["account"]["userdata"]["itemList"] = [1, 2, 20]
-                status, luck = post(server, "luck", "targetChrID=3&useItemID=3&useAmount=20")
+                status, luck = post(server, "/gd/use_statusup_item", "luck", "targetChrID=3&useItemID=3&useAmount=20")
                 self.assertEqual((200, 1, 30), (status, luck["resultValues"]["addedLuck"], next(item for item in luck["chrdata"] if item["id"] == 3)["luck"]))
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
-            restarted, restarted_thread = start()
+            restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), statusup_catalog=catalog)
             try:
-                self.assertEqual((200, level), post(restarted, "level", "targetChrID=3&useItemID=1&useAmount=2"))
-                status, unavailable = post(restarted, "missing", "targetChrID=3&useItemID=1&useAmount=1")
+                self.assertEqual((200, level), post(restarted, "/gd/use_statusup_item", "level", "targetChrID=3&useItemID=1&useAmount=2"))
+                status, unavailable = post(restarted, "/gd/use_statusup_item", "missing", "targetChrID=3&useItemID=1&useAmount=1")
                 self.assertEqual((200, True, 3), (status, unavailable["success"], unavailable["cmdError"]))
             finally:
-                restarted.shutdown(); restarted_thread.join(); restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
 
 class BundledStatusupPolicyRuntimeTest(unittest.TestCase):
     def test_bundled_effects_are_applied_through_the_real_route(self) -> None:
         """The bundled table must settle a real use, not merely load."""
         with tempfile.TemporaryDirectory() as directory:
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             state = BootstrapState(Path(directory) / "state.json")
             items = [0] * 181
             items[175 - 1] = 4  # item 175 grants three levels per use
@@ -120,19 +103,13 @@ class BundledStatusupPolicyRuntimeTest(unittest.TestCase):
                     "jobLevels": [(1234 << 12) | 10, (5 << 12) | 4, 0.0],
                 }],
             })
-            server = BootstrapServer(("127.0.0.1", 0), profile, state, statusup_catalog=build_bundled_statusup_policy())
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
+            server, thread = start_server(("127.0.0.1", 0), profile, state, statusup_catalog=build_bundled_statusup_policy())
             try:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", "/gd/use_statusup_item?otk=token&requestID=bundled",
-                                   body="targetChrID=3&useItemID=175&useAmount=2")
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
+                status, payload = post(server, "/gd/use_statusup_item", "bundled",
+                                       "targetChrID=3&useItemID=175&useAmount=2")
             finally:
-                server.shutdown(); thread.join(); server.server_close()
-            self.assertEqual(200, response.status)
+                stop_server(server, thread)
+            self.assertEqual(200, status)
             self.assertEqual({"0": 6, "1": 6}, payload["resultValues"]["addedLevels"])
             row = next(item for item in payload["chrdata"] if item["id"] == 3)
             # Both unlocked jobs gain 2 x 3 levels; the packed experience high

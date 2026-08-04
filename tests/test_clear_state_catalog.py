@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from liminal_gate.bootstrap_server import _clear_state_matches
 from liminal_gate.clear_state_catalog import ClearStateCatalogError, load_clear_state_catalog
+from tests.support import write_json
 
 
 class ClearStateCatalogTest(unittest.TestCase):
     def _catalog(self, root: Path) -> object:
         path = root / "clear-state.json"
-        path.write_text(json.dumps({"schema_version": 1, "provenance": "user-supplied", "team_slots": 6, "max_skill_boost": 9, "max_skill_boost_per_battle": 2, "characters": [{"character_id": 1, "duplicate_skill_boost": 3, "jobs": [{"maximum_experience": 10, "level_thresholds": [0, 5, 10]}, {"maximum_experience": 0, "level_thresholds": [0]}, {"maximum_experience": 0, "level_thresholds": [0]}]}]}), encoding="utf-8")
+        write_json(path, {"schema_version": 1, "provenance": "user-supplied", "team_slots": 6, "max_skill_boost": 9, "max_skill_boost_per_battle": 2, "characters": [{"character_id": 1, "duplicate_skill_boost": 3, "jobs": [{"maximum_experience": 10, "level_thresholds": [0, 5, 10]}, {"maximum_experience": 0, "level_thresholds": [0]}, {"maximum_experience": 0, "level_thresholds": [0]}]}]})
         return load_clear_state_catalog(path)
 
     def test_validates_only_derived_existing_character_projection(self) -> None:
@@ -46,6 +46,6 @@ class ClearStateCatalogTest(unittest.TestCase):
     def test_rejects_ambiguous_progression_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "clear-state.json"
-            path.write_text(json.dumps({"schema_version": 1, "provenance": "user-supplied", "team_slots": 5, "max_skill_boost": 9, "max_skill_boost_per_battle": 2, "characters": []}), encoding="utf-8")
+            write_json(path, {"schema_version": 1, "provenance": "user-supplied", "team_slots": 5, "max_skill_boost": 9, "max_skill_boost_per_battle": 2, "characters": []})
             with self.assertRaisesRegex(ClearStateCatalogError, "team_slots"):
                 load_clear_state_catalog(path)

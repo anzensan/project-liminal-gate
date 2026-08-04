@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from liminal_gate.summon_skill_catalog import SummonSkillCatalogError, load_summon_skill_catalog
+from tests.support import write_json
 
 
 class SummonSkillCatalogTest(unittest.TestCase):
@@ -22,7 +22,7 @@ class SummonSkillCatalogTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "summons.json"
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             catalog = load_summon_skill_catalog(path)
         self.assertEqual(2, catalog.level_counts[1])
         self.assertEqual(1, catalog.levels[(1, 1)].coins)
@@ -39,6 +39,6 @@ class SummonSkillCatalogTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "summons.json"
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             with self.assertRaises(SummonSkillCatalogError):
                 load_summon_skill_catalog(path)

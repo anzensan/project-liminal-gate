@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from unittest.mock import patch
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.message_catalog import (
     MessageCatalogError,
     build_bundled_chapter_message_policy,
     eligible_chapter_messages,
     load_message_catalog,
 )
+from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
 
 class MessageLifecycleTest(unittest.TestCase):
@@ -23,27 +22,13 @@ class MessageLifecycleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             catalog = build_bundled_chapter_message_policy()
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
-                    ("127.0.0.1", 0), profile, BootstrapState(state_path),
-                    message_catalog=catalog, chapter_milestones=True,
-                )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def get(server: BootstrapServer) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("GET", "/gd/login?otk=token&uuid=account")
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
-
-            server, thread = start()
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                message_catalog=catalog, chapter_milestones=True,
+            )
             try:
                 seed = {
                     "progressCode": (8 << 6) | 9,
@@ -53,7 +38,7 @@ class MessageLifecycleTest(unittest.TestCase):
                     "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
                 }
                 server.state.create_account("signup", "account", seed, catalog)
-                status, login = get(server)
+                status, login = get(server, "/gd/login?otk=token&uuid=account")
                 self.assertEqual((200, []), (status, login["messageList"]))
                 self.assertNotIn("chapter:8:item:112", {message["id"] for message in login["messageList"]})
                 self.assertEqual(
@@ -67,11 +52,14 @@ class MessageLifecycleTest(unittest.TestCase):
                     for message_id in server.state.accounts["account"]["chapter_milestones_issued"]
                 ))
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
-            restarted, thread = start()
+            restarted, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                message_catalog=catalog, chapter_milestones=True,
+            )
             try:
-                status, login = get(restarted)
+                status, login = get(restarted, "/gd/login?otk=token&uuid=account")
                 self.assertEqual((200, []), (status, login["messageList"]))
                 self.assertEqual(
                     (4, 3),
@@ -80,18 +68,18 @@ class MessageLifecycleTest(unittest.TestCase):
                 with restarted.state.lock:
                     restarted.state.accounts["account"]["userdata"]["progressCode"] = (9 << 6) | 1
                     restarted.state._persist_locked()
-                status, login = get(restarted)
+                status, login = get(restarted, "/gd/login?otk=token&uuid=account")
                 self.assertEqual((200, []), (status, login["messageList"]))
                 self.assertEqual(6, restarted.state.accounts["account"]["userdata"]["itemList"][111])
                 self.assertTrue(restarted.state.accounts["account"]["messages"]["chapter:8:item:112"]["read"])
             finally:
-                restarted.shutdown(); thread.join(); restarted.server_close()
+                stop_server(restarted, thread)
 
     def test_unread_chapter_mail_migrates_to_one_direct_grant(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             catalog = build_bundled_chapter_message_policy()
             seed = {
                 "progressCode": (8 << 6) | 9,
@@ -118,30 +106,21 @@ class MessageLifecycleTest(unittest.TestCase):
                 state._persist_locked()
             state.close()
 
-            server = BootstrapServer(
+            server, thread = start_server(
                 ("127.0.0.1", 0), profile, BootstrapState(state_path),
                 message_catalog=catalog, chapter_milestones=True,
             )
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
             try:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("GET", "/gd/login?otk=token&uuid=account")
-                response = connection.getresponse()
-                login = json.loads(response.read())
-                connection.close()
-                self.assertEqual((200, []), (response.status, login["messageList"]))
+                status, login = get(server, "/gd/login?otk=token&uuid=account")
+                self.assertEqual((200, []), (status, login["messageList"]))
                 userdata = server.state.accounts["account"]["userdata"]
                 self.assertEqual((2, 0), (userdata["itemList"][49], userdata["itemList"][111]))
                 self.assertTrue(server.state.accounts["account"]["messages"]["chapter:7:item:50"]["read"])
-                connection = HTTPConnection(*server.server_address)
-                connection.request("GET", "/gd/login?otk=token&uuid=account")
-                response = connection.getresponse()
-                self.assertEqual((200, []), (response.status, json.loads(response.read())["messageList"]))
-                connection.close()
+                status, again = get(server, "/gd/login?otk=token&uuid=account")
+                self.assertEqual((200, []), (status, again["messageList"]))
                 self.assertEqual(2, server.state.accounts["account"]["userdata"]["itemList"][49])
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
             restarted = BootstrapState(state_path)
             self.assertEqual(2, restarted.accounts["account"]["userdata"]["itemList"][49])
@@ -201,22 +180,10 @@ class MessageLifecycleTest(unittest.TestCase):
                 'schema_version = 1\nprovenance = "user-supplied"\nitem_slots = 3\nmax_free_energy = 9\nmax_coins = 99\nmax_stack = 8\n\n[[messages]]\nid = "local-1"\ndate = 1.0\ndays_last = 0\nmessages = { default = "Local message", ja = "Local message", en = "Local message" }\ncoins = 3\nfree_energy = 2\nitems = { "2" = 4 }\n',
                 encoding="utf-8",
             )
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             state_path = root / "state.json"
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), message_catalog=load_message_catalog(catalog_path))
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def get(server: BootstrapServer, path: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address); connection.request("GET", path); response = connection.getresponse(); payload = json.loads(response.read()); connection.close(); return response.status, payload
-
-            def post(server: BootstrapServer, route: str, request_id: str, body: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address); connection.request("POST", f"/gd/{route}?otk=token&requestID={request_id}", body=body); response = connection.getresponse(); payload = json.loads(response.read()); connection.close(); return response.status, payload
-
-            server, thread = start()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), message_catalog=load_message_catalog(catalog_path))
             try:
                 server.state.create_account("signup", "account", {"chrdata": [], "buddyInfo": {"list": [], "record": []}, "summonList": [0] * 16, "itemList": [0, 1, 0], "coins": 2, "freeEnergy": 1, "energy": 7, "energyAppStore": 4, "energyGooglePlay": 5, "energyAndApp": 6}, load_message_catalog(catalog_path))
                 status, login = get(server, "/gd/login?otk=token&uuid=account")
@@ -225,33 +192,33 @@ class MessageLifecycleTest(unittest.TestCase):
                 self.assertEqual({"id", "date", "read", "daysLast", "gifts", "coins", "energy", "chr", "item", "summon", "buddy", "title", "messages"}, set(message))
                 self.assertEqual(("local-1", False, [{"id": 2, "num": 4}]), (message["id"], message["read"], message["item"]))
                 read_body = urlencode({"idlist": json.dumps(["local-1"]), "lastUpdate": "1"})
-                status, before_read = post(server, "delete_messages", "delete-before", read_body)
+                status, before_read = post(server, "/gd/delete_messages", "delete-before", read_body)
                 self.assertEqual((409, "invalid_local_message"), (status, before_read["error"]))
-                status, read = post(server, "read_messages", "read-one", read_body)
+                status, read = post(server, "/gd/read_messages", "read-one", read_body)
                 self.assertEqual(200, status)
                 self.assertEqual((True, ["local-1"], 5, 3, [0, 5, 0]), (read["result"], read["readlist"], read["coins"], read["freeEnergy"], read["itemList"]))
                 self.assertTrue({"chrdata", "buddyInfo", "summonList", "achivementFlags", "energyAppStore", "energyGooglePlay", "energyAndApp"} <= set(read))
                 status, after_read_login = get(server, "/gd/login?otk=token&uuid=account")
                 self.assertEqual((200, []), (status, after_read_login["messageList"]))
                 self.assertTrue(server.state.accounts["account"]["messages"]["local-1"]["read"])
-                self.assertEqual((status, read), post(server, "read_messages", "read-one", read_body))
+                self.assertEqual((status, read), post(server, "/gd/read_messages", "read-one", read_body))
                 # Reusing a spent requestID with a different body is no longer
                 # read as a tampered retry: this is a fresh read of a message
                 # already read, which must grant nothing further.
-                status, reread = post(server, "read_messages", "read-one", urlencode({"idlist": json.dumps(["local-1"])}))
+                status, reread = post(server, "/gd/read_messages", "read-one", urlencode({"idlist": json.dumps(["local-1"])}))
                 self.assertEqual((200, True, ["local-1"]), (status, reread["result"], reread["readlist"]))
                 self.assertEqual((read["coins"], read["itemList"]), (reread["coins"], reread["itemList"]))
-                status, deleted = post(server, "delete_messages", "delete-one", read_body)
+                status, deleted = post(server, "/gd/delete_messages", "delete-one", read_body)
                 self.assertEqual((200, ["local-1"]), (status, deleted["deletelist"]))
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
-            restarted, thread = start()
+            restarted, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), message_catalog=load_message_catalog(catalog_path))
             try:
-                self.assertEqual((200, read), post(restarted, "read_messages", "read-one", read_body))
-                self.assertEqual((200, deleted), post(restarted, "delete_messages", "delete-one", read_body))
+                self.assertEqual((200, read), post(restarted, "/gd/read_messages", "read-one", read_body))
+                self.assertEqual((200, deleted), post(restarted, "/gd/delete_messages", "delete-one", read_body))
             finally:
-                restarted.shutdown(); thread.join(); restarted.server_close()
+                stop_server(restarted, thread)
 
 
 class MessageRewardKindTest(unittest.TestCase):
@@ -263,8 +230,6 @@ class MessageRewardKindTest(unittest.TestCase):
     dropped, which would look to a player like a reward that never arrived.
     """
 
-    PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json"
-
     def _catalog(self, root: Path, body: str) -> object:
         path = root / "messages.toml"
         path.write_text(
@@ -275,12 +240,10 @@ class MessageRewardKindTest(unittest.TestCase):
         return load_message_catalog(path)
 
     def _serve(self, catalog: object, state_path: Path, userdata: dict[str, object]):
-        server = BootstrapServer(
-            ("127.0.0.1", 0), load_profile(self.PROFILE), BootstrapState(state_path),
+        server, thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
             message_catalog=catalog,
         )
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
         server.state.create_account("signup", "account", userdata, catalog)
         return server, thread
 
@@ -293,12 +256,7 @@ class MessageRewardKindTest(unittest.TestCase):
 
     def _read(self, server, request_id: str = "read"):
         body = urlencode({"idlist": json.dumps(["local-1"]), "lastUpdate": "1"})
-        connection = HTTPConnection(*server.server_address)
-        connection.request("POST", f"/gd/read_messages?otk=token&requestID={request_id}", body=body)
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
+        return post(server, "/gd/read_messages", request_id, body)
 
     MESSAGE = (
         '[[messages]]\nid = "local-1"\ndate = 1.0\ndays_last = 0\n'
@@ -317,19 +275,17 @@ class MessageRewardKindTest(unittest.TestCase):
                 self.assertEqual([1018], [row["id"] for row in read["chrdata"]])
                 self.assertTrue(read["chrdata"][0]["isNew"])
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
-            restarted = BootstrapServer(
-                ("127.0.0.1", 0), load_profile(self.PROFILE), BootstrapState(state_path),
+            restarted, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
                 message_catalog=catalog,
             )
-            thread = threading.Thread(target=restarted.serve_forever)
-            thread.start()
             try:
                 held = restarted.state.accounts["account"]["userdata"]["chrdata"]
                 self.assertEqual([1018], [row["id"] for row in held])
             finally:
-                restarted.shutdown(); thread.join(); restarted.server_close()
+                stop_server(restarted, thread)
 
     def test_a_companion_present_enters_the_box_at_its_declared_level(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -343,7 +299,7 @@ class MessageRewardKindTest(unittest.TestCase):
                 self.assertEqual([(42, 5)], [(row["bid"], row["lv"]) for row in owned])
                 self.assertEqual(1, owned[0]["iid"])
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
     def test_a_duplicate_character_present_grants_no_second_row(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -357,7 +313,7 @@ class MessageRewardKindTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual([1018], [row["id"] for row in read["chrdata"]])
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
     def test_a_full_companion_box_refuses_the_read_instead_of_half_settling(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -386,7 +342,7 @@ class MessageRewardKindTest(unittest.TestCase):
                 # The coins on the same message must not have been paid either.
                 self.assertEqual(0, server.state.accounts["account"]["userdata"]["coins"])
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
     def test_a_summon_or_title_reward_is_refused_at_catalog_load(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

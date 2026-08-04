@@ -16,18 +16,17 @@ stage, against a recorded declaration of what could be evidenced at all.
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS
 from liminal_gate.story_catalog import load_story_catalog
 from liminal_gate.story_outcome_catalog import load_story_outcome_catalog
 from liminal_gate.story_outcome_generator import MAX_COMPANIONS
+from tests.support import bootstrap_profile, request, start_server, stop_server, write_json
 
 
 COMPANION, OTHER_COMPANION = 111, 226
@@ -102,17 +101,15 @@ class OutcomeEvidenceTest(unittest.TestCase):
             for value in (EVIDENCED, UNEVIDENCED)
         ]}
         story_path, outcome_path = root / "story.json", root / "outcome.json"
-        story_path.write_text(json.dumps(story_document), encoding="utf-8")
-        outcome_path.write_text(json.dumps(self._catalog_document()), encoding="utf-8")
-        profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
-        server = BootstrapServer(
+        write_json(story_path, story_document)
+        write_json(outcome_path, self._catalog_document())
+        profile = bootstrap_profile()
+        server, thread = start_server(
             ("127.0.0.1", 0), profile, BootstrapState(root / "state.json"),
             story_catalog=load_story_catalog(story_path),
             story_outcome_catalog=load_story_outcome_catalog(outcome_path),
             outcome_strict=strict,
         )
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
         server.state.create_account("token", "account", {
             "coins": 0, "worldMapNo": 0, "progressCode": _START_PROGRESS[section],
             "chrdata": [_character(CHARACTER)],
@@ -126,12 +123,7 @@ class OutcomeEvidenceTest(unittest.TestCase):
 
     @staticmethod
     def _post(server: BootstrapServer, path: str, fields: list[tuple[str, str]]) -> tuple[int, dict[str, object]]:
-        connection = HTTPConnection(*server.server_address)
-        connection.request("POST", path, body=urlencode(fields))
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
+        return request(server, "POST", path, urlencode(fields))
 
     def _clear(self, strict: bool, section: int, request_id: str, **fields) -> tuple[int, dict[str, object]]:
         with tempfile.TemporaryDirectory() as directory:
@@ -145,9 +137,7 @@ class OutcomeEvidenceTest(unittest.TestCase):
                     self._clear_fields(section, **fields),
                 )
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
     # --- the default: Companions bounded, everything else left alone ---
 
@@ -226,9 +216,7 @@ class OutcomeEvidenceTest(unittest.TestCase):
                 self.assertEqual(200, status)
                 self.assertEqual([COMPANION], [row["bid"] for row in payload["buddyInfo"]["list"]])
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
 
 if __name__ == "__main__":

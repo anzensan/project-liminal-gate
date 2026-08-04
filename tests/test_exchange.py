@@ -2,25 +2,24 @@ from __future__ import annotations
 
 import json
 import tempfile
-import threading
 import time
 import unittest
-from http.client import HTTPConnection
 from pathlib import Path
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.exchange_catalog import active_week_index, build_bundled_exchange_policy, load_exchange_catalog
+from tests.support import bootstrap_profile, get, post, request, start_server, stop_server
 
 
 class ExchangeTest(unittest.TestCase):
  def test_nested_get_exchange_replay_and_restart(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d); cat=root/'x.json'; cat.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','item_slots':3,'max_stack':9,'max_coins':99,'weekly_item':0,'end_date':'','offers':[{'offer_id':1,'target_item_id':2,'coins':0,'target_count':1,'initial_count':1,'weekly_item_count':0,'ingredients':{'1':2}}]}))
-   profile=load_profile(Path(__file__).resolve().parents[1]/'profiles/legacy-client-bootstrap.json'); state=root/'s.json'
+   profile=bootstrap_profile(); state=root/'s.json'
    def start():
-    s=BootstrapServer(('127.0.0.1',0),profile,BootstrapState(state),exchange_catalog=load_exchange_catalog(cat)); t=threading.Thread(target=s.serve_forever); t.start(); return s,t
+    return start_server(('127.0.0.1',0),profile,BootstrapState(state),exchange_catalog=load_exchange_catalog(cat))
    def req(s,method,path,body=None):
-    c=HTTPConnection(*s.server_address); c.request(method,path,body=body); r=c.getresponse(); p=json.loads(r.read()); c.close(); return r.status,p
+    return request(s,method,path,body)
    s,t=start()
    try:
     s.state.create_account('token','a',{'itemList':[3,0,0],'coins':0},exchange_catalog=load_exchange_catalog(cat))
@@ -30,10 +29,10 @@ class ExchangeTest(unittest.TestCase):
     # Reusing a spent requestID with a different body is answered on its own
     # merits now: this asks for more than the exchange allows.
     status,reused=req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=2'); self.assertEqual((200,True,6),(status,reused['success'],reused['cmdError']))
-   finally: s.shutdown();t.join();s.server_close()
+   finally: stop_server(s,t)
    s,t=start()
    try: self.assertEqual((200,done),req(s,'POST','/gd/exchange?otk=token&requestID=x','exchangeItemID=1&amount=1&lastUpdate=1'))
-   finally: s.shutdown();t.join();s.server_close()
+   finally: stop_server(s,t)
 
 
 class BundledTradingPostTest(unittest.TestCase):
@@ -41,7 +40,7 @@ class BundledTradingPostTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.catalog = build_bundled_exchange_policy()
-        self.profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.open_offers = self.catalog.offers_open_at(active_week_index(time.time(), self.catalog.week_count()))
 
     def trade(self, offer, amount: int = 1):
@@ -53,22 +52,13 @@ class BundledTradingPostTest(unittest.TestCase):
                 "coins": 0, "itemList": items, "chrdata": [],
                 "buddyInfo": {"list": [], "record": []},
             })
-            server = BootstrapServer(("127.0.0.1", 0), self.profile, state, exchange_catalog=self.catalog)
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
+            server, thread = start_server(("127.0.0.1", 0), self.profile, state, exchange_catalog=self.catalog)
             try:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", "/gd/exchange?otk=token&requestID=bundled",
-                                   body=f"exchangeItemID={offer.offer_id}&amount={amount}&lastUpdate=1")
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                connection = HTTPConnection(*server.server_address)
-                connection.request("GET", "/gd/get_current_exchange?otk=token")
-                browse = json.loads(connection.getresponse().read())
-                connection.close()
+                _, payload = post(server, "/gd/exchange", "bundled",
+                                  f"exchangeItemID={offer.offer_id}&amount={amount}&lastUpdate=1")
+                _, browse = get(server, "/gd/get_current_exchange?otk=token")
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
             return payload, browse
 
     def test_the_rotation_is_eight_weeks_of_single_reward_offers(self) -> None:
@@ -141,7 +131,7 @@ class RotatedTokenReadTest(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self.profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         state = BootstrapState(Path(self.directory.name) / "state.json")
@@ -153,21 +143,12 @@ class RotatedTokenReadTest(unittest.TestCase):
             "coins": 0, "itemList": items, "chrdata": [],
             "buddyInfo": {"list": [], "record": []},
         }, exchange_catalog=build_bundled_exchange_policy(), client_host="127.0.0.1")
-        self.server = BootstrapServer(("127.0.0.1", 0), self.profile, state,
-                                      exchange_catalog=build_bundled_exchange_policy())
-        thread = threading.Thread(target=self.server.serve_forever)
-        thread.start()
-        self.addCleanup(self.server.server_close)
-        self.addCleanup(thread.join)
-        self.addCleanup(self.server.shutdown)
+        self.server, thread = start_server(("127.0.0.1", 0), self.profile, state,
+                                           exchange_catalog=build_bundled_exchange_policy())
+        self.addCleanup(stop_server, self.server, thread)
 
     def get(self, path: str) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request("GET", path)
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
+        return get(self.server, path)
 
     def test_the_trading_post_opens_on_a_token_no_mutation_bound(self) -> None:
         status, payload = self.get("/gd/get_current_exchange?otk=ROTATED0000000A")
@@ -202,7 +183,7 @@ class RefusalEnvelopeTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.catalog = build_bundled_exchange_policy()
-        self.profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.offer = next(iter(self.catalog.offers_open_at(
             active_week_index(time.time(), self.catalog.week_count())).values()))
 
@@ -217,19 +198,13 @@ class RefusalEnvelopeTest(unittest.TestCase):
                 "coins": 0, "itemList": items, "chrdata": [],
                 "buddyInfo": {"list": [], "record": []},
             })
-            server = BootstrapServer(("127.0.0.1", 0), self.profile, state, exchange_catalog=self.catalog)
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
+            server, thread = start_server(("127.0.0.1", 0), self.profile, state, exchange_catalog=self.catalog)
             try:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", "/gd/exchange?otk=token&requestID=refused",
-                                   body=f"exchangeItemID={self.offer.offer_id}&amount=1&lastUpdate=1")
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
+                status, payload = post(server, "/gd/exchange", "refused",
+                                       f"exchangeItemID={self.offer.offer_id}&amount=1&lastUpdate=1")
             finally:
-                server.shutdown(); thread.join(); server.server_close()
-        self.assertEqual(200, response.status)
+                stop_server(server, thread)
+        self.assertEqual(200, status)
         # NotEnoughItems, on the field the endpoint callback actually reads.
         self.assertEqual((True, 3), (payload["success"], payload["cmdError"]))
         self.assertNotIn("errorCode", payload)

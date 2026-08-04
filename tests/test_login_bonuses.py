@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from http.client import HTTPConnection
 import json
 from pathlib import Path
 import tempfile
@@ -9,13 +8,14 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, build_server, load_profile
+from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, build_server
 from liminal_gate.message_catalog import login_bonus_messages
 from liminal_gate.server_config import ServerConfig
+from tests.support import DEFAULT_PROFILE_PATH, bootstrap_profile, request, start_server, stop_server
 
 
 class LoginBonusTest(unittest.TestCase):
-    PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json"
+    PROFILE = DEFAULT_PROFILE_PATH
 
     def test_core_story_launch_enables_the_standard_login_schedule(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -70,21 +70,10 @@ class LoginBonusTest(unittest.TestCase):
             state_path = Path(directory) / "state.json"
 
             def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
-                    ("127.0.0.1", 0), load_profile(self.PROFILE), BootstrapState(state_path),
+                return start_server(
+                    ("127.0.0.1", 0), bootstrap_profile(self.PROFILE), BootstrapState(state_path),
                     login_bonuses=True,
                 )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
-            def request(server: BootstrapServer, method: str, path: str, body: str | None = None):
-                connection = HTTPConnection(*server.server_address)
-                connection.request(method, path, body=body)
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
 
             def login(server: BootstrapServer, now: float):
                 with patch("liminal_gate.bootstrap_server.time.time", return_value=now):
@@ -113,7 +102,7 @@ class LoginBonusTest(unittest.TestCase):
                 status, deleted = mutate(server, "delete_messages", "delete-day-one", first_ids)
                 self.assertEqual((200, first_ids), (status, deleted["deletelist"]))
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
             restarted, thread = start()
             try:
@@ -145,7 +134,7 @@ class LoginBonusTest(unittest.TestCase):
                     account["login_bonus_total_days"],
                 ))
             finally:
-                restarted.shutdown(); thread.join(); restarted.server_close()
+                stop_server(restarted, thread)
 
 
 if __name__ == "__main__":

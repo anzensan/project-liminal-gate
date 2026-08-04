@@ -10,51 +10,34 @@ accident.
 """
 from __future__ import annotations
 
-import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.drop_eligibility import (
     character_master_ids,
     companion_master_ids,
     login_chr_buddy_data,
 )
-
-PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json"
+from tests.support import bootstrap_profile, request as http_request, running_server
 
 
 def _login(drop_eligibility: bool) -> dict:
     with tempfile.TemporaryDirectory() as directory:
-        profile = load_profile(PROFILE)
-        server = BootstrapServer(
+        profile = bootstrap_profile()
+        with running_server(
             ("127.0.0.1", 0), profile, BootstrapState(Path(directory) / "state.json"),
             drop_eligibility=drop_eligibility,
-        )
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
-        try:
-            host, port = server.server_address[0], server.server_address[1]
+        ) as server:
             account, token = "local-account", "local-token"
             uuid_field = profile.account_binding["login_query_field"]
 
             def request(path: str) -> dict:
-                connection = HTTPConnection(host, port)
-                try:
-                    connection.request("GET", path, headers={"X-Request-Id": path})
-                    return json.loads(connection.getresponse().read())
-                finally:
-                    connection.close()
+                return http_request(server, "GET", path, headers={"X-Request-Id": path})[1]
 
             request(f"{profile.routes['signup']}?{uuid_field}={account}&otk={token}")
             return request(f"{profile.routes['login']}?{uuid_field}={account}&otk={token}")
-        finally:
-            server.shutdown()
-            thread.join()
-            server.server_close()
 
 
 class DropEligibilityTest(unittest.TestCase):

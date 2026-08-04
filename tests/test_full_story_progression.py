@@ -17,18 +17,16 @@ being interrupted, and replays prove a retried stage settles once.
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.story_progression_catalog import build_core_story_policy
+from tests.support import bootstrap_profile, post, start_server, stop_server
 
 
-PUBLIC_ROOT = Path(__file__).resolve().parents[1]
 # The tutorial hands the account over here: high bits 0x01000000 with Chapter
 # 2-1 in the low sixteen, as `test_bootstrap_server` observes at free roam.
 FIRST_PROGRESS = 0x01000000 | (2 << 6) | 1
@@ -53,7 +51,7 @@ class FullStoryProgressionTest(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
         self.state_path = self.root / "state.json"
-        self.profile = load_profile(PUBLIC_ROOT / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.policy = build_core_story_policy()
         self.token = "full-story-token"
         self.account_id = "full-story-account"
@@ -77,32 +75,23 @@ class FullStoryProgressionTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
-        self.server = BootstrapServer(
+        self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
             story_progression_catalog=self.policy,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def restart(self) -> None:
         self.stop_server()
         self.start_server()
 
     def post(self, route: str, request_id: str, fields: list[tuple[str, str]]) -> tuple[int, dict]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request(
-            "POST", f"{route}?otk={self.token}&requestID={request_id}",
-            body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"},
+        return post(
+            self.server, route, request_id, urlencode(fields), token=self.token,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
 
     def userdata(self) -> dict:
         stored = json.loads(self.state_path.read_text(encoding="utf-8"))

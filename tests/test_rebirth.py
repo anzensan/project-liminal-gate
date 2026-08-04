@@ -1,42 +1,37 @@
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.rebirth_catalog import build_bundled_rebirth_policy, load_rebirth_catalog
+from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
 class RebirthTest(unittest.TestCase):
     def test_http_rebirth_joker_error_and_restart_replay(self) -> None:
         document = {"schema_version": 1, "provenance": "user-supplied", "item_slots": 1, "joker_character_id": 9, "recipes": [{"recipe_id": 1, "source_character_id": 2, "destination_character_id": 3, "coins": 2, "items": {"1": 1}, "materials": [{"character_id": 7, "level": 50}, {"character_id": 8, "level": 50}]}]}
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory); catalog_path = root / "catalog.json"; catalog_path.write_text(json.dumps(document), encoding="utf-8")
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json"); state = root / "state.json"; catalog = load_rebirth_catalog(catalog_path)
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state), rebirth_catalog=catalog); thread = threading.Thread(target=server.serve_forever); thread.start(); return server, thread
-            def post(server: BootstrapServer, request_id: str, body: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address); connection.request("POST", f"/gd/rebirth?otk=token&requestID={request_id}", body=body); response = connection.getresponse(); payload = json.loads(response.read()); connection.close(); return response.status, payload
-            server, thread = start()
+            root = Path(directory); catalog_path = write_json(root / "catalog.json", document)
+            profile = bootstrap_profile(); state = root / "state.json"; catalog = load_rebirth_catalog(catalog_path)
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state), rebirth_catalog=catalog)
             try:
                 server.state.create_account("token", "account", {"chrdata": [{"id": 2, "jobLevels": [80.0]}, {"id": 7, "jobLevels": [50.0]}, {"id": 9, "jobLevels": [1.0]}], "itemList": [1], "coins": 2})
-                status, retry = post(server, "first", "rebirthID=1&useJoker=False")
+                status, retry = post(server, "/gd/rebirth", "first", "rebirthID=1&useJoker=False")
                 self.assertEqual((200, True, 7), (status, retry["success"], retry["cmdError"]))
-                status, success = post(server, "second", "rebirthID=1&useJoker=True")
+                status, success = post(server, "/gd/rebirth", "second", "rebirthID=1&useJoker=True")
                 self.assertEqual((200, True, 0, [0]), (status, success["success"], success["coins"], success["itemList"]))
                 self.assertEqual([3, 7, 9], [row["id"] for row in success["chrdata"]])
             finally:
-                server.shutdown(); thread.join(); server.server_close()
-            restarted, restarted_thread = start()
+                stop_server(server, thread)
+            restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state), rebirth_catalog=catalog)
             try:
-                self.assertEqual((200, success), post(restarted, "second", "rebirthID=1&useJoker=True"))
+                self.assertEqual((200, success), post(restarted, "/gd/rebirth", "second", "rebirthID=1&useJoker=True"))
             finally:
-                restarted.shutdown(); restarted_thread.join(); restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
 
 class BundledRebirthPolicyRuntimeTest(unittest.TestCase):
@@ -44,7 +39,7 @@ class BundledRebirthPolicyRuntimeTest(unittest.TestCase):
         """The bundled table must settle a real Rebirth, not merely load."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             state = BootstrapState(root / "state.json")
             # Recipe 1 turns character 2 into 623 for 30000 Coins plus items
             # 10x15, 93x5, 96x1, consuming Companions 237 and 145 at level 50.
@@ -56,18 +51,12 @@ class BundledRebirthPolicyRuntimeTest(unittest.TestCase):
                 "coins": 40000, "itemList": items,
                 "chrdata": [{"id": i, "jobID": 0, "jobLevels": [float(v) for v in levels], "jobSlots": []} for i, levels in mastered],
             })
-            server = BootstrapServer(("127.0.0.1", 0), profile, state, rebirth_catalog=build_bundled_rebirth_policy())
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
+            server, thread = start_server(("127.0.0.1", 0), profile, state, rebirth_catalog=build_bundled_rebirth_policy())
             try:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", "/gd/rebirth?otk=token&requestID=bundled", body="rebirthID=1&useJoker=False")
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
+                status, payload = post(server, "/gd/rebirth", "bundled", "rebirthID=1&useJoker=False")
             finally:
-                server.shutdown(); thread.join(); server.server_close()
-            self.assertEqual(200, response.status)
+                stop_server(server, thread)
+            self.assertEqual(200, status)
             self.assertTrue(payload["success"], payload)
             self.assertEqual(10000, payload["coins"])
             self.assertIn(623, [row["id"] for row in payload["chrdata"]])
@@ -83,7 +72,7 @@ class RebirthPartyConsistencyTest(unittest.TestCase):
         recipe = catalog.recipes[1]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            profile = bootstrap_profile()
             state = BootstrapState(root / "state.json")
             items = [0] * 181
             for item_id, count in recipe.items.items():
@@ -104,19 +93,9 @@ class RebirthPartyConsistencyTest(unittest.TestCase):
                 state.accounts["account"]["tutorial_phase"] = "free_roam"
                 state.accounts["account"]["initial_userdata_served"] = True
                 state._persist_locked()
-            server = BootstrapServer(("127.0.0.1", 0), profile, state, rebirth_catalog=catalog)
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
+            server, thread = start_server(("127.0.0.1", 0), profile, state, rebirth_catalog=catalog)
             try:
-                def post(route: str, request_id: str, body: str) -> tuple[int, dict]:
-                    connection = HTTPConnection(*server.server_address)
-                    connection.request("POST", f"{route}?otk=token&requestID={request_id}", body=body)
-                    response = connection.getresponse()
-                    result = json.loads(response.read())
-                    connection.close()
-                    return response.status, result
-
-                _, rebirthed = post("/gd/rebirth", "rebirth", "rebirthID=1&useJoker=False")
+                _, rebirthed = post(server, "/gd/rebirth", "rebirth", "rebirthID=1&useJoker=False")
                 userdata = state.userdata_for("token")
                 # The client echoes back the party the server just left it.
                 layout = urlencode([
@@ -125,9 +104,9 @@ class RebirthPartyConsistencyTest(unittest.TestCase):
                     ("teamBuddies_VS", "[]"), ("teamNo", "1"), ("teamNo_VS", "1"),
                     ("summonId", "1"), ("lastUpdate", "1"),
                 ])
-                status, _ = post("/gd/userdata", "party", layout)
+                status, _ = post(server, "/gd/userdata", "party", layout)
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
             return rebirthed, status, userdata
 
     def test_the_rebirthed_unit_keeps_its_party_slot(self) -> None:

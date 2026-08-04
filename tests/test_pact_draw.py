@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
 from liminal_gate.bootstrap_server import (
     BootstrapServer,
     BootstrapState,
     _parse_ordinary_pact_draw,
-    load_profile,
 )
 from liminal_gate.pact_draw_catalog import build_bundled_pact_policy, load_pact_draw_catalog
+from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
 class PactDrawTest(unittest.TestCase):
@@ -42,45 +39,26 @@ class PactDrawTest(unittest.TestCase):
     def test_http_fellowship_ticket_spends_once_and_replays_after_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "state.json"
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
+            profile = bootstrap_profile()
             policy = build_bundled_pact_policy()
             body = (
                 "kind=20&count=1&luckType=false&campaignChrID=0"
                 "&eventFlag=0&lastUpdate=1"
             )
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
-                    ("127.0.0.1", 0),
-                    profile,
-                    BootstrapState(state_path),
-                    pact_draw_catalog=policy,
-                )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
-
             def draw(
                 server: BootstrapServer, request_id: str, request_body: str = body,
             ) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST",
-                    f"/gd/do_slot?otk=token&requestID={request_id}",
-                    body=request_body,
-                )
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
+                return post(server, "/gd/do_slot", request_id, request_body)
 
             items = [0] * 181
             items[80] = 1
-            server, thread = start()
+            server, thread = start_server(
+                ("127.0.0.1", 0),
+                profile,
+                BootstrapState(state_path),
+                pact_draw_catalog=policy,
+            )
             try:
                 server.state.create_account(
                     "token",
@@ -141,11 +119,14 @@ class PactDrawTest(unittest.TestCase):
                 )
                 self.assertEqual(before_refusal, server.state.userdata_for("token"))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
-            restarted, restarted_thread = start()
+            restarted, restarted_thread = start_server(
+                ("127.0.0.1", 0),
+                profile,
+                BootstrapState(state_path),
+                pact_draw_catalog=policy,
+            )
             try:
                 self.assertEqual((200, first), draw(restarted, "ticket-one"))
                 persisted = restarted.state.userdata_for("token")
@@ -153,18 +134,12 @@ class PactDrawTest(unittest.TestCase):
                 self.assertEqual(0, persisted["itemList"][80])
                 self.assertEqual(1, len(persisted["chrdata"]))
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
     def test_http_fate_ticket_uses_fellowship_luck_policy_without_spending_coins(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "state.json"
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
+            profile = bootstrap_profile()
             policy = build_bundled_pact_policy()
             selected = policy.fellowship_draws[0]
             roster = [
@@ -185,14 +160,12 @@ class PactDrawTest(unittest.TestCase):
             ]
             items = [0] * 181
             items[80] = 1
-            server = BootstrapServer(
+            server, thread = start_server(
                 ("127.0.0.1", 0),
                 profile,
                 BootstrapState(state_path),
                 pact_draw_catalog=policy,
             )
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
             try:
                 server.state.create_account(
                     "token",
@@ -205,20 +178,17 @@ class PactDrawTest(unittest.TestCase):
                         "chrdata": roster,
                     },
                 )
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST",
-                    "/gd/do_slot?otk=token&requestID=fate-ticket",
-                    body=(
+                status, payload = post(
+                    server,
+                    "/gd/do_slot",
+                    "fate-ticket",
+                    (
                         "kind=20&count=1&luckType=true&campaignChrID=0"
                         "&eventFlag=0&lastUpdate=1"
                     ),
                 )
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
 
-                self.assertEqual((200, True), (response.status, payload["success"]))
+                self.assertEqual((200, True), (status, payload["success"]))
                 self.assertEqual(policy.coin_cost, payload["coins"])
                 self.assertEqual(0, payload["itemList"][80])
                 self.assertEqual(
@@ -245,9 +215,7 @@ class PactDrawTest(unittest.TestCase):
                     selected_row["skillBoost"], selected_row["luck"],
                 ))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
     def test_http_pact_draw_replays_and_persists(self) -> None:
         catalog_document = {
@@ -258,55 +226,43 @@ class PactDrawTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             catalog_path, state_path = root / "pact.json", root / "state.json"
-            catalog_path.write_text(json.dumps(catalog_document), encoding="utf-8")
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+            write_json(catalog_path, catalog_document)
+            profile = bootstrap_profile()
             catalog = load_pact_draw_catalog(catalog_path)
 
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=catalog)
-                thread = threading.Thread(target=server.serve_forever); thread.start()
-                return server, thread
+            def draw(server: BootstrapServer, request_id: str) -> tuple[int, dict[str, object]]:
+                return post(server, "/gd/do_slot", request_id, "kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
 
-            def post(server: BootstrapServer, request_id: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", f"/gd/do_slot?otk=token&requestID={request_id}", body="kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
-                response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
-                return response.status, payload
-
-            server, thread = start()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=catalog)
             try:
                 server.state.create_account("token", "account", {"coins": 20, "energy": 0, "freeEnergy": 0, "chrdata": []})
-                status, first = post(server, "one")
+                status, first = draw(server, "one")
                 self.assertEqual(200, status)
                 self.assertEqual((True, 10, [{"id": 9001, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": True, "levelAdded": 1, "skillBoost": 0}]), (first["success"], first["coins"], first["chrdata"]))
-                self.assertEqual((status, first), post(server, "one"))
-                _, duplicate = post(server, "two")
+                self.assertEqual((status, first), draw(server, "one"))
+                _, duplicate = draw(server, "two")
                 self.assertEqual((0, False, 2, 5), (duplicate["coins"], duplicate["chrdata"][0]["isNew"], duplicate["chrdata"][0]["levelAdded"], duplicate["chrdata"][0]["boostUp"]))
             finally:
-                server.shutdown(); thread.join(); server.server_close()
-            restarted, restarted_thread = start()
+                stop_server(server, thread)
+            restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=catalog)
             try:
-                self.assertEqual((200, first), post(restarted, "one"))
+                self.assertEqual((200, first), draw(restarted, "one"))
             finally:
-                restarted.shutdown(); restarted_thread.join(); restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
     def test_http_bundled_truth_pacts_charge_the_served_cost_and_persist_wallet_after_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
-            server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=build_bundled_pact_policy())
-            thread = threading.Thread(target=server.serve_forever); thread.start()
+            profile = bootstrap_profile()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=build_bundled_pact_policy())
             try:
                 # A Truth pull costs 5 Energy, so a ten-pull is exactly the 50
                 # free Energy a new local account receives.
                 server.state.create_account("token", "account", {"coins": 0, "energy": 0, "freeEnergy": 100, "chrdata": []})
 
                 def draw(request_id: str, count: int) -> tuple[int, dict[str, object]]:
-                    connection = HTTPConnection(*server.server_address)
-                    connection.request("POST", f"/gd/do_slot?otk=token&requestID={request_id}", body=f"kind=1&count={count}&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
-                    response = connection.getresponse(); payload = json.loads(response.read()); connection.close()
-                    return response.status, payload
+                    return post(server, "/gd/do_slot", request_id, f"kind=1&count={count}&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
 
                 status, first = draw("truth-one", 1)
                 self.assertEqual(200, status)
@@ -320,7 +276,7 @@ class PactDrawTest(unittest.TestCase):
                 self.assertEqual(10, len(ten["chrdata"]))
                 self.assertIn(ten["chrdata"][0]["id"], {draw.character_id for draw in build_bundled_pact_policy().truth_draws})
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
             restarted = BootstrapState(state_path)
             try:
                 persisted = restarted.userdata_for("token")
@@ -336,29 +292,18 @@ class PactDrawTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
-
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
-                    ("127.0.0.1", 0), profile, BootstrapState(state_path),
-                    pact_draw_catalog=build_bundled_pact_policy(),
-                )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
+            profile = bootstrap_profile()
 
             def draw(server: BootstrapServer, request_id: str) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST", f"/gd/do_slot?otk=token&requestID={request_id}",
-                    body="kind=1&count=6&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+                return post(
+                    server, "/gd/do_slot", request_id,
+                    "kind=1&count=6&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
                 )
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
 
-            server, thread = start()
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                pact_draw_catalog=build_bundled_pact_policy(),
+            )
             try:
                 server.state.create_account(
                     "token", "account",
@@ -370,42 +315,37 @@ class PactDrawTest(unittest.TestCase):
                 ))
                 self.assertEqual((status, first), draw(server, "truth-six"))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
-            restarted, restarted_thread = start()
+            restarted, restarted_thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                pact_draw_catalog=build_bundled_pact_policy(),
+            )
             try:
                 self.assertEqual((200, first), draw(restarted, "truth-six"))
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
     def test_migrated_packed_roster_accepts_fate_and_replays_after_restart(self) -> None:
         """The original client stores packed levels as integral JSON doubles."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state_path = root / "state.json"
-            profile = load_profile(
-                Path(__file__).resolve().parents[1]
-                / "profiles"
-                / "legacy-client-bootstrap.json"
-            )
+            profile = bootstrap_profile()
             policy = build_bundled_pact_policy()
             selected = policy.fellowship_draws[0]
             packed_level = float((12345 << 12) | 20)
             roster = []
-            for draw in policy.fellowship_draws:
+            for draw_entry in policy.fellowship_draws:
                 roster.append(
                     {
-                        "id": draw.character_id,
+                        "id": draw_entry.character_id,
                         "buddy": 0,
                         "date": 0.0,
                         "jobSlots": [0.0, 0.0, 0.0],
                         "jobLevels": [
                             packed_level
-                            if draw.character_id == selected.character_id
+                            if draw_entry.character_id == selected.character_id
                             else 10.0,
                             0.0,
                             0.0,
@@ -414,21 +354,10 @@ class PactDrawTest(unittest.TestCase):
                         "flags": 0,
                         "skillBoost": 0,
                         "luck": 0
-                        if draw.character_id == selected.character_id
+                        if draw_entry.character_id == selected.character_id
                         else policy.max_luck,
                     }
                 )
-
-            def start() -> tuple[BootstrapServer, threading.Thread]:
-                server = BootstrapServer(
-                    ("127.0.0.1", 0),
-                    profile,
-                    BootstrapState(state_path),
-                    pact_draw_catalog=policy,
-                )
-                thread = threading.Thread(target=server.serve_forever)
-                thread.start()
-                return server, thread
 
             body = (
                 "kind=0&count=1&luckType=true&campaignChrID=0"
@@ -436,18 +365,14 @@ class PactDrawTest(unittest.TestCase):
             )
 
             def draw(server: BootstrapServer) -> tuple[int, dict[str, object]]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request(
-                    "POST",
-                    "/gd/do_slot?otk=token&requestID=fate-packed",
-                    body=body,
-                )
-                response = connection.getresponse()
-                payload = json.loads(response.read())
-                connection.close()
-                return response.status, payload
+                return post(server, "/gd/do_slot", "fate-packed", body)
 
-            server, thread = start()
+            server, thread = start_server(
+                ("127.0.0.1", 0),
+                profile,
+                BootstrapState(state_path),
+                pact_draw_catalog=policy,
+            )
             try:
                 server.state.create_account(
                     "token",
@@ -482,17 +407,18 @@ class PactDrawTest(unittest.TestCase):
                 self.assertEqual(50, stored["luck"])
                 self.assertEqual((status, first), draw(server))
             finally:
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                stop_server(server, thread)
 
-            restarted, restarted_thread = start()
+            restarted, restarted_thread = start_server(
+                ("127.0.0.1", 0),
+                profile,
+                BootstrapState(state_path),
+                pact_draw_catalog=policy,
+            )
             try:
                 self.assertEqual((200, first), draw(restarted))
             finally:
-                restarted.shutdown()
-                restarted_thread.join()
-                restarted.server_close()
+                stop_server(restarted, restarted_thread)
 
     def test_a_character_at_the_skill_boost_cap_leaves_the_pool(self) -> None:
         """The retired service stopped offering a character at 100% Skill Boost.
@@ -512,16 +438,12 @@ class PactDrawTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             catalog_path, state_path = root / "pact.json", root / "state.json"
-            catalog_path.write_text(json.dumps(catalog_document), encoding="utf-8")
-            profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
-            server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=load_pact_draw_catalog(catalog_path))
-            thread = threading.Thread(target=server.serve_forever); thread.start()
+            write_json(catalog_path, catalog_document)
+            profile = bootstrap_profile()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=load_pact_draw_catalog(catalog_path))
 
-            def post(request_id: str) -> dict[str, object]:
-                connection = HTTPConnection(*server.server_address)
-                connection.request("POST", f"/gd/do_slot?otk=token&requestID={request_id}", body="kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
-                payload = json.loads(connection.getresponse().read()); connection.close()
-                return payload
+            def draw(request_id: str) -> dict[str, object]:
+                return post(server, "/gd/do_slot", request_id, "kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")[1]
 
             def owned(character_id: int, skill_boost: int) -> dict[str, object]:
                 return {
@@ -535,7 +457,7 @@ class PactDrawTest(unittest.TestCase):
                 # land on 9002 even though both carry the same weight.
                 server.state.create_account("token", "account", {"coins": 100, "energy": 0, "freeEnergy": 0, "chrdata": [owned(9001, 100)]})
                 for index in range(3):
-                    payload = post(f"draw-{index}")
+                    payload = draw(f"draw-{index}")
                     self.assertTrue(payload["success"])
                     self.assertEqual(9002, payload["chrdata"][0]["id"])
                 stored = server.state.userdata_for("token")
@@ -543,22 +465,19 @@ class PactDrawTest(unittest.TestCase):
                 self.assertEqual(100, next(row for row in stored["chrdata"] if row["id"] == 9001)["skillBoost"])
 
             finally:
-                server.shutdown(); thread.join(); server.server_close()
+                stop_server(server, thread)
 
             # With the whole pool capped the Pact refuses rather than selecting
             # an ineligible character or charging for nothing. This needs its
             # own server, because one account per state file owns the host claim.
-            exhausted_server = BootstrapServer(("127.0.0.1", 0), profile, BootstrapState(root / "exhausted.json"), pact_draw_catalog=load_pact_draw_catalog(catalog_path))
-            exhausted_thread = threading.Thread(target=exhausted_server.serve_forever); exhausted_thread.start()
+            exhausted_server, exhausted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(root / "exhausted.json"), pact_draw_catalog=load_pact_draw_catalog(catalog_path))
             try:
                 exhausted_server.state.create_account("token", "exhausted", {"coins": 100, "energy": 0, "freeEnergy": 0, "chrdata": [owned(9001, 100), owned(9002, 100)]})
-                connection = HTTPConnection(*exhausted_server.server_address)
-                connection.request("POST", "/gd/do_slot?otk=token&requestID=draw-exhausted", body="kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
-                exhausted = json.loads(connection.getresponse().read()); connection.close()
+                _, exhausted = post(exhausted_server, "/gd/do_slot", "draw-exhausted", "kind=0&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
                 # The client's own refusal shape: a successful call reporting a
                 # command error, not an HTTP or transport failure.
                 self.assertEqual((True, 3), (exhausted["success"], exhausted["cmdError"]))
                 self.assertNotIn("chrdata", exhausted)
                 self.assertEqual(100, exhausted_server.state.userdata_for("token")["coins"])
             finally:
-                exhausted_server.shutdown(); exhausted_thread.join(); exhausted_server.server_close()
+                stop_server(exhausted_server, exhausted_thread)

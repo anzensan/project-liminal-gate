@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import json
-from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, _parse_generic_story_clear, _preserved_progress, load_profile
+from liminal_gate.bootstrap_server import BootstrapState, _parse_generic_story_clear, _preserved_progress
 from liminal_gate.story_catalog import load_story_catalog
-
-
-PUBLIC_ROOT = Path(__file__).resolve().parents[1]
+from tests.support import bootstrap_profile, request, start_server, stop_server
 
 
 class GenericStoryServerTest(unittest.TestCase):
@@ -29,7 +25,7 @@ class GenericStoryServerTest(unittest.TestCase):
                 "clear_progress_code": 16777347, "clear_coins": 30,
             }],
         }), encoding="utf-8")
-        self.profile = load_profile(PUBLIC_ROOT / "profiles" / "legacy-client-bootstrap.json")
+        self.profile = bootstrap_profile()
         self.catalog = load_story_catalog(self.catalog_path)
         self.start_server()
         self.token = "generic-story-token"
@@ -47,22 +43,13 @@ class GenericStoryServerTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
-        self.server = BootstrapServer(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path), story_catalog=self.catalog)
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.server, self.thread = start_server(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path), story_catalog=self.catalog)
 
     def stop_server(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def post(self, path: str, fields: list[tuple[str, str]]) -> tuple[int, dict[str, object]]:
-        connection = HTTPConnection(*self.server.server_address)
-        connection.request("POST", path, body=urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"})
-        response = connection.getresponse()
-        payload = json.loads(response.read())
-        connection.close()
-        return response.status, payload
+        return request(self.server, "POST", path, urlencode(fields), headers={"Content-Type": "application/x-www-form-urlencoded"})
 
     def test_catalog_declared_story_start_clear_replay_collision_and_restart(self) -> None:
         start = [("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "2"), ("lastUpdate", "1")]

@@ -5,12 +5,12 @@ from http.client import HTTPConnection
 import json
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 import zipfile
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
+from liminal_gate.bootstrap_server import BootstrapState, load_profile
 from liminal_gate.resource_catalog import ResourceCatalogError, load_resource_catalog
+from tests.support import start_server, stop_server, write_json
 
 
 class ResourceCatalogTest(unittest.TestCase):
@@ -27,28 +27,24 @@ class ResourceCatalogTest(unittest.TestCase):
         digest = hashlib.sha256(self.payload).hexdigest()
         profile_digest = hashlib.sha256(self.profile_payload).hexdigest()
         self.manifest = self.root / "resources.json"
-        self.manifest.write_text(json.dumps({"schema_version": 1, "resources": [
+        write_json(self.manifest, {"schema_version": 1, "resources": [
             {"path": "/resources/packs/entry.bin", "file": "packs/entry.bin", "sha256": digest,
              "content_type": "application/x-local-resource"},
             {"path": "/resources/Profile/profile_1.bin", "file": "Profile/profile_1.bin", "sha256": profile_digest,
              "content_type": "application/octet-stream"},
-        ]}), encoding="utf-8")
+        ]})
         profile = self.root / "profile.json"
-        profile.write_text(json.dumps({"schema_version": 1, "routes": {
+        write_json(profile, {"schema_version": 1, "routes": {
             "time": "/local/time", "status": "/local/status", "signup": "/local/signup",
             "login": "/local/login", "userdata": "/local/userdata",
         }, "response_signing": {"algorithm": "md5-uppercase-slice", "salt": "test-salt", "digest_start": 16, "digest_end": 32},
             "account_binding": {"signup_response_field": "id", "login_query_field": "uuid"},
             "responses": {"signup": {"success": True, "id": "account"}, "login": {"success": True}, "status": {"success": True}},
-            "userdata_seed": {} }), encoding="utf-8")
-        self.server = BootstrapServer(("127.0.0.1", 0), load_profile(profile), BootstrapState(self.root / "state.json"), resource_catalog=load_resource_catalog(self.manifest, self.resource_root))
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+            "userdata_seed": {} })
+        self.server, self.thread = start_server(("127.0.0.1", 0), load_profile(profile), BootstrapState(self.root / "state.json"), resource_catalog=load_resource_catalog(self.manifest, self.resource_root))
 
     def tearDown(self) -> None:
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+        stop_server(self.server, self.thread)
         self.temporary_directory.cleanup()
 
     def request(self, method: str, path: str) -> tuple[int, bytes, dict[str, str]]:
@@ -87,12 +83,12 @@ class ResourceCatalogTest(unittest.TestCase):
     def test_rejects_stale_or_unsafe_manifest(self) -> None:
         stale = json.loads(self.manifest.read_text(encoding="utf-8"))
         stale["resources"][0]["sha256"] = "0" * 64
-        self.manifest.write_text(json.dumps(stale), encoding="utf-8")
+        write_json(self.manifest, stale)
         with self.assertRaises(ResourceCatalogError):
             load_resource_catalog(self.manifest, self.resource_root)
         stale["resources"][0]["sha256"] = hashlib.sha256(self.payload).hexdigest()
         stale["resources"][0]["file"] = "../state.json"
-        self.manifest.write_text(json.dumps(stale), encoding="utf-8")
+        write_json(self.manifest, stale)
         with self.assertRaises(ResourceCatalogError):
             load_resource_catalog(self.manifest, self.resource_root)
 
@@ -101,18 +97,16 @@ class ResourceCatalogTest(unittest.TestCase):
         member = "assets/liminal_gate/resources/packs/entry.bin"
         with zipfile.ZipFile(apk, "w", compression=zipfile.ZIP_STORED) as archive:
             archive.writestr(member, self.payload)
-        self.manifest.write_text(json.dumps({"schema_version": 2, "resources": [{
+        write_json(self.manifest, {"schema_version": 2, "resources": [{
             "path": "/resources/packs/entry.bin", "member": member,
             "sha256": hashlib.sha256(self.payload).hexdigest(),
             "size": len(self.payload),
             "content_type": "application/x-local-resource",
-        }]}), encoding="utf-8")
+        }]})
         catalog = load_resource_catalog(self.manifest, apk)
-        server = BootstrapServer(
+        server, thread = start_server(
             ("127.0.0.1", 0), self.server.profile, BootstrapState(self.root / "apk-state.json"), resource_catalog=catalog,
         )
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
         try:
             connection = HTTPConnection(*server.server_address)
             connection.request("GET", "/resources/packs/entry.bin")
@@ -129,9 +123,7 @@ class ResourceCatalogTest(unittest.TestCase):
             self.assertEqual(b"", response.read())
             connection.close()
         finally:
-            server.shutdown()
-            thread.join()
-            server.server_close()
+            stop_server(server, thread)
         with self.assertRaises(ResourceCatalogError):
             catalog.open(catalog.resolve("/resources/packs/entry.bin"))
 
@@ -140,10 +132,10 @@ class ResourceCatalogTest(unittest.TestCase):
         member = "assets/liminal_gate/resources/packs/entry.bin"
         with zipfile.ZipFile(apk, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr(member, self.payload)
-        self.manifest.write_text(json.dumps({"schema_version": 2, "resources": [{
+        write_json(self.manifest, {"schema_version": 2, "resources": [{
             "path": "/resources/packs/entry.bin", "member": member,
             "sha256": hashlib.sha256(self.payload).hexdigest(),
             "size": len(self.payload),
-        }]}), encoding="utf-8")
+        }]})
         with self.assertRaisesRegex(ResourceCatalogError, "ZIP_STORED"):
             load_resource_catalog(self.manifest, apk)

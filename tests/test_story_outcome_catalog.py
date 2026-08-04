@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
+from tests.support import write_json
 
 
 class StoryOutcomeCatalogTest(unittest.TestCase):
@@ -36,7 +36,7 @@ companion_maxima = { "8001" = 1 }
     def test_rejects_undeclared_stage_outcome_id(self) -> None:
         document = {"schema_version": 1, "provenance": "user-supplied", "character_ids": [1], "item_slots": 1, "max_stack": 1, "max_companions": 1, "companion_masters": [], "stages": [{"chapter": 2, "section": 1, "item_maxima": {}, "character_maxima": {"2": 1}, "companion_maxima": {}}]}
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "outcomes.json"; path.write_text(json.dumps(document), encoding="utf-8")
+            path = Path(directory) / "outcomes.json"; write_json(path, document)
             with self.assertRaisesRegex(StoryOutcomeCatalogError, "undeclared"):
                 load_story_outcome_catalog(path)
 
@@ -74,6 +74,6 @@ companion_maxima = { "8001" = 1 }
         }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "outcomes.json"
-            path.write_text(json.dumps(document), encoding="utf-8")
+            write_json(path, document)
             with self.assertRaisesRegex(StoryOutcomeCatalogError, "native source"):
                 load_story_outcome_catalog(path)
