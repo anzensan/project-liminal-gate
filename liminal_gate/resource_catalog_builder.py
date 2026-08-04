@@ -24,6 +24,21 @@ def _logical_relative_path(relative: str) -> str:
     return path.with_name(match.group("name")).as_posix()
 
 
+def resource_url_aliases(relative: str) -> tuple[str, ...]:
+    """Every client resource URL one on-disk file answers to, literal name first.
+
+    Android caches many bundles under a 32-hex-prefixed filename while the
+    client requests the logical name, so a prefixed file has to be reachable
+    under both.  Both manifest builders derive their URL sets here -- the v1
+    filesystem tree the separate server reads and the v2 packaged manifest the
+    on-device APK carries.  They diverged once, and the self-contained build
+    served only the on-disk spelling: every prefixed resource 404ed there while
+    the same content loaded from a separate server.
+    """
+    aliases = dict.fromkeys((relative, _logical_relative_path(relative)))
+    return tuple("/resources/" + alias for alias in aliases)
+
+
 def build_resource_manifest(
     resource_root: Path, digests: Callable[[Path], str] | None = None,
 ) -> dict[str, object]:
@@ -51,9 +66,7 @@ def build_resource_manifest(
             raise ResourceCatalogError("resource root contains an unsafe file path")
         content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
         digest = hash_file(candidate)
-        aliases = (relative, _logical_relative_path(relative))
-        for alias in dict.fromkeys(aliases):
-            path = "/resources/" + alias
+        for path in resource_url_aliases(relative):
             if path in mapped_paths:
                 raise ResourceCatalogError(f"resource root maps more than one file to {path}")
             mapped_paths.add(path)
