@@ -9,7 +9,13 @@ import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
 from liminal_gate.resource_catalog import ResourceCatalogError, load_resource_catalog
-from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
+from liminal_gate.resource_catalog_builder import (
+    build_resource_manifest,
+    previous_resource_category_counts,
+    resource_category_counts,
+    shrunken_resource_categories,
+    write_resource_manifest,
+)
 
 
 class ResourceCatalogBuilderTest(unittest.TestCase):
@@ -71,6 +77,42 @@ class ResourceCatalogBuilderTest(unittest.TestCase):
         case_variant = catalog.resolve("/resources/SE/sunHM.bin")
         self.assertIsNotNone(case_variant)
         self.assertEqual(sun_hm.resolve(), case_variant.file)
+
+    def test_counts_source_files_per_category_not_url_aliases(self) -> None:
+        # A cache-prefixed bundle answers to two URLs. Counting entries instead
+        # of files would report a category as twice the size it is, and a
+        # comparison against the previous build would then never fire.
+        bundle = self.resources / "SE" / "bdb3334db029db0ef76e06637e4de9b9sun3.bin"
+        bundle.parent.mkdir()
+        bundle.write_bytes(b"local unity bundle")
+        counts = resource_category_counts(build_resource_manifest(self.resources))
+        self.assertEqual({"data_u2017": 1, "SE": 1}, counts)
+
+    def test_reports_a_category_that_lost_files_since_the_last_build(self) -> None:
+        # The tree is the tester's own extraction, so there is no absolute count
+        # to check. A category smaller than the last successful build is how a
+        # partial re-extraction shows up, and it is otherwise silent until the
+        # client stalls on what the package no longer carries.
+        self.assertEqual(
+            (("Illust", 3190, 12),),
+            shrunken_resource_categories(
+                {"Illust": 3190, "Pieces": 3190}, {"Illust": 12, "Pieces": 3190},
+            ),
+        )
+        # A category that grew, or one the previous build never saw, is not a loss.
+        self.assertEqual(
+            (),
+            shrunken_resource_categories({"BG": 996}, {"BG": 996, "Scenario": 174}),
+        )
+
+    def test_a_missing_or_damaged_previous_manifest_declines_to_compare(self) -> None:
+        # A first build has nothing to compare against, and refusing a build
+        # over an unreadable prior manifest would strand the one tester whose
+        # data directory is already damaged.
+        self.assertEqual({}, previous_resource_category_counts(self.root / "absent.json"))
+        damaged = self.root / "damaged.json"
+        damaged.write_text("{not json", encoding="utf-8")
+        self.assertEqual({}, previous_resource_category_counts(damaged))
 
     def test_rejects_symlink_and_empty_tree(self) -> None:
         empty = self.root / "empty"

@@ -15,7 +15,7 @@ from liminal_gate.companion_equipment_catalog import (
 )
 from liminal_gate.event_catalog import DEFAULT_EVENT_CATALOG
 from liminal_gate.resource_catalog import ResourceCatalogError
-from liminal_gate.resource_catalog_builder import build_resource_manifest, write_resource_manifest
+from liminal_gate.resource_catalog_builder import build_resource_manifest, report_resource_inventory, write_resource_manifest
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
 from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES
@@ -50,6 +50,9 @@ def prepare_server(resource_root: Path, data_directory: Path) -> tuple[Path, Pat
     resolved_data.mkdir(parents=True, exist_ok=True)
     manifest = build_resource_manifest(resolved_resources)
     manifest_path = resolved_data / "resources.json"
+    # Reported before the write, so the comparison is against the previous
+    # build rather than against the manifest this one just published.
+    report_resource_inventory(manifest, manifest_path)
     write_resource_manifest(manifest_path, manifest)
     return resolved_resources, resolved_data, len(manifest["resources"])
 

@@ -158,6 +158,24 @@
 
 ### Fixed
 
+- **Setup packaged a half-extracted resource tree without saying so.** The
+  resource root was accepted on the strength of its nine category directories
+  *existing*; nothing checked that any of them held a file. An `Illust/` or
+  `Pieces/` that was empty or partly copied therefore passed every check, the
+  manifest named only what was there, the build succeeded, and the package
+  installed — and the first sign of trouble was the client reaching a screen
+  whose artwork the package had never carried, stalling with the music still
+  playing, days later and on someone else's device.
+  Resolution now refuses a required category that contains no files at all,
+  naming every empty one and the root to re-extract into, while the tester is
+  still at a prompt that can fix it. Because the tree is the tester's own
+  extraction there is no absolute count to check a partial one against, so each
+  build also prints its per-category inventory and compares it against the last
+  manifest written to the same data directory: a category that has *shrunk*
+  since the previous successful build is reported as a warning naming both
+  counts. A first build, or an unreadable previous manifest, simply declines to
+  compare rather than refusing to build.
+
 - **A Bahl starter was shown recruiting an Archer and given a Warrior.** The
   tutorial's Chapter 1-2 recruit is the generic that completes the Circle of
   Carnage against your starter — an Archer for Bahl, a Warrior for Grace — and

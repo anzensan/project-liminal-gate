@@ -32,7 +32,9 @@ class ServerOnlySetupTest(unittest.TestCase):
         self.resources = self.root / "gdresources" / "data_u2017" / "android"
         for category in REQUIRED_RESOURCE_CATEGORIES:
             (self.resources / category).mkdir(parents=True, exist_ok=True)
-        (self.resources / "BG" / "sample.bin").write_bytes(b"local resource")
+            # Every category has to carry a file: an empty one is a partial
+            # extraction, and the resolver refuses it rather than packaging it.
+            (self.resources / category / "sample.bin").write_bytes(b"local resource")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -53,7 +55,9 @@ class ServerOnlySetupTest(unittest.TestCase):
         )
         self.assertEqual(self.resources.resolve(), resource_root)
         self.assertEqual((self.root / "state").resolve(), data_directory)
-        self.assertEqual(1, resource_count)
+        # One mapped entry per seeded category file; none of these names carry
+        # a cache prefix, so no entry gains a second URL alias.
+        self.assertEqual(len(REQUIRED_RESOURCE_CATEGORIES), resource_count)
         self.assertTrue((data_directory / "resources.json").is_file())
 
     def test_server_command_enables_standard_policies_without_android_tools(self) -> None:
