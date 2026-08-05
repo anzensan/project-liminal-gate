@@ -5,7 +5,11 @@ import tempfile
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapState
-from liminal_gate.event_flag_data import DAILY_BONUS_EVENT_FLAG, daily_bonus_event_flags
+from liminal_gate.event_flag_data import (
+    DAILY_BONUS_EVENT_FLAG,
+    daily_bonus_event_flags,
+    music_event_flags,
+)
 from tests.support import bootstrap_profile, get, running_server
 
 
@@ -35,7 +39,7 @@ class DailyBonusTest(unittest.TestCase):
                     self.assertEqual(200, status)
                     flags = login.get("eventFlags", {})
                     if enabled:
-                        self.assertEqual(daily_bonus_event_flags(), flags)
+                        self.assertEqual(music_event_flags() | daily_bonus_event_flags(), flags)
                     else:
                         self.assertNotIn(DAILY_BONUS_EVENT_FLAG, flags)
 

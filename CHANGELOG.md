@@ -170,6 +170,27 @@
 
 ### Fixed
 
+- **The Tavern kept playing the menu theme, and the live-recorded tracks were
+  unreachable** (issue 44). Three of the flags the client reads to decide which
+  track belongs to which screen were never sent, so every branch that would
+  have switched music was skipped and whatever the previous scene started
+  carried on. Reported as "Evening at the Tavern" never starting while the
+  battle, boss, and victory transitions all worked; those are client-side scene
+  changes that consult no flag, which is why only the menu-to-menu case showed
+  it.
+  `use_sakaba_bgm_for_bar` is the Tavern's own theme and
+  `use_another_bgm_for_hunting` the Huntland equivalent. `EnableLiveMusic` cost
+  the most: the one client method that names it also names `BGM100` through
+  `BGM103`, so the live-recorded tracks are reachable through that flag and
+  nothing else. Their bundles are in every tester's resource set and the client
+  downloads them at startup, so the server was shipping five tracks to the
+  device that nothing could ever play.
+  All three now ride every login, ungated. Each selects audio and nothing else
+  -- no stage, no item, nothing the save records -- so none is a policy an
+  operator needs to choose. `UseLiveMusicAsDefault` and `ReverseTitleMusicOrder`
+  remain deliberately unsent: both change a default rather than reach otherwise
+  unreachable audio, and the retired service's value for each is unrecovered.
+
 - **Luck could not grow anywhere except the ordinary story.** The preceding
   Luck fix stopped a stale client rolling the stat *back*, and it worked — a
   reporter confirmed a character kept its 10% across Metal Zone runs — but a

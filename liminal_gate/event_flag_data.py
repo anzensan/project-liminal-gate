@@ -22,6 +22,13 @@ from __future__ import annotations
 
 EVENT_FLAG_PREFIX = "sp_ch_"
 DAILY_BONUS_EVENT_FLAG = "enableDailyBonus"
+#: The three flags that decide which track the client plays where. Each is a
+#: literal in the reviewed 5.5.7 metadata, and each is read the same way every
+#: other server flag is -- their metadata-usage shape is indistinguishable from
+#: `enableDailyBonus` and `summon_enable`.
+TAVERN_BGM_EVENT_FLAG = "use_sakaba_bgm_for_bar"
+HUNTING_BGM_EVENT_FLAG = "use_another_bgm_for_hunting"
+LIVE_MUSIC_EVENT_FLAG = "EnableLiveMusic"
 
 
 def event_flags_for(chapter: int, section: int) -> tuple[str, str]:
@@ -48,10 +55,45 @@ def daily_bonus_event_flags() -> dict[str, dict[str, object]]:
     }
 
 
+def music_event_flags() -> dict[str, dict[str, object]]:
+    """Reach the tracks the client cannot select on its own.
+
+    Every one of these is audio selection alone: no flag here reaches battle
+    settlement, an item, or anything the save records, so none of them is a
+    policy an operator needs to choose.  Left unsent they are not silent
+    failures in the usual sense -- the client keeps playing whatever the last
+    scene started, which reads as a menu whose music simply never changed.
+
+    `use_sakaba_bgm_for_bar` is the Tavern's own theme; without it the menu
+    theme carries straight through the Tavern, which is what a tester reported.
+    `use_another_bgm_for_hunting` is the Huntland equivalent.  `EnableLiveMusic`
+    matters most: the one method that names it also names `BGM100` through
+    `BGM103`, so those live-recorded tracks are reachable through this flag and
+    nothing else.  Their bundles are in every tester's resource set and the
+    client downloads them at startup, so unsent this flag ships five tracks to
+    the device that nothing can ever play.
+
+    Two neighbouring flags are deliberately not here. `UseLiveMusicAsDefault`
+    and `ReverseTitleMusicOrder` change a default rather than reach otherwise
+    unreachable audio, the retired service's value for each is unrecovered, and
+    the first shares a method with `EnableSE`, which looks like a local options
+    key rather than anything a server ever sent.
+    """
+    return {
+        flag: {"name": flag, "value": True}
+        for flag in (
+            TAVERN_BGM_EVENT_FLAG,
+            HUNTING_BGM_EVENT_FLAG,
+            LIVE_MUSIC_EVENT_FLAG,
+        )
+    }
+
+
 # Present as literals in the final client's global metadata.
 CLIENT_CONFIRMED_EVENT_FLAGS: frozenset[str] = frozenset((
     "EnableFriendInvite",
     "EnableLiveMusic",
+    "ReverseTitleMusicOrder",
     "UseLiveMusicAsDefault",
     "achivements_enable",
     "buddy_always_exp_bonus",

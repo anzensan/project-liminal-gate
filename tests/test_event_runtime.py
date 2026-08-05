@@ -13,6 +13,7 @@ from liminal_gate.event_catalog import (
     EventStage,
     build_bundled_counter_descent_policy,
 )
+from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from tests.support import bootstrap_profile, get, request, start_server, stop_server
 from tests.support import post as support_post, request as support_request
@@ -935,7 +936,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         self.assertEqual(
-            ["sp_ch_8000", "sp_ch_8001"],
+            sorted([*music_event_flags(), "sp_ch_8000", "sp_ch_8001"]),
             sorted(login["eventFlags"]),
         )
 
