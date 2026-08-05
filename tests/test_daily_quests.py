@@ -17,11 +17,13 @@ from liminal_gate.daily_quest_data import (
 )
 from liminal_gate.bootstrap_server import (
     BootstrapState,
+    _announced_roster,
     _apply_hunting_character_grants,
     _daily_quest_played_today,
     _stamp_daily_quest_clear,
     daily_quest_login_fields,
 )
+from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.hunting_catalog import HuntingCatalog, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, hunting_settlement_within_bounds
 from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
@@ -199,10 +201,19 @@ class DailyQuestGrantTest(unittest.TestCase):
 
     def test_a_first_clear_adds_joker_lambda_to_the_roster(self) -> None:
         userdata = {"chrdata": []}
-        _apply_hunting_character_grants(userdata, self.stage())
+        announced = _apply_hunting_character_grants(userdata, self.stage())
         self.assertEqual(1, len(userdata["chrdata"]))
         row = userdata["chrdata"][0]
-        self.assertEqual((1018, True, 0), (row["id"], row["isNew"], row["skillBoost"]))
+        self.assertEqual((1018, 0), (row["id"], row["skillBoost"]))
+        # The grant is announced on the response, not stored on the row: the
+        # durable roster holds only the shape every settlement check accepts.
+        self.assertEqual({1018: 1}, announced)
+        self.assertTrue(_valid_generic_character_record(row))
+        self.assertEqual(
+            {"isNew": True, "levelAdded": 1},
+            {key: _announced_roster(userdata["chrdata"], announced)[0][key]
+             for key in ("isNew", "levelAdded")},
+        )
 
     def test_a_duplicate_raises_skill_boost_and_luck_instead(self) -> None:
         userdata = {"chrdata": [{"id": 1018, "skillBoost": 50, "luck": 20}]}

@@ -158,6 +158,30 @@
 
 ### Fixed
 
+- **An inbox present stranded the account it was delivered to.** A message
+  carrying a character wrote that character onto the durable roster in the
+  shape its own *response* carries — `isNew` and `levelAdded`, a one-element
+  `jobLevels`, an empty `jobSlots` — rather than the generic record the save
+  otherwise holds. Every settlement check reads the durable roster through
+  `_valid_generic_character_record`, which requires the exact eight-key record
+  and length-three arrays, so a single present refused every stage clear the
+  account attempted from then on. Nothing recovered on its own, across
+  restarts included: the roster merge that would have rewritten the row is
+  only reached by a clear that was accepted first, so the one repair path was
+  behind the refusal it caused. Reported as the client stalling on a character
+  pull or on entering a stage after opening mail.
+  The same row was written by four grant paths, not one: inbox presents, event
+  stage characters, Hunting and Daily Quest grants, and the battle-recruit
+  backstop. All four now persist the generic record — the Pact draw already
+  drew this distinction, keeping the response shape out of the save — and the
+  `isNew`/`levelAdded` a result screen reads are projected onto the response
+  instead of stored. What the client receives is otherwise unchanged.
+  Saves already carrying the bad row are repaired when the server next loads
+  them, keeping the packed level, Skill Boost, and Luck the row accumulated
+  while it was unusable. Only a row carrying *both* response-only keys is
+  rewritten, which is the exact signature a grant left; the client's own
+  free-roam roster write carries `isNew` alone and is left as it was sent.
+
 - **Setup packaged a half-extracted resource tree without saying so.** The
   resource root was accepted on the strength of its nine category directories
   *existing*; nothing checked that any of them held a file. An `Illust/` or

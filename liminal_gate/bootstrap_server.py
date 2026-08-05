@@ -379,6 +379,44 @@ def _migrate_replay_keys(account: dict[str, Any]) -> None:
             cache[f"{prefix}{key}.{digest}"] = entry
 
 
+def _migrate_granted_character_rows(account: dict[str, Any]) -> None:
+    """Repair roster rows a grant wrote in the result-screen shape.
+
+    Message, event, Hunting, and battle-recruit grants used to persist the
+    shape their response carries -- `isNew` and `levelAdded`, a one-element
+    `jobLevels`, an empty `jobSlots` -- rather than the generic record the save
+    otherwise holds.  Every settlement check reads the durable roster through
+    `_valid_generic_character_record`, so one such row refused every clear the
+    account attempted afterwards, and nothing repaired it on its own: the merge
+    that would have is only reached by a clear that was accepted first.
+
+    Only a row carrying *both* response-only keys is rewritten, which is the
+    exact signature a grant left and one the client's own free-roam roster
+    write never has: that write carries `isNew` alone, so it is left as the
+    client sent it.  A roster damaged some other way still fails visibly rather
+    than being quietly reshaped into something that loads.  What the row
+    accumulated in the meantime -- a duplicate draw's packed level and Skill
+    Boost, a Luck gain -- is carried across rather than reset.
+    """
+    userdata = account.get("userdata")
+    rows = userdata.get("chrdata") if isinstance(userdata, dict) else None
+    if not isinstance(rows, list):
+        return
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or not {"isNew", "levelAdded"} <= set(row):
+            continue
+        if type(row.get("id")) is not int or _valid_generic_character_record(row):
+            continue
+        levels = row.get("jobLevels")
+        packed = levels[0] if isinstance(levels, list) and levels and type(levels[0]) in {int, float} else 1
+        repaired = _granted_character_row(row["id"])
+        repaired["jobLevels"] = [float(packed), 0.0, 0.0]
+        for name in ("jobID", "skillBoost", "luck"):
+            if type(row.get(name)) is int:
+                repaired[name] = row[name]
+        rows[index] = repaired
+
+
 def _lock_exclusive(stream: Any) -> None:
     """Take a non-blocking exclusive advisory lock the OS drops on exit.
 
@@ -438,6 +476,7 @@ def _parse_state_document(document: object) -> tuple[
         raise ProfileError("local bootstrap state contains an invalid active account")
     for account in accounts.values():
         _migrate_replay_keys(account)
+        _migrate_granted_character_rows(account)
     # Absent in saves written before per-client routing; an empty map simply
     # falls back to the active account, which is the earlier behaviour.
     client_hosts = document.get("client_hosts", {})
@@ -1096,8 +1135,8 @@ class BootstrapState:
                     updated_items[int(item_id) - 1] = min(catalog.max_stack, updated_items[int(item_id) - 1] + amount)
                 message["read"] = True
             data["coins"], data["freeEnergy"], data["itemList"] = coins, energy, updated_items
-            _apply_message_grants(data, grants)
-            payload = _canonical_payload({"result": True, "readlist": message_ids, "itemList": updated_items, "coins": coins, "energy": int(data.get("energy", 0)), "freeEnergy": energy, **_message_reload_projection(data, account)})
+            announced = _apply_message_grants(data, grants)
+            payload = _canonical_payload({"result": True, "readlist": message_ids, "itemList": updated_items, "coins": coins, "energy": int(data.get("energy", 0)), "freeEnergy": energy, **_message_reload_projection(data, account, announced)})
             requests[_replay_key(request_id, body, "read")] = {"operation": "read", "body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -2227,10 +2266,11 @@ class BootstrapState:
                 # delete a grant it had not read back.  See `_preserved_roster`.
                 "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
             })
+            announced: dict[int, int] = {}
             if stage.character_grants:
-                _apply_hunting_character_grants(userdata, stage)
+                announced |= _apply_hunting_character_grants(userdata, stage)
             if result["monsters"]:
-                _apply_monster_recruits(userdata, result["monsters"])
+                announced |= _apply_monster_recruits(userdata, result["monsters"])
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
             account["tutorial_phase"] = "free_roam"
@@ -2248,7 +2288,7 @@ class BootstrapState:
                 # refills at a boundary, so this is always the entry's own
                 # post-spend origin.
                 "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
-                "chrdata": copy.deepcopy(userdata["chrdata"]), "itemList": copy.deepcopy(userdata["itemList"]),
+                "chrdata": _announced_roster(userdata["chrdata"], announced), "itemList": copy.deepcopy(userdata["itemList"]),
             })
             # Only a settlement that actually granted Companions touches the box
             # or reports it, so the four item and Coin families keep the exact
@@ -2674,12 +2714,14 @@ class BootstrapState:
                 userdata["refillStartTime"] = 0.0
             canonical_valuables["freeEnergy"] = int(userdata.get("freeEnergy", 0))
             userdata["valuables"] = canonical_valuables
+            announced: dict[int, int] = {}
             if event:
                 by_id = {row.get("id"): row for row in userdata["chrdata"] if isinstance(row, dict)}
                 for character_id in stage.character_ids:
                     if character_id not in by_id:
-                        row = {"id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": True, "levelAdded": 1}
+                        row = _granted_character_row(character_id)
                         userdata["chrdata"].append(row); by_id[character_id] = row
+                        announced[character_id] = 1
             # The Luck gain rolled at start is committed here, after the roster
             # merge, so a stale client's chrdata cannot overwrite it -- the same
             # ordering `_preserved_roster` exists to guarantee for grants.
@@ -2702,7 +2744,7 @@ class BootstrapState:
                 # also carries the chapter-boundary refill above rather than
                 # leaving that policy to be inferred from a later read.
                 "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
-                "chrdata": copy.deepcopy(userdata["chrdata"]),
+                "chrdata": _announced_roster(userdata["chrdata"], announced),
                 "itemList": copy.deepcopy(userdata["itemList"]),
             }
             if buddy_info is not None:
@@ -4030,25 +4072,62 @@ def daily_quest_login_fields(account: dict[str, Any], now: float) -> dict[str, A
     }
 
 
-def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> None:
+def _granted_character_row(character_id: int, level: int = 1) -> dict[str, Any]:
+    """Mint the durable roster row a server-side grant adds.
+
+    The save holds exactly one roster shape: the generic record that
+    `_valid_generic_character_record` accepts, which is what the client submits
+    and what every settlement check reads the durable roster through. `isNew`
+    and `levelAdded` are result-screen vocabulary rather than durable state --
+    the Pact draw has always kept them out of the save and put them only in its
+    reply -- so a grant persists this row and announces itself through
+    `_announced_roster`.
+    """
+    return {
+        "id": character_id, "buddy": 0, "date": 0.0,
+        "jobSlots": [0.0, 0.0, 0.0], "jobLevels": [float(level), 0.0, 0.0],
+        "jobID": 0, "flags": 0, "skillBoost": 0,
+    }
+
+
+def _announced_roster(rows: Any, granted: dict[int, int]) -> list[Any]:
+    """Project a roster, marking the characters this one request just granted.
+
+    The client's result screen reads `isNew` and `levelAdded` off the roster it
+    is handed back. Both describe a single response rather than the account, so
+    they are added to the projection instead of being stored on the row.
+    """
+    if not isinstance(rows, list):
+        return []
+    return [
+        {**copy.deepcopy(row), "isNew": True, "levelAdded": granted[row["id"]]}
+        if isinstance(row, dict) and row.get("id") in granted
+        else copy.deepcopy(row)
+        for row in rows
+    ]
+
+
+def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> dict[int, int]:
     """Grant this stage's characters, or raise a duplicate the way a Pact does.
 
     A first grant arrives as an ordinary new roster row. A duplicate raises
     Skill Boost and Luck by the stage's declared amounts, both capped at the
     client's absolute 100.0 ceiling in its own tenths.
+
+    Returns the levels each newly granted character arrived at, for the caller
+    to announce on its response.
     """
+    granted: dict[int, int] = {}
     rows = userdata.get("chrdata")
     if not isinstance(rows, list):
-        return
+        return granted
     by_id = {row.get("id"): row for row in rows if isinstance(row, dict)}
     for character_id in stage.character_grants:
         current = by_id.get(character_id)
         if current is None:
-            row = {
-                "id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [],
-                "isNew": True, "levelAdded": 1, "skillBoost": 0,
-            }
+            row = _granted_character_row(character_id)
             rows.append(row); by_id[character_id] = row
+            granted[character_id] = 1
             continue
         if stage.duplicate_grant_skill_boost:
             current["skillBoost"] = min(
@@ -4058,9 +4137,10 @@ def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> Non
             current["luck"] = min(
                 int(current.get("luck", 0)) + stage.duplicate_grant_luck, 1000,
             )
+    return granted
 
 
-def _apply_monster_recruits(userdata: dict[str, Any], recruited: list[int]) -> None:
+def _apply_monster_recruits(userdata: dict[str, Any], recruited: list[int]) -> dict[int, int]:
     """Ensure each accepted battle-recruited monster is on the roster.
 
     The reported recruits have already been checked against the stage's
@@ -4069,18 +4149,21 @@ def _apply_monster_recruits(userdata: dict[str, Any], recruited: list[int]) -> N
     carries it; this backstop adds the row when the report and the submitted
     roster disagree.  A duplicate recruit changes nothing: no record of a
     duplicate rule survives for these, so none is invented.
+
+    Returns the levels each added recruit arrived at, for the caller to
+    announce on its response.
     """
+    granted: dict[int, int] = {}
     rows = userdata.get("chrdata")
     if not isinstance(rows, list):
-        return
+        return granted
     known = {row.get("id") for row in rows if isinstance(row, dict)}
     for character_id in recruited:
         if character_id not in known:
-            rows.append({
-                "id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [],
-                "isNew": True, "levelAdded": 1, "skillBoost": 0,
-            })
+            rows.append(_granted_character_row(character_id))
             known.add(character_id)
+            granted[character_id] = 1
+    return granted
 
 
 # The Chapter-1100 settlement shares the Hunting grant path below and the same
@@ -4286,32 +4369,34 @@ def _companion_box_room(
 
 def _apply_message_grants(
     userdata: dict[str, Any], grants: tuple[list[int], list[tuple[int, int]]],
-) -> None:
+) -> dict[int, int]:
     """Add the resolved characters and Companions to the account.
 
     A character the account already holds is left untouched. A Pact raises a
     duplicate's Skill Boost, but nothing records what an inbox present did with
     one, and inventing a second source of Skill Boost would be a reward this
     project made up.
+
+    Returns the levels each newly granted character arrived at, for the caller
+    to announce on its response.
     """
+    granted: dict[int, int] = {}
     characters, companions = grants
     if not characters and not companions:
         # The overwhelmingly common case: an ordinary coin/item present. Return
         # before touching the account so a read that grants neither cannot
         # create a roster or a Companion box that was not already there.
-        return
+        return granted
     rows = userdata.setdefault("chrdata", [])
     held = {row.get("id") for row in rows if isinstance(row, dict)}
     for character_id in characters:
         if character_id in held:
             continue
-        rows.append({
-            "id": character_id, "jobID": 0, "jobLevels": [1], "jobSlots": [],
-            "isNew": True, "levelAdded": 1, "skillBoost": 0,
-        })
+        rows.append(_granted_character_row(character_id))
         held.add(character_id)
+        granted[character_id] = 1
     if not companions:
-        return
+        return granted
     info = userdata.setdefault("buddyInfo", {"list": [], "record": []})
     owned = info.setdefault("list", [])
     next_id = userdata.get("nextCompanionInventoryId", max((row["iid"] for row in owned), default=0) + 1)
@@ -4322,6 +4407,7 @@ def _apply_message_grants(
         })
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
+    return granted
 
 
 def _message_state(message: Any) -> dict[str, Any]:
@@ -4469,10 +4555,12 @@ def _message_wire(message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _message_reload_projection(userdata: dict[str, Any], account: dict[str, Any]) -> dict[str, Any]:
+def _message_reload_projection(
+    userdata: dict[str, Any], account: dict[str, Any], granted: dict[int, int] | None = None,
+) -> dict[str, Any]:
     buddy_info = userdata.get("buddyInfo", {"list": [], "record": []})
     return {
-        "chrdata": copy.deepcopy(userdata.get("chrdata", [])), "buddyInfo": copy.deepcopy(buddy_info),
+        "chrdata": _announced_roster(userdata.get("chrdata", []), granted or {}), "buddyInfo": copy.deepcopy(buddy_info),
         "summonList": copy.deepcopy(userdata.get("summonList", [0] * 16)),
         "achivementFlags": _achievement_flags(account.get("claimed_achievements", [])),
         "energyAppStore": int(userdata.get("energyAppStore", 0)), "energyGooglePlay": int(userdata.get("energyGooglePlay", 0)),

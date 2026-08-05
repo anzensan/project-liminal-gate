@@ -7,6 +7,7 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState
+from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.event_catalog import (
     EventCatalog,
     EventStage,
@@ -147,7 +148,11 @@ class EventRuntimeTest(unittest.TestCase):
             self.assertEqual([3, 25], [row["id"] for row in payload["chrdata"]])
             self.assertEqual(200, userdata_response.status)
             granted = next(row for row in userdata["chrdata"] if row["id"] == 25)
-            self.assertEqual([1.0], granted["jobLevels"])
+            self.assertEqual([1.0, 0.0, 0.0], granted["jobLevels"])
+            # The durable roster holds one shape. A grant that stored the
+            # result-screen shape instead refused every later clear, because
+            # each settlement check reads the roster through this validator.
+            self.assertTrue(_valid_generic_character_record(granted))
 
     def test_party_save_after_interrupted_event_returns_account_to_free_roam(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
