@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 
 from liminal_gate.release_preflight import inspect_release_tree, prohibited_reason
@@ -16,10 +17,27 @@ class ReleaseAuditFinding:
     reason: str
 
 
-def audit_release_repository(root: Path) -> list[ReleaseAuditFinding]:
-    """Check material preflight plus the minimum independent-Git requirement."""
+def audit_release_repository(
+    root: Path, include_ignored: bool = False
+) -> list[ReleaseAuditFinding]:
+    """Check material preflight plus the minimum independent-Git requirement.
+
+    Ignored, untracked material is left out of the on-disk sweep: this audit is
+    about what a clone of the release carries, and Git omits exactly those
+    paths from every clone.  Sweeping them anyway buried the findings that
+    matter under thousands of lines about a working checkout's own local
+    inputs.  Pass ``include_ignored`` to sweep the whole tree regardless, for a
+    release handed over as a directory rather than as a clone.
+
+    This narrows only the disk sweep.  A prohibited path that is *tracked* is
+    still reported however `.gitignore` reads -- Git does not apply ignore
+    rules to tracked files, so the query below cannot return one -- and the
+    separate history scan below still refuses one that any reachable commit
+    carries.  `release_preflight` remains the unconditional filesystem gate.
+    """
     root = root.resolve()
-    findings = [ReleaseAuditFinding(str(finding.path), finding.reason) for finding in inspect_release_tree(root)]
+    skip = None if include_ignored else _ignored_matcher(root)
+    findings = [ReleaseAuditFinding(str(finding.path), finding.reason) for finding in inspect_release_tree(root, skip)]
     top_level = _git(root, "rev-parse", "--show-toplevel")
     if top_level is None:
         return findings + [ReleaseAuditFinding("repository", "not an independent Git repository")]
@@ -52,6 +70,43 @@ def audit_release_repository(root: Path) -> list[ReleaseAuditFinding]:
     return findings
 
 
+def _ignored_matcher(root: Path) -> Callable[[Path], bool] | None:
+    """Match the paths Git ignores, so the disk sweep can pass over them.
+
+    `--others` restricts the listing to untracked paths, which is what makes
+    this safe to skip: Git does not apply ignore rules to a tracked file, so a
+    prohibited path that is committed can never appear here.  `--directory`
+    collapses a wholly ignored directory to a single entry, so a local input
+    tree costs one prefix rather than one entry per file.  A root that is not
+    a repository yields no matcher at all and is swept in full.
+    """
+    listing = _git(
+        root, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory"
+    )
+    if listing is None:
+        return None
+    files: set[PurePosixPath] = set()
+    directories: list[PurePosixPath] = []
+    for line in listing.splitlines():
+        if not line:
+            continue
+        if line.endswith("/"):
+            directories.append(PurePosixPath(line.rstrip("/")))
+        else:
+            files.add(PurePosixPath(line))
+
+    def ignored(relative: Path) -> bool:
+        candidate = PurePosixPath(relative.as_posix())
+        if candidate in files:
+            return True
+        return any(
+            candidate == directory or directory in candidate.parents
+            for directory in directories
+        )
+
+    return ignored
+
+
 def _git(root: Path, *arguments: str) -> str | None:
     completed = subprocess.run(
         ("git", "-C", str(root), *arguments),
@@ -67,8 +122,17 @@ def _git(root: Path, *arguments: str) -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path, nargs="?", default=Path("."))
-    root = parser.parse_args().root.resolve()
-    findings = audit_release_repository(root)
+    parser.add_argument(
+        "--include-ignored",
+        action="store_true",
+        help=(
+            "sweep ignored, untracked material too, for a release handed over "
+            "as a directory rather than as a clone"
+        ),
+    )
+    arguments = parser.parse_args()
+    root = arguments.root.resolve()
+    findings = audit_release_repository(root, arguments.include_ignored)
     if findings:
         for finding in findings:
             print(f"FAIL {finding.subject}: {finding.reason}")

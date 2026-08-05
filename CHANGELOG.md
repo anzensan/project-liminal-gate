@@ -143,6 +143,20 @@
 
 ### Changed
 
+- **`release_audit` no longer sweeps ignored, untracked material.** The audit
+  reports what a clone of a release carries, and Git omits ignored files from
+  every clone; sweeping them anyway buried the boundary findings the tool
+  exists for under thousands of lines about a working checkout's own local
+  inputs. On this repository it drops from 6071 findings to whatever is
+  genuinely wrong. The skip list comes from `git ls-files --others --ignored
+  --exclude-standard --directory`, whose `--others` is load-bearing: it lists
+  only untracked paths, and Git does not apply ignore rules to a tracked file,
+  so a committed `.apk` can never be skipped however `.gitignore` reads. The
+  history scan is unchanged, a root that is not a repository is still swept in
+  full, and `--include-ignored` restores the whole disk sweep for a release
+  handed over as a directory rather than as a clone. `release_preflight` is
+  deliberately untouched and remains the unconditional filesystem gate.
+
 - **Only story and event clears pay preservation Energy.** Hunting, Metal Zone,
   the special quest, the Daily Quests, and the Chapter 1100 Roads paid the same
   per-stage award as a story stage, on the first clear and on every clear after
