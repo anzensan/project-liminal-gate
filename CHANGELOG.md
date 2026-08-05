@@ -170,6 +170,50 @@
 
 ### Fixed
 
+- **Luck could not grow anywhere except the ordinary story.** The preceding
+  Luck fix stopped a stale client rolling the stat *back*, and it worked — a
+  reporter confirmed a character kept its 10% across Metal Zone runs — but a
+  second report that Luck never rose showed the preservation was the only half
+  implemented. The server has three battle start/clear pairs and only the
+  generic story one ever rolled a `luckUpTable`: Hunting Zones, Metal Zone, the
+  Roads, every Daily Quest, and the Chapter 1100 Roads set no
+  `active_luck_up` at entry, so their clears had nothing to apply. That silently
+  excluded every stage the ≥8 stamina rule already qualified — Metal Zone zones
+  2--7 at 8 to 20 stamina, the Roads at 15, Coin Creeps at 10 to 20, and Chapter
+  1100 at 25. Both handlers now roll at entry and apply at clear, after the
+  roster merge and once per battle, with the entry's table replayed rather than
+  re-rolled. `LUCK_GAIN_MIN_STAMINA` is untouched: it is the developer's own
+  confirmed rule, it reads the stage's *declared* cost rather than what the
+  meter was charged, and so it never depended on `--enable-stamina` either way.
+  No Luck Treasure Chest is authored on any of these stages; the community
+  record's own no-chest list names the Hunting and Metal zones, and Chapter
+  1100's chests stay refused as labeled local policy. `luckResult` accompanies a
+  gain only as the six empty slots an ordinary story stage with no documented
+  pool already sends.
+
+- **The Lucky Orbling quest granted no Luck, which is the one thing it is for.**
+  The recovered `allowLucky` flag is 1 on exactly five chapters — 2006 Lucia,
+  3003 Money Money Time, 3004 Crystal Road, 6010 Lucky Orbling, and 7010 Eidolon
+  Forest — and `docs/findings.md` reads it as "Lucky-type enemies may spawn
+  here", a Luck *source* rather than the chest gate an earlier reading took it
+  for. Nothing implemented it: `LUCKY_ORBLING_GAIN_TENTHS` and its pincer chance
+  sat in `luck_data` unreferenced by any code path. A reporter saw 1.8 on every
+  character during the quest and nothing in the party menu afterwards, which is
+  the client rendering its own in-battle pincer and the server never hearing
+  about it — the confirmed final client omits the optional `luck` member from a
+  clear, so the gain has no way back. The five chapters now carry a server-side
+  Lucky-enemy source, delivered through `luckUpTable` because that is the only
+  channel the client renders a Luck gain through. It is deliberately *not*
+  governed by the stamina gate, and it could not be: Lucky Orbling is free,
+  Money Money Time costs five and Crystal Road seven, so folding it into the
+  battle-end gain would leave the three stages the record most clearly documents
+  as Luck sources unable to grant any. One invented number is added and isolated
+  beside the existing one — `LUCKY_ENEMIES_PER_BATTLE`, how many pincer chances
+  one battle on a flagged chapter offers. The record fixes the +0.3 gain and the
+  50% chance but never states a population, and the spawn lives in client-side
+  battle data this server does not read, so the invented claim is held to a
+  count rather than a distribution.
+
 - **An inbox present stranded the account it was delivered to.** A message
   carrying a character wrote that character onto the durable roster in the
   shape its own *response* carries — `isNew` and `levelAdded`, a one-element

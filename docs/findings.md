@@ -732,6 +732,36 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   *undetermined* rather than declared absent, and stay refused as labeled local
   policy rather than on the game's authority.
 
+## 2026-08-04: Luck had preservation but no growth outside the story
+
+- **Confirmed defect, from two operator reports.** One reporter kept 10% Luck
+  on a character across Metal Zone runs; another watched every character show
+  1.8 during the Lucky Orbling quest and hold nothing in the party menu
+  afterwards. Together they separate the two halves: the roster merge preserves
+  the stat correctly, and no Hunting-family stage could raise it.
+- **Mechanism.** `luckUpTable` is authored at `start_quest` and applied at
+  `clear_quest`, and only the generic story handler did either. The Hunting
+  start -- which serves Hunting Zones, Metal Zone, the Roads and every Daily
+  Quest -- and the Chapter 1100 start both returned `success` and
+  `refillStartTime` alone, so `active_luck_up` was never set and their clears
+  had nothing to apply. The exclusion was structural, not a rule: Metal Zone
+  zones 2--7 cost 8 to 20 stamina, the Roads 15, Coin Creeps 10 to 20, and
+  Chapter 1100 25, all of which `LUCK_GAIN_MIN_STAMINA` already qualifies.
+- **Why the client cannot supply it.** The pincer that raises Luck on a flagged
+  chapter happens inside the client's own battle, and the confirmed final client
+  omits the optional `luck` member from a valid clear, so the gain never reaches
+  the server. `_preserved_progress` takes the greater of durable and reported,
+  meaning a reported 1.8 *would* have stuck; the value simply never arrives.
+  A server-authored source delivered through `luckUpTable` is therefore the only
+  channel available, and it is the one the client already renders.
+- **Correction boundary.** The confirmed ≥8 stamina rule is unchanged and still
+  reads the stage's declared cost rather than what the meter was charged, so it
+  never depended on `--enable-stamina`. The Lucky-enemy source the five
+  `allowLucky` chapters carry is separate from it by necessity, since three of
+  those five cost less than eight stamina or nothing at all. How many Lucky
+  enemies one battle offers is invented and labeled as such; the gain and the
+  pincer chance are the community record's.
+
 ## 2026-08-02: one-process Android host and packaged server transport
 
 - **Confirmed, static/build:** the reviewed 5.5.7-170 Android package names

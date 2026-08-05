@@ -29,6 +29,9 @@ from liminal_gate.luck_data import (
     CHEST_TIERS,
     LUCK_GAIN_TENTHS,
     LUCK_TENTHS_MAX,
+    LUCKY_ENEMIES_PER_BATTLE,
+    LUCKY_ORBLING_GAIN_TENTHS,
+    LUCKY_ORBLING_PINCER_CHANCE,
     gains_luck,
     team_luck,
 )
@@ -101,20 +104,46 @@ def roll_luck_result(
     return slots
 
 
+def roll_lucky_enemy_gain(*seed: object) -> int:
+    """Return the Luck in tenths a flagged chapter's Lucky enemies grant.
+
+    This is the `allowLucky` source, and it is deliberately *not* the
+    battle-end gain: the record describes a Lucky Orbling as granting its Luck
+    to every party member when pincered, with no reference to what the stage
+    cost to enter. Keeping it separate is what lets a free Daily Quest and a
+    five-stamina Hunting stage grant Luck while `LUCK_GAIN_MIN_STAMINA`, the
+    developer's own rule, stays intact for the battle-end gain.
+
+    Drawn from its own stream so that adding this source cannot shift a single
+    existing `luckUpTable` roll on the stages that already had one.
+    """
+    generator = _seeded("luckyEnemy", *seed)
+    gained = 0
+    for _ in range(LUCKY_ENEMIES_PER_BATTLE):
+        if generator.random() < LUCKY_ORBLING_PINCER_CHANCE:
+            gained += LUCKY_ORBLING_GAIN_TENTHS
+    return gained
+
+
 def roll_luck_up_table(
-    userdata: dict, stamina: int, *seed: object,
+    userdata: dict, stamina: int, *seed: object, allow_lucky: bool = False,
 ) -> list[int]:
     """Return each party slot's Luck gain in tenths, zero where it did not rise.
 
-    A quest costing less than eight stamina never raises Luck, which is the
-    developer's own rule and excludes every Daily Quest, all of which are free.
+    Two sources feed one table, because `luckUpTable` is the only channel the
+    client renders a Luck gain through. A quest costing less than eight stamina
+    never raises Luck *at battle end*, which is the developer's own rule and
+    excludes every Daily Quest, all of which are free. ``allow_lucky`` adds the
+    separate Lucky-type enemy source, which that rule does not govern.
+
     A character at its ceiling stays there, and an empty slot stays zero.
     """
     party = userdata.get("teamMembers")
     if not isinstance(party, list):
         return [0] * 6
     members = list(party[:6]) + [0] * max(0, 6 - len(party[:6]))
-    if not gains_luck(stamina):
+    lucky = roll_lucky_enemy_gain(*seed) if allow_lucky else 0
+    if not gains_luck(stamina) and not lucky:
         return [0] * 6
     roster = userdata.get("chrdata")
     current = {
@@ -123,18 +152,21 @@ def roll_luck_up_table(
         if isinstance(roster, list) and isinstance(row, dict) and type(row.get("luck", 0)) is int
     }
     generator = _seeded("luckUpTable", stamina, *seed)
-    chance = min(1.0, stamina * LUCK_GAIN_CHANCE_PER_STAMINA)
+    # A stage below the gate still walks the draws below, so that a flagged
+    # cheap stage and an unflagged one of the same cost stay on one code path;
+    # a zero chance simply never rolls.
+    chance = min(1.0, stamina * LUCK_GAIN_CHANCE_PER_STAMINA) if gains_luck(stamina) else 0.0
     table: list[int] = []
     for member in members:
         # Draw per slot regardless, so an empty or capped slot cannot shift the
         # draws of the slots after it.
         rolled = generator.random() < chance
         gain = generator.choice(LUCK_GAIN_TENTHS)
-        if not member or not rolled:
+        if not member:
             table.append(0)
             continue
         headroom = max(0, LUCK_TENTHS_MAX - current.get(member, 0))
-        table.append(min(gain, headroom))
+        table.append(min((gain if rolled else 0) + lucky, headroom))
     return table
 
 
