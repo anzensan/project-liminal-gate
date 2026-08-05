@@ -8,6 +8,7 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import load_hunting_catalog
 from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
@@ -384,8 +385,11 @@ class HuntingRuntimeTest(unittest.TestCase):
         Hunting Zone selector reported in issue 20.
         """
         login = self.login("login-token")
+        # Total on purpose, so an unexpected flag fails here rather than
+        # reaching a client. The music flags ride every login and carry no
+        # stage of their own.
         self.assertEqual(
-            {
+            music_event_flags() | {
                 "sp_ch_1001-1": {
                     "name": "sp_ch_1001-1",
                     "value": True,

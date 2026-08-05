@@ -155,7 +155,7 @@ from liminal_gate.event_catalog import (
     merge_event_catalogs,
 )
 from liminal_gate.event_log import EventRecorder, refused_write_shapes, safe_form_diagnostics
-from liminal_gate.event_flag_data import daily_bonus_event_flags
+from liminal_gate.event_flag_data import daily_bonus_event_flags, music_event_flags
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.daily_quest_data import (
     build_bundled_daily_quest_stages,
@@ -3318,7 +3318,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # Huntland button is disabled even with the category flag on and
             # today's two quests named.
             payload["lastLogin"] = now
-            event_flags: dict[str, Any] = {}
+            # Ungated, unlike every other source below: these three name no
+            # stage, cost nothing, and touch no saved state, so there is no
+            # policy for an operator to decide. A server that answers a login
+            # at all is a server whose client should be playing the right
+            # track for the screen it is on.
+            event_flags: dict[str, Any] = music_event_flags()
             progress = self.server.state.accounts[resolved].get(
                 "userdata", {}
             ).get("progressCode", 0)
