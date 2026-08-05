@@ -8,6 +8,7 @@ from unittest.mock import patch
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.message_catalog import (
     MessageCatalogError,
     build_bundled_chapter_message_policy,
@@ -284,6 +285,66 @@ class MessageRewardKindTest(unittest.TestCase):
             try:
                 held = restarted.state.accounts["account"]["userdata"]["chrdata"]
                 self.assertEqual([1018], [row["id"] for row in held])
+                self.assertTrue(_valid_generic_character_record(held[0]))
+            finally:
+                stop_server(restarted, thread)
+
+    def test_a_character_present_leaves_a_roster_every_clear_still_accepts(self) -> None:
+        """A present must not strand the account it was delivered to.
+
+        The read used to persist the shape its own response carries, which no
+        settlement check accepts. One present then refused every clear the
+        account attempted from then on, and the refusal outlived a restart:
+        the roster merge that would have repaired the row is only reached by a
+        clear that got accepted first.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root, self.MESSAGE + "character_id = 1018\n")
+            server, thread = self._serve(catalog, root / "state.json", self._account())
+            try:
+                status, read = self._read(server)
+                self.assertEqual(200, status)
+                held = server.state.accounts["account"]["userdata"]["chrdata"]
+                self.assertTrue(all(_valid_generic_character_record(row) for row in held))
+                # The read that delivers the present still announces it, so the
+                # client draws its "NEW" badge; only the save is left generic.
+                self.assertEqual(
+                    (True, 1), (read["chrdata"][0]["isNew"], read["chrdata"][0]["levelAdded"]),
+                )
+            finally:
+                stop_server(server, thread)
+
+    def test_a_present_already_written_in_the_response_shape_is_repaired_on_load(self) -> None:
+        """Saves written before the fix carry the row that refused every clear."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.json"
+            catalog = self._catalog(root, self.MESSAGE + "character_id = 1018\n")
+            server, thread = self._serve(catalog, state_path, self._account())
+            try:
+                with server.state.lock:
+                    server.state.accounts["account"]["userdata"]["chrdata"] = [{
+                        "id": 1018, "jobID": 0, "jobLevels": [9], "jobSlots": [],
+                        "isNew": True, "levelAdded": 1, "skillBoost": 40, "luck": 20,
+                    }]
+                    server.state._persist_locked()
+            finally:
+                stop_server(server, thread)
+
+            restarted, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
+                message_catalog=catalog,
+            )
+            try:
+                repaired = restarted.state.accounts["account"]["userdata"]["chrdata"][0]
+                self.assertTrue(_valid_generic_character_record(repaired))
+                # What the row accumulated while it was unusable is carried
+                # across, not reset: the packed level, Skill Boost, and Luck.
+                self.assertEqual(
+                    ([9.0, 0.0, 0.0], 40, 20),
+                    (repaired["jobLevels"], repaired["skillBoost"], repaired["luck"]),
+                )
             finally:
                 stop_server(restarted, thread)
 
