@@ -193,8 +193,8 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual((200, True), (status, cleared["success"]))
         self.assertEqual(before, self.userdata()["progressCode"])
         self.assertEqual("free_roam", self.phase())
-        # Preservation Energy income, as every other archive stage pays.
-        self.assertEqual(4, self.userdata()["freeEnergy"])
+        # A repeatable Road pays no preservation Energy; see `archive_economy`.
+        self.assertEqual(2, self.userdata()["freeEnergy"])
 
     def test_a_clear_that_claims_core_progress_is_refused(self) -> None:
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
