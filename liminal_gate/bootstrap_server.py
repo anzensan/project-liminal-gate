@@ -4657,16 +4657,25 @@ def _message_wire(message: dict[str, Any], original_shape: bool = False) -> dict
     texts = message["messages"]
     companion_id = int(message.get("companion_id", 0))
     return {
-        # `date` is a `long` on the recovered class, not the float this server
-        # sent: a fractional value is not a number the field can hold.
-        "id": message["id"], "date": int(message["date"]), "read": bool(message["read"]),
+        # `date` stays a JSON real. The field is a `long`, which is what made an
+        # integer look right, but the constructor reads it through LitJson's
+        # `(double)` conversion and that refuses a JsonData holding an int:
+        # an emulator run answered the integer with `InvalidCastException:
+        # Instance of JsonData doesn't hold a double` thrown out of
+        # `Message..ctor`, which killed the whole login callback.
+        "id": message["id"], "date": float(message["date"]), "read": bool(message["read"]),
         # A declared string field the client would otherwise hold null. No
         # sender is modeled, so it carries the empty string rather than a name
         # this project would have invented.
         "from": "",
-        # Positional: the constructor assigns index 0, 1 and 2 to
-        # `mes_default`, `mes_ja` and `mes_en`, in that declaration order.
-        "messages": [texts["default"], texts["ja"], texts["en"]],
+        # An object keyed `default`/`ja`/`en`, which is what this server always
+        # sent. The three fields are named `mes_default`/`mes_ja`/`mes_en` and
+        # none of those names is a string literal in the client, which made a
+        # positional array look right; the constructor actually asks this value
+        # `Contains(key)`, and an emulator run answered the array with
+        # `InvalidOperationException: Instance of JsonData is not a dictionary`
+        # out of `Message..ctor`.
+        "messages": copy.deepcopy(texts),
         "daysLast": int(message["days_last"]),
         "coins": int(message["coins"]), "energy": int(message["free_energy"]),
         "chr": int(message.get("character_id", 0)),

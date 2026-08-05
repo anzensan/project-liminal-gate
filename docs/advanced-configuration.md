@@ -637,40 +637,45 @@ old uniform weights and a flat duplicate gain.
 ### Inbox presents can be served in the recovered client shape
 
 Pass `--original-mail-shape` to serve inbox messages using the field names and
-encodings read out of the reviewed client's own `Message` class rather than the
-shape this server has shipped so far.
-
-The shipped shape does not survive the client's parser. `Message` declares
-`mes_default`, `mes_ja` and `mes_en` for its text, `items` as a
+encodings read out of the reviewed client's own `Message` class. That class
+declares `mes_default`, `mes_ja` and `mes_en` for its text, `items` as a
 `List<ItemCode2>`, `buddy` as a single `ItemCode`, and `multiplayTitle`; it
-declares no `gifts` member at all. Its constructor fills the three text fields
-positionally out of `messages` through the LitJson *array* indexer, so the
-object this server sent under that key left all three null — which is why a
-present rendered with an empty body.
+declares no `gifts` member at all.
 
-The reward area has a second cause. `get_hasGift` tests `coins`, `energy` and
-`chr`, and then reaches `items` and dereferences it **without tolerating null**.
-Sending the key as `item` left `items` null, so any present carrying no Coins,
-Energy or character — precisely a chapter milestone — threw inside the client's
-own gift check instead of drawing its rewards. Issue 33 recorded that
-presentation as the final client refusing milestone mail.
+**This is not the fix for a present that shows no reward.** An emulator run
+compared both shapes against the reviewed client and found no visible
+difference: each renders a present's body text, and neither draws a reward area
+or a claim control — for a Coin/Energy present and for an items-only present
+alike. The rewards are granted correctly in both cases and simply are not
+displayed. That is the same presentation Issue 33 recorded on physical
+hardware, which makes the empty reward area a limit of the client's own mail
+screen rather than a fault in what this server sends.
 
 What the flag changes:
 
-| Shipped | Recovered | Note |
-| --- | --- | --- |
-| `messages` object keyed `default`/`ja`/`en` | `messages` array of three strings | positional: index 0, 1, 2 |
-| `item`, `[{id, num}]` | `items`, packed integers | `(id << 16) \| count` |
-| `title` | `multiplayTitle` | renamed |
-| `buddy`, a bare identity | `buddy`, packed the same way | it is an `ItemCode` |
-| `gifts: []` | absent | no such member exists |
-| absent | `from` | a declared string, served empty |
-| `date`, a float | `date`, an integer | the field is a `long` |
+| Shipped | Recovered |
+| --- | --- |
+| `item`, `[{id, num}]` | `items`, packed integers `(id << 16) \| count` |
+| `title` | `multiplayTitle` |
+| `buddy`, a bare identity | `buddy`, packed the same way; it is an `ItemCode` |
+| `gifts: []` | absent; no such member exists |
+| absent | `from`, a declared string, served empty |
 
-This is recovered from the client binary rather than from an observed exchange,
-which is why it is opt-in rather than standard. It becomes the default once a
-physical client confirms a present renders its text and its rewards, because
-the shape it replaces cannot render either.
+Two fields are deliberately *not* changed, because the same run proved the
+obvious reading of each one wrong:
+
+- `date` stays a JSON real. The field is a `long`, but the constructor reads it
+  through LitJson's `(double)` conversion, which refuses a `JsonData` holding
+  an int.
+- `messages` stays an object keyed `default`/`ja`/`en`. None of
+  `mes_default`/`mes_ja`/`mes_en` is a string literal anywhere in the client,
+  which makes a positional array look right, but the constructor asks the value
+  `Contains(key)` and therefore requires a dictionary.
+
+Getting either wrong throws out of `Message..ctor`, which kills the login
+callback: the client sits on `Connecting...` indefinitely and never shows an
+error. A stall with no dialog is what a malformed message field looks like from
+the outside.
 
 | Launcher | How to serve the recovered shape |
 | --- | --- |

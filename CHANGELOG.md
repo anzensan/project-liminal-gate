@@ -4,31 +4,37 @@
 
 ### Added
 
-- **`--original-mail-shape` serves inbox presents in the shape the client
-  actually parses.** The reviewed client's `Message` class was read out of the
-  packaged binary, and the shape this server has been sending does not survive
-  its constructor. `Message` declares `mes_default`/`mes_ja`/`mes_en` for its
-  text, `items` as a `List<ItemCode2>`, `buddy` as one `ItemCode`, and
-  `multiplayTitle`; it declares no `gifts` member at all. The constructor fills
-  the three text fields positionally out of `messages` through the LitJson
-  *array* indexer, so the object sent under that key left every one of them
-  null — a present rendered with an empty body because its text never landed.
-  The reward area failed separately and worse. `get_hasGift` tests `coins`,
-  `energy` and `chr`, then reaches `items` and dereferences it without
-  tolerating null. Sending that key as `item` left `items` null, so a present
-  carrying no Coins, Energy or character — precisely a chapter milestone —
-  threw inside the client's own gift check rather than drawing its rewards.
-  Issue 33 recorded exactly that presentation, a row whose text appeared over
-  an empty reward area that would not clear, and read it as the final client
-  refusing milestone mail; the narrower cause was this serialization.
-  The flag also packs reward identities the way `ItemCode.ctor(int, int)` does
-  — `(id << 16) | count`, recovered from a constructor whose entire body is one
-  `orr` — renames `title` to `multiplayTitle`, sends `date` as the `long` the
-  field is rather than a float, and adds the declared `from` string.
-  Opt-in, because this is recovered from the binary rather than from an
-  observed exchange. It should become the default once a physical client
-  confirms a present renders its text and rewards, since the shape it replaces
-  can render neither. Off, the served bytes are unchanged.
+- **`--original-mail-shape` serves inbox presents in the field shape recovered
+  from the client's own `Message` class.** The class was read out of the
+  packaged binary: it declares `mes_default`/`mes_ja`/`mes_en` for its text,
+  `items` as a `List<ItemCode2>`, `buddy` as one `ItemCode`, and
+  `multiplayTitle`, and declares no `gifts` member at all. The flag serves
+  those names, packs reward identities the way `ItemCode.ctor(int, int)` packs
+  them — `(id << 16) | count`, recovered from a constructor whose entire body
+  is one `orr` — renames `title` to `multiplayTitle`, and adds the declared
+  `from` string. Off, the served bytes are unchanged.
+
+  **An emulator run found no observable difference, so this is not the fix for
+  a present that shows no reward.** Both shapes render a present's body text,
+  and neither draws a reward area or a claim control, for a Coin/Energy present
+  and for an items-only one alike. Rewards are granted correctly either way and
+  simply are not displayed. That matches what Issue 33 recorded on physical
+  hardware and makes the empty reward area a client-side presentation limit
+  rather than a serialization fault. The flag stays opt-in and unproven.
+
+  Two inferences drawn from the binary were wrong, and the same run caught both
+  because each one froze the client outright. `date` is a `long` on the class,
+  but the constructor reads it through LitJson's `(double)` conversion, which
+  refuses a JsonData holding an int. And none of `mes_default`/`mes_ja`/`mes_en`
+  is a string literal anywhere in the client, which made a positional array look
+  right, but the constructor asks the `messages` value `Contains(key)` and so
+  requires an object. Each answered with an exception thrown out of
+  `Message..ctor` — `InvalidCastException: Instance of JsonData doesn't hold a
+  double` and `InvalidOperationException: Instance of JsonData is not a
+  dictionary` — which killed the login callback and left the client on
+  `Connecting...` indefinitely, with no error dialog. Worth recording as its own
+  finding: one malformed field in one message is enough to hang the client on a
+  loading screen, which is what a stall of that kind looks like from the outside.
 
 - **Daily login rewards now arrive through the original inbox** (issue 34).
   Guided core-story servers issue the published eight-day consecutive cycle
