@@ -63,6 +63,29 @@ LUCKY_ORBLING_GAIN_TENTHS = 3
 LUCKY_ORBLING_PINCER_CHANCE = 0.5
 LUCKY_RUNNER_GAIN_TENTHS = 1
 
+#: The five chapters whose recovered `BattleData` sets `allowLucky` to 1: 2006
+#: Lucia, 3003 Money Money Time, 3004 Crystal Road, 6010 Lucky Orbling, and
+#: 7010 Eidolon Forest. See the `allowLucky` finding in `docs/findings.md` for
+#: why the flag reads as "Lucky-type enemies may spawn here" rather than as the
+#: chest gate an earlier reading took it for.
+#:
+#: Two of them -- Money Money Time at five stamina and Crystal Road at seven --
+#: sit *below* `LUCK_GAIN_MIN_STAMINA`, and Lucky Orbling is a free Daily
+#: Quest. That is the whole reason a Lucky enemy has to be modelled as its own
+#: source: fold it into the battle-end gain and the three stages the record
+#: most clearly documents as Luck sources are the three it cannot reach.
+ALLOW_LUCKY_CHAPTERS = frozenset({2006, 3003, 3004, 6010, 7010})
+
+#: **Local policy, and the second invented number in the Luck runtime.** How
+#: many Lucky-type enemies one battle on a flagged chapter offers a pincer at.
+#: The record fixes the gain and the chance but never states a population, and
+#: the spawn itself is decided by client-side battle data this server does not
+#: read. One per battle is the least the flag can mean while still meaning
+#: anything, and it keeps the invented claim to a count rather than a
+#: distribution. The Orbling's +0.3 is used rather than the Runner's +0.1
+#: because the record names the Orbling on the flagged chapters it identifies.
+LUCKY_ENEMIES_PER_BATTLE = 1
+
 
 @dataclass(frozen=True)
 class ChestTier:
