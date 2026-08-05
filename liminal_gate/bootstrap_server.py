@@ -167,7 +167,6 @@ from liminal_gate.secondary_world_data import (
     build_bundled_five_emperors_stages,
     secondary_world_event_flags,
 )
-from liminal_gate.luck_data import ALLOW_LUCKY_CHAPTERS
 from liminal_gate.luck_runtime import (
     EMPTY_SLOT,
     apply_luck_up_table,
@@ -2196,7 +2195,7 @@ class BootstrapState:
             # stages the battle-end rule cannot.
             luck_up = roll_luck_up_table(
                 userdata, stage.stamina, request_id, digest,
-                allow_lucky=stage.chapter in ALLOW_LUCKY_CHAPTERS,
+                lucky_chapter=stage.chapter,
             )
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
             if any(luck_up):
@@ -2612,12 +2611,12 @@ class BootstrapState:
                 stage.chapter, stage.section, party_team_luck(userdata),
                 request_id, body_hash,
             )
-            # 2006 Lucia and 7010 Eidolon Forest reach the client through this
+            # 2006 Lucia and 7010 Cryptid Forest reach the client through this
             # handler rather than the Hunting one, so the `allowLucky` source
             # has to be offered here too.
             luck_up = roll_luck_up_table(
                 userdata, stamina_cost, request_id, body_hash,
-                allow_lucky=stage.chapter in ALLOW_LUCKY_CHAPTERS,
+                lucky_chapter=stage.chapter,
             )
             if any(luck_slots) or any(luck_up):
                 payload["luckResult"] = list(luck_slots)

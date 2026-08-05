@@ -210,6 +210,25 @@
 
 ### Fixed
 
+- **Cryptid Forest paid a Lucky Orbling's Luck, and its enemy is a Lucky
+  Runner.** The `allowLucky` source granted all five flagged chapters +0.3 at a
+  50% chance. Chapter 7010 is `EidolonForestChapter` inside the client, which
+  is how this repository recorded it, but its player-facing name is Cryptid
+  Forest — and under that name the community record documents its enemies
+  outright: one Lucky Runner always spawns, a second spawns with a 30% chance,
+  and a pincer from any direction grants 0.1 to the whole party. The stage was
+  therefore granting three times the documented Luck, from the wrong enemy, on
+  a coin flip where a guarantee was stated. 7010 now takes the Runner's
+  documented population and gain; the other four keep the Orbling policy and
+  their draw sequence is unchanged, because the chapter is not seed material.
+  The record's conditional 50% second spawn (a party carrying Dracorin Λ's
+  *Cryptid Ruler*) and its app-restart suppression are recorded and not
+  implemented, since this server models neither party skills nor client
+  lifecycle. `roll_luck_up_table` now takes the stage's `lucky_chapter` instead
+  of an `allow_lucky` flag each caller computed for itself — that duplication
+  is what let the flag and the species disagree. See `docs/findings.md`,
+  2026-08-05.
+
 - **The Tavern kept playing the menu theme, and the live-recorded tracks were
   unreachable** (issue 44). Three of the flags the client reads to decide which
   track belongs to which screen were never sent, so every branch that would

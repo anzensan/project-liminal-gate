@@ -65,9 +65,15 @@ LUCKY_RUNNER_GAIN_TENTHS = 1
 
 #: The five chapters whose recovered `BattleData` sets `allowLucky` to 1: 2006
 #: Lucia, 3003 Money Money Time, 3004 Crystal Road, 6010 Lucky Orbling, and
-#: 7010 Eidolon Forest. See the `allowLucky` finding in `docs/findings.md` for
+#: 7010 Cryptid Forest. See the `allowLucky` finding in `docs/findings.md` for
 #: why the flag reads as "Lucky-type enemies may spawn here" rather than as the
 #: chest gate an earlier reading took it for.
+#:
+#: 7010 is `ChapterInterface.EidolonForestChapter` in the client and was
+#: recorded here under that internal name. The player-facing name is Cryptid
+#: Forest -- 幻獣の森, the same 幻獣 the game translates as Eidolon elsewhere --
+#: and it matters because the record files this stage's Lucky enemy under the
+#: English name, which is how the species below was found to be wrong.
 #:
 #: Two of them -- Money Money Time at five stamina and Crystal Road at seven --
 #: sit *below* `LUCK_GAIN_MIN_STAMINA`, and Lucky Orbling is a free Daily
@@ -76,14 +82,36 @@ LUCKY_RUNNER_GAIN_TENTHS = 1
 #: most clearly documents as Luck sources are the three it cannot reach.
 ALLOW_LUCKY_CHAPTERS = frozenset({2006, 3003, 3004, 6010, 7010})
 
+#: **Community record.** The flagged chapters whose Lucky enemy is a Lucky
+#: Runner rather than a Lucky Orbling, and which therefore grant +0.1 rather
+#: than +0.3.
+#:
+#: Cryptid Forest is the one flagged chapter the record documents enemy by
+#: enemy, and what it documents is a Runner: one always spawns in a random
+#: battle, a second spawns with a 30% chance, and pincering one *in any
+#: direction* grants 0.1 Luck to every party member. Nothing about it is an
+#: Orbling, so the reasoning that picked the Orbling's numbers for every
+#: flagged chapter does not reach this one.
+LUCKY_RUNNER_CHAPTERS = frozenset({7010})
+
+#: **Community record.** One Lucky Runner is guaranteed per run and a second
+#: appears with this chance. The record also gives a 50% variant for a party
+#: carrying Dracorin Λ's *Cryptid Ruler* skill; this server does not model
+#: which skills a party brings, so the unconditional rate is the one used and
+#: the conditional one is deliberately left out rather than guessed at.
+LUCKY_RUNNER_GUARANTEED_PER_BATTLE = 1
+LUCKY_RUNNER_EXTRA_SPAWN_CHANCE = 0.3
+
 #: **Local policy, and the second invented number in the Luck runtime.** How
-#: many Lucky-type enemies one battle on a flagged chapter offers a pincer at.
-#: The record fixes the gain and the chance but never states a population, and
-#: the spawn itself is decided by client-side battle data this server does not
-#: read. One per battle is the least the flag can mean while still meaning
-#: anything, and it keeps the invented claim to a count rather than a
-#: distribution. The Orbling's +0.3 is used rather than the Runner's +0.1
-#: because the record names the Orbling on the flagged chapters it identifies.
+#: many Lucky-type enemies one battle on an *Orbling* chapter offers a pincer
+#: at. The record fixes the gain and the chance but never states a population
+#: for those four, and the spawn itself is decided by client-side battle data
+#: this server does not read. One per battle is the least the flag can mean
+#: while still meaning anything, and it keeps the invented claim to a count
+#: rather than a distribution.
+#:
+#: This number is invented only where the record is silent. It does not govern
+#: `LUCKY_RUNNER_CHAPTERS`, whose population the record states outright.
 LUCKY_ENEMIES_PER_BATTLE = 1
 
 

@@ -26,12 +26,17 @@ import hashlib
 import random
 
 from liminal_gate.luck_data import (
+    ALLOW_LUCKY_CHAPTERS,
     CHEST_TIERS,
     LUCK_GAIN_TENTHS,
     LUCK_TENTHS_MAX,
     LUCKY_ENEMIES_PER_BATTLE,
     LUCKY_ORBLING_GAIN_TENTHS,
     LUCKY_ORBLING_PINCER_CHANCE,
+    LUCKY_RUNNER_CHAPTERS,
+    LUCKY_RUNNER_EXTRA_SPAWN_CHANCE,
+    LUCKY_RUNNER_GAIN_TENTHS,
+    LUCKY_RUNNER_GUARANTEED_PER_BATTLE,
     gains_luck,
     team_luck,
 )
@@ -104,20 +109,37 @@ def roll_luck_result(
     return slots
 
 
-def roll_lucky_enemy_gain(*seed: object) -> int:
+def roll_lucky_enemy_gain(chapter: int, *seed: object) -> int:
     """Return the Luck in tenths a flagged chapter's Lucky enemies grant.
 
     This is the `allowLucky` source, and it is deliberately *not* the
-    battle-end gain: the record describes a Lucky Orbling as granting its Luck
+    battle-end gain: the record describes a Lucky enemy as granting its Luck
     to every party member when pincered, with no reference to what the stage
     cost to enter. Keeping it separate is what lets a free Daily Quest and a
     five-stamina Hunting stage grant Luck while `LUCK_GAIN_MIN_STAMINA`, the
     developer's own rule, stays intact for the battle-end gain.
 
+    The species is per chapter, because the two Lucky enemies are not
+    interchangeable: a Runner grants a third of what an Orbling does. Cryptid
+    Forest is the one flagged chapter whose enemy the record names outright,
+    and it names a Runner, so it takes the Runner's documented population and
+    gain instead of the Orbling policy the other four still use.
+
     Drawn from its own stream so that adding this source cannot shift a single
-    existing `luckUpTable` roll on the stages that already had one.
+    existing `luckUpTable` roll on the stages that already had one. The chapter
+    is not part of the seed material for the same reason: threading it in would
+    re-roll every Orbling chapter that this correction does not touch.
     """
     generator = _seeded("luckyEnemy", *seed)
+    if chapter in LUCKY_RUNNER_CHAPTERS:
+        # The record states this population, so it is counted rather than
+        # rolled per enemy: one Runner always spawns and a second sometimes
+        # does, and a pincer from any direction grants -- there is no partial
+        # chance to apply once the enemy is there.
+        spawned = LUCKY_RUNNER_GUARANTEED_PER_BATTLE
+        if generator.random() < LUCKY_RUNNER_EXTRA_SPAWN_CHANCE:
+            spawned += 1
+        return spawned * LUCKY_RUNNER_GAIN_TENTHS
     gained = 0
     for _ in range(LUCKY_ENEMIES_PER_BATTLE):
         if generator.random() < LUCKY_ORBLING_PINCER_CHANCE:
@@ -126,15 +148,20 @@ def roll_lucky_enemy_gain(*seed: object) -> int:
 
 
 def roll_luck_up_table(
-    userdata: dict, stamina: int, *seed: object, allow_lucky: bool = False,
+    userdata: dict, stamina: int, *seed: object, lucky_chapter: int | None = None,
 ) -> list[int]:
     """Return each party slot's Luck gain in tenths, zero where it did not rise.
 
     Two sources feed one table, because `luckUpTable` is the only channel the
     client renders a Luck gain through. A quest costing less than eight stamina
     never raises Luck *at battle end*, which is the developer's own rule and
-    excludes every Daily Quest, all of which are free. ``allow_lucky`` adds the
-    separate Lucky-type enemy source, which that rule does not govern.
+    excludes every Daily Quest, all of which are free. ``lucky_chapter`` adds
+    the separate Lucky-type enemy source, which that rule does not govern.
+
+    Callers pass the stage's chapter rather than a flag they computed
+    themselves. Reducing the chapter to a boolean at the call site is what let
+    the species go unasked: by the time the roll happened, the one fact that
+    decides which Lucky enemy a stage carries had already been discarded.
 
     A character at its ceiling stays there, and an empty slot stays zero.
     """
@@ -142,7 +169,10 @@ def roll_luck_up_table(
     if not isinstance(party, list):
         return [0] * 6
     members = list(party[:6]) + [0] * max(0, 6 - len(party[:6]))
-    lucky = roll_lucky_enemy_gain(*seed) if allow_lucky else 0
+    lucky = (
+        roll_lucky_enemy_gain(lucky_chapter, *seed)
+        if lucky_chapter in ALLOW_LUCKY_CHAPTERS else 0
+    )
     if not gains_luck(stamina) and not lucky:
         return [0] * 6
     roster = userdata.get("chrdata")
