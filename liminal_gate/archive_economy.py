@@ -17,10 +17,12 @@ two economies stay interchangeable while it is retired.
 
 Two grants:
 
-- Every unique stage pays ``FIRST_CLEAR_FREE_ENERGY`` the first time it is
-  cleared and ``REPEAT_CLEAR_FREE_ENERGY`` on every later clear.  The
-  first-clear half is guarded by a per-account key set rather than by request
-  identity, so replaying an old clear under a fresh request id cannot farm it.
+- Every unique story or event stage pays ``FIRST_CLEAR_FREE_ENERGY`` the first
+  time it is cleared and ``REPEAT_CLEAR_FREE_ENERGY`` on every later clear.
+  The first-clear half is guarded by a per-account key set rather than by
+  request identity, so replaying an old clear under a fresh request id cannot
+  farm it.  The optional areas pay nothing at all; see
+  ``ENERGY_BEARING_KINDS``.
 - Completing a chapter pays ``CHAPTER_CLEAR_FREE_ENERGY`` once, ever, tracked
   by chapter number.
 
@@ -47,6 +49,16 @@ FIRST_CLEAR_FREE_ENERGY = 2
 REPEAT_CLEAR_FREE_ENERGY = 1
 #: Local policy: the one-time award for completing a chapter.
 CHAPTER_CLEAR_FREE_ENERGY = 50
+#: Local policy: the stage families whose clears pay at all.  Story and event
+#: chapters are played through once, so what they can ever mint is bounded by
+#: the content itself.  The optional areas -- Hunting, Metal Zone, the special
+#: quest, Daily Quests, and the Chapter 1100 Roads -- are replayable without
+#: bound, and a stage that both repeats forever and mints Energy is a farm
+#: rather than income: it makes every Energy price in the client, from Pacts to
+#: stamina refills, a matter of how long a Metal Zone run is repeated.  They
+#: therefore pay nothing, on the first clear as on the hundredth, and the
+#: wallet's only local income stays the story an account is actually advancing.
+ENERGY_BEARING_KINDS = frozenset({"story", "event"})
 
 
 def stage_energy_key(kind: str, chapter: int, section: int) -> str:
@@ -61,8 +73,12 @@ def award_stage_energy(
 
     The award is applied to ``freeEnergy`` only.  The paid Energy families are
     never written by this server, so a local grant can never be confused with a
-    purchase the account did not make.
+    purchase the account did not make.  A stage family outside
+    ``ENERGY_BEARING_KINDS`` mints nothing and records no history, so a clear it
+    repeats stays free of any wallet effect whatsoever.
     """
+    if kind not in ENERGY_BEARING_KINDS:
+        return 0
     history = account.setdefault("stage_energy_history", [])
     key = stage_energy_key(kind, chapter, section)
     first_clear = key not in history

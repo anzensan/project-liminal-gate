@@ -117,6 +117,18 @@
 
 ### Changed
 
+- **Only story and event clears pay preservation Energy.** Hunting, Metal Zone,
+  the special quest, the Daily Quests, and the Chapter 1100 Roads paid the same
+  per-stage award as a story stage, on the first clear and on every clear after
+  it. Those areas repeat without bound, so the wallet's local income was really
+  priced in Metal Zone runs: a Pact, a job unlock, or a stamina refill cost
+  whatever a repeatable stage could be replayed enough times to cover. They now
+  mint nothing and record no first-clear key, and the archive's only stage
+  income is the story an account is actually advancing — unchanged rates, and
+  the one-time chapter-completion award is untouched. The refusal lives in
+  `archive_economy.ENERGY_BEARING_KINDS`, so a stage family added later has to
+  state which side of the line it is on.
+
 - **The stamina meter no longer gates quest entry, on any launcher.** Entry
   charges nothing, the bar the client draws stays full, and the refill route
   answers the client's own `NoNeedToRefill` instead of selling an Energy for a

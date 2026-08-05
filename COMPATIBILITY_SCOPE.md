@@ -178,8 +178,12 @@ separate-server and self-hosted routes, because both install the same client.
   policy, not recovered service behavior**. The retired service sold Energy and
   gifted it through campaigns and operator mail, none of which this archive can
   reproduce, and nothing in the client mints it. Without a replacement an
-  account can only ever lose Energy. See `liminal_gate/archive_economy.py` for
-  the rates and the replay-safety argument.
+  account can only ever lose Energy. Only story and event stage clears pay: the
+  optional areas — Hunting, Metal Zone, the special quest, Daily Quests and the
+  Chapter 1100 Roads — repeat without bound, so paying them would price every
+  Energy cost in the client in Metal Zone runs instead. See
+  `liminal_gate/archive_economy.py` for the rates and the replay-safety
+  argument.
 - The status-up route's field order, item effects, caps, error enum, and
   callback field types are static-confirmed. The supplied catalog, complete
   roster projection, and request-ID cache are user-local preservation policy;

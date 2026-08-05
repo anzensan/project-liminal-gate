@@ -167,7 +167,9 @@ from liminal_gate.secondary_world_data import (
     build_bundled_five_emperors_stages,
     secondary_world_event_flags,
 )
+from liminal_gate.luck_data import ALLOW_LUCKY_CHAPTERS
 from liminal_gate.luck_runtime import (
+    EMPTY_SLOT,
     apply_luck_up_table,
     chest_coins,
     chest_items,
@@ -2183,7 +2185,29 @@ class BootstrapState:
             # spend. Retain the entry choice so only that one stale slot can be
             # reconciled at clear time; stamina fallback must remain exact.
             account["active_hunt_ticket_spent"] = spends_ticket
+            # Luck rises here for the same reasons it rises on an ordinary story
+            # stage. `LUCK_GAIN_MIN_STAMINA` is a rule about what a battle cost,
+            # not about which selector offered it, so the declared cost is what
+            # it reads -- a Metal Ticket standing in for stamina buys the same
+            # battle and must not quietly cost the party its Luck.  The
+            # `allowLucky` chapters add their own source on top, which is what
+            # reaches free Lucky Orbling and the two cheap flagged Hunting
+            # stages the battle-end rule cannot.
+            luck_up = roll_luck_up_table(
+                userdata, stage.stamina, request_id, digest,
+                allow_lucky=stage.chapter in ALLOW_LUCKY_CHAPTERS,
+            )
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
+            if any(luck_up):
+                # No chest is authored: the community record's own no-chest list
+                # names the Hunting and Metal zones, and `luckResult` is sent
+                # only as the empty six slots that accompany a gain, which is
+                # the same shape an ordinary story stage with no documented pool
+                # already sends.
+                payload = _canonical_payload(payload | {
+                    "luckResult": [EMPTY_SLOT] * 6, "luckUpTable": list(luck_up),
+                })
+            account["active_luck_up"] = list(luck_up)
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -2266,6 +2290,12 @@ class BootstrapState:
                 # delete a grant it had not read back.  See `_preserved_roster`.
                 "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
             })
+            # After the merge, so the entry's authored gain lands on the roster
+            # the clear settled rather than on the one it replaced, and once,
+            # because the entry is what rolled it.
+            active_luck_up = account.get("active_luck_up")
+            if isinstance(active_luck_up, list):
+                apply_luck_up_table(userdata, active_luck_up)
             announced: dict[int, int] = {}
             if stage.character_grants:
                 announced |= _apply_hunting_character_grants(userdata, stage)
@@ -2274,12 +2304,15 @@ class BootstrapState:
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
             account["tutorial_phase"] = "free_roam"
+            account["active_luck_up"] = []
             account["active_hunt"] = None
             account["active_hunt_ticket_spent"] = None
             account["active_battle_continue_coins"] = 0
-            # Preservation income; see `archive_economy`.
-            award_stage_energy(account, "hunting", *identity)
-            userdata["valuables"]["freeEnergy"] = int(userdata.get("freeEnergy", 0))
+            # Hunting, Metal Zone, the special quest and the Daily Quests pay no
+            # preservation Energy: they repeat without bound, and the income is
+            # reserved for story progress that cannot. See `archive_economy`.
+            # The wallet projection written above therefore already carries the
+            # balance this response reports.
             payload = _canonical_payload({
                 "success": True, "lastupdate": 1.0, "sentMessage": False,
                 "coins": expected_coins, "freeEnergy": int(userdata.get("freeEnergy", 0)),
@@ -2355,7 +2388,17 @@ class BootstrapState:
             account["tutorial_phase"] = "world_map_special_active"
             account["active_world_map_special"] = identity
             account["active_battle_continue_coins"] = 0
+            # Chapter 1100 charges 25 stamina, which clears the battle-end gate
+            # comfortably; its recovered `allowLucky` is 0, so it carries no
+            # Lucky-enemy source.  Its chests stay refused as labeled local
+            # policy, so as on Hunting only the empty slots accompany a gain.
+            luck_up = roll_luck_up_table(userdata, stage.stamina, request_id, digest)
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
+            if any(luck_up):
+                payload = _canonical_payload(payload | {
+                    "luckResult": [EMPTY_SLOT] * 6, "luckUpTable": list(luck_up),
+                })
+            account["active_luck_up"] = list(luck_up)
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -2431,16 +2474,22 @@ class BootstrapState:
             # local client report, merged so a stale client cannot delete a
             # grant it never read back.
             userdata["chrdata"] = _preserved_roster(userdata.get("chrdata"), clear["chrdata"])
+            # After the merge, and once, for the reason the Hunting clear gives.
+            active_luck_up = account.get("active_luck_up")
+            if isinstance(active_luck_up, list):
+                apply_luck_up_table(userdata, active_luck_up)
             frontier = self._world_map_special_progress(account, catalog)
             if stage.battle == frontier[stage.route] and stage.battle < catalog.final_battle(stage.route):
                 frontier[stage.route] = stage.battle + 1
             account["world_map_special_progress"] = frontier
             userdata["lastupdate"] = 1.0
             account["tutorial_phase"] = "free_roam"
+            account["active_luck_up"] = []
             account["active_world_map_special"] = None
             account["active_battle_continue_coins"] = 0
-            # Preservation income; see `archive_economy`.
-            award_stage_energy(account, "world_map_special", *identity)
+            # The Chapter 1100 Roads pay no preservation Energy either: they are
+            # repeatable training zones, and the income is reserved for story
+            # progress. See `archive_economy`.
             _synchronize_wallet_projection(userdata)
             payload = _canonical_payload({
                 "success": True, "lastupdate": 1.0, "sentMessage": False,
@@ -2562,7 +2611,13 @@ class BootstrapState:
                 stage.chapter, stage.section, party_team_luck(userdata),
                 request_id, body_hash,
             )
-            luck_up = roll_luck_up_table(userdata, stamina_cost, request_id, body_hash)
+            # 2006 Lucia and 7010 Eidolon Forest reach the client through this
+            # handler rather than the Hunting one, so the `allowLucky` source
+            # has to be offered here too.
+            luck_up = roll_luck_up_table(
+                userdata, stamina_cost, request_id, body_hash,
+                allow_lucky=stage.chapter in ALLOW_LUCKY_CHAPTERS,
+            )
             if any(luck_slots) or any(luck_up):
                 payload["luckResult"] = list(luck_slots)
                 payload["luckUpTable"] = list(luck_up)
