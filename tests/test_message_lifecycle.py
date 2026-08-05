@@ -271,12 +271,20 @@ class RecoveredMailShapeTest(unittest.TestCase):
              "energy", "chr", "items", "summon", "buddy", "multiplayTitle"},
             set(message),
         )
-        # Positional, because the constructor assigns index 0, 1 and 2 to
-        # mes_default, mes_ja and mes_en rather than looking up a key.
-        self.assertEqual(["d-text", "ja-text", "en-text"], message["messages"])
-        # `date` is a long on the recovered class, so it cannot carry a float.
-        self.assertEqual(7, message["date"])
-        self.assertIs(int, type(message["date"]))
+        # An object, not a positional array. The three text fields are named
+        # `mes_default`/`mes_ja`/`mes_en` and none of those is a literal in the
+        # client, which made an array look right; the constructor asks this
+        # value `Contains(key)`, and an emulator run answered the array with
+        # `InvalidOperationException: Instance of JsonData is not a dictionary`
+        # out of `Message..ctor`, which killed the login callback outright.
+        self.assertEqual({"default": "d-text", "ja": "ja-text", "en": "en-text"}, message["messages"])
+        # `date` stays a real even though the field is a `long`: the
+        # constructor reads it through LitJson's `(double)` conversion, which
+        # refuses a JsonData holding an int. An emulator run answered an
+        # integer here with `InvalidCastException: Instance of JsonData doesn't
+        # hold a double` out of `Message..ctor`, taking the login with it.
+        self.assertEqual(7.0, message["date"])
+        self.assertIs(float, type(message["date"]))
         # (50 << 16) | 4 -- the packing ItemCode's own constructor performs.
         self.assertEqual([(50 << 16) | 4], message["items"])
         self.assertEqual(0, message["buddy"])
