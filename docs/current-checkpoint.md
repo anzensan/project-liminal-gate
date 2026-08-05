@@ -34,6 +34,23 @@ passes all 957 tests with five expected skips; compilation, endpoint YAML, and
 diff checks pass. Values already lost from a save cannot be inferred and need
 a pre-reset backup for exact recovery.
 
+Latest Luck-growth correction: two operator reports separated preservation from
+growth -- a character kept 10% Luck across Metal Zone runs while nothing
+anywhere raised it, and the Lucky Orbling quest showed 1.8 in battle and
+nothing in the party menu. Only the generic story handler rolled and applied
+`luckUpTable`, so the Hunting family and Chapter 1100 could not raise Luck at
+all despite costing up to 25 stamina, and the `allowLucky` Lucky-enemy source
+the record documents was never implemented. Both start/clear pairs now author
+the table at entry and apply it once after the roster merge, and the five
+flagged chapters carry the Lucky-enemy source, which is deliberately outside
+the confirmed ≥8 stamina gate because three of them are free or cheaper than
+that. Real-HTTP checks over the repository's own Hunting fixture confirm a
+flagged seven-stamina stage grants +0.3 on about half its battles and persists
+to `state.json`, while an unflagged three-stamina stage grants nothing across
+24 runs. The complete warning-strict suite passes all 1005 tests. Physical-client
+confirmation remains pending, and Luck already lost to the earlier defect cannot
+be reconstructed without a backup.
+
 Latest daily-drop validation: Issue 35 identified the missing gate for the
 final client's native ordinary-story rotation. Guided core story now supplies
 the exact boolean `enableDailyBonus` event flag during login. Dual-ABI client
