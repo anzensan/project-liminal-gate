@@ -22,6 +22,12 @@ class ServerConfigError(ValueError):
 #: without it the client discards every drop it rolls, so guided setups would
 #: report empty monsters and buddies on every clear.
 #:
+#: ``--original-mail-shape`` is deliberately absent for a third reason: it is
+#: a wire shape recovered from the client binary rather than from an observed
+#: exchange, and no physical client has yet confirmed it renders. Make it
+#: standard once one has, because the shape it replaces cannot render a
+#: present's text or its rewards at all.
+#:
 #: ``--enable-stamina`` is deliberately absent for a different reason than
 #: ``--summon-skills``: it is not a recovered feature this set forgot but an
 #: opt-in every launcher leaves off.  A retired game's timer gate exists to
@@ -65,7 +71,7 @@ _PATH_FIELDS = (
     "exchange_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict", "enable_stamina"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict", "enable_stamina", "original_mail_shape"}
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,7 @@ class ServerConfig:
     summon_skills: bool = False
     outcome_strict: bool = False
     enable_stamina: bool = False
+    original_mail_shape: bool = False
     event_log: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
@@ -150,6 +157,7 @@ def load_server_config(path: Path) -> ServerConfig:
     summon_skills = document.get("summon_skills", False)
     outcome_strict = document.get("outcome_strict", False)
     enable_stamina = document.get("enable_stamina", False)
+    original_mail_shape = document.get("original_mail_shape", False)
     if not isinstance(host, str) or not host or "\x00" in host:
         raise ServerConfigError("host must be a nonempty string")
     if type(port) is not int or not 1 <= port <= 65535:
@@ -173,11 +181,12 @@ def load_server_config(path: Path) -> ServerConfig:
         "summon_skills": summon_skills,
         "outcome_strict": outcome_strict,
         "enable_stamina": enable_stamina,
+        "original_mail_shape": original_mail_shape,
     }
     for field, value in boolean_values.items():
         if type(value) is not bool:
             raise ServerConfigError(f"{field} must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, daily_quests=daily_quests, secondary_worlds=secondary_worlds, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, enable_stamina=enable_stamina, **paths)
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, daily_quests=daily_quests, secondary_worlds=secondary_worlds, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, enable_stamina=enable_stamina, original_mail_shape=original_mail_shape, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:

@@ -1069,6 +1069,7 @@ class BootstrapState:
         self, account_id: str, chapter_milestones: bool = False,
         login_bonuses: bool = False, now: float | None = None,
         message_catalog: MessageCatalog | None = None,
+        original_mail_shape: bool = False,
     ) -> list[dict[str, Any]]:
         with self.lock:
             account = self.accounts.get(account_id)
@@ -1093,7 +1094,7 @@ class BootstrapState:
             # Keep the durable record for exact read replay and explicit delete,
             # while only exposing presents that are still claimable.
             return [
-                _message_wire(message)
+                _message_wire(message, original_mail_shape)
                 for _, message in sorted(account.setdefault("messages", {}).items())
                 if not message.get("read")
             ]
@@ -3077,6 +3078,7 @@ class BootstrapServer(ThreadingHTTPServer):
         companion_equipment_catalog: CompanionEquipmentCatalog | None = None,
         chapter_milestones: bool = False,
         login_bonuses: bool = False,
+        original_mail_shape: bool = False,
         build_id: str = "development",
         daily_drop_bonuses: bool = False,
         stamina: bool = False,
@@ -3114,6 +3116,7 @@ class BootstrapServer(ThreadingHTTPServer):
         )
         self.chapter_milestones = chapter_milestones
         self.login_bonuses = login_bonuses
+        self.original_mail_shape = original_mail_shape
         self.daily_drop_bonuses = daily_drop_bonuses
         self.exchange_catalog = exchange_catalog
         self.clear_state_catalog = clear_state_catalog
@@ -3310,6 +3313,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             payload["messageList"] = self.server.state.login_messages(
                 resolved, self.server.chapter_milestones,
                 self.server.login_bonuses, now, self.server.message_catalog,
+                self.server.original_mail_shape,
             )
             # Reads as an ordinary login statistic and is not one. The client
             # stores it as `UserData.lastLoginTime`, and `DailyQuestManager`
@@ -4602,16 +4606,84 @@ def _parse_exchange(body: bytes) -> tuple[int, int] | None:
     return (int(pairs[0][1]),int(pairs[1][1])) if int(pairs[0][1])>0 and int(pairs[1][1])>0 else None
 
 
-def _message_wire(message: dict[str, Any]) -> dict[str, Any]:
+#: The client packs a reward identity and its count into one integer.
+#: ``ItemCode``/``ItemCode2`` both construct from ``(id << 16) | count`` --
+#: recovered from ``.ctor(int _id, int _num)``, whose whole body is
+#: ``orr w8, w19, w20, lsl #16``, and read back by ``get_id`` (``asr #16``)
+#: and ``get_count`` (a halfword load).
+_ITEM_CODE_SHIFT = 16
+_ITEM_CODE_COUNT_MASK = 0xFFFF
+
+
+def _packed_item_code(identity: int, count: int) -> int:
+    """Encode one reward the way the client's own ItemCode constructor does."""
+    return (int(identity) << _ITEM_CODE_SHIFT) | (int(count) & _ITEM_CODE_COUNT_MASK)
+
+
+def _message_wire(message: dict[str, Any], original_shape: bool = False) -> dict[str, Any]:
+    """Project one inbox message for the client's mail screen.
+
+    ``original_shape`` serves the field names and encodings recovered from the
+    client's own ``Message`` class rather than the shape this server shipped
+    with.  The recovered class carries ``mes_default``/``mes_ja``/``mes_en``,
+    ``items`` as a ``List<ItemCode2>``, ``buddy`` as one ``ItemCode``, and
+    ``multiplayTitle``; it has no ``gifts`` member at all.  Its constructor
+    reads ``messages`` through the LitJson array indexer and fills the three
+    text fields positionally, so the texts travel as an ordered array rather
+    than the object served here before.
+
+    Two consequences of the old shape are worth recording.  Nothing filled the
+    text fields, which is why the body rendered empty.  And ``get_hasGift``
+    tests ``coins``, ``energy`` and ``chr`` before dereferencing ``items``
+    *without tolerating null*, so a present carrying only items -- exactly a
+    chapter milestone -- threw inside the client's own gift check rather than
+    drawing a reward area.  Issue 33 recorded that presentation as the client
+    refusing milestone mail.
+
+    This is recovered from the client binary rather than from an observed
+    exchange, so it stays behind ``--original-mail-shape`` until a physical
+    client confirms it.
+    """
+    if not original_shape:
+        return {
+            "id": message["id"], "date": float(message["date"]), "read": bool(message["read"]), "daysLast": int(message["days_last"]),
+            "gifts": [], "coins": int(message["coins"]), "energy": int(message["free_energy"]),
+            "chr": int(message.get("character_id", 0)),
+            "item": [{"id": int(item_id), "num": amount} for item_id, amount in sorted(message["items"].items(), key=lambda value: int(value[0]))],
+            # Summon and title stay zero: no owner is modeled for either, so a
+            # nonzero value would render a reward the read could not deliver.
+            "summon": 0, "buddy": int(message.get("companion_id", 0)), "title": 0,
+            "messages": copy.deepcopy(message["messages"]),
+        }
+    texts = message["messages"]
+    companion_id = int(message.get("companion_id", 0))
     return {
-        "id": message["id"], "date": float(message["date"]), "read": bool(message["read"]), "daysLast": int(message["days_last"]),
-        "gifts": [], "coins": int(message["coins"]), "energy": int(message["free_energy"]),
+        # `date` is a `long` on the recovered class, not the float this server
+        # sent: a fractional value is not a number the field can hold.
+        "id": message["id"], "date": int(message["date"]), "read": bool(message["read"]),
+        # A declared string field the client would otherwise hold null. No
+        # sender is modeled, so it carries the empty string rather than a name
+        # this project would have invented.
+        "from": "",
+        # Positional: the constructor assigns index 0, 1 and 2 to
+        # `mes_default`, `mes_ja` and `mes_en`, in that declaration order.
+        "messages": [texts["default"], texts["ja"], texts["en"]],
+        "daysLast": int(message["days_last"]),
+        "coins": int(message["coins"]), "energy": int(message["free_energy"]),
         "chr": int(message.get("character_id", 0)),
-        "item": [{"id": int(item_id), "num": amount} for item_id, amount in sorted(message["items"].items(), key=lambda value: int(value[0]))],
-        # Summon and title stay zero: no owner is modeled for either, so a
-        # nonzero value would render a reward the read could not deliver.
-        "summon": 0, "buddy": int(message.get("companion_id", 0)), "title": 0,
-        "messages": copy.deepcopy(message["messages"]),
+        # Always present, never null: `get_hasGift` reaches this member for any
+        # present that carries no Coins, Energy or character, and dereferences
+        # it without a null check.
+        "items": [
+            _packed_item_code(int(item_id), amount)
+            for item_id, amount in sorted(message["items"].items(), key=lambda value: int(value[0]))
+        ],
+        # Summon stays zero for the reason it always has: no owner is modeled,
+        # so a nonzero value would render a reward the read could not deliver.
+        "summon": 0,
+        # One Companion, at the same packing every other reward identity uses.
+        "buddy": _packed_item_code(companion_id, 1) if companion_id else 0,
+        "multiplayTitle": 0,
     }
 
 
@@ -5108,6 +5180,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--companion-evolution", action="store_true", help="enable the bundled local Companion evolution recipes")
     parser.add_argument("--trading-post", action="store_true", help="enable the bundled local Trading Post offers")
     parser.add_argument("--enable-stamina", action="store_true", help="charge the client's own stamina meter for quest entry instead of pinning it full")
+    parser.add_argument("--original-mail-shape", action="store_true", help="serve inbox messages in the field shape recovered from the client's own Message class, so presents render their text and rewards")
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
@@ -5127,6 +5200,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "companion_draw", "companion_sale", "companion_strengthen",
         "companion_evolution", "trading_post", "drop_eligibility",
         "achievements", "summon_skills", "outcome_strict", "enable_stamina",
+        "original_mail_shape",
     )
     if args.config is not None:
         if (
@@ -5171,6 +5245,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         achievement_catalog=args.achievement_catalog, achievements=getattr(args, 'achievements', False),
         summon_skills=getattr(args, 'summon_skills', False),
         enable_stamina=getattr(args, 'enable_stamina', False),
+        original_mail_shape=getattr(args, 'original_mail_shape', False),
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
     )
@@ -5316,6 +5391,7 @@ def build_server(
             companion_equipment_catalog=companion_equipment,
             chapter_milestones=getattr(args, "core_story", False),
             login_bonuses=getattr(args, "core_story", False),
+            original_mail_shape=getattr(args, "original_mail_shape", False),
             build_id=build_id,
             daily_drop_bonuses=getattr(args, "core_story", False),
             stamina=getattr(args, "enable_stamina", False),

@@ -634,6 +634,53 @@ rate table beyond the `RareSlotEnergy` cost. Pass `--pact-draw-catalog` to
 substitute your own. Without `--character-catalog`, `--pacts` falls back to the
 old uniform weights and a flat duplicate gain.
 
+### Inbox presents can be served in the recovered client shape
+
+Pass `--original-mail-shape` to serve inbox messages using the field names and
+encodings read out of the reviewed client's own `Message` class rather than the
+shape this server has shipped so far.
+
+The shipped shape does not survive the client's parser. `Message` declares
+`mes_default`, `mes_ja` and `mes_en` for its text, `items` as a
+`List<ItemCode2>`, `buddy` as a single `ItemCode`, and `multiplayTitle`; it
+declares no `gifts` member at all. Its constructor fills the three text fields
+positionally out of `messages` through the LitJson *array* indexer, so the
+object this server sent under that key left all three null — which is why a
+present rendered with an empty body.
+
+The reward area has a second cause. `get_hasGift` tests `coins`, `energy` and
+`chr`, and then reaches `items` and dereferences it **without tolerating null**.
+Sending the key as `item` left `items` null, so any present carrying no Coins,
+Energy or character — precisely a chapter milestone — threw inside the client's
+own gift check instead of drawing its rewards. Issue 33 recorded that
+presentation as the final client refusing milestone mail.
+
+What the flag changes:
+
+| Shipped | Recovered | Note |
+| --- | --- | --- |
+| `messages` object keyed `default`/`ja`/`en` | `messages` array of three strings | positional: index 0, 1, 2 |
+| `item`, `[{id, num}]` | `items`, packed integers | `(id << 16) \| count` |
+| `title` | `multiplayTitle` | renamed |
+| `buddy`, a bare identity | `buddy`, packed the same way | it is an `ItemCode` |
+| `gifts: []` | absent | no such member exists |
+| absent | `from` | a declared string, served empty |
+| `date`, a float | `date`, an integer | the field is a `long` |
+
+This is recovered from the client binary rather than from an observed exchange,
+which is why it is opt-in rather than standard. It becomes the default once a
+physical client confirms a present renders its text and its rewards, because
+the shape it replaces cannot render either.
+
+| Launcher | How to serve the recovered shape |
+| --- | --- |
+| `bootstrap_server` | `--original-mail-shape` |
+| `server_setup` | `--original-mail-shape` |
+| `install_systemd_service.sh` | `./scripts/install_systemd_service.sh PORT --original-mail-shape` |
+| local configuration file | `original_mail_shape = true` |
+| guided `tester_setup` | not offered; run `bootstrap_server` directly with the flag |
+| combined APK (on-device) | not offered |
+
 ### The stamina meter is off by default
 
 Quest entry does not charge stamina unless you pass `--enable-stamina`. Without

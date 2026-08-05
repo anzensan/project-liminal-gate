@@ -48,8 +48,41 @@ class SystemdUnitTest(unittest.TestCase):
             self.render(" --enable-stamina"),
         )
         source = INSTALLER.read_text(encoding="utf-8")
-        self.assertIn('server_flags=" --enable-stamina"', source)
+        self.assertIn("--enable-stamina", source)
         self.assertIn("unknown option:", source)
+
+    def test_the_installer_accepts_every_launcher_flag_the_docs_advertise(self) -> None:
+        """A documented systemd flag has to be one the installer really takes.
+
+        `--original-mail-shape` is opt-in and off by default, so a systemd host
+        has nowhere to ask for it but here.  The installer parses an allowlist
+        and rejects anything outside it, so a flag documented for this launcher
+        but missing from that list is refused at install time rather than
+        served -- which is exactly what happened when the flag was added to
+        `server_setup` and the docs but not to this script.
+        """
+        for flag in ("--enable-stamina", "--original-mail-shape"):
+            with self.subTest(flag=flag):
+                self.assertIn(
+                    "ExecStart=/usr/bin/python3 -m liminal_gate.server_setup "
+                    f"--port 8642 {flag}",
+                    self.render(f" {flag}"),
+                )
+                # The allowlist arm, not merely a mention in a comment or in
+                # the rejection message that names the accepted flags.
+                self.assertRegex(
+                    INSTALLER.read_text(encoding="utf-8"),
+                    rf"(?m)^\s*(--\S+\|)*{flag}(\|--\S+)*\)\s*$",
+                )
+
+    def test_launcher_flags_accumulate_rather_than_replace(self) -> None:
+        """Asking for two flags must not silently drop the first one."""
+        self.assertIn(
+            "ExecStart=/usr/bin/python3 -m liminal_gate.server_setup "
+            "--port 8642 --enable-stamina --original-mail-shape",
+            self.render(" --enable-stamina --original-mail-shape"),
+        )
+        self.assertIn('server_flags+=" $argument"', INSTALLER.read_text(encoding="utf-8"))
 
     def test_restarts_and_starts_at_normal_boot(self) -> None:
         source = self.render()
