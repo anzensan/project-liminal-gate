@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,12 +22,25 @@ class PreflightFinding:
     reason: str
 
 
-def inspect_release_tree(root: Path) -> list[PreflightFinding]:
-    """Return prohibited material found below a proposed source-release root."""
+def inspect_release_tree(
+    root: Path, skip: Callable[[Path], bool] | None = None
+) -> list[PreflightFinding]:
+    """Return prohibited material found below a proposed source-release root.
+
+    ``skip`` receives each repository-relative path and returns ``True`` for
+    material the caller has already established cannot travel in the release.
+    It exists for `release_audit`, which knows the tree is a Git repository and
+    can therefore prove that an ignored, untracked file is absent from every
+    clone.  This sweep stays filesystem-level and refuses nothing by default:
+    a tree handed over as a directory rather than as a clone carries whatever
+    is on disk, so the caller has to supply that proof rather than assume it.
+    """
     findings: list[PreflightFinding] = []
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
         if any(part in IGNORED_DIRECTORIES for part in relative.parts):
+            continue
+        if skip is not None and skip(relative):
             continue
         forbidden_directory = next(
             (part for part in relative.parts if part in PROHIBITED_DIRECTORIES), None
