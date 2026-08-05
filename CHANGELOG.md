@@ -240,6 +240,9 @@
   `llvm-objdump` above all. `main` now replays the record ahead of everything
   else, for `export` and `import` as well as `update`, and a test asserts that
   ordering for all three.
+  An operator has since confirmed both `export` and `update` from a Windows
+  build host against a physical Pixel 7 Pro on Android 15 carrying real gameplay
+  progress; `update` rebuilt and installed in place with the accounts intact.
 
 - **`guided derivations` reported FAIL inside an activated virtual environment
   after an install that had really succeeded.** The same check passed in a plain

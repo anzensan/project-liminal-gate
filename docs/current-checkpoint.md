@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-08-03
+Date: 2026-08-04
 
 Mode: public-release implementation hardening and private on-device packaging.
 
@@ -110,6 +110,19 @@ fsynced temporary file. Focused real-HTTP startup tests cover Android-style hard
 link denial, interruption before commit followed by retry, existing-save
 preservation, and matching `/healthz`. Physical-device seeded startup and
 force-stop/relaunch remain pending.
+
+Latest on-device save-transfer confirmation: an operator on a Windows build
+host reports that `on_device_state export` and `update` both succeed against a
+physical Pixel 7 Pro running Android 15 that carries real gameplay progress,
+after commit `839cf9d` made `main` replay the recorded `user-data/toolchain.json`
+for all three subcommands. This is the first physical-hardware report of the
+combined APK reaching gameplay, and the first of an in-place `update`
+preserving an app-private save; it supersedes the "establishes no new device
+acceptance" note on the 2026-08-03 save-transfer entry. It does not identify
+the installed artifact as the final source-exact build, and `import`, the
+ARMv7 runtime, and a Chapter 2-1 clear backed by preserved traces remain
+pending. Whether this is the same device as the Issue 30 seed diagnostic above
+was not established, so that entry's pending seeded startup stands.
 
 Latest chapter-ticket compatibility correction: Issue 33 supplied the first
 physical-client presentation result for the guided milestone inbox. The final

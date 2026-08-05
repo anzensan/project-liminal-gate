@@ -127,6 +127,18 @@ machine-readable/current capability boundary.
   warning-strict repository tests pass; compilation, structured-file, and diff
   checks pass. Physical-client retest is pending.
 
+- 2026-08-04 first physical on-device gameplay report. An operator building on
+  Windows installed the combined APK on a Pixel 7 Pro running Android 15,
+  reached real gameplay progress, and then ran both
+  `liminal_gate.on_device_state export` and `update` against it successfully —
+  the latter rebuilding and installing in place with the accounts intact. This
+  is the device acceptance the save-transfer entry below explicitly disclaimed,
+  and it is recorded in `docs/on-device-setup.md` under Known-good setups and
+  in the `COMPATIBILITY_SCOPE.md` Android host table. The report does not match
+  the installed artifact against the final source-exact hash, does not exercise
+  `import`, and carries no ARMv7 or preserved-trace claim; the Pixel 7 Pro is
+  64-bit only and cannot serve as the ARMv7 check.
+
 - 2026-08-03 on-device save transfer. The app-private `state.json` now has a
   supported route on and off the device, which supersedes the "no export/import
   exists yet" boundary recorded below. `liminal_gate.on_device_state`
@@ -1042,10 +1054,13 @@ machine-readable/current capability boundary.
 
 ## Next recommended task
 
-Install the full-resource on-device artifact on physical ARM64 hardware. Record
-cold start, one manifest-approved resource, signup/login, tutorial Pact, and a
-Chapter 2-1 clear with exact retry plus force-stop/relaunch state proof. Repeat
-the startup/resource boundary on an ARMv7 runtime. Then, on the final client,
+Capture the evidence behind the physical on-device install. A Pixel 7 Pro on
+Android 15 has now reached gameplay with the combined APK, so what remains is
+the recorded proof rather than the question of whether it runs: confirm the
+installed artifact against the final source-exact hash, then record cold start,
+one manifest-approved resource, signup/login, tutorial Pact, and a Chapter 2-1
+clear with exact retry plus force-stop/relaunch state proof. Repeat the
+startup/resource boundary on an ARMv7 runtime, which that device cannot supply. Then, on the final client,
 clear Bahamut 2000-1 through its result screen and certify Strikes Back 8000-1,
 Tower 9010-1, and Eidolon 4100-3 one at a time with before/after state and
 restart proof.
