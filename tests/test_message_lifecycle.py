@@ -222,6 +222,97 @@ class MessageLifecycleTest(unittest.TestCase):
                 stop_server(restarted, thread)
 
 
+class RecoveredMailShapeTest(unittest.TestCase):
+    """The field shape recovered from the client's own `Message` class.
+
+    Every expectation here is read from the reviewed client rather than from an
+    observed exchange: the class declares `mes_default`/`mes_ja`/`mes_en`,
+    `items` as a `List<ItemCode2>`, `buddy` as one `ItemCode`, and
+    `multiplayTitle`, and declares no `gifts` member at all. Its constructor
+    fills the three text fields positionally from `messages` through the LitJson
+    array indexer, and `ItemCode.ctor(int, int)` packs `(id << 16) | count`.
+    """
+
+    CATALOG = (
+        'schema_version = 1\nprovenance = "user-supplied"\nitem_slots = 181\n'
+        'max_free_energy = 99\nmax_coins = 9999\nmax_stack = 99\n\n'
+        '[[messages]]\nid = "local-1"\ndate = 7.0\ndays_last = 3\n'
+        'messages = { default = "d-text", ja = "ja-text", en = "en-text" }\n'
+        'coins = 0\nfree_energy = 0\nitems = { "50" = 4 }\n'
+    )
+
+    def _login(self, original_mail_shape: bool) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "messages.toml"
+            path.write_text(self.CATALOG, encoding="utf-8")
+            catalog = load_message_catalog(path)
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(root / "state.json"),
+                message_catalog=catalog, original_mail_shape=original_mail_shape,
+            )
+            try:
+                server.state.create_account("token", "account", {
+                    "chrdata": [], "buddyInfo": {"list": [], "record": []},
+                    "summonList": [0] * 16, "itemList": [0] * 181, "coins": 0,
+                    "freeEnergy": 0, "energy": 0, "energyAppStore": 0,
+                    "energyGooglePlay": 0, "energyAndApp": 0,
+                }, catalog)
+                status, login = get(server, "/gd/login?otk=token&uuid=account")
+                self.assertEqual(200, status)
+                return login["messageList"][0]
+            finally:
+                stop_server(server, thread)
+
+    def test_the_recovered_shape_carries_the_fields_the_client_declares(self) -> None:
+        message = self._login(True)
+        self.assertEqual(
+            {"id", "date", "read", "from", "messages", "daysLast", "coins",
+             "energy", "chr", "items", "summon", "buddy", "multiplayTitle"},
+            set(message),
+        )
+        # Positional, because the constructor assigns index 0, 1 and 2 to
+        # mes_default, mes_ja and mes_en rather than looking up a key.
+        self.assertEqual(["d-text", "ja-text", "en-text"], message["messages"])
+        # `date` is a long on the recovered class, so it cannot carry a float.
+        self.assertEqual(7, message["date"])
+        self.assertIs(int, type(message["date"]))
+        # (50 << 16) | 4 -- the packing ItemCode's own constructor performs.
+        self.assertEqual([(50 << 16) | 4], message["items"])
+        self.assertEqual(0, message["buddy"])
+
+    def test_the_recovered_shape_drops_the_members_the_client_has_none_of(self) -> None:
+        message = self._login(True)
+        # `get_hasGift` reads coins, energy, chr, items, summon and buddy. It
+        # never consults a gift list, and the class declares no such member.
+        self.assertNotIn("gifts", message)
+        self.assertNotIn("item", message)
+        self.assertNotIn("title", message)
+
+    def test_an_items_only_present_never_serves_the_member_hasGift_dereferences(self) -> None:
+        """`get_hasGift` reaches `items` without tolerating null.
+
+        Coins, Energy and a character each short-circuit it to true first, so a
+        present carrying only items is the one that reached the null -- exactly
+        a chapter milestone, and exactly what Issue 33 recorded as an empty
+        reward area over a row that would not clear.
+        """
+        message = self._login(True)
+        self.assertEqual((0, 0, 0), (message["coins"], message["energy"], message["chr"]))
+        self.assertIsInstance(message["items"], list)
+        self.assertTrue(message["items"])
+
+    def test_the_shipped_shape_is_unchanged_while_the_flag_is_off(self) -> None:
+        message = self._login(False)
+        self.assertEqual(
+            {"id", "date", "read", "daysLast", "gifts", "coins", "energy",
+             "chr", "item", "summon", "buddy", "title", "messages"},
+            set(message),
+        )
+        self.assertEqual({"default": "d-text", "ja": "ja-text", "en": "en-text"}, message["messages"])
+        self.assertEqual([{"id": 50, "num": 4}], message["item"])
+
+
 class MessageRewardKindTest(unittest.TestCase):
     """The client's record carries four reward channels beside coins and items.
 

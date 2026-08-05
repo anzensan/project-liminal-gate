@@ -123,6 +123,7 @@ def server_arguments(
     companion_equipment_catalog: Path | None = None,
     event_catalog: Path | None = None,
     enable_stamina: bool = False,
+    original_mail_shape: bool = False,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
@@ -173,6 +174,7 @@ def server_arguments(
         # Outside the standard set on purpose: the meter is off unless this
         # host's operator asked for it, so the flag is emitted only when asked.
         *(["--enable-stamina"] if enable_stamina else []),
+        *(["--original-mail-shape"] if original_mail_shape else []),
         *outcome_flags,
         *equipment_flags,
         *event_flags,
@@ -236,6 +238,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--original-mail-shape",
+        action="store_true",
+        help=(
+            "serve inbox presents in the field shape recovered from the client's "
+            "own Message class, so a present renders its text and its rewards"
+        ),
+    )
+    parser.add_argument(
         "--prepare-only",
         action="store_true",
         help="validate and hash resources without starting the server",
@@ -294,6 +304,11 @@ def main() -> int:
             if args.enable_stamina
             else "Stamina meter: OFF (pinned full; pass --enable-stamina to charge it)"
         )
+        print(
+            "Inbox presents: recovered client shape (text and rewards render)"
+            if args.original_mail_shape
+            else "Inbox presents: the shape shipped so far; pass --original-mail-shape to serve the recovered one"
+        )
         if args.prepare_only:
             return 0
         print(
@@ -310,6 +325,7 @@ def main() -> int:
                 companion_equipment_catalog=equipment_catalog,
                 event_catalog=event_catalog,
                 enable_stamina=args.enable_stamina,
+                original_mail_shape=args.original_mail_shape,
             )
         )
     except (OSError, ResourceCatalogError, ServerSetupError, subprocess.CalledProcessError) as error:

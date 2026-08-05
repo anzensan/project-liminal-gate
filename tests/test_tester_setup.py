@@ -30,6 +30,10 @@ DELIBERATELY_OFF = {
     # paced here, so the meter is pinned full and an operator who wants the
     # original behaviour asks for it on the command line.
     "enable_stamina": "an opt-in restoration of the timer gate, not standard content",
+    # Recovered from the client binary rather than from an observed exchange.
+    # It becomes standard once a physical client confirms it renders, because
+    # the shape it replaces cannot render a present's text or rewards at all.
+    "original_mail_shape": "a recovered wire shape awaiting physical-client confirmation",
 }
 
 

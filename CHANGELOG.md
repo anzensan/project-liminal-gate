@@ -4,6 +4,32 @@
 
 ### Added
 
+- **`--original-mail-shape` serves inbox presents in the shape the client
+  actually parses.** The reviewed client's `Message` class was read out of the
+  packaged binary, and the shape this server has been sending does not survive
+  its constructor. `Message` declares `mes_default`/`mes_ja`/`mes_en` for its
+  text, `items` as a `List<ItemCode2>`, `buddy` as one `ItemCode`, and
+  `multiplayTitle`; it declares no `gifts` member at all. The constructor fills
+  the three text fields positionally out of `messages` through the LitJson
+  *array* indexer, so the object sent under that key left every one of them
+  null — a present rendered with an empty body because its text never landed.
+  The reward area failed separately and worse. `get_hasGift` tests `coins`,
+  `energy` and `chr`, then reaches `items` and dereferences it without
+  tolerating null. Sending that key as `item` left `items` null, so a present
+  carrying no Coins, Energy or character — precisely a chapter milestone —
+  threw inside the client's own gift check rather than drawing its rewards.
+  Issue 33 recorded exactly that presentation, a row whose text appeared over
+  an empty reward area that would not clear, and read it as the final client
+  refusing milestone mail; the narrower cause was this serialization.
+  The flag also packs reward identities the way `ItemCode.ctor(int, int)` does
+  — `(id << 16) | count`, recovered from a constructor whose entire body is one
+  `orr` — renames `title` to `multiplayTitle`, sends `date` as the `long` the
+  field is rather than a float, and adds the declared `from` string.
+  Opt-in, because this is recovered from the binary rather than from an
+  observed exchange. It should become the default once a physical client
+  confirms a present renders its text and rewards, since the shape it replaces
+  can render neither. Off, the served bytes are unchanged.
+
 - **Daily login rewards now arrive through the original inbox** (issue 34).
   Guided core-story servers issue the published eight-day consecutive cycle
   and cumulative rewards for days 1--10, 30, 60, 100, and every 50th day

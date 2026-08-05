@@ -8,21 +8,22 @@ fi
 
 service_port=""
 server_flags=""
-# The stamina meter is off unless this host's operator asks for it, so the
+# Both of these are off unless this host's operator asks for them, so the
 # installer has to be able to say so: the unit it writes is the only place a
-# systemd host ever passes a launcher flag.
+# systemd host ever passes a launcher flag.  They accumulate rather than
+# replace one another, so a host can ask for both in one install.
 for argument in "$@"; do
   case "$argument" in
-    --enable-stamina)
-      server_flags=" --enable-stamina"
+    --enable-stamina|--original-mail-shape)
+      server_flags+=" $argument"
       ;;
     --*)
-      echo "unknown option: $argument (only --enable-stamina is accepted)" >&2
+      echo "unknown option: $argument (only --enable-stamina and --original-mail-shape are accepted)" >&2
       exit 2
       ;;
     *)
       if [[ -n "$service_port" ]]; then
-        echo "usage: $0 [PORT] [--enable-stamina]" >&2
+        echo "usage: $0 [PORT] [--enable-stamina] [--original-mail-shape]" >&2
         exit 2
       fi
       service_port="$argument"
