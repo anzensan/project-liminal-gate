@@ -7,10 +7,29 @@ matching health response before starting Unity. You do not keep a Python server
 running on another computer, choose a port, or configure Wi-Fi routing.
 
 Status: the build, package, loopback service, one exact resource response, and
-force-stop/relaunch path have passed on an API 34 ARM64 emulator. Installation
-and gameplay with the final source-exact artifact on physical ARM64 hardware,
-an ARMv7 runtime, and through Chapter 2-1 are still pending. Treat this as a
-private testing path, not a completed physical-device certification.
+force-stop/relaunch path have passed on an API 34 ARM64 emulator, and an
+operator has since reached real gameplay progress on physical ARM64 hardware.
+Three things are still pending: matching an installed artifact against the
+final source-exact build hash, an ARMv7 runtime, and a Chapter 2-1 clear backed
+by preserved request traces. Treat this as a private testing path, not a
+completed physical-device certification.
+
+## Known-good setups
+
+Configurations an operator has actually run, and what each one establishes.
+Nothing outside this table is claimed; an entry is the report, not a
+certification.
+
+| Build host | Device | Android | Established |
+| --- | --- | --- | --- |
+| Windows | Pixel 7 Pro (`arm64-v8a`) | 15 | Install, launch, and real gameplay progress with the combined APK. `on_device_state export` read the running embedded server over USB, and `update` rebuilt and installed in place with the accounts intact. `import` was not exercised, and the installed artifact was not matched against the final source-exact hash. |
+| — | API 34 ARM64 emulator, Google Play image with Translated ABI | 14 | Build, package, loopback health gate, one manifest-selected resource served with exact size and SHA-256, and recovery after force-stop/relaunch in a new process. |
+
+The Pixel 7 Pro entry is `arm64-v8a` only — that device accepts 64-bit apps
+alone, so it cannot stand in for the pending ARMv7 runtime check. For the
+client's own Android boundary, including the Android 16 launch crash and the
+API 29 install refusal, see
+[Android host compatibility](../COMPATIBILITY_SCOPE.md#android-host-compatibility).
 
 ## Before you start
 

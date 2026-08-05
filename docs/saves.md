@@ -78,6 +78,12 @@ confirms the accounts survived. It never uninstalls. If Android refuses the
 install because the build is signed with a different local key, it stops and
 prints the recovery steps rather than clearing the app itself.
 
+`export` and `update` have both been run successfully against a physical Pixel
+7 Pro on Android 15 from a Windows build host, on an install carrying real
+gameplay progress. `import` has not had the same confirmation, which is another
+reason to keep the export you took before you need it. See
+[Known-good setups](on-device-setup.md#known-good-setups).
+
 A build installed before this route existed cannot be exported, so the first
 update onto one has no backup to take. `update` says so and stops; add
 `--allow-missing-backup` to accept that one update. An in-place update keeps the
