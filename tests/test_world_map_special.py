@@ -196,6 +196,36 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         # A repeatable Road pays no preservation Energy; see `archive_economy`.
         self.assertEqual(2, self.userdata()["freeEnergy"])
 
+    def test_a_chapter_1100_battle_grows_luck(self) -> None:
+        """25 stamina is well past Mistwalker's eight-stamina gate, and this
+        handler rolled no table at all until the Luck family gap was closed.
+
+        Chapter 1100's own `allowLucky` is 0, so the only source here is the
+        battle-end gain.
+        """
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["userdata"]["teamMembers"] = [9001, 0, 0, 0, 0, 0]
+            self.server.state._persist_locked()
+
+        def luck() -> int:
+            return next(
+                int(row.get("luck", 0)) for row in self.userdata()["chrdata"]
+                if row["id"] == 9001
+            )
+
+        for attempt in range(24):
+            with self.server.state.lock:
+                # Refill the meter, so 24 entries at 25 stamina stay affordable.
+                self.server.state.accounts[self.account_id]["userdata"]["refillStartTime"] = 0.0
+                self.server.state._persist_locked()
+            self.assertEqual(200, self.start(f"luck-start-{attempt}", SHINEN_FIRST)[0])
+            self.assertEqual(200, self.clear(f"luck-clear-{attempt}", SHINEN_FIRST)[0])
+        self.assertGreater(luck(), 0, "24 battles at 25 stamina raised no Luck")
+        earned = luck()
+        self.restart()
+        self.assertEqual(earned, luck())
+
     def test_a_clear_that_claims_core_progress_is_refused(self) -> None:
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
         status, _ = self.clear("wms-clear", SHINEN_FIRST, progress=progress_code(36))

@@ -73,6 +73,18 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "max_items_total": 2, "item_maxima": {"1": 1, "2": 1, "5": 1, "6": 1},
                 },
                 {
+                    # An unflagged stage above the eight-stamina gate: the
+                    # shape Metal Zone zones 2--7 and the Roads have, and the
+                    # one that could grow no Luck at all while the Hunting
+                    # start rolled no table. Hidden, so the selector-list
+                    # assertions elsewhere stay about the advertised rows.
+                    "family": "road", "chapter": 1201, "section": 1,
+                    "stamina": 15, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
+                    "selector": "hidden",
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 0, "max_exp": 1000,
+                    "max_items_total": 0, "item_maxima": {},
+                },
+                {
                     "family": "tin", "chapter": LOCKED_STAGE[0], "section": LOCKED_STAGE[1],
                     "stamina": 1, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
                     "unlock_chapter": 30, "unlock_section": 1,
@@ -201,6 +213,85 @@ class HuntingRuntimeTest(unittest.TestCase):
             })),
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
         ])
+
+    def form_party(self) -> None:
+        """Put the fixture's one character in the party.
+
+        `roll_luck_up_table` reads `teamMembers`, and an account with no party
+        cannot gain Luck at all, so every Luck test below needs this first.
+        """
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["userdata"]["teamMembers"] = [9001, 0, 0, 0, 0, 0]
+            self.server.state._persist_locked()
+
+    def luck(self) -> int:
+        return next(
+            int(row.get("luck", 0)) for row in self.userdata()["chrdata"]
+            if row["id"] == 9001
+        )
+
+    def battle(self, tag: str, chapter: int, section: int, stamina: int) -> int:
+        """Run one whole battle and return the Luck it added, in tenths.
+
+        The clear reports `self.character`, which carries no `luck` member --
+        the confirmed shape of a real client clear, and the reason a
+        server-authored gain has to survive the roster merge to exist at all.
+        """
+        before = self.luck()
+        status, started = self.start(tag, chapter, section, stamina)
+        self.assertEqual((200, True), (status, started["success"]), started)
+        status, cleared = self.clear(f"{tag}-clear", chapter, section)
+        self.assertEqual(200, status, cleared)
+        return self.luck() - before
+
+    def test_a_costly_hunting_stage_grows_luck(self) -> None:
+        """The family gap: a fifteen-stamina Road is past Mistwalker's own gate,
+        and grew nothing while only the story handler rolled a table."""
+        self.form_party()
+        gained = sum(self.battle(f"road{n}", 1201, 1, 15) for n in range(24))
+        self.assertGreater(gained, 0, "24 battles at 15 stamina raised no Luck")
+
+    def test_a_cheap_unflagged_hunting_stage_never_grows_luck(self) -> None:
+        """`LUCK_GAIN_MIN_STAMINA` is confirmed and stays enforced here."""
+        self.form_party()
+        for n in range(24):
+            self.assertEqual(
+                0, self.battle(f"pud{n}", 1001, 1, 3),
+                f"a three-stamina stage raised Luck on battle {n}",
+            )
+
+    def test_a_flagged_stage_grows_luck_below_the_stamina_gate(self) -> None:
+        """Crystal Road is `allowLucky` and costs seven, so only the
+        Lucky-enemy source can reach it. Its gain is the record's +0.3."""
+        self.form_party()
+        gains = [self.battle(f"cr{n}", 3004, 1, 7) for n in range(24)]
+        self.assertTrue(any(gains), "a flagged stage never granted Luck")
+        self.assertLessEqual(set(gains), {0, 3}, f"unexpected gains {gains}")
+
+    def test_a_luck_gain_is_durable_across_restart(self) -> None:
+        self.form_party()
+        for n in range(24):
+            self.battle(f"dur{n}", 3004, 1, 7)
+        earned = self.luck()
+        self.assertGreater(earned, 0)
+        self.restart()
+        self.assertEqual(earned, self.luck())
+
+    def test_a_start_retry_replays_its_luck_table_rather_than_re_rolling(self) -> None:
+        """A re-roll on retry would be a Luck duplicator, as it would be a
+        chest duplicator; and the clear must pay the entry's table once."""
+        self.form_party()
+        status, first = self.start("retry", 3004, 1, 7)
+        self.assertEqual((200, True), (status, first["success"]))
+        self.assertEqual(first, self.start("retry", 3004, 1, 7)[1])
+        before = self.luck()
+        self.clear("retry-clear", 3004, 1)
+        once = self.luck() - before
+        self.assertEqual(sum(first.get("luckUpTable", [0])[:1]), once)
+        # Replaying the clear must not pay it twice.
+        self.clear("retry-clear", 3004, 1)
+        self.assertEqual(before + once, self.luck())
 
     def test_stage_charges_stamina_settles_within_bounds_and_survives_restart(self) -> None:
         status, started = self.start("hunt-start", 1001, 1, 3)
