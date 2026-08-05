@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from liminal_gate.luck_data import LUCK_TENTHS_MAX
+from liminal_gate.luck_data import (
+    ALLOW_LUCKY_CHAPTERS,
+    LUCK_TENTHS_MAX,
+    LUCKY_ORBLING_GAIN_TENTHS,
+)
 from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, has_documented_pool
 from liminal_gate.luck_runtime import (
     apply_luck_up_table,
@@ -12,6 +16,7 @@ from liminal_gate.luck_runtime import (
     party_team_luck,
     roll_luck_result,
     roll_luck_up_table,
+    roll_lucky_enemy_gain,
 )
 
 
@@ -127,6 +132,77 @@ class LuckGrowthTest(unittest.TestCase):
         save = userdata({1: 500})
         apply_luck_up_table(save, [0] * 6)
         self.assertEqual(500, save["chrdata"][0]["luck"])
+
+
+class LuckyEnemySourceTest(unittest.TestCase):
+    """The `allowLucky` source, which the stamina gate deliberately does not
+    govern -- three of the five flagged chapters cost less than eight stamina
+    or nothing at all."""
+
+    def test_a_free_flagged_stage_still_grows_luck(self) -> None:
+        """Lucky Orbling is free, and granting Luck is the whole point of it."""
+        grew = any(
+            any(roll_luck_up_table(userdata({1: 0, 2: 0}), 0, f"r{n}", "d", allow_lucky=True))
+            for n in range(40)
+        )
+        self.assertTrue(grew, "40 battles on a free flagged stage raised no Luck")
+
+    def test_the_gain_is_the_record_s_three_tenths(self) -> None:
+        seen = {
+            gain
+            for n in range(60)
+            for gain in roll_luck_up_table(
+                userdata({1: 0, 2: 0}), 0, f"r{n}", "d", allow_lucky=True,
+            )
+        }
+        self.assertLessEqual(seen, {0, LUCKY_ORBLING_GAIN_TENTHS})
+
+    def test_a_pincer_grants_the_whole_party_at_once(self) -> None:
+        """The record describes the gain as reaching every party member, so it
+        is one draw for the battle rather than six independent ones."""
+        for n in range(40):
+            table = roll_luck_up_table(
+                userdata({1: 0, 2: 0, 3: 0}), 0, f"r{n}", "d", allow_lucky=True,
+            )
+            occupied = table[:3]
+            self.assertEqual(1, len(set(occupied)), f"party split on battle {n}: {table}")
+
+    def test_an_empty_party_slot_stays_zero(self) -> None:
+        for n in range(20):
+            table = roll_luck_up_table(
+                userdata({1: 0}, [1, 0, 0, 0, 0, 0]), 0, f"r{n}", "d", allow_lucky=True,
+            )
+            self.assertEqual([0] * 5, table[1:], f"an empty slot gained on battle {n}")
+
+    def test_the_flag_never_shifts_an_existing_battle_end_roll(self) -> None:
+        """The Lucky draw comes off its own stream precisely so that adding it
+        cannot change what a stage that already granted Luck grants."""
+        for n in range(40):
+            plain = roll_luck_up_table(userdata({1: 0, 2: 0}), 40, f"r{n}", "d")
+            flagged = roll_luck_up_table(
+                userdata({1: 0, 2: 0}), 40, f"r{n}", "d", allow_lucky=True,
+            )
+            lucky = roll_lucky_enemy_gain(f"r{n}", "d")
+            self.assertEqual(
+                [value + lucky for value in plain[:2]], flagged[:2],
+                f"the battle-end roll moved on battle {n}",
+            )
+
+    def test_the_flag_is_replay_stable(self) -> None:
+        first = roll_luck_up_table(userdata({1: 0}), 0, "r", "d", allow_lucky=True)
+        self.assertEqual(
+            first, roll_luck_up_table(userdata({1: 0}), 0, "r", "d", allow_lucky=True),
+        )
+
+    def test_a_capped_character_gains_nothing_from_a_pincer_either(self) -> None:
+        for n in range(30):
+            table = roll_luck_up_table(
+                userdata({1: LUCK_TENTHS_MAX}), 0, f"r{n}", "d", allow_lucky=True,
+            )
+            self.assertEqual(0, table[0], f"gained past the ceiling on battle {n}")
+
+    def test_the_five_flagged_chapters_are_the_recovered_ones(self) -> None:
+        self.assertEqual({2006, 3003, 3004, 6010, 7010}, set(ALLOW_LUCKY_CHAPTERS))
 
 
 if __name__ == "__main__":

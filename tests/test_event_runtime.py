@@ -121,6 +121,71 @@ class EventRuntimeTest(unittest.TestCase):
                 status_payload["constants"]["specialQuestList"],
             )
 
+    def test_a_flagged_event_chapter_grows_luck_below_the_stamina_gate(self) -> None:
+        """2006 Lucia and 7010 Eidolon Forest are `allowLucky` and reach the
+        client through the generic-story handler rather than the Hunting one,
+        so the source has to be offered there too.
+
+        Both stages here cost five stamina, under `LUCK_GAIN_MIN_STAMINA`, so
+        the battle-end gain cannot fire and any Luck is the Lucky-enemy source.
+        The unflagged control proves the confirmed rule still holds.
+        """
+        for chapter, flagged in ((2006, True), (2000, False)):
+            with self.subTest(chapter=chapter):
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)
+                    state.create_account(token, "account", {
+                        "coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777346,
+                        "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": [],
+                        "teamMembers": [3, 0, 0, 0, 0, 0],
+                    })
+                    state.accounts["account"]["tutorial_phase"] = "free_roam"; state._persist_locked()
+                    catalog = EventCatalog((EventStage("test", "sp_test", chapter, 1, 5, 0, 0, ()),))
+                    server = BootstrapServer(
+                        ("127.0.0.1", 0), bootstrap_profile(), state, event_catalog=catalog,
+                    )
+                    thread = threading.Thread(target=server.serve_forever); thread.start()
+                    start = f"stamina=5&coins=0&chapter={chapter}&section=1&lastUpdate=1".encode()
+                    clear = urlencode({
+                        "progressCode": 16777346, "worldMapNo": 0,
+                        "valuables": json.dumps({
+                            "energyAppStore": 0, "energy": 0, "energyAndApp": 0,
+                            "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0,
+                        }),
+                        "chrdata": json.dumps([character(3)]), "itemList": "[]", "summonList": "[]",
+                        "battle_result": json.dumps({
+                            "coins": 0, "buddies": [], "items": {}, "exp": 0, "section": 1,
+                            "monsters": [], "summons": [], "luckynum": 0, "chapter": chapter,
+                            "unableluckdrop": False, "boostup": [0] * 6,
+                        }),
+                        "itmp0": 0, "itmp1": 0, "lastUpdate": 1,
+                    }).encode()
+                    try:
+                        for attempt in range(24):
+                            connection = HTTPConnection(*server.server_address)
+                            connection.request(
+                                "POST", f"/gd/start_quest?otk={token}&requestID=luck-start-{attempt}",
+                                body=start, headers={"Content-Type": "application/x-www-form-urlencoded"},
+                            )
+                            self.assertEqual(200, connection.getresponse().status); connection.close()
+                            connection = HTTPConnection(*server.server_address)
+                            connection.request(
+                                "POST", f"/gd/clear_quest?otk={token}&requestID=luck-clear-{attempt}",
+                                body=clear, headers={"Content-Type": "application/x-www-form-urlencoded"},
+                            )
+                            self.assertEqual(200, connection.getresponse().status); connection.close()
+                    finally:
+                        server.shutdown(); thread.join(); server.server_close()
+                    luck = next(
+                        int(row.get("luck", 0))
+                        for row in state.accounts["account"]["userdata"]["chrdata"]
+                        if row["id"] == 3
+                    )
+                    if flagged:
+                        self.assertGreater(luck, 0, "a flagged event chapter granted no Luck")
+                    else:
+                        self.assertEqual(0, luck, "a five-stamina unflagged chapter granted Luck")
+
     def test_event_clear_grants_character_over_real_http_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"; token = "token"; state = BootstrapState(path)
