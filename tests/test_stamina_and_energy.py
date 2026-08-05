@@ -235,11 +235,21 @@ class ArchiveEnergyTest(unittest.TestCase):
             account["userdata"]["freeEnergy"],
         )
 
-    def test_each_stage_and_kind_earns_its_own_first_clear(self) -> None:
+    def test_each_paying_stage_and_kind_earns_its_own_first_clear(self) -> None:
         account = self.account()
         award_stage_energy(account, "story", 2, 1)
         self.assertEqual(FIRST_CLEAR_FREE_ENERGY, award_stage_energy(account, "story", 2, 2))
-        self.assertEqual(FIRST_CLEAR_FREE_ENERGY, award_stage_energy(account, "hunting", 2, 1))
+        self.assertEqual(FIRST_CLEAR_FREE_ENERGY, award_stage_energy(account, "event", 2, 1))
+
+    def test_a_repeatable_optional_area_never_pays(self) -> None:
+        account = self.account()
+        for kind in ("hunting", "world_map_special"):
+            self.assertEqual(0, award_stage_energy(account, kind, 2, 1))
+            self.assertEqual(0, award_stage_energy(account, kind, 2, 1))
+        self.assertEqual(0, account["userdata"]["freeEnergy"])
+        # A refused kind records no first-clear key, so nothing accumulates in
+        # the save on behalf of a stage that will never be paid.
+        self.assertEqual([], account.get("stage_energy_history", []))
 
     def test_the_award_is_capped_at_the_advertised_maximum(self) -> None:
         account = self.account(MAX_FREE_ENERGY - 1)
