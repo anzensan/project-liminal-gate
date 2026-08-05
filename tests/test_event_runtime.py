@@ -123,7 +123,7 @@ class EventRuntimeTest(unittest.TestCase):
             )
 
     def test_a_flagged_event_chapter_grows_luck_below_the_stamina_gate(self) -> None:
-        """2006 Lucia and 7010 Eidolon Forest are `allowLucky` and reach the
+        """2006 Lucia and 7010 Cryptid Forest are `allowLucky` and reach the
         client through the generic-story handler rather than the Hunting one,
         so the source has to be offered there too.
 

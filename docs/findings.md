@@ -864,3 +864,43 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   an error, including a real-HTTP regression that starts 6011-1, settles a
   reported Companion 267, and asserts the box holds one copy at level 1 and the
   account returns to `free_roam`.
+
+## 2026-08-05: Chapter 7010 is Cryptid Forest, and its Lucky enemy is a Runner
+
+- **Confirmed defect, from the community record.** The `allowLucky` source paid
+  every one of the five flagged chapters the Lucky *Orbling*'s +0.3 at the
+  record's 50% pincer chance. Chapter 7010 is a Lucky *Runner* zone, so it has
+  been granting three times the documented Luck, from the wrong enemy, on a
+  coin flip where the record states a guarantee.
+- **How the naming hid it.** 7010 is `ChapterInterface.EidolonForestChapter` in
+  the client, and this repository recorded it under that internal name. The
+  player-facing name is Cryptid Forest — 幻獣の森, the same 幻獣 the game
+  translates as Eidolon elsewhere — and the record files the stage's enemies
+  under the English name. Searching for "Eidolon Forest" finds nothing; the
+  species was never checked. The `LUCKY_ENEMIES_PER_BATTLE` comment asserted
+  that "the record names the Orbling on the flagged chapters it identifies",
+  which was true of the four chapters anyone had looked at.
+- **What the record states for Cryptid Forest**, enemy by enemy, and it is the
+  only flagged chapter documented at this resolution: one Lucky Runner always
+  spawns in a random battle; a second spawns with a 30% chance; pincering one
+  *in any direction* grants 0.1 Luck to every party member. A 50% variant
+  applies when the party carries Dracorin Λ's *Cryptid Ruler* skill, and
+  resuming the quest after terminating the app suppresses the spawn — neither
+  is implemented, because this server models neither party skills nor client
+  lifecycle, and guessing at either would replace a stated rate with an
+  invented one.
+- **Scope of the correction.** 7010 alone. The other four keep the Orbling
+  policy, and `roll_lucky_enemy_gain` keeps their draw sequence byte for byte:
+  the chapter is not seed material and the Runner branch returns before the
+  Orbling loop, so no chapter this finding does not name re-rolls. The invented
+  `LUCKY_ENEMIES_PER_BATTLE` count is now scoped to the chapters where the
+  record is actually silent.
+- **Corollary, structural.** Callers passed `allow_lucky=stage.chapter in
+  ALLOW_LUCKY_CHAPTERS` — a policy decision duplicated at each of the two call
+  sites, which is what let the membership test and the species come apart.
+  `roll_luck_up_table` now takes `lucky_chapter` and owns both.
+- **Also recorded, not implemented.** Version 4.6.0 (2017-02-23) states that
+  the Lucky Orbling became outflankable from four sides and that flanking order
+  does not matter, which bears on the invented 0.5 the Orbling chapters still
+  use. It is a dated primary source about a mechanic this server approximates;
+  acting on it needs its own derivation.

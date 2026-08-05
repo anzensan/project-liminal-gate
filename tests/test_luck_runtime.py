@@ -6,6 +6,8 @@ from liminal_gate.luck_data import (
     ALLOW_LUCKY_CHAPTERS,
     LUCK_TENTHS_MAX,
     LUCKY_ORBLING_GAIN_TENTHS,
+    LUCKY_RUNNER_CHAPTERS,
+    LUCKY_RUNNER_GAIN_TENTHS,
 )
 from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, has_documented_pool
 from liminal_gate.luck_runtime import (
@@ -18,6 +20,11 @@ from liminal_gate.luck_runtime import (
     roll_luck_up_table,
     roll_lucky_enemy_gain,
 )
+
+#: 6010 Lucky Orbling: a flagged chapter whose Lucky enemy is an Orbling.
+ORBLING_CHAPTER = 6010
+#: 7010 Cryptid Forest: the flagged chapter whose Lucky enemy is a Runner.
+RUNNER_CHAPTER = 7010
 
 
 def userdata(party_luck: dict[int, int], team: list[int] | None = None) -> dict:
@@ -142,7 +149,9 @@ class LuckyEnemySourceTest(unittest.TestCase):
     def test_a_free_flagged_stage_still_grows_luck(self) -> None:
         """Lucky Orbling is free, and granting Luck is the whole point of it."""
         grew = any(
-            any(roll_luck_up_table(userdata({1: 0, 2: 0}), 0, f"r{n}", "d", allow_lucky=True))
+            any(roll_luck_up_table(
+                userdata({1: 0, 2: 0}), 0, f"r{n}", "d", lucky_chapter=ORBLING_CHAPTER,
+            ))
             for n in range(40)
         )
         self.assertTrue(grew, "40 battles on a free flagged stage raised no Luck")
@@ -152,7 +161,7 @@ class LuckyEnemySourceTest(unittest.TestCase):
             gain
             for n in range(60)
             for gain in roll_luck_up_table(
-                userdata({1: 0, 2: 0}), 0, f"r{n}", "d", allow_lucky=True,
+                userdata({1: 0, 2: 0}), 0, f"r{n}", "d", lucky_chapter=ORBLING_CHAPTER,
             )
         }
         self.assertLessEqual(seen, {0, LUCKY_ORBLING_GAIN_TENTHS})
@@ -162,7 +171,7 @@ class LuckyEnemySourceTest(unittest.TestCase):
         is one draw for the battle rather than six independent ones."""
         for n in range(40):
             table = roll_luck_up_table(
-                userdata({1: 0, 2: 0, 3: 0}), 0, f"r{n}", "d", allow_lucky=True,
+                userdata({1: 0, 2: 0, 3: 0}), 0, f"r{n}", "d", lucky_chapter=ORBLING_CHAPTER,
             )
             occupied = table[:3]
             self.assertEqual(1, len(set(occupied)), f"party split on battle {n}: {table}")
@@ -170,7 +179,7 @@ class LuckyEnemySourceTest(unittest.TestCase):
     def test_an_empty_party_slot_stays_zero(self) -> None:
         for n in range(20):
             table = roll_luck_up_table(
-                userdata({1: 0}, [1, 0, 0, 0, 0, 0]), 0, f"r{n}", "d", allow_lucky=True,
+                userdata({1: 0}, [1, 0, 0, 0, 0, 0]), 0, f"r{n}", "d", lucky_chapter=ORBLING_CHAPTER,
             )
             self.assertEqual([0] * 5, table[1:], f"an empty slot gained on battle {n}")
 
@@ -180,29 +189,111 @@ class LuckyEnemySourceTest(unittest.TestCase):
         for n in range(40):
             plain = roll_luck_up_table(userdata({1: 0, 2: 0}), 40, f"r{n}", "d")
             flagged = roll_luck_up_table(
-                userdata({1: 0, 2: 0}), 40, f"r{n}", "d", allow_lucky=True,
+                userdata({1: 0, 2: 0}), 40, f"r{n}", "d", lucky_chapter=ORBLING_CHAPTER,
             )
-            lucky = roll_lucky_enemy_gain(f"r{n}", "d")
+            lucky = roll_lucky_enemy_gain(ORBLING_CHAPTER, f"r{n}", "d")
             self.assertEqual(
                 [value + lucky for value in plain[:2]], flagged[:2],
                 f"the battle-end roll moved on battle {n}",
             )
 
     def test_the_flag_is_replay_stable(self) -> None:
-        first = roll_luck_up_table(userdata({1: 0}), 0, "r", "d", allow_lucky=True)
+        first = roll_luck_up_table(userdata({1: 0}), 0, "r", "d", lucky_chapter=ORBLING_CHAPTER)
         self.assertEqual(
-            first, roll_luck_up_table(userdata({1: 0}), 0, "r", "d", allow_lucky=True),
+            first, roll_luck_up_table(userdata({1: 0}), 0, "r", "d", lucky_chapter=ORBLING_CHAPTER),
         )
 
     def test_a_capped_character_gains_nothing_from_a_pincer_either(self) -> None:
         for n in range(30):
             table = roll_luck_up_table(
-                userdata({1: LUCK_TENTHS_MAX}), 0, f"r{n}", "d", allow_lucky=True,
+                userdata({1: LUCK_TENTHS_MAX}), 0, f"r{n}", "d", lucky_chapter=ORBLING_CHAPTER,
             )
             self.assertEqual(0, table[0], f"gained past the ceiling on battle {n}")
 
     def test_the_five_flagged_chapters_are_the_recovered_ones(self) -> None:
         self.assertEqual({2006, 3003, 3004, 6010, 7010}, set(ALLOW_LUCKY_CHAPTERS))
+
+    def test_an_unflagged_chapter_offers_no_lucky_source(self) -> None:
+        """Passing the chapter rather than a flag means the membership test is
+        the runtime's, so a chapter outside the five must still grant nothing."""
+        for n in range(20):
+            self.assertEqual(
+                [0] * 6,
+                roll_luck_up_table(
+                    userdata({1: 0, 2: 0}), 0, f"r{n}", "d", lucky_chapter=1001,
+                ),
+                f"an unflagged chapter granted Luck on battle {n}",
+            )
+
+
+class LuckyRunnerZoneTest(unittest.TestCase):
+    """Cryptid Forest, 7010, is the one flagged chapter the record documents
+    enemy by enemy, and the enemy it documents is a Lucky Runner: one always
+    spawns, a second spawns with a 30% chance, and a pincer from any direction
+    grants 0.1 to the whole party. It had been granting the Orbling's 0.3 on a
+    coin flip -- the wrong species, the wrong magnitude, and the wrong shape."""
+
+    def test_the_runner_zone_never_grants_the_orbling_s_three_tenths(self) -> None:
+        seen = {roll_lucky_enemy_gain(RUNNER_CHAPTER, f"r{n}", "d") for n in range(200)}
+        self.assertNotIn(
+            LUCKY_ORBLING_GAIN_TENTHS, seen,
+            "Cryptid Forest still pays an Orbling's Luck",
+        )
+
+    def test_a_runner_always_spawns_so_every_battle_grants(self) -> None:
+        """The guaranteed spawn is the record's, not a roll: a run that grants
+        nothing would be the defect in the other direction."""
+        for n in range(60):
+            self.assertGreaterEqual(
+                roll_lucky_enemy_gain(RUNNER_CHAPTER, f"r{n}", "d"),
+                LUCKY_RUNNER_GAIN_TENTHS,
+                f"no Lucky Runner granted on battle {n}",
+            )
+
+    def test_the_gain_is_one_or_two_runners_worth(self) -> None:
+        seen = {roll_lucky_enemy_gain(RUNNER_CHAPTER, f"r{n}", "d") for n in range(200)}
+        self.assertEqual(
+            {LUCKY_RUNNER_GAIN_TENTHS, 2 * LUCKY_RUNNER_GAIN_TENTHS}, seen,
+        )
+
+    def test_the_second_runner_is_the_exception_rather_than_the_rule(self) -> None:
+        """A 30% second spawn: seeded, so this is a fixed count rather than a
+        sampling assertion, and it pins the rate against drifting to a coin
+        flip or to a guarantee."""
+        trials = 400
+        doubles = sum(
+            roll_lucky_enemy_gain(RUNNER_CHAPTER, f"r{n}", "d")
+            == 2 * LUCKY_RUNNER_GAIN_TENTHS
+            for n in range(trials)
+        )
+        self.assertLess(doubles, trials // 2, "a second Runner spawned too often")
+        self.assertGreater(doubles, trials // 10, "a second Runner never spawned")
+
+    def test_the_runner_zone_reaches_the_party_through_the_table(self) -> None:
+        """7010 costs one stamina, far below the battle-end gate, so the whole
+        gain has to arrive through the Lucky-enemy source."""
+        for n in range(30):
+            table = roll_luck_up_table(
+                userdata({1: 0, 2: 0}), 1, f"r{n}", "d", lucky_chapter=RUNNER_CHAPTER,
+            )
+            self.assertIn(
+                table[0], (LUCKY_RUNNER_GAIN_TENTHS, 2 * LUCKY_RUNNER_GAIN_TENTHS),
+                f"battle {n} paid {table[0]} tenths",
+            )
+            self.assertEqual(table[0], table[1], f"party split on battle {n}")
+
+    def test_the_orbling_chapters_are_untouched_by_the_runner_rule(self) -> None:
+        """The correction is scoped to the chapter the record names. The other
+        four keep the Orbling policy, and their stream must not have moved."""
+        for n in range(60):
+            self.assertIn(
+                roll_lucky_enemy_gain(ORBLING_CHAPTER, f"r{n}", "d"),
+                (0, LUCKY_ORBLING_GAIN_TENTHS),
+            )
+
+    def test_cryptid_forest_is_the_only_runner_chapter(self) -> None:
+        self.assertEqual({7010}, set(LUCKY_RUNNER_CHAPTERS))
+        self.assertLessEqual(LUCKY_RUNNER_CHAPTERS, ALLOW_LUCKY_CHAPTERS)
 
 
 if __name__ == "__main__":

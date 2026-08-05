@@ -351,7 +351,7 @@ METAL_TICKET_ITEM_ID = 50
 # own Ver 4.2.0 announcement says chests follow team Luck, and the community
 # record documents their contents for twelve story chapters, every one of them
 # `allowLucky` 0.  The flag is 1 on exactly five chapters -- Lucia, Money Money
-# Time, Crystal Road, Lucky Orbling and Eidolon Forest -- which tracks the
+# Time, Crystal Road, Lucky Orbling and Cryptid Forest -- which tracks the
 # "Lucky"-type enemies that grant Luck when pincered, not chests; Crystal Road
 # carries `allowLucky` 1 while the record lists it as having no chest at all.
 # Dragon Road's chest refusal survives on other evidence, because the record's
