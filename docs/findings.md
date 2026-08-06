@@ -923,13 +923,20 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   `user-data/local-server-plan.json` must not be used either -- it is rewritten
   by every setup run, so it describes the last build rather than the installed
   one. The installed APK is the only authority; see the troubleshooting guide.
-- **Pending, and narrower than it looks.** Physical confirmation that the
-  extended flag clears the crash. An on-device combined APK is confirmed running
-  on an Android 16 Galaxy S26, and that does *not* close this: the host guard
-  catches the callback whatever caused the bind, so the self-hosted route
-  survived this crash before the patch existed. Only a separate-server build,
-  which has no guard, can close it. The dex half stays, at no cost, rather than
-  being removed on the strength of this reasoning alone.
+- **Confirmed on hardware.** A Samsung Galaxy Tab A9+ (SM-X210) on Android 16,
+  API 36, runs a *separate-server* build carrying all three edits -- the dex
+  actions and both `libunity.so` members, verified by reading the APK the device
+  is actually running -- through launch and real gameplay. That is the route
+  with no host guard, so nothing masks the result, and it is the configuration
+  the Galaxy S26 crashed in. It also retires the standing risk in editing
+  Unity's binary at all: the patched `libunity.so` loads and the player runs
+  normally.
+- **What it does not establish.** No unpatched control was taken on this tablet,
+  so the crash is proven on Android 16 by the S26 and the fix is proven on
+  Android 16 by the tablet, on two different devices rather than one. An
+  on-device combined APK cannot supply the control either, because its host
+  guard catches the callback whatever caused the bind. The dex half stays, at no
+  cost, rather than being removed on the strength of reasoning alone.
 
 ## 2026-08-06: Orbling Cavern and Cryptid Forest were gated behind a prefix scan
 

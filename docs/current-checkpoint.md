@@ -43,10 +43,11 @@ routes an interface's `default` methods to its handler while an ordinary class
 inherits them. All twelve classes in the client dex implementing
 `ServiceConnection` are ordinary classes, which retracts the earlier attribution
 to Play Billing. The flag now patches both `libunity.so` members. Physical
-confirmation that the extended flag clears the crash remains pending: an
-on-device combined APK runs on an Android 16 S26, but its host guard catches the
-callback whatever caused the bind, so only a separate-server build can close
-this.
+confirmation is complete: a Galaxy Tab A9+ on Android 16, API 36,
+runs a separate-server build carrying all three edits through launch and real
+gameplay, which is the route with no host guard and the configuration the S26
+crashed in. No unpatched control was taken on that tablet, so the crash and the
+fix are each confirmed on Android 16 but on different devices.
 
 Latest Luck-state correction: a user report that every character returned to
 zero after a battle matches a confirmed final-client wire detail: valid
