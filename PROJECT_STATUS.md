@@ -64,6 +64,31 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-06 Luck chest delivery and character-reward recovery. A tester asking
+  why the post-battle chest screen never populated turned up two expected
+  reasons — chapter 10 has no documented pool, and their team Luck was 0.1
+  rather than the Skill Boost figure they were reading — and one defect. Chests
+  award four wire forms; Coins and items were reconciled against the client's
+  submission and the other two were dropped. `chest_companions` existed, was
+  unit-tested and had no caller, while the pools carried thirty-nine Companion
+  rewards across twenty-seven stage and tier slots; a real-HTTP clear confirmed
+  the Companions vanish with the clear returning 200. The clear body is an exact
+  field tuple with no Companion box, so the client cannot report them and the
+  server now grants what it authored, inside the clear transaction, replay-safe
+  and restart-safe. Separately, sixty-five of the sixty-eight character icons
+  the pool scrape dropped resolve by exact name match against the operator's own
+  `ChrDatabase` and are emitted in the `M` form; nineteen of thirty stages still
+  lose a reward, down from twenty-eight. Three stay unresolved because the wiki
+  distinguishes `Mage (Ice)` and `Lizardfolk Mage (Fire)` by an element the
+  catalog does not carry against four same-named characters each. Four rows the
+  scrape filed as unresolvable item names are recorded as actually naming three
+  characters and Companion 128, and deliberately left alone: correcting a source
+  is not the same decision as reading it. Eleven focused tests cover the four
+  wire forms, the grant, duplicates, a full box, replay and restart; all 1100
+  repository tests pass warning-strict. The thirty-stage pool coverage is
+  unchanged and remains a limit of the record.
+
+
 - 2026-08-06 inbox-present Companion visibility. A reporter's Companion screen
   stayed empty after a present granted one, survived a restart empty, and then
   showed two after a single draw. `buddyInfo.record` is a projection of

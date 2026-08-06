@@ -238,3 +238,17 @@ def chest_companions(slots: list[str]) -> tuple[int, ...]:
     return tuple(
         int(slot[1:]) for slot in slots if slot.startswith("O") and slot[1:].isdigit()
     )
+
+
+def chest_characters(slots: list[str]) -> tuple[int, ...]:
+    """Character IDs the authored chests award.
+
+    The fourth wire form. Unlike Coins and items, neither this nor a Companion
+    can be reconciled against what the client submits: the generic story clear
+    body carries `chrdata`, `itemList` and `summonList` and no Companion box at
+    all, so there is no field for the client to report either one back through.
+    The server authored the chest, so the server grants what it authored.
+    """
+    return tuple(
+        int(slot[1:]) for slot in slots if slot.startswith("M") and slot[1:].isdigit()
+    )
