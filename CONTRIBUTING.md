@@ -9,6 +9,25 @@ extracted data, or material copied from proprietary source code. Contributions
 must run using only the public repository and explicitly user-supplied local
 data.
 
+## Say what a change costs to deploy
+
+Every changelog entry states which deployment it needs, because the two differ
+enormously for the people running this. A server change is a pull and a restart.
+A client change means rebuilding the APK, reinstalling it, and — if the signing
+key ever differs — re-pointing the save the reinstall orphaned.
+
+- **Server restart** — bundled policies, catalogs, settlement, event flags, and
+  anything else the server decides.
+- **APK rebuild** — the client patch plan, the compiled server address or port,
+  or anything else in `legacy_client_apk_plan.py`.
+- **Regenerate the derived catalogs** — a change to one of the *generators*.
+  `server_setup` refreshes `resources.json` on start and reads the rest as it
+  finds them, so a generator change reaches nobody without this.
+
+Operators are told in [the dedicated-server guide](docs/dedicated-server.md#updating)
+that the changelog answers this, so an entry that stays silent leaves them
+guessing at exactly the moment it matters.
+
 ## Reporting network errors
 
 If a local client-to-server request fails, please open a GitHub **Network
