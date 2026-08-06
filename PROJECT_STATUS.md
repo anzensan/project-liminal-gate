@@ -64,6 +64,40 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-06 Orbling Cavern and Cryptid Forest reached. Repeated tester reports
+  asked whether either was implemented; neither was, and neither was partially
+  broken. `ChapterInterface::.cctor` identifies Chapters 7000--7009 as Orbling
+  Cavern and 7010--7019 as Cryptid Forest, with sections only in 7000 and 7010.
+  `UIMap::InitPoints0` builds each area's permanent World 1 map point only when
+  `EventManager.IsEnabledAny` finds an enabled flag under `sp_ch_700` or
+  `sp_ch_701`, a prefix scan over the served `eventFlags`; this server had never
+  sent a key under either, so neither point was constructed and nothing reported
+  it. `--cavern-forest` now sends four per-section flags, each of which answers
+  its own card's `CheckQuestFlag` and carries its area's prefix, once an account
+  has passed the client's own `openChapter` -- 5 for Cryptid Forest and 6 for
+  Orbling Cavern. The four stages settle through the Hunting transaction as
+  unadvertised rows, because `UISpecialSelect` modes 1 and 2 read hardcoded
+  lists and never consult a served one, so the server can open the door and
+  nothing more. Costs are one stamina and zero Coins throughout. Each Cavern
+  card awards the single Companion its own `dropBuddies` names, Bahl OIII and
+  Grace OIII, which the reporter states drops at 100% while unowned and not at
+  all once held. Each Forest card farms one of Dracorin's two job-material sets,
+  identified twice over: the client's Kirin constructors carry items 150/151 and
+  152/153 at the chapter's `JobItemDropRatio` of 75, and the operator's own
+  ChrDatabase prices character 188's two jobs at exactly those pairs. The
+  chapter's constructor also corroborates the 2026-08-05 finding from inside the
+  binary, carrying `luckyAddRate` 30 and `luckyAddRateSpecial` 50 -- the record's
+  second-Runner chance and its Dracorin Λ *Cryptid Ruler* variant. One prior
+  inference is withdrawn: `battleCnt` 0 does not mark a placeholder, since
+  twenty-six chapters carry it including two implemented Archive events and the
+  three confirmed-playable Daily Quests, and the real discriminator is whether
+  the binary carries a `ChapterNNNN` class. Thirty-six focused tests cover the
+  data policy, the flag gate and prefix property, real-HTTP entry, settlement,
+  replay across restart, refusal without stranding the battle, and the same
+  transactions again under `--outcome-strict`. Physical-client confirmation of
+  both selectors and of the Companion award remains pending.
+
+
 - 2026-08-05 Issue 46 Strikes Back settlement: the first observed Counter
   Descent clear refuted the zero-base policy the family had carried since its
   vertical slice. That policy required a clear to grant nothing — zero Coins,

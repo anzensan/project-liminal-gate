@@ -162,6 +162,11 @@ from liminal_gate.daily_quest_data import (
     daily_quest_event_flags,
     daily_quest_rotation,
 )
+from liminal_gate.cavern_forest_data import (
+    build_bundled_cryptid_forest_stages,
+    build_bundled_orbling_cavern_stages,
+    cavern_forest_event_flags,
+)
 from liminal_gate.secondary_world_data import (
     build_bundled_breasoul_stages,
     build_bundled_five_emperors_stages,
@@ -3127,6 +3132,7 @@ class BootstrapServer(ThreadingHTTPServer):
         hunting_catalog: HuntingCatalog | None = None,
         daily_quests: bool = False,
         secondary_worlds: bool = False,
+        cavern_forest: bool = False,
         world_map_special_catalog: WorldMapSpecialCatalog | None = None,
         public_data_root: Path | None = None,
         outcome_strict: bool = False,
@@ -3178,6 +3184,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.hunting_catalog = hunting_catalog
         self.daily_quests = daily_quests
         self.secondary_worlds = secondary_worlds
+        self.cavern_forest = cavern_forest
         # The client always draws a stamina bar -- it is `ServerConstants` and
         # local `UserData`, not a server-side UI this server could remove.  Off
         # therefore means the meter is pinned full: entry debits nothing and
@@ -3400,6 +3407,17 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 # client's own map predicates check a section threshold before
                 # offering the swap, and the flag is the half the server owns.
                 event_flags |= secondary_world_event_flags(
+                    (progress & 0xFFFF) >> 6, progress & 0x3F,
+                )
+            if self.server.cavern_forest and type(progress) is int and progress >= 0:
+                # These carry a story gate for the same reason the secondary
+                # worlds do: the client's own map point compares cleared
+                # progress against an `openChapter` before drawing, and the
+                # flag is the half the server owns. Sending it earlier would
+                # draw nothing; sending it never is what kept both areas
+                # invisible, because the point is built behind a prefix scan
+                # over exactly these flags.
+                event_flags |= cavern_forest_event_flags(
                     (progress & 0xFFFF) >> 6, progress & 0x3F,
                 )
             if self.server.daily_quests:
@@ -5296,6 +5314,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--daily-quests", action="store_true", help="enable the fourteen recovered Daily Quest stages with bounded local settlement")
     parser.add_argument("--secondary-worlds", action="store_true", help="enable the BreaSoul and Five Emperors secondary world maps with bounded local settlement")
+    parser.add_argument("--cavern-forest", action="store_true", help="enable Orbling Cavern and Cryptid Forest, the two standing World 1 areas, with bounded local settlement")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
     parser.add_argument("--rebirth", action="store_true", help="enable the bundled local Rebirth recipe policy")
     parser.add_argument("--status-items", action="store_true", help="enable the bundled local status-up item policy")
@@ -5324,7 +5343,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "achievement_catalog", "message_catalog", "exchange_catalog",
     )
     flag_fields = (
-        "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "jobs", "rebirth", "status_items",
+        "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "jobs", "rebirth", "status_items",
         "companion_draw", "companion_sale", "companion_strengthen",
         "companion_evolution", "trading_post", "drop_eligibility",
         "achievements", "summon_skills", "outcome_strict", "enable_stamina",
@@ -5362,6 +5381,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         hunting_catalog=args.hunting_catalog, hunting=getattr(args, 'hunting', False),
         daily_quests=getattr(args, 'daily_quests', False),
         secondary_worlds=getattr(args, 'secondary_worlds', False),
+        cavern_forest=getattr(args, 'cavern_forest', False),
         jobs=getattr(args, 'jobs', False),
         rebirth=getattr(args, 'rebirth', False),
         status_items=getattr(args, 'status_items', False),
@@ -5471,6 +5491,17 @@ def build_server(
                 hunts = HuntingCatalog(secondary, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
             else:
                 hunts = replace(hunts, stages=hunts.stages + secondary)
+        if args.cavern_forest:
+            # Hidden for a stronger reason than the two families above: the
+            # client's Orbling Cavern and Cryptid Forest selectors read a
+            # hardcoded list apiece and never consult a served one, so an
+            # advertised row here could only duplicate them into a menu they
+            # do not belong to.
+            areas = build_bundled_orbling_cavern_stages() + build_bundled_cryptid_forest_stages()
+            if hunts is None:
+                hunts = HuntingCatalog(areas, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
+            else:
+                hunts = replace(hunts, stages=hunts.stages + areas)
         if args.achievements and args.achievement_catalog is not None:
             raise ProfileError("--achievements cannot be combined with --achievement-catalog")
         achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))
@@ -5514,6 +5545,7 @@ def build_server(
             hunting_catalog=hunts,
             daily_quests=args.daily_quests,
             secondary_worlds=args.secondary_worlds,
+            cavern_forest=args.cavern_forest,
             public_data_root=args.public_data_root,
             outcome_strict=getattr(args, "outcome_strict", False),
             companion_equipment_catalog=companion_equipment,

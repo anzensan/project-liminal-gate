@@ -40,6 +40,10 @@ Three categories are used below and they are not interchangeable:
   the date, chapter selection, badge, and multiplier.
 - The two secondary world maps: BreaSoul's twenty sections and the ten Five
   Emperors descents, each behind the client's own map predicate.
+- Orbling Cavern and Cryptid Forest, the two standing World 1 areas, four
+  stages between them. Each Cavern card awards the one Companion its own
+  `dropBuddies` manifest names; each Forest card farms one of Dracorin's two
+  job-material sets and carries the Lucky Runner that raises party Luck.
 - Luck: the stat grows from play, and Luck Treasure Chests are authored at
   battle start for the thirty story stages the record documents.
 - Chapter-1100 World Map Special routes, with the client's own native gate.

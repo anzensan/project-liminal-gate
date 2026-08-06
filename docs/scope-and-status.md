@@ -104,6 +104,8 @@ until your account has finished the chapter each row waits for.
 | Odin Descent | Chapter 20 |
 | Strikes Back families | Chapters 5 through 18, one family per chapter |
 | Tower of Temptation 9100-1 | Chapter 3 |
+| Cryptid Forest (world map) | Chapter 5 |
+| Orbling Cavern (world map) | Chapter 6 |
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
 
 Those thresholds are local preservation policy, not recovered schedules. The
@@ -111,8 +113,15 @@ retired event and Hunting rotations were not captured, so the standard setup
 makes each row permanent after its story gate. **Empty optional screens on a new
 account are expected, not a fault.**
 
-The last row is the exception: the two world-map points after Chapter 34 are the
-client's own gate, not a policy this project chose, and their five battles each
+The three world-map rows are the exception: their chapters are the client's own
+gate rather than a policy this project chose. Cryptid Forest and Orbling Cavern
+each draw their own permanent map point on World 1 and open a two-card selector
+the client fills from its own list, so the server opens the door and nothing
+more. Cryptid Forest farms Dracorin's job materials and carries the Lucky
+Runner that raises party Luck; Orbling Cavern awards Bahl OIII and Grace OIII,
+one per card, and the drop stops once you hold the Companion.
+
+The Chapter 34 pair are the client's own gate too, and their five battles each
 open one at a time.
 
 ### The Roads give EXP plus one documented channel each
