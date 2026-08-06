@@ -655,10 +655,11 @@ Every mutation reply must also carry `success` and `lastupdate` (`digest` comes
 from signing). `AppServerUtil.callAPI` indexes those off the response before
 dispatching to any endpoint callback, and does not guard them.
 
-`--original-mail-shape` serves the recovered shape, and every launcher now
-passes it. Running `bootstrap_server` directly without it serves the older
-shape, which cannot display a reward at all; there is no reason to want that
-outside of reproducing this note.
+`--original-mail-shape` serves the recovered shape and is standard: every
+launcher passes it from `STANDARD_POLICY_FLAGS`, and neither `server_setup` nor
+the systemd installer takes it as an option, because there is nothing to opt
+into. Running `bootstrap_server` directly without it serves the older shape,
+which cannot display a reward at all.
 
 ```
 { "id": ..., "date": <real>, "read": <bool>, "daysLast": <int>,

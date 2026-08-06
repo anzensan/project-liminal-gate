@@ -54,14 +54,14 @@ class SystemdUnitTest(unittest.TestCase):
     def test_the_installer_accepts_every_launcher_flag_the_docs_advertise(self) -> None:
         """A documented systemd flag has to be one the installer really takes.
 
-        `--original-mail-shape` is opt-in and off by default, so a systemd host
-        has nowhere to ask for it but here.  The installer parses an allowlist
-        and rejects anything outside it, so a flag documented for this launcher
-        but missing from that list is refused at install time rather than
-        served -- which is exactly what happened when the flag was added to
-        `server_setup` and the docs but not to this script.
+        An opt-in is off by default, so a systemd host has nowhere to ask for
+        it but here.  The installer parses an allowlist and rejects anything
+        outside it, so a flag documented for this launcher but missing from
+        that list is refused at install time rather than served.  A flag that
+        becomes standard must leave this list at the same time, or the
+        installer offers something `server_setup` no longer accepts.
         """
-        for flag in ("--enable-stamina", "--original-mail-shape"):
+        for flag in ("--enable-stamina",):
             with self.subTest(flag=flag):
                 self.assertIn(
                     "ExecStart=/usr/bin/python3 -m liminal_gate.server_setup "
@@ -77,12 +77,16 @@ class SystemdUnitTest(unittest.TestCase):
 
     def test_launcher_flags_accumulate_rather_than_replace(self) -> None:
         """Asking for two flags must not silently drop the first one."""
-        self.assertIn(
-            "ExecStart=/usr/bin/python3 -m liminal_gate.server_setup "
-            "--port 8642 --enable-stamina --original-mail-shape",
-            self.render(" --enable-stamina --original-mail-shape"),
-        )
         self.assertIn('server_flags+=" $argument"', INSTALLER.read_text(encoding="utf-8"))
+
+    def test_a_standard_policy_is_not_offered_as_an_installer_flag(self) -> None:
+        """`--original-mail-shape` is standard, so `server_setup` refuses it.
+
+        It was briefly an opt-in on three launchers. Leaving it in this
+        allowlist would write a unit whose `ExecStart` fails at boot.
+        """
+        source = INSTALLER.read_text(encoding="utf-8")
+        self.assertNotIn("--original-mail-shape", source)
 
     def test_restarts_and_starts_at_normal_boot(self) -> None:
         source = self.render()
