@@ -36,7 +36,8 @@ The package splits into tiers that flow strictly one direction:
    reviewed client (e.g. `companion_master_data.py`, `job_unlock_data.py`,
    `trading_post_data.py`). Mostly pure tuples with zero functions; a few
    (`luck_data.py`, `daily_quest_data.py`, `event_flag_data.py`,
-   `secondary_world_data.py`) also carry small policy functions.
+   `secondary_world_data.py`, `cavern_forest_data.py`) also carry small policy
+   functions.
 2. **Catalog validators — `*_catalog.py`.** Each owns an error class, frozen
    dataclasses, a strict `load_<x>_catalog(path)` JSON/TOML validator, and
    usually a `build_bundled_<x>_policy()` that lifts the Tier-1 rows into the

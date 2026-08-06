@@ -93,6 +93,58 @@
 
 ### Added
 
+- **Orbling Cavern and Cryptid Forest are reachable.** Both draw a permanent map
+  point on World 1 and neither had ever appeared, which several testers asked
+  about. They were not partially implemented or subtly broken: they were absent,
+  and the cause was a single missing thing on the server side.
+
+  The client builds each point only if `EventManager.IsEnabledAny` finds an
+  enabled event flag under a prefix -- `sp_ch_700` for Orbling Cavern and
+  `sp_ch_701` for Cryptid Forest -- in the `eventFlags` object login and status
+  send. This server had never sent a key under either, so neither point was
+  constructed, and a map point that is never constructed reports nothing. The
+  chapter identities are Confirmed from `ChapterInterface::.cctor`: 7000--7009
+  is Orbling Cavern and 7010--7019 is Cryptid Forest, with sections only in 7000
+  and 7010, so the two areas are four stages between them.
+
+  Unusually, that flag is all the server can contribute. `UISpecialSelect`
+  modes 1 and 2 read a hardcoded list apiece -- `["7000-1", "7000-2"]` and
+  `["7010-1", "7010-2"]`, set in the client's own static constructor -- and
+  never consult a served list the way the Archive selector consults
+  `specialQuestList`. All four stages are therefore unadvertised, like the Daily
+  Quests and the two secondary world maps, and the server's job is to honour a
+  start rather than to publish a menu.
+
+  Both areas cost one stamina and no Coins. Each Orbling Cavern card awards the
+  one Companion its own `dropBuddies` manifest declares -- Bahl OIII on 7000-1
+  and Grace OIII on 7000-2 -- and the reporter states the drop is guaranteed
+  while that Companion is unowned and does not occur once it is held, so a later
+  clear reporting nothing is ordinary rather than a fault. Each Cryptid Forest
+  card farms one of Dracorin's two job-material sets: the client's Kirin
+  constructors hand the engine items 150 and 151 on 7010-1 and 152 and 153 on
+  7010-2, and the operator's own ChrDatabase independently prices Dracorin's
+  first job at exactly 150 and 151 and its second at 152 and 153. Cryptid Forest
+  also carries the Lucky Runner, which already had a Luck policy written for
+  chapter 7010 and no stage to attach it to; a one-stamina entry still pays it,
+  because the eight-stamina battle-end rule does not govern that source.
+
+  Both open on the client's own gate: Cryptid Forest after Chapter 5 and Orbling
+  Cavern after Chapter 6, read out of the `openChapter` each map point is built
+  with. The server sends each area's flags no earlier, so a drawn point never
+  leads to a start this server would refuse. Enabled by every launcher as part
+  of the standard policy set, or on its own with `--cavern-forest`.
+
+  One inference is recorded as withdrawn rather than quietly dropped. Orbling
+  Cavern's sections declare `battleCnt` 0, which this project has read elsewhere
+  as a stage with no battle program, and reading it that way here would have
+  written the area off as an empty placeholder. Twenty-six chapters declare
+  all-zero `battleCnt`, including two implemented Archive events and both
+  Yamamoto Puzzle Quests and Lucky Orbling, all confirmed playable on hardware.
+  See `docs/findings.md` for what actually distinguishes a placeholder.
+
+  Physical-client confirmation of both selectors, and of the Companion award,
+  remains pending.
+
 - **An inbox present now shows the reward it carries.** Opening a present drew
   its text over an empty space: no Coins, no Energy, no items, no character, no
   Companion, and the plain "Message from the admin" heading rather than the

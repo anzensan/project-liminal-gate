@@ -867,6 +867,72 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   reported Companion 267, and asserts the box holds one copy at level 1 and the
   account returns to `free_roam`.
 
+## 2026-08-06: Orbling Cavern and Cryptid Forest were gated behind a prefix scan
+
+- **Confirmed defect, from repeated tester reports.** Neither area ever appeared
+  on the world map. Both are complete content in the reviewed client, and the
+  cause was entirely on the server side: it sent no event flag under either
+  prefix the two map points scan, so neither point was ever constructed and
+  nothing anywhere reported it.
+- **Identity, Confirmed.** `ChapterInterface::.cctor` (ARM64 `0xD0741C`) sets
+  `OrblingCavernChapter` 7000 / `OrblingCavernEndChapter` 7009 and
+  `EidolonForestChapter` 7010 / `EidolonForestEndChapter` 7019. Chapter 7010 is
+  Cryptid Forest; `EidolonForest` is the internal name, and the same naming trap
+  is what once paid it a Lucky Orbling's Luck. Only 7000 and 7010 carry sections.
+- **The gate, Confirmed.** `UIMap::InitPoints0` (`0xE6BB0C`) builds each point
+  behind `EventManager.IsEnabledAny("sp_ch_700")` and `("sp_ch_701")`, a *prefix*
+  scan over the `eventFlags` object login and status send: any key starting with
+  the prefix and holding true passes. A second gate follows, the `openChapter`
+  argument, which is 6 for Orbling Cavern and 5 for Cryptid Forest -- the same
+  argument slot in which the neighbouring `CH35_SP_BOSS` point passes 35, which
+  is what identifies it as a story chapter.
+- **The selectors are client-owned, which is unlike every other area here.**
+  `UIMapPoint::OnClickBtn` (`0xE75014`) opens `UISpecialSelect` mode 1 or 2, and
+  `SetMode` (`0xF84588`) reads a hardcoded list for each: `.cctor` (`0xF8768C`)
+  sets `orblingCavernQuestList` to `["7000-1", "7000-2"]` and
+  `eidolonForestQuestList` to `["7010-1", "7010-2"]`. Neither mode consults a
+  served list the way mode 0 consults `specialQuestList`, and no JSON key of
+  either name exists in the client's string-literal table. The server can open
+  the door and nothing else, so all four stages are `hidden`.
+- **`battleCnt` 0 does not mean a placeholder, and reading it that way would
+  have written Orbling Cavern off.** Its two sections declare zero battles, the
+  signature this project once read as a stage with no battle program. Twenty-six
+  of the 174 chapters declare all-zero `battleCnt`, and they include 2007, 2008
+  and 2014 -- three implemented Archive events -- plus 6010 Lucky Orbling and
+  6011 Yamamoto, all confirmed playable on hardware. What actually distinguishes
+  a placeholder is whether the binary carries a `ChapterNNNN` class: 6006 has
+  none, and 6007, 6010, 6011, 7000 and 7010 all do.
+- **What each area is, Confirmed from the operator's own BattleData.** Both cost
+  one stamina and zero Coins. Orbling Cavern's sections are titled
+  `バルちゃん・Ο` and `グレース・Ο` and declare `dropBuddies` 75265 and 75777,
+  decoding to Companion 294 and Companion 296 at one apiece -- Bahl OIII and
+  Grace OIII, both carrying a master-data value of 1 against the 7,500 to 50,000
+  their neighbours carry. Cryptid Forest's are `キリン・ビリ` and
+  `キリン・ファンネ`, three battles each, empty manifests, `allowLucky` 1.
+- **Cryptid Forest is the Dracorin job-material farm, and two independent
+  recoveries say so.** `Chapter7010`'s constructor sets `JobItemDropRatio` 75,
+  `luckyAddRate` 30, `luckyAddRateSpecial` 50 and `KirinChrID` 188;
+  `Init_KR_KIRIN` (`0x1433628`) hands the engine items 150 and 151 at that ratio
+  and `Init_KR_KIRIN2` (`0x1434160`) hands it 152 and 153. From the other
+  direction, `JOB_UNLOCK_ROWS` -- read out of ChrDatabase long before any of
+  this -- prices character 188's first job at items 150 and 151 and its second
+  at 152 and 153, and character 188 is Dracorin. Section 1 farms the first job's
+  materials and section 2 the second's.
+- **The constructor also corroborates the 2026-08-05 Cryptid Forest finding
+  from inside the binary.** `luckyAddRate` 30 is the record's 30% chance of a
+  second Lucky Runner and `luckyAddRateSpecial` 50 is its Dracorin Λ *Cryptid
+  Ruler* variant. Both are client-side, which is why the record's rates are
+  observable and this server rolls neither.
+- **Card art was never the problem.** All four `SpecialBanner` records --
+  `sp7000-1`, `sp7000-2`, `sp7010-1`, `sp7010-2` -- are in the final 306-row
+  catalog, and all four bundles are present in a retained resource tree. There
+  is no repeat of the `sp1003` blank-card case here.
+- **Correction.** `--cavern-forest` now sends the four per-section flags once an
+  account has reached each area's chapter, and the four stages settle through
+  the Hunting transaction. Per-section flags rather than chapter-level ones do
+  both jobs at once: each answers its own card's `CheckQuestFlag` directly, and
+  each also carries the prefix its map point scans.
+
 ## 2026-08-05: Chapter 7010 is Cryptid Forest, and its Lucky enemy is a Runner
 
 - **Confirmed defect, from the community record.** The `allowLucky` source paid

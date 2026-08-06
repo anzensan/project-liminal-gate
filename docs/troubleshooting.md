@@ -121,16 +121,26 @@ covered — use the flag there.
 **What the flag does.** The 2017 client's Unity bridge cannot dispatch an
 interface method Android 16 added to `ServiceConnection`, and it fails the
 moment a bind to a Google component completes. The flag rewrites 18 bind actions so they
-resolve to nothing and the bind never completes: Google Play Billing, which a
-physical Android 16 log confirmed as the crash (`UnityIAP: Billing service
-connected.` immediately before the fatal), plus 16 Play Services actions. The
-store, Play Games, ads, Google auth, and Nearby are all retired for this game;
-nothing you can use is lost.
+resolve to nothing and the bind never completes: Google Play Billing, which two
+separate physical Android 16 logs identify as the crashing bind, plus 16 Play
+Services actions. The store, Play Games, ads, Google auth, and Nearby are all
+retired for this game; nothing you can use is lost.
 
 The flag is off by default because it edits client bytes no other supported path
-touches and it is not yet confirmed on Android 16 hardware. Because the edit
-changes the build ID, `/healthz` identifies which variant an install is running
-— worth quoting in a bug report.
+touches and it is not yet confirmed on Android 16 hardware.
+
+**Check whether your build actually has the flag before reporting that it did
+not help.** The two routes are checked differently, and the difference matters:
+
+| Route | How to check |
+| --- | --- |
+| On-device APK | The edit changes the build ID, so `/healthz` identifies which variant the install is running. Worth quoting in a bug report. |
+| Separate server | `/healthz` cannot answer this — it is the workstation's own server and knows nothing about the installed client. Read the generated plan instead: `python3 -c "import json;p=json.load(open('user-data/local-server-plan.json'));print(sum(1 for x in p['patches'] if x.get('repair_dex_header')))"` prints **18** when the flag was applied and **0** when it was not. |
+
+A build made without the flag crashes exactly as an unpatched one does, because
+it is one — which is what the one report of "the flag did not help" turned out
+to be. If the check prints 18 and the app still crashes, that is a new finding
+and the logcat is worth sending.
 
 **To confirm the diagnosis before rebuilding**, disable Google Play Services in
 Android's app settings and relaunch. If the game starts, this is the fault. That
