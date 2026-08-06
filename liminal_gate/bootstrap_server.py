@@ -1138,7 +1138,11 @@ class BootstrapState:
                 message["read"] = True
             data["coins"], data["freeEnergy"], data["itemList"] = coins, energy, updated_items
             announced = _apply_message_grants(data, grants)
-            payload = _canonical_payload({**_API_ENVELOPE_FIELDS, "result": True, "readlist": message_ids, "itemList": updated_items, "coins": coins, "energy": int(data.get("energy", 0)), "freeEnergy": energy, **_message_reload_projection(data, account, announced)})
+            payload = _canonical_payload({**_API_ENVELOPE_FIELDS, "result": {
+                "readlist": message_ids, "itemList": updated_items, "coins": coins,
+                "energy": int(data.get("energy", 0)), "freeEnergy": energy,
+                **_message_reload_projection(data, account, announced),
+            }})
             requests[_replay_key(request_id, body, "read")] = {"operation": "read", "body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -4707,6 +4711,17 @@ def _message_wire(message: dict[str, Any], original_shape: bool = False) -> dict
     }
 
 
+#: The read-messages callback opens with `if (json.Contains("result"))` and
+#: then *rebinds* its receiver to `json["result"]`, so every field it goes on to
+#: read -- the six wallet values, `buddyInfo`, `chrdata`, `itemList`,
+#: `summonList`, `achivementFlags`, `multiplayData` and `readlist` -- is looked
+#: up inside that object rather than beside it. Answering `result: true` with
+#: those fields alongside it therefore called `Contains` on a boolean and threw
+#: `InvalidOperationException: Instance of JsonData is not a dictionary`, which
+#: killed the callback before a single reward reached the client. Each field is
+#: individually guarded, so the object may carry only what this server models.
+#: The delete route is not nested this way: its callback reads `deletelist`
+#: straight off the root, unguarded.
 #: What the client's generic `callAPI` wrapper reads off *every* response
 #: before it ever reaches the endpoint's own callback: `success`, `digest`,
 #: `lastupdate`, and -- on the paths that take them -- `errorCode`/`cmdError`.

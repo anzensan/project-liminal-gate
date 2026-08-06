@@ -197,8 +197,9 @@ class MessageLifecycleTest(unittest.TestCase):
                 self.assertEqual((409, "invalid_local_message"), (status, before_read["error"]))
                 status, read = post(server, "/gd/read_messages", "read-one", read_body)
                 self.assertEqual(200, status)
-                self.assertEqual((True, ["local-1"], 5, 3, [0, 5, 0]), (read["result"], read["readlist"], read["coins"], read["freeEnergy"], read["itemList"]))
-                self.assertTrue({"chrdata", "buddyInfo", "summonList", "achivementFlags", "energyAppStore", "energyGooglePlay", "energyAndApp"} <= set(read))
+                result = read["result"]
+                self.assertEqual((["local-1"], 5, 3, [0, 5, 0]), (result["readlist"], result["coins"], result["freeEnergy"], result["itemList"]))
+                self.assertTrue({"chrdata", "buddyInfo", "summonList", "achivementFlags", "energyAppStore", "energyGooglePlay", "energyAndApp"} <= set(result))
                 status, after_read_login = get(server, "/gd/login?otk=token&uuid=account")
                 self.assertEqual((200, []), (status, after_read_login["messageList"]))
                 self.assertTrue(server.state.accounts["account"]["messages"]["local-1"]["read"])
@@ -207,8 +208,8 @@ class MessageLifecycleTest(unittest.TestCase):
                 # read as a tampered retry: this is a fresh read of a message
                 # already read, which must grant nothing further.
                 status, reread = post(server, "/gd/read_messages", "read-one", urlencode({"idlist": json.dumps(["local-1"])}))
-                self.assertEqual((200, True, ["local-1"]), (status, reread["result"], reread["readlist"]))
-                self.assertEqual((read["coins"], read["itemList"]), (reread["coins"], reread["itemList"]))
+                self.assertEqual((200, ["local-1"]), (status, reread["result"]["readlist"]))
+                self.assertEqual((result["coins"], result["itemList"]), (reread["result"]["coins"], reread["result"]["itemList"]))
                 status, deleted = post(server, "/gd/delete_messages", "delete-one", read_body)
                 self.assertEqual((200, ["local-1"]), (status, deleted["deletelist"]))
             finally:
@@ -413,8 +414,8 @@ class MessageRewardKindTest(unittest.TestCase):
             try:
                 status, read = self._read(server)
                 self.assertEqual(200, status)
-                self.assertEqual([1018], [row["id"] for row in read["chrdata"]])
-                self.assertTrue(read["chrdata"][0]["isNew"])
+                self.assertEqual([1018], [row["id"] for row in read["result"]["chrdata"]])
+                self.assertTrue(read["result"]["chrdata"][0]["isNew"])
             finally:
                 stop_server(server, thread)
 
@@ -450,7 +451,7 @@ class MessageRewardKindTest(unittest.TestCase):
                 # The read that delivers the present still announces it, so the
                 # client draws its "NEW" badge; only the save is left generic.
                 self.assertEqual(
-                    (True, 1), (read["chrdata"][0]["isNew"], read["chrdata"][0]["levelAdded"]),
+                    (True, 1), (read["result"]["chrdata"][0]["isNew"], read["result"]["chrdata"][0]["levelAdded"]),
                 )
             finally:
                 stop_server(server, thread)
@@ -496,7 +497,7 @@ class MessageRewardKindTest(unittest.TestCase):
             try:
                 status, read = self._read(server)
                 self.assertEqual(200, status)
-                owned = read["buddyInfo"]["list"]
+                owned = read["result"]["buddyInfo"]["list"]
                 self.assertEqual([(42, 5)], [(row["bid"], row["lv"]) for row in owned])
                 self.assertEqual(1, owned[0]["iid"])
             finally:
@@ -512,7 +513,7 @@ class MessageRewardKindTest(unittest.TestCase):
             try:
                 status, read = self._read(server)
                 self.assertEqual(200, status)
-                self.assertEqual([1018], [row["id"] for row in read["chrdata"]])
+                self.assertEqual([1018], [row["id"] for row in read["result"]["chrdata"]])
             finally:
                 stop_server(server, thread)
 

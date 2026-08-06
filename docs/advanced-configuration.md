@@ -636,11 +636,24 @@ old uniform weights and a flat duplicate gain.
 
 ### How an inbox present carries its rewards
 
-An inbox message puts every reward inside a `gifts` entry, and the client reads
-nothing else. It never looks at a top-level `coins`, `energy`, `chr`, `item`,
-`buddy`, `summon` or `title`; a present that carries its rewards there arrives
-with `Message.coins` and its siblings zero, `get_hasGift` false, and the mail
-screen drawing "Message from the admin" over an empty reward area.
+Two different shapes are involved, and they are not the same shape.
+
+**In `messageList` at login**, a message puts every reward inside a `gifts`
+entry and the client reads nothing else — no top-level `coins`, `energy`,
+`chr`, `item`, `buddy`, `summon` or `title`. See the table below.
+
+**In the `read_messages` reply**, the whole payload is nested under `result`.
+The callback opens with `if (json.Contains("result"))` and rebinds its receiver
+to `json["result"]`, so the six wallet values, `buddyInfo`, `chrdata`,
+`itemList`, `summonList`, `achivementFlags` and `readlist` all live inside that
+object. Answering `result: true` with those fields beside it makes the client
+call `Contains` on a boolean, which throws and kills the callback: the rewards
+are granted on the server but never reach the player, and the client is left
+mid-update so the next stage hangs.
+
+Every mutation reply must also carry `success` and `lastupdate` (`digest` comes
+from signing). `AppServerUtil.callAPI` indexes those off the response before
+dispatching to any endpoint callback, and does not guard them.
 
 `--original-mail-shape` serves the recovered shape, and every launcher now
 passes it. Running `bootstrap_server` directly without it serves the older

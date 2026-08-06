@@ -98,7 +98,7 @@ class LoginBonusTest(unittest.TestCase):
                 self.assertEqual((200, ["login:consecutive:1", "login:overall:1"]), (status, first_ids))
 
                 status, claimed = mutate(server, "read_messages", "read-day-one", first_ids)
-                self.assertEqual((200, 3_500, 5), (status, claimed["coins"], claimed["freeEnergy"]))
+                self.assertEqual((200, 3_500, 5), (status, claimed["result"]["coins"], claimed["result"]["freeEnergy"]))
                 status, deleted = mutate(server, "delete_messages", "delete-day-one", first_ids)
                 self.assertEqual((200, first_ids), (status, deleted["deletelist"]))
             finally:
