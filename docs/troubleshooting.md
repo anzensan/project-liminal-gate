@@ -142,26 +142,36 @@ touches and it is not yet confirmed on Android 16 hardware.
 **Check whether your build actually has the flag before reporting that it did
 not help.** The two routes are checked differently, and the difference matters:
 
-| Route | How to check |
-| --- | --- |
-| On-device APK | The edit changes the build ID, so `/healthz` identifies which variant the install is running. Worth quoting in a bug report. |
-| Separate server | `/healthz` cannot answer this — it is the workstation's own server and knows nothing about the installed client. Read the installed APK itself, with the two commands below. |
-
 Do not read `user-data/local-server-plan.json` for this. It is rewritten by
 every setup run, so it describes the last build rather than the installed one,
 and the two disagree whenever a build succeeded but the install did not replace
-what was already on the device. Pull the APK the device is actually running:
+what was already on the device. Read the APK the device is actually running:
 
 ```sh
 adb shell pm path com.mistwalkercorp.guardians    # note the base.apk path it prints
 adb pull THAT_PATH installed.apk
-python3 -c "import zipfile,sys;d=zipfile.ZipFile(sys.argv[1]).read('classes.dex');a=b'com.android.vending.billing.InAppBillingService.BIND';print('flag IS applied' if d.count(a)==0 else 'flag NOT applied')" installed.apk
+python3 - installed.apk <<'PYEOF'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+dex = b"com.android.vending.billing.InAppBillingService.BIND"
+uni = b"com.google.android.gms.ads.identifier.service.START"
+print("dex bind actions:", "patched" if z.read("classes.dex").count(dex) == 0 else "NOT patched")
+for member in ("lib/arm64-v8a/libunity.so", "lib/armeabi-v7a/libunity.so"):
+    print(member + ":", "patched" if z.read(member).count(uni) == 0 else "NOT patched")
+PYEOF
 ```
 
-A build made without the flag crashes exactly as an unpatched one does, because
-it is one. If the check says the flag is applied and the app still crashes,
-that is a new finding and the logcat is worth sending — it is how the
-`libunity.so` half of the flag was found.
+Three answers are possible and they mean different things:
+
+| What it prints | What it means |
+| --- | --- |
+| Nothing patched | The build was made without the flag. It crashes exactly as an unpatched one does, because it is one. |
+| dex patched, `libunity.so` not | The flag was passed, but by a checkout predating the `libunity.so` half. This build still crashes: the bind that crashes is Unity's own, and only the dex copy was neutralized. Update the checkout and rebuild. |
+| All three patched | The current flag is fully applied. If it still crashes, that is a new finding and the logcat is worth sending — a logcat is how the `libunity.so` half was found in the first place. |
+
+On the on-device route `/healthz` answers the same question more cheaply, since
+the edit changes the build ID; the APK check above works there too, and is worth
+quoting in a bug report either way.
 
 **To confirm the diagnosis before rebuilding**, disable Google Play Services in
 Android's app settings and relaunch. If the game starts, this is the fault. That
