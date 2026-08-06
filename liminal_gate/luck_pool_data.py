@@ -12,6 +12,9 @@ Two consequences are deliberate and should not be quietly fixed later:
   has none, and a stage with no pool yields no chest rather than a guessed one.
   This is a floor on what the feature does, not a claim that other stages had no
   chests -- almost certainly they did, and the record simply does not cover them.
+  An operator who wants to go past that floor supplies their own pools through
+  :mod:`liminal_gate.luck_pool_catalog` and `--luck-pool-catalog`, which leaves
+  this table exactly as sourced and says so in the server's startup output.
 * **Sixty-five of the ninety-nine dropped rewards have since been recovered**,
   and nineteen of the thirty stages still lose at least one. The scrape dropped
   sixty-eight character icons, four item names that resolved to nothing, and

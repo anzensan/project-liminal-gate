@@ -16,6 +16,7 @@ from liminal_gate.companion_equipment_catalog import (
 from liminal_gate.event_catalog import DEFAULT_EVENT_CATALOG
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, report_resource_inventory, write_resource_manifest
+from liminal_gate.luck_pool_catalog import DEFAULT_LUCK_POOL_CATALOG
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
 from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES
@@ -91,6 +92,27 @@ def resolve_companion_equipment_catalog(
     return candidate if candidate.is_file() else None
 
 
+def resolve_luck_pool_catalog(
+    requested: Path | None, data_directory: Path,
+) -> Path | None:
+    """Choose an operator's own Luck chest pools, if there are any.
+
+    Never bundled and never implied: the community record documents thirty
+    story stages and this file is how an operator goes past that deliberately.
+    An explicit path that does not exist is an error rather than a silent
+    fallback, for the reason every other resolver here gives -- ignoring a
+    mistyped path looks exactly like the failure it would cause.
+    """
+    candidate = (
+        requested.resolve()
+        if requested is not None
+        else (data_directory / DEFAULT_LUCK_POOL_CATALOG).resolve()
+    )
+    if requested is not None and not candidate.is_file():
+        raise ServerSetupError(f"Luck pool catalog does not exist: {requested}")
+    return candidate if candidate.is_file() else None
+
+
 def resolve_event_catalog(
     requested: Path | None, data_directory: Path,
 ) -> Path | None:
@@ -122,12 +144,16 @@ def server_arguments(
     story_outcome_catalog: Path | None = None,
     companion_equipment_catalog: Path | None = None,
     event_catalog: Path | None = None,
+    luck_pool_catalog: Path | None = None,
     enable_stamina: bool = False,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
     # story Companion drops settle, and bounding the reported items and monsters
     # on top of that can only refuse clears, never enable one.
+    luck_pool_flags = (
+        [] if luck_pool_catalog is None else ["--luck-pool-catalog", str(luck_pool_catalog)]
+    )
     outcome_flags = (
         [] if story_outcome_catalog is None else ["--story-outcome-catalog", str(story_outcome_catalog)]
     )
@@ -174,6 +200,7 @@ def server_arguments(
         # host's operator asked for it, so the flag is emitted only when asked.
         *(["--enable-stamina"] if enable_stamina else []),
         *outcome_flags,
+        *luck_pool_flags,
         *equipment_flags,
         *event_flags,
     ]
@@ -217,6 +244,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "generated Companion character/species restrictions; defaults to "
             f"{DEFAULT_COMPANION_EQUIPMENT_CATALOG} in the data directory when present"
+        ),
+    )
+    parser.add_argument(
+        "--luck-pool-catalog",
+        type=Path,
+        help=(
+            "operator-supplied Luck Treasure Chest pools for stages the "
+            "community record does not document; defaults to "
+            f"{DEFAULT_LUCK_POOL_CATALOG} in the data directory when present"
         ),
     )
     parser.add_argument(
@@ -289,6 +325,19 @@ def main() -> int:
                 "Archive Special Quests, Tower, and Eidolon quests: "
                 f"ON from {event_catalog}"
             )
+        luck_pool_catalog = resolve_luck_pool_catalog(
+            args.luck_pool_catalog, data_directory,
+        )
+        if luck_pool_catalog is None:
+            print(
+                "Luck Treasure Chests: the thirty story stages the community "
+                "record documents; every other stage rolls six empty slots"
+            )
+        else:
+            # Named deliberately. These pools are the operator's own, not
+            # anything this project recovered, and a running server should say
+            # so rather than let invented contents look sourced.
+            print(f"Luck Treasure Chests: operator pools from {luck_pool_catalog}")
         print(
             "Stamina meter: ON (quest entry charges it)"
             if args.enable_stamina
@@ -312,6 +361,7 @@ def main() -> int:
                 story_outcome_catalog=outcome_catalog,
                 companion_equipment_catalog=equipment_catalog,
                 event_catalog=event_catalog,
+                luck_pool_catalog=luck_pool_catalog,
                 enable_stamina=args.enable_stamina,
             )
         )

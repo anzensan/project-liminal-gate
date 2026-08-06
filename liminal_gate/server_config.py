@@ -73,6 +73,7 @@ _PATH_FIELDS = (
     "achievement_catalog",
     "message_catalog",
     "exchange_catalog",
+    "luck_pool_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
 _OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict", "enable_stamina", "original_mail_shape"}
@@ -129,6 +130,7 @@ class ServerConfig:
     achievement_catalog: Path | None = None
     message_catalog: Path | None = None
     exchange_catalog: Path | None = None
+    luck_pool_catalog: Path | None = None
 
 
 def load_server_config(path: Path) -> ServerConfig:

@@ -25,6 +25,30 @@
 
 ### Added
 
+- **`--luck-pool-catalog`: your own chest pools, for the stages the record does
+  not cover.** The bundled table documents thirty story stages and every other
+  stage rolls six empty slots, which is honest but leaves a real feature nearly
+  inert for most of the game. This is the deliberate way past it: an operator
+  supplies pools in a strict user-local catalog, the bundled table stays exactly
+  as sourced, and the running server names the loaded file in its startup output
+  so invented contents never quietly read as recovered ones.
+
+  It is a file and not a default on purpose. Everywhere else this project sets
+  local policy it sets a *bound* or a *gate*, and those fail safely — a reward
+  ceiling that is too generous only ever declines to refuse an honest claim. A
+  chest pool is generative, so no direction of being wrong is harmless, and
+  nothing could ever catch it: the server authors the chest and the client
+  renders whatever it is told, holding no table of its own to disagree with. A
+  save that collected from an invented pool cannot afterwards be told apart from
+  one that did not.
+
+  A stage the catalog names replaces the bundled pool for that stage outright
+  rather than merging, so no pool ends up sourced in part and invented in part.
+  Rewards use the client's four wire forms, and the loader refuses an unknown
+  tier, a malformed reward, a zero identifier, a duplicate stage, and a repeated
+  reward — a repeat inside an equal-weight tier is a weight by another name,
+  which is the thing the record does not carry.
+
 - **Sixty-five character rewards recovered into the Luck chest pools.** The
   scrape behind those pools dropped ninety-nine rewards it could not resolve,
   sixty-eight of them character icons, and character rewards were consequently
