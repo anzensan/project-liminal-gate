@@ -22,11 +22,13 @@ class ServerConfigError(ValueError):
 #: without it the client discards every drop it rolls, so guided setups would
 #: report empty monsters and buddies on every clear.
 #:
-#: ``--original-mail-shape`` is deliberately absent for a third reason: it is
-#: a wire shape recovered from the client binary rather than from an observed
-#: exchange, and no physical client has yet confirmed it renders. Make it
-#: standard once one has, because the shape it replaces cannot render a
-#: present's text or its rewards at all.
+#: ``--original-mail-shape`` is standard: without it an inbox present renders
+#: no reward at all.  The client reads every reward out of a ``gifts`` entry
+#: and never looks at the top-level fields this server sent before, so
+#: ``get_hasGift`` answered false and the mail screen drew the plain "message"
+#: presentation over a present that really did carry Coins, Energy, items, a
+#: character, or a Companion.  Verified against the reviewed client on an
+#: emulator across all five reward channels.
 #:
 #: ``--enable-stamina`` is deliberately absent for a different reason than
 #: ``--summon-skills``: it is not a recovered feature this set forgot but an
@@ -49,6 +51,7 @@ STANDARD_POLICY_FLAGS = (
     "--trading-post",
     "--drop-eligibility",
     "--achievements",
+    "--original-mail-shape",
 )
 
 

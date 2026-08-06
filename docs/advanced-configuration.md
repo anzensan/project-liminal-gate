@@ -634,57 +634,47 @@ rate table beyond the `RareSlotEnergy` cost. Pass `--pact-draw-catalog` to
 substitute your own. Without `--character-catalog`, `--pacts` falls back to the
 old uniform weights and a flat duplicate gain.
 
-### Inbox presents can be served in the recovered client shape
+### How an inbox present carries its rewards
 
-Pass `--original-mail-shape` to serve inbox messages using the field names and
-encodings read out of the reviewed client's own `Message` class. That class
-declares `mes_default`, `mes_ja` and `mes_en` for its text, `items` as a
-`List<ItemCode2>`, `buddy` as a single `ItemCode`, and `multiplayTitle`; it
-declares no `gifts` member at all.
+An inbox message puts every reward inside a `gifts` entry, and the client reads
+nothing else. It never looks at a top-level `coins`, `energy`, `chr`, `item`,
+`buddy`, `summon` or `title`; a present that carries its rewards there arrives
+with `Message.coins` and its siblings zero, `get_hasGift` false, and the mail
+screen drawing "Message from the admin" over an empty reward area.
 
-**This is not the fix for a present that shows no reward.** An emulator run
-compared both shapes against the reviewed client and found no visible
-difference: each renders a present's body text, and neither draws a reward area
-or a claim control — for a Coin/Energy present and for an items-only present
-alike. The rewards are granted correctly in both cases and simply are not
-displayed. That is the same presentation Issue 33 recorded on physical
-hardware, which makes the empty reward area a limit of the client's own mail
-screen rather than a fault in what this server sends.
+`--original-mail-shape` serves the recovered shape, and every launcher now
+passes it. Running `bootstrap_server` directly without it serves the older
+shape, which cannot display a reward at all; there is no reason to want that
+outside of reproducing this note.
 
-What the flag changes:
+```
+{ "id": ..., "date": <real>, "read": <bool>, "daysLast": <int>,
+  "gifts": [ { "coins": <int>, "energy": <int>, "chr": <int>,
+               "item": [ {"id": <int>, "num": <int>}, ... ],
+               "summon": <int>,
+               "buddy": {"id": <int>, "num": <int>},
+               "title": <int> } ],
+  "messages": { "default": ..., "ja": ..., "en": ... } }
+```
 
-| Shipped | Recovered |
-| --- | --- |
-| `item`, `[{id, num}]` | `items`, packed integers `(id << 16) \| count` |
-| `title` | `multiplayTitle` |
-| `buddy`, a bare identity | `buddy`, packed the same way; it is an `ItemCode` |
-| `gifts: []` | absent; no such member exists |
-| absent | `from`, a declared string, served empty |
+`gifts` is indexed by integer, as is `item` inside an entry. `title` lands on
+the client's `multiplayTitle`. Two fields look like something they are not:
 
-Two fields are deliberately *not* changed, because the same run proved the
-obvious reading of each one wrong:
+- `date` is a `long` on the class but must travel as a JSON **real**, because
+  the constructor reads it through LitJson's `(double)` conversion, which
+  refuses a `JsonData` holding an int.
+- `messages` is an **object** read by the keys `default`, `ja` and `en`, even
+  though the fields behind it are named `mes_default`, `mes_ja` and `mes_en`
+  and none of those names appears as a string literal in the client.
 
-- `date` stays a JSON real. The field is a `long`, but the constructor reads it
-  through LitJson's `(double)` conversion, which refuses a `JsonData` holding
-  an int.
-- `messages` stays an object keyed `default`/`ja`/`en`. None of
-  `mes_default`/`mes_ja`/`mes_en` is a string literal anywhere in the client,
-  which makes a positional array look right, but the constructor asks the value
-  `Contains(key)` and therefore requires a dictionary.
+Getting either wrong throws out of `Message..ctor`, and that exception kills
+the login callback: the client sits on `Connecting...` indefinitely and never
+shows an error. **A stall with no dialog is what a malformed message field
+looks like from the outside** — worth remembering when a freeze is reported.
 
-Getting either wrong throws out of `Message..ctor`, which kills the login
-callback: the client sits on `Connecting...` indefinitely and never shows an
-error. A stall with no dialog is what a malformed message field looks like from
-the outside.
-
-| Launcher | How to serve the recovered shape |
-| --- | --- |
-| `bootstrap_server` | `--original-mail-shape` |
-| `server_setup` | `--original-mail-shape` |
-| `install_systemd_service.sh` | `./scripts/install_systemd_service.sh PORT --original-mail-shape` |
-| local configuration file | `original_mail_shape = true` |
-| guided `tester_setup` | not offered; run `bootstrap_server` directly with the flag |
-| combined APK (on-device) | not offered |
+The shape was recovered by resolving the constructor's key literals through the
+GOT relocations that supply them, then verified against the reviewed client on
+an emulator across all five reward channels.
 
 ### The stamina meter is off by default
 

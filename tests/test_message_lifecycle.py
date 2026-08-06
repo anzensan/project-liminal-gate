@@ -264,51 +264,40 @@ class RecoveredMailShapeTest(unittest.TestCase):
             finally:
                 stop_server(server, thread)
 
-    def test_the_recovered_shape_carries_the_fields_the_client_declares(self) -> None:
+    def test_the_recovered_shape_carries_the_keys_the_constructor_reads(self) -> None:
         message = self._login(True)
-        self.assertEqual(
-            {"id", "date", "read", "from", "messages", "daysLast", "coins",
-             "energy", "chr", "items", "summon", "buddy", "multiplayTitle"},
-            set(message),
-        )
-        # An object, not a positional array. The three text fields are named
-        # `mes_default`/`mes_ja`/`mes_en` and none of those is a literal in the
-        # client, which made an array look right; the constructor asks this
-        # value `Contains(key)`, and an emulator run answered the array with
-        # `InvalidOperationException: Instance of JsonData is not a dictionary`
-        # out of `Message..ctor`, which killed the login callback outright.
-        self.assertEqual({"default": "d-text", "ja": "ja-text", "en": "en-text"}, message["messages"])
-        # `date` stays a real even though the field is a `long`: the
-        # constructor reads it through LitJson's `(double)` conversion, which
-        # refuses a JsonData holding an int. An emulator run answered an
-        # integer here with `InvalidCastException: Instance of JsonData doesn't
-        # hold a double` out of `Message..ctor`, taking the login with it.
+        self.assertEqual({"id", "date", "read", "daysLast", "gifts", "messages"}, set(message))
+        # `date` stays a real even though the field is a `long`: the constructor
+        # reads it through LitJson's `(double)` conversion, which refuses a
+        # JsonData holding an int and throws out of `Message..ctor`.
         self.assertEqual(7.0, message["date"])
         self.assertIs(float, type(message["date"]))
-        # (50 << 16) | 4 -- the packing ItemCode's own constructor performs.
-        self.assertEqual([(50 << 16) | 4], message["items"])
-        self.assertEqual(0, message["buddy"])
+        # An object, not a positional array. None of `mes_default`/`mes_ja`/
+        # `mes_en` is a literal in the client, which made an array look right,
+        # but the constructor reads these three keys by name.
+        self.assertEqual({"default": "d-text", "ja": "ja-text", "en": "en-text"}, message["messages"])
 
-    def test_the_recovered_shape_drops_the_members_the_client_has_none_of(self) -> None:
-        message = self._login(True)
-        # `get_hasGift` reads coins, energy, chr, items, summon and buddy. It
-        # never consults a gift list, and the class declares no such member.
-        self.assertNotIn("gifts", message)
-        self.assertNotIn("item", message)
-        self.assertNotIn("title", message)
+    def test_every_reward_travels_inside_one_gifts_entry(self) -> None:
+        """`gifts` is the only reward channel the constructor reads.
 
-    def test_an_items_only_present_never_serves_the_member_hasGift_dereferences(self) -> None:
-        """`get_hasGift` reaches `items` without tolerating null.
-
-        Coins, Energy and a character each short-circuit it to true first, so a
-        present carrying only items is the one that reached the null -- exactly
-        a chapter milestone, and exactly what Issue 33 recorded as an empty
-        reward area over a row that would not clear.
+        It never looks at a top-level `coins`, `energy`, `chr`, `item`,
+        `buddy`, `summon` or `title`, which is why the shape shipped before
+        this left `get_hasGift` false and drew no reward area at all.
         """
         message = self._login(True)
-        self.assertEqual((0, 0, 0), (message["coins"], message["energy"], message["chr"]))
-        self.assertIsInstance(message["items"], list)
-        self.assertTrue(message["items"])
+        self.assertNotIn("coins", message)
+        self.assertNotIn("item", message)
+        self.assertNotIn("gifts", set(message) - {"gifts"})
+        self.assertEqual(1, len(message["gifts"]))
+        gift = message["gifts"][0]
+        self.assertEqual(
+            {"coins", "energy", "chr", "item", "summon", "buddy", "title"}, set(gift),
+        )
+        # `item` is its own integer-indexed array of `{id, num}` pairs, and
+        # `buddy` is one such pair.
+        self.assertEqual([{"id": 50, "num": 4}], gift["item"])
+        self.assertEqual({"id": 0, "num": 0}, gift["buddy"])
+        self.assertEqual((0, 0, 0), (gift["coins"], gift["energy"], gift["chr"]))
 
     def test_the_shipped_shape_is_unchanged_while_the_flag_is_off(self) -> None:
         message = self._login(False)
