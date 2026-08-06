@@ -1138,7 +1138,7 @@ class BootstrapState:
                 message["read"] = True
             data["coins"], data["freeEnergy"], data["itemList"] = coins, energy, updated_items
             announced = _apply_message_grants(data, grants)
-            payload = _canonical_payload({"result": True, "readlist": message_ids, "itemList": updated_items, "coins": coins, "energy": int(data.get("energy", 0)), "freeEnergy": energy, **_message_reload_projection(data, account, announced)})
+            payload = _canonical_payload({**_API_ENVELOPE_FIELDS, "result": True, "readlist": message_ids, "itemList": updated_items, "coins": coins, "energy": int(data.get("energy", 0)), "freeEnergy": energy, **_message_reload_projection(data, account, announced)})
             requests[_replay_key(request_id, body, "read")] = {"operation": "read", "body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -1161,7 +1161,7 @@ class BootstrapState:
                 return "invalid_local_message", None
             for message_id in message_ids:
                 del messages[message_id]
-            payload = {"deletelist": message_ids}
+            payload = _canonical_payload({**_API_ENVELOPE_FIELDS, "deletelist": message_ids})
             requests[_replay_key(request_id, body, "delete")] = {"operation": "delete", "body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -4705,6 +4705,17 @@ def _message_wire(message: dict[str, Any], original_shape: bool = False) -> dict
         # An object, read with exactly these three keys.
         "messages": copy.deepcopy(texts),
     }
+
+
+#: What the client's generic `callAPI` wrapper reads off *every* response
+#: before it ever reaches the endpoint's own callback: `success`, `digest`,
+#: `lastupdate`, and -- on the paths that take them -- `errorCode`/`cmdError`.
+#: It indexes them without guarding, so a response missing one raises
+#: `KeyNotFoundException` inside `callAPI` and the callback never runs at all.
+#: `digest` is added by signing; the other two travel here. Every other
+#: mutation already carried them, which is why only the mail routes, whose
+#: replies said `result` and nothing else, were losing their callback.
+_API_ENVELOPE_FIELDS = {"success": True, "lastupdate": 1.0}
 
 
 def _message_reload_projection(

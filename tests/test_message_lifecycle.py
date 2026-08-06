@@ -310,6 +310,58 @@ class RecoveredMailShapeTest(unittest.TestCase):
         self.assertEqual([{"id": 50, "num": 4}], message["item"])
 
 
+class MailApiEnvelopeTest(unittest.TestCase):
+    """Both mail replies must carry what the client's `callAPI` wrapper reads.
+
+    `callAPI` indexes `success`, `digest` and `lastupdate` off every response
+    *before* dispatching to the endpoint's own callback, and it does so without
+    guarding. A reply missing one raises `KeyNotFoundException` inside the
+    wrapper, so the callback never runs: the rewards a read just granted are
+    never applied to the client's copy of the account. Every other mutation
+    already carried these; the mail routes answered `result` and nothing else.
+    """
+
+    CATALOG = (
+        'schema_version = 1\nprovenance = "user-supplied"\nitem_slots = 181\n'
+        'max_free_energy = 99\nmax_coins = 9999\nmax_stack = 99\n\n'
+        '[[messages]]\nid = "m1"\ndate = 7.0\ndays_last = 3\n'
+        'messages = { default = "d", ja = "j", en = "e" }\n'
+        'coins = 500\nfree_energy = 3\nitems = { "50" = 2 }\n'
+    )
+
+    def test_read_and_delete_both_answer_the_wrapper_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "messages.toml"
+            path.write_text(self.CATALOG, encoding="utf-8")
+            catalog = load_message_catalog(path)
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(root / "state.json"),
+                message_catalog=catalog,
+            )
+            try:
+                server.state.create_account("token", "account", {
+                    "chrdata": [], "buddyInfo": {"list": [], "record": []},
+                    "summonList": [0] * 16, "itemList": [0] * 181, "coins": 1000,
+                    "freeEnergy": 0, "energy": 0, "energyAppStore": 0,
+                    "energyGooglePlay": 0, "energyAndApp": 0,
+                }, catalog)
+                get(server, "/gd/login?otk=token&uuid=account")
+                body = urlencode({"idlist": json.dumps(["m1"]), "lastUpdate": "1"})
+                status, read = post(server, "/gd/read_messages", "r1", body)
+                self.assertEqual(200, status)
+                self.assertEqual((True, 1.0), (read["success"], read["lastupdate"]))
+                # `digest` is added by signing, and completes the trio.
+                self.assertIn("digest", read)
+                status, deleted = post(server, "/gd/delete_messages", "d1", body)
+                self.assertEqual(200, status)
+                self.assertEqual((True, 1.0), (deleted["success"], deleted["lastupdate"]))
+                self.assertIn("digest", deleted)
+                self.assertEqual(["m1"], deleted["deletelist"])
+            finally:
+                stop_server(server, thread)
+
+
 class MessageRewardKindTest(unittest.TestCase):
     """The client's record carries four reward channels beside coins and items.
 
