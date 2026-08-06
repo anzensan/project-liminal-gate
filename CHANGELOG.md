@@ -25,6 +25,35 @@
 
 ### Added
 
+- **Chests now appear across the whole game, not only the thirty documented
+  stages.** The community record covers thirty story stages, so a player at
+  Chapter 10 with real Luck never saw a chest — nobody wrote that page. A stage
+  the record does not document is now answered with the pools it *does* document
+  for the two chapters that stage sits between, merged and deduplicated. On by
+  default; `--no-interpolated-luck-pools` restores the record-only behaviour.
+
+  **No reward is invented.** Every Coin amount, item, Companion and character a
+  chest can produce this way already appears in the record, for a chapter
+  adjacent to the one being played — asserted directly by a test. What is chosen
+  is *placement*: that Chapter 10, which nobody documented, pays what Chapters 9
+  and 13 pay. No Coin curve is fitted and nothing is scaled, because the
+  record's own Coin values do not sit on a clean curve — Chapter 1 pays 50 where
+  the trend through 4 to 36 would predict far more — and fitting one would
+  replace sourced values with derived ones.
+
+  Both bracketing chapters rather than the nearer one, because single-chapter
+  coverage is often a stub: Chapter 9's only documented stage carries one item
+  in A and one in B, and donating that alone would make most of the game poorer
+  than the record actually describes.
+
+  **The thirty sourced stages are never touched**, and a stage the record names
+  while leaving a tier empty keeps that tier empty — that is the record
+  speaking, not a gap. So what came from the record stays distinguishable from
+  what this project arranged, and the server says which mode it is running in on
+  every start. `PARITY_ROADMAP.md` still classifies the real rates and pools as
+  unrecoverable, because arranging the record's contents does not recover the
+  retired service's table.
+
 - **`--luck-pool-catalog`: your own chest pools, for the stages the record does
   not cover.** The bundled table documents thirty story stages and every other
   stage rolls six empty slots, which is honest but leaves a real feature nearly

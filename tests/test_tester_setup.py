@@ -38,6 +38,11 @@ DELIBERATELY_OFF = {
 NON_POLICY_BOOLEANS = {
     # An evidence-audit mode, not content; strictness is an operator decision.
     "outcome_strict",
+    # A *disable*, so its default-off is the feature being on. Chest pools for
+    # the stages the community record does not document are donated from the
+    # chapters it does, and an operator who wants only the recorded thirty
+    # stages asks for that on the command line.
+    "no_interpolated_luck_pools",
 }
 
 
