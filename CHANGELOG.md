@@ -4,6 +4,37 @@
 
 ### Fixed
 
+- **An inbox present now pays out, and a stage started afterwards no longer
+  hangs.** Opening a present displayed its rewards but credited nothing, and
+  the next chapter stage froze. One cause: the read reply was shaped wrong at
+  the top, so the client's callback died partway and left its copy of the
+  account mid-update.
+
+  The read-messages callback opens with `if (json.Contains("result"))` and then
+  *rebinds its receiver* to `json["result"]`. Every field it goes on to read —
+  the six wallet values, `buddyInfo`, `chrdata`, `itemList`, `summonList`,
+  `achivementFlags` and `readlist` — is looked up inside that object, not
+  beside it. This server answered `result: true` with those fields alongside
+  it, so the client called `Contains` on a boolean and threw
+  `InvalidOperationException: Instance of JsonData is not a dictionary`.
+
+  Before that could even be reached, `AppServerUtil.callAPI` indexes `success`,
+  `digest` and `lastupdate` off every response, unguarded, before dispatching
+  to any endpoint callback. The mail routes answered `result` and nothing else,
+  so the wrapper raised `KeyNotFoundException` first. Every other mutation
+  already carried those fields, which is why only mail was affected.
+
+  Both are fixed: the read reply nests its payload under `result` and both mail
+  replies carry the wrapper fields. Verified on an emulator end to end — a
+  present carrying 500 Coins, 3 Energy and two Metal Tickets moves the wallet
+  from 1000 to 1500 on opening, and Chapter 3-1 then loads its squad screen and
+  starts its battle with `start_quest` answering 200.
+
+  The delete reply is canonicalized for the same reason the read reply already
+  was: its digest is computed over the serialized text, so an unsorted payload
+  signs differently once replayed from the save after a restart. The delete
+  callback is not nested this way — it reads `deletelist` straight off the root.
+
 - **A won Strikes Back battle now settles instead of stranding the client on
   its reward screen.** Clearing a Counter Descent stage showed the rewards, then
   looped Network Errors on the item screen and never added them
