@@ -418,6 +418,22 @@ def _migrate_granted_character_rows(account: dict[str, Any]) -> None:
         rows[index] = repaired
 
 
+def _migrate_wallet_projection(account: dict[str, Any]) -> None:
+    """Re-project a nested wallet that a mutation left behind.
+
+    The flat fields are what this server spends and grants, so they are the
+    truth here and the projection is rebuilt from them.  A save written before
+    the projection became an invariant can disagree -- a ten-draw paid with
+    Energy debited `freeEnergy` and left `valuables.freeEnergy` at its old
+    value, which `account_state validate` reports as an error -- and the
+    disagreement is only ever the projection being stale, never the player
+    having been charged twice.
+    """
+    userdata = account.get("userdata")
+    if isinstance(userdata, dict):
+        _synchronize_wallet_projection(userdata)
+
+
 def _lock_exclusive(stream: Any) -> None:
     """Take a non-blocking exclusive advisory lock the OS drops on exit.
 
@@ -478,6 +494,7 @@ def _parse_state_document(document: object) -> tuple[
     for account in accounts.values():
         _migrate_replay_keys(account)
         _migrate_granted_character_rows(account)
+        _migrate_wallet_projection(account)
     # Absent in saves written before per-client routing; an empty map simply
     # falls back to the active account, which is the earlier behaviour.
     client_hosts = document.get("client_hosts", {})
@@ -2982,6 +2999,29 @@ class BootstrapState:
             self._persist_locked()
             return self.active_account_id
 
+    def _synchronize_wallets_locked(self) -> None:
+        """Hold the nested wallet equal to the flat one across every mutation.
+
+        `valuables` is a projection the client reads; the flat fields beside it
+        are what this server actually spends and grants.  Keeping the two in
+        step was a per-site chore, and most sites did not do it: a Pact draw
+        paid with Energy, an inbox present's Coins, a Rebirth, a stamina refill
+        and a Trading Post exchange all moved the flat value and left the
+        projection behind.  A tester's exported save showed exactly that after a
+        ten-draw -- `valuables.freeEnergy` 72 against `freeEnergy` 22, the
+        difference being the fifty the draw had spent -- and
+        `account_state validate` refused it.
+
+        Doing it here instead makes it an invariant of the save rather than
+        something each mutation has to remember, because every mutation ends in
+        a persist.  Loading repairs a save that already drifted; see
+        `_migrate_wallet_projection`.
+        """
+        for account in self.accounts.values():
+            userdata = account.get("userdata")
+            if isinstance(userdata, dict):
+                _synchronize_wallet_projection(userdata)
+
     def _bound_locked(self) -> None:
         """Keep the durable save bounded by recent history, not session length.
 
@@ -3037,6 +3077,7 @@ class BootstrapState:
 
     def _persist_locked(self) -> None:
         self._bound_locked()
+        self._synchronize_wallets_locked()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         encoded = (json.dumps(self._document_locked(), separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
         with tempfile.NamedTemporaryFile(dir=self.path.parent, delete=False) as stream:

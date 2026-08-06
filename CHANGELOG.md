@@ -4,6 +4,22 @@
 
 ### Fixed
 
+- **A Pact draw paid with Energy left the save failing its own validator.** The
+  nested `valuables` block is a projection the client reads; the flat wallet
+  fields beside it are what this server spends and grants. Keeping the two in
+  step was a per-site chore, and most sites did not do it -- a Pact draw, an
+  inbox present's Coins, a Rebirth, a stamina refill and a Trading Post
+  exchange all moved the flat value and left the projection behind. A tester's
+  exported save showed it after a ten-draw: `valuables.freeEnergy` read 72
+  against `freeEnergy` 22, the difference being the fifty the draw had spent,
+  and `account_state validate` refused the file.
+  The projection is now rebuilt from the flat wallet on every persist, so it is
+  an invariant of the save rather than something each mutation has to remember;
+  every mutation already ends in a persist. Saves that drifted before this are
+  repaired when they load, taking the flat value as the truth -- the
+  disagreement is only ever the projection being stale, never the player having
+  been charged twice.
+
 - **An inbox present now pays out, and a stage started afterwards no longer
   hangs.** Opening a present displayed its rewards but credited nothing, and
   the next chapter stage froze. One cause: the read reply was shaped wrong at
