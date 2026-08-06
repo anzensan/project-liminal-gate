@@ -64,6 +64,31 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-05 Issue 46 Strikes Back settlement: the first observed Counter
+  Descent clear refuted the zero-base policy the family had carried since its
+  vertical slice. That policy required a clear to grant nothing — zero Coins,
+  zero experience, no items, no monsters, no Lucky enemy, roster and inventory
+  returned unchanged — and a won Chapter 8000-1 battle reports all of it. Every
+  real clear was refused `invalid_local_event_result`, which reaches the client
+  as an unsigned 409 and so shows the transport dialog rather than an endpoint
+  refusal; because a refusal leaves the battle open, the retry was refused
+  identically and the reward screen became a dead end. All fourteen packaged
+  families shared the defect. Counter Descent now settles as Hunting does: the
+  client's report is trusted, and the inventory accompanying it must be the
+  durable counts plus the drops it declares, capped at the client's stack
+  ceiling, so the item array cannot grant beside the drops. Experience, Coins,
+  Skill Boost, monsters, and Lucky enemies keep the trusted merge every other
+  event clear uses; a Companion drop stays bounded by the stage's own recovered
+  `dropBuddies` manifest; a reported Summon stays refused for want of any source
+  that states one. Chapter 1100 keeps the bounded shape under its own name. Real
+  HTTP coverage settles a clear reporting 5,400 EXP, 280 Coins, and 70 of item
+  181, proves restart replay credits it once, and keeps refusals for an
+  overstated inventory and a reported Summon. All 1,037 repository tests and the
+  release audit pass. Physical-client retest by the reporter is pending, as is
+  confirming their generated story-outcome catalog carries rules for chapters
+  8000--8017: without one for the cleared identity, `_outcome_buddy_info`
+  refuses the clear for a different reason.
+
 - 2026-08-03 battle-clear Luck preservation: the shared roster merge now keeps
   monotonic Luck alongside job progression and Skill Boost. A real-HTTP story
   clear reproduces the final client's omitted field, keeps durable Luck 5.0,
@@ -881,7 +906,9 @@ machine-readable/current capability boundary.
   per family and exact recovered stamina costs. Start and zero-base clear are
   bounded, replay-safe, and restart-safe. The live client displayed Spinetrich
   Kino and Kraken Kino and entered Chapter 8000-1 successfully; its battle-clear
-  callback remains unobserved and is not claimed as client-certified.
+  callback remains unobserved and is not claimed as client-certified. Issue 46
+  later observed it, and it refuted the zero-base clear recorded here; see the
+  2026-08-05 entry.
 - 2026-07-27 Metal/Special selector ownership: the bundled Metal list now
   includes both regular sections 1--7 and All Hail the King sections 11--17,
   plus both Roads. Exact per-section flags replace the broad Chapter 3000 flag,

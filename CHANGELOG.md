@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Fixed
+
+- **A won Strikes Back battle now settles instead of stranding the client on
+  its reward screen.** Clearing a Counter Descent stage showed the rewards, then
+  looped Network Errors on the item screen and never added them
+  ([#46](https://github.com/anzensan/project-liminal-gate/issues/46), reported
+  against Spinetrich Kino Chapter 8000-1 on a Pixel 7 Pro).
+
+  The family settled under a zero-base policy that required a clear to grant
+  *nothing*: zero Coins, zero experience, no items, no monsters, no Lucky enemy,
+  and the roster and inventory returned unchanged. That was adopted while the
+  family's clear callback was unobserved, and a real won battle contradicts
+  every clause of it. Each clear was refused with `invalid_local_event_result`,
+  which reaches the client as an unsigned 409 — a transport failure, not an
+  endpoint refusal — so it showed the network dialog and retried. The refusal
+  also leaves the battle open, so the retry was refused identically, and the
+  reward screen became a dead end. All fourteen packaged families were affected,
+  not only the one reported.
+
+  A Counter Descent clear now settles the way a Hunting clear does, which is the
+  policy this server already applies wherever the surviving client is the only
+  remaining account of what a battle paid: the report is trusted, and the
+  inventory accompanying it must be exactly the durable counts plus the drops it
+  declares, capped at the client's own stack ceiling, so the item array cannot
+  become a grant channel beside the drops. Experience, Coins, Skill Boost,
+  recruited monsters, and Lucky enemies are kept through the same trusted merge
+  every other event and story clear uses, and a Companion drop stays bounded by
+  the stage's own recovered `dropBuddies` manifest. A reported Summon is still
+  refused: no recovered source states an event stage's Summon outcome.
+
+  Chapter 1100 keeps the bounded shape this replaces — it is a real level-90
+  battle whose experience a won fight must keep, and nothing else about its
+  rewards was recovered.
+
+- **The troubleshooting guide now points at the right request log.** It named
+  `user-data/events.jsonl` unconditionally, which does not exist on the
+  on-device route: that server writes to its own app-private
+  `files/events.jsonl`. A tester following the old text found nothing and could
+  reasonably read that as the server having refused nothing. Both locations are
+  now documented, along with how to capture a logcat that actually contains the
+  failure rather than ending before it.
+
 ### Added
 
 - **An inbox present now shows the reward it carries.** Opening a present drew

@@ -90,6 +90,7 @@ using `--replace-existing`.
 | Attack of Coin Creeps is selectable but its card artwork is blank | Update the checkout, rerun the complete setup command, and reinstall the newly signed APK. The final retail catalog omitted `sp1003`, so a server restart alone cannot add the catalog record to an already installed client. Setup now derives a local Coin Creeps-family fallback from your retained resources. |
 | `Pact banner preparation skipped: ... requires UnityPy` | Only the retired Pact banner images are missing; Pacts themselves work. Install the [optional dependency](install-tools.md#optional-the-python-image-extraction-dependency) if you want the images. |
 | A request fails after Chapter 9 | Ordinary core-story progression is enabled, but a scripted reward/drop exception may still be unsupported. Record the route, chapter/section, steps, and sanitized event log. |
+| Repeating Network Errors on a Strikes Back victory screen, with the reward items shown but never added | Fixed; update your clone and restart the server. A won Counter Descent battle reports its experience and drops, and the settlement had required the family to grant nothing, so it refused every real clear and the client retried a settlement it could never complete. Nothing is lost: the battle stays open, and re-entering the same stage after updating is treated as a retry that does not charge its stamina twice. |
 | An optional area (Hunting, Arena, Tower) is empty or greyed out | Expected on a new account: these open on story progress. See [What works right now](scope-and-status.md#optional-areas-open-on-story-progress-so-most-are-locked-at-first). |
 
 ### The app crashes instantly on recent Android
@@ -143,7 +144,7 @@ you have a patched build.
 | Black screen after launching the app, no crash, server log shows `200` responses | The emulator's graphics backend cannot complete Unity's framebuffer. Restart the emulator from a terminal with `-gpu swangle`. Confirm with `adb logcat -d \| grep -c 0x506`: thousands of those errors mean graphics, not the server. See [Start the emulator with `-gpu swangle`](emulator.md#start-the-emulator-with--gpu-swangle-especially-on-macos). |
 | No sound at all on an emulator | The emulator was probably created with audio output switched off. Add `hw.audioInput=yes` and `hw.audioOutput=yes` to the device's `config.ini`, then **cold boot** it — an ordinary restart can restore the silent device from a snapshot. See [Sound on the emulator](emulator.md#sound-on-the-emulator). |
 | Sound starts on an emulator, then becomes silent after several seconds | An emulator/client compatibility failure, not the server. Paired captures rule out muting, rerouting, Android mixer underruns, and the earlier CPU-starvation theory; the old Unity/FMOD producer keeps feeding a fixed-power signal. A physical device is the only reliable workaround currently demonstrated. See [Sound on the emulator](emulator.md#sound-on-the-emulator). |
-| Sound is distorted, cuts out, or does not return on a physical device | Check `user-data/events.jsonl` for `404` requests beneath `/resources/SE/` or `/resources/BGM/`. A missing sound bundle in your local resource set can cause this; include those paths in the issue report. On an emulator, see the two rows above first. |
+| Sound is distorted, cuts out, or does not return on a physical device | Check the [request log](#finding-the-request-log) for `404` requests beneath `/resources/SE/` or `/resources/BGM/`. A missing sound bundle in your local resource set can cause this; include those paths in the issue report. On an emulator, see the two rows above first. |
 
 ## Saves
 
@@ -171,7 +172,42 @@ you have a patched build.
 
 For a local client-to-server failure, open the GitHub **Network error** issue form
 with the setup commands, client actions, last screen reached, expected result,
-actual result, and a sanitized `user-data/events.jsonl` excerpt.
+actual result, and a sanitized request-log excerpt.
 
 **Do not attach APKs, resources, captures, account saves, tokens, digests, or
 keys.**
+
+### Finding the request log
+
+The log records one line per request with its method, path, status, and time,
+and refusals appear there as a `4xx` or `5xx` status. Where it lives depends on
+which layout you run, and the two are not interchangeable:
+
+| Layout | Where the log is | How to read it |
+| --- | --- | --- |
+| Separate server (workstation serves the device) | `user-data/events.jsonl`, beside the rest of your tester files | Read it on the workstation, not the device. PowerShell: `Get-Content user-data\events.jsonl -Tail 100 \| Select-String '"status":(4\|5)'` |
+| On-device APK (the app hosts its own server) | The app's private storage, `files/events.jsonl` — there is **no** `user-data` folder on the device | `adb shell run-as com.mistwalkercorp.guardians cat files/events.jsonl > events.jsonl`, then filter it on the workstation |
+
+`run-as` reads app-private storage without root, and works because the
+self-hosted build is debuggable. If it refuses, `adb logcat` still shows the
+Python server's own output for the same run.
+
+A `Get-Content user-data\...` command run on the device, in a terminal
+emulator, finds nothing on either layout — `Get-Content` is PowerShell, and
+`user-data` is a workstation folder. An empty result there is not evidence that
+the server refused nothing.
+
+### Capturing a logcat that contains the failure
+
+`adb logcat -c` clears the buffer and `adb logcat -d` dumps it and exits, so a
+dump taken too early ends before the failure it was meant to show. Reproduce
+the failure *first*, then dump:
+
+```sh
+adb logcat -c
+# launch the app and reproduce the failure -- wait for the error on screen
+adb logcat -d > NetworkError.txt
+```
+
+Check the end of the file before attaching it: the last timestamps should reach
+the moment the error appeared, not the moment the app finished loading.
