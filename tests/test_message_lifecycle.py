@@ -8,7 +8,7 @@ from unittest.mock import patch
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
-from liminal_gate.bootstrap_parsers import _valid_generic_character_record
+from liminal_gate.bootstrap_parsers import _companion_info, _valid_generic_character_record
 from liminal_gate.message_catalog import (
     MessageCatalogError,
     build_bundled_chapter_message_policy,
@@ -502,6 +502,96 @@ class MessageRewardKindTest(unittest.TestCase):
                 self.assertEqual(1, owned[0]["iid"])
             finally:
                 stop_server(server, thread)
+
+    def test_a_companion_present_also_enters_the_book(self) -> None:
+        """The box is `list` and the book is `record`, and they are one thing.
+
+        A reporter opened Companions after a present delivered one, saw nothing,
+        restarted, still saw nothing, then drew a Companion and suddenly held
+        two. The present had appended to `list` and left `record` behind, so the
+        Companion was owned and persisted and invisible; the draw rebuilt the
+        whole box and both appeared at once. Asserting only `list`, as the test
+        beside this one did, is what let that ship.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root, self.MESSAGE + "companion_id = 42\ncompanion_level = 5\n")
+            server, thread = self._serve(catalog, root / "state.json", self._account())
+            try:
+                status, read = self._read(server)
+                self.assertEqual(200, status)
+                box = read["result"]["buddyInfo"]
+                self.assertEqual([(42, 5)], [(row["bid"], row["lv"]) for row in box["list"]])
+                self.assertEqual([(42, 5)], [(row["bid"], row["lv"]) for row in box["record"]])
+            finally:
+                stop_server(server, thread)
+
+    def test_a_present_arriving_beside_an_owned_companion_keeps_both_in_step(self) -> None:
+        """The reported case had a box that was not empty to begin with."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root, self.MESSAGE + "companion_id = 42\ncompanion_level = 5\n")
+            account = self._account()
+            held = {"bid": 7, "lv": 3, "date": 0.0, "iid": 1, "exp": 0, "flag": 0, "chrID": 0}
+            account["buddyInfo"] = {"list": [held], "record": [dict(held)]}
+            account["nextCompanionInventoryId"] = 2
+            server, thread = self._serve(catalog, root / "state.json", account)
+            try:
+                status, read = self._read(server)
+                self.assertEqual(200, status)
+                box = read["result"]["buddyInfo"]
+                self.assertEqual([7, 42], sorted(row["bid"] for row in box["list"]))
+                self.assertEqual([7, 42], sorted(row["bid"] for row in box["record"]))
+            finally:
+                stop_server(server, thread)
+
+    def test_the_book_is_always_derivable_from_the_box(self) -> None:
+        """The invariant itself, so a future grant path cannot quietly break it.
+
+        `record` is a projection of `list` -- one entry per distinct Companion,
+        the best copy held -- and never an independent store.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root, self.MESSAGE + "companion_id = 42\ncompanion_level = 5\n")
+            server, thread = self._serve(catalog, root / "state.json", self._account())
+            try:
+                self.assertEqual(200, self._read(server)[0])
+                box = server.state.accounts["account"]["userdata"]["buddyInfo"]
+                self.assertEqual(_companion_info(box["list"]), box)
+            finally:
+                stop_server(server, thread)
+
+    def test_a_save_that_already_drifted_repairs_when_it_loads(self) -> None:
+        """Nothing is granted or taken: the owned list is the truth.
+
+        A player whose present landed before the fix has a save carrying the
+        Companion in `list` alone. Reloading it rebuilds the book rather than
+        requiring an edit, which is how the stale wallet projection was handled.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            owned = {"bid": 42, "lv": 5, "date": 0.0, "iid": 1, "exp": 0, "flag": 0, "chrID": 0}
+            account = self._account()
+            account["buddyInfo"] = {"list": [owned], "record": []}
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
+            )
+            try:
+                server.state.create_account("signup", "account", account)
+                # Write the drift back the way a pre-fix present left it.
+                with server.state.lock:
+                    server.state.accounts["account"]["userdata"]["buddyInfo"] = {
+                        "list": [dict(owned)], "record": [],
+                    }
+                    server.state._persist_locked()
+            finally:
+                stop_server(server, thread)
+
+            reloaded = BootstrapState(state_path)
+            box = reloaded.accounts["account"]["userdata"]["buddyInfo"]
+            self.assertEqual([42], [row["bid"] for row in box["list"]])
+            self.assertEqual([42], [row["bid"] for row in box["record"]])
 
     def test_a_duplicate_character_present_grants_no_second_row(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A Companion delivered by an inbox present was owned but invisible.** A
+  reporter opened the Companions screen after a present granted one, saw
+  nothing, restarted the app, still saw nothing, then drew a Companion and
+  immediately held two. Nothing was lost at any point — the present's Companion
+  had been granted and persisted correctly the whole time.
+
+  `buddyInfo` carries two halves: `list`, the Companions owned, and `record`,
+  the book with one entry per distinct Companion. `record` is a projection of
+  `list`, not a second store, and every grant path rebuilds both together
+  through `_companion_info` — a battle drop, a draw, a Trading Post exchange, a
+  sale, a strengthen, an evolution. The inbox present was the one exception: it
+  appended to `list` and left `record` untouched. The box the client renders
+  therefore never learned about the Companion, and a restart could not help,
+  because the save itself was inconsistent rather than the client's copy being
+  stale. Any later mutation rebuilt the box wholesale and the missing Companion
+  reappeared alongside whatever had just been added, which is the "pulled once,
+  now I have two" the report describes.
+
+  The present now rebuilds both halves like everything else, and a save that
+  already drifted is repaired when it loads — the owned list is the truth, so
+  the book is rebuilt from it and nothing is granted or taken. That is the same
+  treatment the stale wallet projection got in 1.0.4, and for the same reason:
+  a projection nothing recomputes is a per-site chore that some site will
+  eventually forget.
+
+  A test already covered this present and asserted only `list`, which is what
+  let it ship; the replacement asserts the invariant, that `record` is always
+  derivable from `list`.
+
+  One question this deliberately does not answer: whether the original client's
+  book was monotonic — whether selling your last copy of a Companion should
+  forget it. Every path here derives the book from what is currently owned, so
+  it does forget, and that behaviour is unchanged rather than newly decided.
+
 ## 1.0.5 — 2026-08-06
 
 ### Added

@@ -423,6 +423,37 @@ def _migrate_granted_character_rows(account: dict[str, Any]) -> None:
         rows[index] = repaired
 
 
+def _migrate_companion_record(account: dict[str, Any]) -> None:
+    """Re-project a Companion book that an inbox present left behind.
+
+    `buddyInfo.record` is derived from `buddyInfo.list` -- one entry per
+    distinct Companion, the best copy held -- and every grant path rebuilds
+    both together except the inbox present, which appended to `list` alone. A
+    Companion that arrived that way was owned and persisted but absent from the
+    book, and stayed absent across restarts, until some unrelated mutation
+    rebuilt the box and it appeared alongside whatever had just been added.
+
+    The owned list is the truth here, so the book is rebuilt from it. Nothing
+    is granted or taken: a save repaired this way holds exactly the Companions
+    it already held.
+    """
+    userdata = account.get("userdata")
+    if not isinstance(userdata, dict):
+        return
+    info = userdata.get("buddyInfo")
+    if not isinstance(info, dict) or not isinstance(info.get("list"), list):
+        return
+    if any(
+        not isinstance(row, dict) or type(row.get("bid")) is not int
+        or type(row.get("iid")) is not int or type(row.get("lv")) is not int
+        for row in info["list"]
+    ):
+        return
+    rebuilt = _companion_info(info["list"])
+    if info.get("record") != rebuilt["record"]:
+        userdata["buddyInfo"] = rebuilt
+
+
 def _migrate_wallet_projection(account: dict[str, Any]) -> None:
     """Re-project a nested wallet that a mutation left behind.
 
@@ -500,6 +531,7 @@ def _parse_state_document(document: object) -> tuple[
         _migrate_replay_keys(account)
         _migrate_granted_character_rows(account)
         _migrate_wallet_projection(account)
+        _migrate_companion_record(account)
     # Absent in saves written before per-client routing; an empty map simply
     # falls back to the active account, which is the earlier behaviour.
     client_hosts = document.get("client_hosts", {})
@@ -4544,6 +4576,12 @@ def _apply_message_grants(
         })
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
+    # `record` is a projection of `list`, not a second store, and appending to
+    # one without rebuilding the other is what made a mail-granted Companion
+    # invisible: it was owned, it survived a restart, and the box did not show
+    # it until some later mutation happened to rebuild the box wholesale.
+    # Every other grant path already returns through `_companion_info`.
+    userdata["buddyInfo"] = _companion_info(owned)
     return granted
 
 

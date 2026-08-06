@@ -64,6 +64,24 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-06 inbox-present Companion visibility. A reporter's Companion screen
+  stayed empty after a present granted one, survived a restart empty, and then
+  showed two after a single draw. `buddyInfo.record` is a projection of
+  `buddyInfo.list`, and `_apply_message_grants` was the only grant path that
+  appended to the list without rebuilding the book; every other path returns
+  through `_companion_info`. The Companion was granted, persisted and owned
+  throughout, so nothing was lost — it was absent from the book the client
+  renders, and only a later mutation that rebuilt the box wholesale exposed it.
+  The present now rebuilds both halves, and a save that already drifted repairs
+  on load from the owned list, granting and taking nothing. Four focused tests
+  cover the present entering the book, a present arriving beside an owned
+  Companion, load-time repair, and the invariant itself; the pre-existing test
+  for this present asserted only the list, which is what let it ship. All 1089
+  repository tests pass warning-strict. Whether the original client's book was
+  monotonic is left open and unchanged: every path here derives it from what is
+  currently owned.
+
+
 - 2026-08-06 Android 16 launch crash re-diagnosed and the flag corrected. A
   Galaxy S26 crashed with all eighteen `--disable-google-services` dex edits
   verified applied, which ruled the dex out. `libunity.so` binds Play Services
