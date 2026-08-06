@@ -186,9 +186,13 @@ accepts Chapters 8000--8007, sections 1--5, at 5/10/15/15/15 stamina and
 Chapters 8012--8017, sections 1--3, at 5/10/15 stamina. It explicitly excludes
 Little Noah 8008--8011 and Hime Rush 8018 because their distinct contracts are
 unrecovered. A successful entry commits the debit and active stage together;
-retry or restart cannot debit it again. `clear_quest` requires unchanged
-progress, roster, inventory, Summons, and a zero base reward because no
-server-authored reward was recovered. This is preservation policy, not a claim
+retry or restart cannot debit it again. `clear_quest` requires unchanged progress
+and Summons, and because no server-authored reward table was recovered it settles
+the rewards the client itself reports: the submitted inventory must be the
+durable counts plus exactly the drops `battle_result` declares, capped at the
+client's stack ceiling, and the experience, Coins, Skill Boost, monsters, and
+Lucky enemies it reports are kept through the same merge every other event clear
+uses. A reported Summon is refused. This is preservation policy, not a claim
 about historical event schedules or rewards.
 
 Guided setup also composes 42 curated Archive Special Quests across Chapters

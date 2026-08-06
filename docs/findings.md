@@ -568,8 +568,10 @@ Private inputs, captures, account state, and original assets remain excluded.
   Chapters 8000--8007 unlock permanently after local Chapter 5--12 gates and
   their five tiers cost 5/10/15/15/15 stamina. Chapters 8012--8017 unlock
   after local Chapter 13--18 gates and their three tiers cost 5/10/15. No
-  recovered base reward is granted, so clear accepts only a zero-base result
-  and unchanged server-owned state. Chapters 8008--8011 and 8018 remain
+  reward table was recovered, and issue 46 observed that the client reports a
+  won battle's own experience, Coins, and drops, so clear settles those from the
+  client's report against a server-projected inventory rather than requiring the
+  zero-base result it originally accepted. Chapters 8008--8011 and 8018 remain
   unavailable because their distinct progression/reward contracts are not
   recovered.
 

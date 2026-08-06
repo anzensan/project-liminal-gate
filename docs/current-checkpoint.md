@@ -211,8 +211,9 @@ HTTP 200. The exact preserved form reports 819 battle Coins, 6,851 EXP, and
 `itmp0=-1`; after a clean login its wallet reported 11,824, matching durable
 11,005 plus those 819 battle Coins. Event settlement now reconciles that
 client-reported amount in addition to the catalog's zero fixed clear increment,
-while values below `itmp0=-1`, stale wallets, and Counter Descent nonzero-base
-results remain refused. The save returned to `free_roam` with no active quest,
+while values below `itmp0=-1` and stale wallets remain refused. Counter Descent
+results were refused here too; issue 46 showed that clause refusing every real
+clear of that family, and it now settles them from the client's own report. The save returned to `free_roam` with no active quest,
 11,824 Coins, 27 free Energy, 78 characters including Jade Dragon, and the
 submitted item counts. Its SHA-256 remained
 `cb0ccb214f6a13b3337b8410996788e6e386d287ad49ddf46bfe3b0c04655c3c`
@@ -392,9 +393,12 @@ pre-entry Item 50 count, the server retains the already-committed spend, and
 the bounded Companion drop persists. Guided setup now derives the five
 recovered Archive families and merges their progress-gated rows with Money
 Money Time. Strikes Back shows its first two progress-gated families and the
-original client entered Spinetrich Kino Chapter 8000-1. Its clear callback
-remains unobserved; Jade Dragon Chapter 2004-1 navigation, clear, and return to
-free roam are now confirmed. Other Archive clears remain open. These
+original client entered Spinetrich Kino Chapter 8000-1. Its clear callback was
+then observed by issue 46, which reported all of the experience, Coins, and
+drops the zero-base settlement had required it to withhold; that family now
+settles from the client's own report, and physical retest is pending. Jade
+Dragon Chapter 2004-1 navigation, clear, and return to free roam are now
+confirmed. Other Archive clears remain open. These
 are fast-lane client observations, not a replacement for the Chapter 2-1
 canonical certification boundary.
 

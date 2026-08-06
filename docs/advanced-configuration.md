@@ -837,7 +837,8 @@ Standard guided setup derives 42 curated Archive Special Quest stages across
 17 chapters and fourteen recovered non-collaboration Strikes Back identities from
 operator-local master data. The bundled Counter Descent policy remains authoritative for
 the recovered five- or three-tier families, stamina, progress gates, and
-zero-base clears. Little Noah 8008--8011 and Hime Rush 8018 remain excluded.
+client-reported clear settlement. Little Noah 8008--8011 and Hime Rush 8018
+remain excluded.
 These runtime catalogs and their character IDs are validated against a matching
 catalog derived from your own APK; neither catalog belongs in Git.
 
