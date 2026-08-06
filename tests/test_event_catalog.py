@@ -119,7 +119,7 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
             )
             self.assertTrue(
                 all(
-                    self.catalog.by_identity()[(chapter, section)].zero_base
+                    self.catalog.by_identity()[(chapter, section)].projected_rewards
                     for section in range(1, 6)
                 )
             )
@@ -133,7 +133,7 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
             )
             self.assertTrue(
                 all(
-                    self.catalog.by_identity()[(chapter, section)].zero_base
+                    self.catalog.by_identity()[(chapter, section)].projected_rewards
                     for section in range(1, 4)
                 )
             )
@@ -172,7 +172,7 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
             ],
         )
 
-    def test_bundled_zero_base_rows_own_generated_duplicates(self) -> None:
+    def test_bundled_projected_reward_rows_own_generated_duplicates(self) -> None:
         generated = EventCatalog((
             EventStage("generated", "sp_ch_8000", 8000, 1, 99, 0, 0, ()),
             EventStage("other", "sp_ch_2000", 2000, 1, 15, 0, 0, ()),
@@ -180,5 +180,5 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         merged = merge_event_catalogs(self.catalog, generated)
         self.assertIsNotNone(merged)
         self.assertEqual(5, merged.by_identity()[(8000, 1)].stamina)
-        self.assertTrue(merged.by_identity()[(8000, 1)].zero_base)
+        self.assertTrue(merged.by_identity()[(8000, 1)].projected_rewards)
         self.assertIn((2000, 1), merged.by_identity())

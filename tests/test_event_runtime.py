@@ -15,6 +15,7 @@ from liminal_gate.event_catalog import (
 )
 from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from tests.support import bootstrap_profile, get, request, start_server, stop_server
 from tests.support import post as support_post, request as support_request
 
@@ -843,8 +844,11 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 "progressCode": 0x01000000 | (7 << 6) | 1,
                 "worldMapNo": 0,
                 "chrdata": [character(3)],
-                "itemList": [0, 0],
-                "summonList": [0, 0],
+                # The client's own inventory and Summon shapes: a projected
+                # settlement is checked against them, so a toy array here would
+                # exercise a save the client cannot produce.
+                "itemList": [0] * ITEM_SLOTS,
+                "summonList": [0] * 16,
             },
         )
         state.accounts[self.account_id]["tutorial_phase"] = "free_roam"
@@ -888,9 +892,26 @@ class CounterDescentRuntimeTest(unittest.TestCase):
 
     def clear_body(
         self, *, chapter: int = 8000, section: int = 5,
-        experience: int = 0,
+        experience: int = 0, coins: int = 0,
+        items: dict[str, int] | None = None,
+        summons: list[int] | None = None,
+        inventory: list[int] | None = None,
     ) -> bytes:
+        """Compose a clear the way the surviving client composes one.
+
+        ``items`` are the drops the battle reports, and the submitted inventory
+        defaults to the durable counts plus exactly those drops -- the one array
+        a projected settlement accepts. ``inventory`` overrides it so a
+        mismatched submission can be exercised on its own.
+        """
         userdata = self.account()["userdata"]
+        reported = items or {}
+        if inventory is None:
+            inventory = list(userdata["itemList"])
+            for item_id, count in reported.items():
+                inventory[int(item_id) - 1] = min(
+                    MAX_ITEM_STACK, inventory[int(item_id) - 1] + count,
+                )
         return urlencode({
             "progressCode": userdata["progressCode"],
             "worldMapNo": userdata["worldMapNo"],
@@ -900,19 +921,19 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 "energyAndApp": 0,
                 "freeEnergy": userdata["freeEnergy"],
                 "energyGooglePlay": 0,
-                "coins": userdata["coins"],
+                "coins": userdata["coins"] + coins,
             }),
             "chrdata": json.dumps(userdata["chrdata"]),
-            "itemList": json.dumps(userdata["itemList"]),
+            "itemList": json.dumps(inventory),
             "summonList": json.dumps(userdata["summonList"]),
             "battle_result": json.dumps({
-                "coins": 0,
+                "coins": coins,
                 "buddies": [],
-                "items": {},
+                "items": reported,
                 "exp": experience,
                 "section": section,
                 "monsters": [],
-                "summons": [],
+                "summons": summons or [],
                 "luckynum": 0,
                 "chapter": chapter,
                 "unableluckdrop": False,
@@ -923,7 +944,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             "lastUpdate": 1,
         }).encode()
 
-    def test_visibility_charge_zero_base_clear_and_restart_replay(self) -> None:
+    def test_visibility_charge_projected_clear_and_restart_replay(self) -> None:
         status, server_status = self.get(
             f"/gd/get_server_status?otk={self.token}&requestID=status"
         )
@@ -979,9 +1000,25 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         self.assertEqual(20, self.account()["userdata"]["energy"])
 
         self.restart()
+        # An inventory that is not the durable counts plus the drops the battle
+        # declared is the one item refusal left: the array cannot become a grant
+        # channel beside `items`.
+        overstated = list(self.account()["userdata"]["itemList"])
+        overstated[180] = 90
         status, refused = self.post(
             f"/gd/clear_quest?otk={self.token}&requestID=bad-clear",
-            self.clear_body(experience=1),
+            self.clear_body(items={"181": 70}, inventory=overstated),
+        )
+        self.assertEqual(
+            (409, "invalid_local_event_result"),
+            (status, refused["error"]),
+        )
+        self.assertEqual("generic_story_active", self.account()["tutorial_phase"])
+        # No recovered source states an event stage's Summon outcome, so a
+        # reported Summon stays refused rather than settled unauthored.
+        status, refused = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=bad-summon",
+            self.clear_body(summons=[3]),
         )
         self.assertEqual(
             (409, "invalid_local_event_result"),
@@ -989,7 +1026,10 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         )
         self.assertEqual("generic_story_active", self.account()["tutorial_phase"])
 
-        clear = self.clear_body()
+        # A won battle reports its own experience, Coins, and drops. Refusing
+        # those was the earlier zero-base policy, and it stranded the client on
+        # the reward screen retrying a settlement it could never complete.
+        clear = self.clear_body(experience=5400, coins=280, items={"181": 70})
         status, cleared = self.post(
             f"/gd/clear_quest?otk={self.token}&requestID=clear",
             clear,
@@ -997,6 +1037,12 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         self.assertEqual(200, status, cleared)
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
         self.assertEqual(0x01000000 | (7 << 6) | 1, self.account()["userdata"]["progressCode"])
+        settled = self.account()["userdata"]
+        self.assertEqual(70, settled["itemList"][180])
+        self.assertEqual(ITEM_SLOTS, len(settled["itemList"]))
+        self.assertEqual(280, settled["coins"])
+        self.assertEqual(70, cleared["itemList"][180])
+        self.assertEqual(280, cleared["coins"])
         self.restart()
         self.assertEqual(
             (status, cleared),
@@ -1005,6 +1051,9 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 clear,
             ),
         )
+        # The drop settles once: a second clear under a fresh request id cannot
+        # mint another 70.
+        self.assertEqual(70, self.account()["userdata"]["itemList"][180])
 
     def test_late_families_settle_and_collaboration_rows_remain_refused(self) -> None:
         self.stop_server()

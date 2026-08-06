@@ -2448,8 +2448,8 @@ class BootstrapState:
                 or clear["valuables"].get("coins") != int(userdata.get("coins", 0))
             ):
                 return "tutorial_state_conflict", None
-            if not _zero_base_event_matches(
-                userdata, clear, WORLD_MAP_SPECIAL_EXP_CEILING, allow_bounded_buddies=True,
+            if not _bounded_special_result_matches(
+                userdata, clear, WORLD_MAP_SPECIAL_EXP_CEILING,
             ):
                 return "invalid_local_world_map_special_result", None
             result = clear["battle_result"]
@@ -2680,8 +2680,9 @@ class BootstrapState:
             # Archive battles are executed by the surviving client. Its clear
             # form reports the variable battle Coins separately from the fixed
             # post-battle increment represented by EventStage.clear_coins. The
-            # wallet must reconcile both. Counter Descent remains zero-base and
-            # is additionally constrained by _zero_base_event_matches below.
+            # wallet must reconcile both. Counter Descent carries no reward
+            # catalog, so its inventory is additionally projected from the drops
+            # the client reports; see _projected_event_items below.
             # The Luck chest is a second reward layer, and an invisible one: a
             # real captured clear shows chest rewards absent from
             # `battle_result` (`luckynum=0`) while already inside the balances
@@ -2709,10 +2710,13 @@ class BootstrapState:
             failed = next((name for name, passed in checks if not passed), None)
             if failed is not None:
                 return (f"event_clear_{failed}_conflict" if event else "tutorial_state_conflict"), None
-            if event and stage.zero_base and not _zero_base_event_matches(
-                userdata, clear
-            ):
-                return "invalid_local_event_result", None
+            projected_items = None
+            if event and stage.projected_rewards:
+                projected_items = _projected_event_items(
+                    userdata, clear, chest_items(authored_chest),
+                )
+                if projected_items is None:
+                    return "invalid_local_event_result", None
             eidolon_summons = None
             if event and stage.selector == "eidolon":
                 eidolon_summons = _eidolon_summon_projection(
@@ -2744,7 +2748,14 @@ class BootstrapState:
                 "coins": expected_coins,
                 "valuables": canonical_valuables,
                 "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
-                "itemList": _preserved_counts(userdata.get("itemList"), clear["itemList"]),
+                # A projected settlement persists the array the server derived,
+                # not the one the client sent; they are equal by construction,
+                # and taking the server's keeps the durable counts authoritative.
+                "itemList": (
+                    projected_items
+                    if projected_items is not None
+                    else _preserved_counts(userdata.get("itemList"), clear["itemList"])
+                ),
                 "summonList": (
                     eidolon_summons
                     if eidolon_summons is not None
@@ -4622,26 +4633,30 @@ def _packed_item_code(identity: int, count: int) -> int:
 def _message_wire(message: dict[str, Any], original_shape: bool = False) -> dict[str, Any]:
     """Project one inbox message for the client's mail screen.
 
-    ``original_shape`` serves the field names and encodings recovered from the
-    client's own ``Message`` class rather than the shape this server shipped
-    with.  The recovered class carries ``mes_default``/``mes_ja``/``mes_en``,
-    ``items`` as a ``List<ItemCode2>``, ``buddy`` as one ``ItemCode``, and
-    ``multiplayTitle``; it has no ``gifts`` member at all.  Its constructor
-    reads ``messages`` through the LitJson array indexer and fills the three
-    text fields positionally, so the texts travel as an ordered array rather
-    than the object served here before.
+    ``original_shape`` serves the shape recovered from the client's own
+    ``Message`` constructor, which every launcher now asks for.  Without it a
+    present displays no reward at all: the client reads Coins, Energy, the
+    character, the items, the Summon and the Companion out of one ``gifts``
+    entry and never looks at the top-level fields this server sent before, so
+    ``get_hasGift`` answered false and the mail screen drew its plain "message"
+    presentation over a present that really did carry something.
 
-    Two consequences of the old shape are worth recording.  Nothing filled the
-    text fields, which is why the body rendered empty.  And ``get_hasGift``
-    tests ``coins``, ``energy`` and ``chr`` before dereferencing ``items``
-    *without tolerating null*, so a present carrying only items -- exactly a
-    chapter milestone -- threw inside the client's own gift check rather than
-    drawing a reward area.  Issue 33 recorded that presentation as the client
-    refusing milestone mail.
+    The keys were read out of the binary rather than inferred, by resolving the
+    constructor's own literals through the GOT entries that supply them.
+    ``gifts`` is indexed by integer; inside an entry ``coins``, ``energy``,
+    ``chr``, ``summon`` and ``title`` are scalars, ``item`` is another
+    integer-indexed array of ``{id, num}`` pairs, and ``buddy`` is one such
+    pair.  ``title`` lands on the client's ``multiplayTitle``.
 
-    This is recovered from the client binary rather than from an observed
-    exchange, so it stays behind ``--original-mail-shape`` until a physical
-    client confirms it.
+    Two fields look like something they are not, and each one hung the client
+    outright when served the obvious way.  ``date`` is a ``long`` on the class
+    but must travel as a JSON real, because the constructor reads it through
+    LitJson's ``(double)`` conversion.  ``messages`` is an object read by the
+    keys ``default``/``ja``/``en``, even though the fields behind it are named
+    ``mes_default``/``mes_ja``/``mes_en`` and none of those names is a literal
+    anywhere in the client.  Getting either wrong throws out of
+    ``Message..ctor``, and that exception kills the login callback: the client
+    then sits on ``Connecting...`` with no error dialog at all.
     """
     if not original_shape:
         return {
@@ -4717,43 +4732,32 @@ def _parse_message_ids(body: bytes) -> list[str] | None:
     return identifiers if type(identifiers) is list and identifiers and len(identifiers) == len(set(identifiers)) and all(isinstance(identifier, str) and identifier for identifier in identifiers) else None
 
 
-def _zero_base_event_matches(
-    userdata: dict[str, Any], clear: dict[str, Any], max_exp: int = 0,
-    *, allow_bounded_buddies: bool = False,
+def _bounded_special_result_matches(
+    userdata: dict[str, Any], clear: dict[str, Any], max_exp: int,
 ) -> bool:
-    """Require a Counter Descent clear to grant nothing unrecovered.
+    """Require a Chapter 1100 clear to grant nothing unrecovered.
 
-    `max_exp` above zero additionally permits the battle's own experience, and
-    with it the roster the client reports back. ``allow_bounded_buddies``
-    leaves only the ``buddies`` channel to a caller that bounds it separately.
-    Only Chapter 1100 uses either: it is a real level-90 battle whose EXP a won
-    fight must keep, and its Companion channel is a bounded acceptance against
-    the stage's own recovered manifest.
+    It is a real level-90 battle, so its own experience is permitted up to
+    ``max_exp`` and with it the roster the client reports back, and its
+    Companion channel is left to `world_map_special_companions_within_bounds`,
+    which accepts it against the stage's own recovered manifest.
+
+    Every other channel is refused rather than trusted, because this chapter's
+    chests are labeled local policy and its remaining rewards were never
+    recovered: accepting a Coin, item, monster, Summon, or Lucky enemy here
+    would author state the record does not carry.  Counter Descent took the
+    same shape until a real clear proved the client reports all of it; that
+    family now settles through `_projected_event_items` instead.
     """
     result = clear["battle_result"]
-    if max_exp:
-        return (
-            result["coins"] == 0
-            and result["exp"] <= max_exp
-            and result["items"] == {}
-            and (allow_bounded_buddies or result["buddies"] == [])
-            and result["monsters"] == []
-            and result["summons"] == []
-            and result["luckynum"] == 0
-            and result["boostup"] == [0] * 6
-            and clear["itemList"] == userdata.get("itemList")
-            and clear["summonList"] == userdata.get("summonList")
-        )
     return (
         result["coins"] == 0
-        and result["exp"] == 0
+        and result["exp"] <= max_exp
         and result["items"] == {}
-        and (allow_bounded_buddies or result["buddies"] == [])
         and result["monsters"] == []
         and result["summons"] == []
         and result["luckynum"] == 0
         and result["boostup"] == [0] * 6
-        and clear["chrdata"] == userdata.get("chrdata")
         and clear["itemList"] == userdata.get("itemList")
         and clear["summonList"] == userdata.get("summonList")
     )
@@ -5080,15 +5084,67 @@ def _preserved_counts(current: object, submitted: list[int]) -> list[int]:
     ]
 
 
-def _projected_list(current: object, submitted: object, rewards: dict[int, int], slots: int, maximum: int) -> bool:
+def _count_projection(current: object, submitted: object, rewards: dict[int, int], slots: int, maximum: int) -> list[int] | None:
+    """Return the one count-per-slot array a clear reporting ``rewards`` may submit.
+
+    ``None`` means the submission is not that array, which is the refusal every
+    caller wants; the accepted array is returned rather than a bare `True` so a
+    settlement can persist the server's own projection instead of re-deriving it
+    from the client's word.
+    """
     if not (isinstance(current, list) and isinstance(submitted, list) and len(current) == slots and len(submitted) == slots and all(type(value) is int and 0 <= value <= maximum for value in current)):
-        return False
+        return None
     expected = list(current)
     for item_id, count in rewards.items():
         if item_id > slots:
-            return False
+            return None
         expected[item_id - 1] = min(maximum, expected[item_id - 1] + count)
-    return submitted == expected
+    return expected if submitted == expected else None
+
+
+def _projected_list(current: object, submitted: object, rewards: dict[int, int], slots: int, maximum: int) -> bool:
+    return _count_projection(current, submitted, rewards, slots, maximum) is not None
+
+
+def _projected_event_items(
+    userdata: dict[str, Any], clear: dict[str, Any], chest: dict[int, int],
+) -> list[int] | None:
+    """Return the server-owned inventory for a client-reported event clear.
+
+    Counter Descent has no recovered reward table and the result service that
+    would have authored one is gone, so the surviving client's own report is the
+    only account of what a won battle paid.  This settles it exactly as
+    `apply_hunting_clear` settles a Hunting result: the report is trusted, but
+    the inventory accompanying it must be the durable counts plus the drops it
+    declares, capped at the client's stack ceiling, so the item array cannot
+    become a grant channel beside the drops.  The chest the start authored is
+    added to those drops because the client folds it into the same array and
+    never reports it in `battle_result`; see `apply_generic_story_clear`.
+
+    The earlier policy required the family to grant *nothing*, taken while its
+    clear callback was unobserved.  A won Chapter 8000 battle reports its own
+    experience, Coins, and drops, so that policy refused every real clear -- and
+    because a refusal leaves the battle open, the client retried the settlement
+    it could never complete and stranded the player on the reward screen.
+
+    Two channels stay refused for want of anything that could author them:
+    Summons, which no recovered source states a per-stage outcome for, and a
+    durable inventory that is not the client's own 181-slot shape.  Experience,
+    Skill Boost, recruited monsters, and Lucky enemies need no authoring here --
+    they reach the roster through the same trusted merge every story and event
+    clear already uses, and a story-outcome catalog bounds them when the
+    operator asks for one.
+    """
+    result = clear["battle_result"]
+    if result["summons"] or clear["summonList"] != userdata.get("summonList"):
+        return None
+    gains = {int(item_id): count for item_id, count in result["items"].items()}
+    for item_id, count in chest.items():
+        gains[item_id] = gains.get(item_id, 0) + count
+    return _count_projection(
+        userdata.get("itemList"), clear["itemList"], gains,
+        BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK,
+    )
 
 
 def _projected_hunting_items(
