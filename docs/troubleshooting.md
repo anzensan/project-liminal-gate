@@ -136,8 +136,9 @@ client inherits Android 16's new overload correctly. An earlier reading blamed
 Google Play Billing; that is withdrawn, because billing's connection is an
 ordinary class.
 
-The flag is off by default because it edits client bytes no other supported path
-touches and it is not yet confirmed on Android 16 hardware.
+The flag is off by default because it edits client bytes no other supported
+path touches. It is confirmed working on Android 16: a Galaxy Tab A9+ runs a
+separate-server build with it through launch and real gameplay.
 
 **Check whether your build actually has the flag before reporting that it did
 not help.** The two routes are checked differently, and the difference matters:

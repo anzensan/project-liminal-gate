@@ -86,10 +86,13 @@ machine-readable/current capability boundary.
   separate-server verification procedure is corrected too: `/healthz` cannot
   answer it on that route and the generated plan must not be used, since it is
   rewritten by every setup run and describes the last build rather than the
-  installed one. Physical confirmation that the extended flag clears the crash
-  is pending, and an on-device Android 16 run does not supply it: that route's
-  host guard catches the callback whatever caused the bind, so only a
-  separate-server build can close it.
+  installed one. Physical confirmation is complete: a Galaxy Tab A9+ (SM-X210)
+  on Android 16, API 36, runs a separate-server build carrying all three edits
+  through launch and real gameplay. That route has no host guard to mask the
+  result and is the configuration the S26 crashed in, and it retires the
+  standing risk in editing Unity's binary. No unpatched control was taken on the
+  tablet, so the crash and the fix are each confirmed on Android 16 but on
+  different devices.
 
 
 - 2026-08-06 Orbling Cavern and Cryptid Forest reached. Repeated tester reports

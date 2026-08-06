@@ -110,7 +110,7 @@ compatibility boundary, which is separate from the protocol slice above.
 | API 34 (Android 14) emulator, Google Play image with Translated ABI | Confirmed working | Reaches the title screen and streams local resources. Reported by an operator on a Pixel 4 image. |
 | API 29 (Android 10) emulator | Cannot install | `INSTALL_FAILED_NO_MATCHING_ABIS`: that image has no ARM translation. Use a Translated ABI image. |
 | Android 15, physical (Pixel 7 Pro, `arm64-v8a`) | Confirmed working | An operator installed the self-hosted combined APK, reached real gameplay progress, and then moved that save with `on_device_state export` and rebuilt in place with `update`, both from a Windows build host. This is the first physical-hardware gameplay report for the combined APK. It does not identify the installed artifact as the final source-exact build, and it carries no ARMv7 or preserved-trace claim. |
-| Android 16, physical (Samsung Galaxy S24 FE, Galaxy S26) | Combined APK carries a host guard for this and is confirmed reaching gameplay on an S26; the separate-server route needs `--disable-google-services` | Android 16 added an `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload to `ServiceConnection`. Unity's `bitter.jnibridge` proxies that interface, and a `java.lang.reflect.Proxy` dispatches `default` methods to its handler rather than inheriting them, so the first completed Google Play Services bind asks the 2017 bridge for a signature it does not know and it throws `NoSuchMethodError` on the main thread. The bridge is Unity's and cannot be rebuilt. |
+| Android 16, physical (Galaxy S24 FE, Galaxy S26, Galaxy Tab A9+) | Confirmed working on both routes: the combined APK carries a host guard and reaches gameplay on an S26; the separate-server route reaches gameplay on a Tab A9+ with `--disable-google-services` | Android 16 added an `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload to `ServiceConnection`. Unity's `bitter.jnibridge` proxies that interface, and a `java.lang.reflect.Proxy` dispatches `default` methods to its handler rather than inheriting them, so the first completed Google Play Services bind asks the 2017 bridge for a signature it does not know and it throws `NoSuchMethodError` on the main thread. The bridge is Unity's and cannot be rebuilt. |
 
 `--disable-google-services` rewrites the bind actions so they resolve to
 nothing, which prevents the bind from completing and so prevents the crash: 18
@@ -125,8 +125,12 @@ are ordinary classes, so none of them can raise this. An earlier reading
 attributed the crash to Google Play Billing on the strength of a log line
 ordering; that is withdrawn.
 
-It remains opt-in: two reporters, two devices, and the `libunity.so` half is not
-yet confirmed on Android 16 hardware. Nothing is given up — Play Games, the ads
+It remains opt-in because it edits client bytes no other supported path
+touches, but it is now confirmed on Android 16 hardware: a Galaxy Tab A9+
+(SM-X210, API 36) runs a separate-server build carrying all three edits through
+launch and real gameplay, on the route that has no host guard to mask the
+result. No unpatched control was taken on that tablet, so the crash and the fix
+are each confirmed on Android 16 but on different devices. Nothing is given up — Play Games, the ads
 SDK, Google auth, and Nearby have no live service to reach, and the advertising
 ID is analytics for a retired service. One reporter established that the client
 runs normally with Google Play Services disabled device-wide, which is the
