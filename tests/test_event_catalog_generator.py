@@ -228,7 +228,7 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         )
         self.assertEqual(0, EVENT_CLEAR_COINS)
 
-    def test_late_counter_descents_retain_the_bundled_zero_base_selector(self) -> None:
+    def test_late_counter_descents_retain_the_bundled_projected_selector(self) -> None:
         chapters = tuple(range(8012, 8018))
         _, _, loaded = self._generate(_battledata(*chapters), ())
         progress_after_chapter_18 = 0x01000000 | (19 << 6) | 1
@@ -238,7 +238,7 @@ class EventCatalogGeneratorTest(unittest.TestCase):
                 "descentHuntingList"
             ],
         )
-        self.assertTrue(all(stage.zero_base for stage in loaded.stages))
+        self.assertTrue(all(stage.projected_rewards for stage in loaded.stages))
         self.assertFalse(loaded.client_lists(progress_after_chapter_18)["specialQuestList"])
 
     def test_empty_import_is_refused(self) -> None:

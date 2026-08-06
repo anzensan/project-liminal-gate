@@ -31,7 +31,10 @@ class EventStage:
     summon_ids: tuple[int, ...] = ()
     selector: str = "special"
     unlock_after_chapter: int | None = None
-    zero_base: bool = False
+    #: Settle this stage's clear from the drops the client reports, projected by
+    #: the server, because no reward table for it was ever recovered. Counter
+    #: Descent is the only family that carries it; see `_projected_event_items`.
+    projected_rewards: bool = False
     selector_id: str | None = None
 
     def identity_label(self) -> str:
@@ -117,9 +120,10 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
     """Return the fourteen packaged non-collaboration Strikes Back families.
 
     Chapter identities, flags, section counts, and stamina are recovered from
-    the final client. Permanent Chapter 5--18 unlocks and zero-base settlement
-    are explicit preservation policy because the historical schedule and
-    retired result service were not captured. Little Noah 8008--8011 and Hime
+    the final client. Permanent Chapter 5--18 unlocks are explicit preservation
+    policy because the historical schedule was not captured, and because the
+    retired result service was not either, a clear settles from the client's own
+    reported drops under `projected_rewards`. Little Noah 8008--8011 and Hime
     Rush 8018 are deliberately excluded because their progression/reward
     contracts are distinct and unrecovered.
     """
@@ -142,7 +146,7 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
             character_ids=(),
             selector="descent_hunting",
             unlock_after_chapter=unlock_after_chapter,
-            zero_base=True,
+            projected_rewards=True,
         )
         for event_id, flag, chapter, unlock_after_chapter, _character_ids in manifests
         for section, stamina in enumerate(
@@ -155,9 +159,10 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
 def merge_event_catalogs(*catalogs: EventCatalog | None) -> EventCatalog | None:
     """Combine policies while keeping the first owner of an exact stage.
 
-    The standard server's zero-base Counter Descent rows stay authoritative
-    when an advanced generated catalog also contains those chapters. All other
-    user-local event stages are retained.
+    The standard server's Counter Descent rows stay authoritative when an
+    advanced generated catalog also contains those chapters, so their projected
+    settlement is not lost to a duplicate. All other user-local event stages are
+    retained.
     """
     stages: dict[tuple[int, int], EventStage] = {}
     for catalog in catalogs:
@@ -305,7 +310,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                     else "special"
                 ),
                 unlock_after_chapter=unlock_after_chapter,
-                zero_base=_counter_descent_stamina(chapter) is not None,
+                projected_rewards=_counter_descent_stamina(chapter) is not None,
                 selector_id=selector_id,
             )
         )
