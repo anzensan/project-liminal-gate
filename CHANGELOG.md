@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Every entry below needs only a server restart; none changes the client.
+
 ### Fixed
 
 - **A Luck Treasure Chest could show a Companion and give you nothing.** Chests

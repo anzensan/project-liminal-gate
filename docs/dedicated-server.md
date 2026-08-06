@@ -70,6 +70,58 @@ the resulting `user-data/liminal-gate-test.apk` on the intended device. The
 address and port are compiled into that APK; changing either later requires
 preparing and reinstalling it again.
 
+## Back up the signing key before you need it
+
+Copy `user-data/liminal-gate-test.keystore` and `user-data/keystore-password.txt`
+off the APK workstation and keep them. Everything else that machine generates
+can be rebuilt; these two cannot.
+
+Android only lets an APK install over an existing one when both were signed with
+the same key, so every later rebuild has to use this keystore. Without it the
+install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and the only way
+forward is uninstalling the app — which clears its data, gives the client a new
+device UUID, and leaves your progress on the server under the old one. That is
+recoverable, with [`adopt`](saves.md#if-you-reinstall-the-app-and-your-progress-is-gone),
+but it is entirely avoidable.
+
+The practical rule: always rebuild the APK on the same machine, from the same
+`user-data/` directory.
+
+## Updating
+
+Most releases change only the server. The APK carries the client patches and the
+one server address compiled into it; the bundled policies, catalogs, settlement
+rules, and event flags all live on the server side, so they arrive with a pull
+and a restart:
+
+```sh
+sudo systemctl stop project-liminal-gate
+cd /opt/project-liminal-gate && git pull --ff-only
+sudo systemctl start project-liminal-gate
+```
+
+**Your save is never involved.** `bootstrap-state.json` is written only by the
+running server. Updating does not read or rewrite it, and neither does preparing
+an APK on another machine — `tester_setup` writes build output and nothing else,
+so there is no state to sync between the two computers in either direction.
+
+Three things a pull and a restart do **not** do:
+
+| What | When it matters | What to do |
+| --- | --- | --- |
+| Rebuild the APK | A release changes the client patch plan — an Android compatibility fix, for instance | Rebuild and reinstall from the APK workstation, with the same keystore. The changelog entry says when a release needs this. |
+| Change the address or port | You move the server or pick a different port | Both are compiled into the APK, so rebuild and reinstall |
+| Regenerate the derived catalogs | A release changes one of the *generators* rather than the server | Rerun guided setup on the APK workstation and copy the refreshed files over; see the next section |
+
+The server does refresh `resources.json` from the resource tree on every start,
+so that one needs nothing. `story-outcomes.json`, `event-catalog.json`,
+`character-catalog.json`, and `companion-equipment.json` are derived once and
+then read as they are, which is why a generator change needs the extra step.
+
+If you are unsure whether an update needs more than a restart, the changelog for
+that release states which. When it says server-only, a restart is genuinely all
+of it.
+
 ## Which generated files the server machine needs
 
 Retain the matching resource tree, `resources.json`, `story-outcomes.json`,
