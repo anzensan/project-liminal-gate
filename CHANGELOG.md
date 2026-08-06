@@ -4,37 +4,44 @@
 
 ### Added
 
-- **`--original-mail-shape` serves inbox presents in the field shape recovered
-  from the client's own `Message` class.** The class was read out of the
-  packaged binary: it declares `mes_default`/`mes_ja`/`mes_en` for its text,
-  `items` as a `List<ItemCode2>`, `buddy` as one `ItemCode`, and
-  `multiplayTitle`, and declares no `gifts` member at all. The flag serves
-  those names, packs reward identities the way `ItemCode.ctor(int, int)` packs
-  them — `(id << 16) | count`, recovered from a constructor whose entire body
-  is one `orr` — renames `title` to `multiplayTitle`, and adds the declared
-  `from` string. Off, the served bytes are unchanged.
+- **An inbox present now shows the reward it carries.** Opening a present drew
+  its text over an empty space: no Coins, no Energy, no items, no character, no
+  Companion, and the plain "Message from the admin" heading rather than the
+  gift one. The rewards were granted correctly the whole time; the client was
+  never told about them.
 
-  **An emulator run found no observable difference, so this is not the fix for
-  a present that shows no reward.** Both shapes render a present's body text,
-  and neither draws a reward area or a claim control, for a Coin/Energy present
-  and for an items-only one alike. Rewards are granted correctly either way and
-  simply are not displayed. That matches what Issue 33 recorded on physical
-  hardware and makes the empty reward area a client-side presentation limit
-  rather than a serialization fault. The flag stays opt-in and unproven.
+  The reviewed client reads every reward out of a `gifts` entry and looks at
+  nothing else. It never reads a top-level `coins`, `energy`, `chr`, `item`,
+  `buddy`, `summon` or `title` — which is exactly what this server had been
+  sending — so `Message.coins` and its siblings stayed zero, `get_hasGift`
+  answered false, and the mail screen drew the no-gift presentation over a
+  present that really did carry something.
 
-  Two inferences drawn from the binary were wrong, and the same run caught both
-  because each one froze the client outright. `date` is a `long` on the class,
-  but the constructor reads it through LitJson's `(double)` conversion, which
-  refuses a JsonData holding an int. And none of `mes_default`/`mes_ja`/`mes_en`
-  is a string literal anywhere in the client, which made a positional array look
-  right, but the constructor asks the `messages` value `Contains(key)` and so
-  requires an object. Each answered with an exception thrown out of
-  `Message..ctor` — `InvalidCastException: Instance of JsonData doesn't hold a
-  double` and `InvalidOperationException: Instance of JsonData is not a
-  dictionary` — which killed the login callback and left the client on
-  `Connecting...` indefinitely, with no error dialog. Worth recording as its own
-  finding: one malformed field in one message is enough to hang the client on a
-  loading screen, which is what a stall of that kind looks like from the outside.
+  The shape was recovered by resolving the constructor's own key literals
+  through the GOT relocations that supply them, which reads the keys out of the
+  binary instead of guessing at them: `json["gifts"]` is indexed by integer,
+  and inside an entry `coins`, `energy`, `chr`, `summon` and `title` are
+  scalars, `item` is another integer-indexed array of `{id, num}` pairs, and
+  `buddy` is one such pair. `title` lands on the client's `multiplayTitle`.
+  `messages` is an object read by the keys `default`, `ja` and `en`, and `date`
+  stays a JSON real even though the field is a `long`, because the constructor
+  reads it through LitJson's `(double)` conversion.
+
+  Verified against the reviewed client on an emulator across every reward
+  channel: a present carrying 500 Coins, 3 Energy and two Metal Tickets now
+  opens as "Gift from the admin" and lists all three, and one carrying a
+  character and a Companion lists Joker Λ and Excalibur x 1 by name. Standard,
+  because the shape it replaces cannot display a reward at all.
+
+  Two earlier readings of the same class were wrong and are recorded here
+  because of how they failed rather than that they failed. `date` as an integer
+  and `messages` as a positional array each threw out of `Message..ctor` —
+  `InvalidCastException: Instance of JsonData doesn't hold a double`, then
+  `InvalidOperationException: Instance of JsonData is not a dictionary` — and
+  the exception killed the login callback, leaving the client on `Connecting...`
+  indefinitely with no error dialog. One malformed field in one message hangs
+  the client on a loading screen; that is what a stall of this kind looks like
+  from the outside, and it is worth knowing when a tester reports a freeze.
 
 - **Daily login rewards now arrive through the original inbox** (issue 34).
   Guided core-story servers issue the published eight-day consecutive cycle

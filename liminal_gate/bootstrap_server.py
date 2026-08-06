@@ -4659,39 +4659,36 @@ def _message_wire(message: dict[str, Any], original_shape: bool = False) -> dict
     return {
         # `date` stays a JSON real. The field is a `long`, which is what made an
         # integer look right, but the constructor reads it through LitJson's
-        # `(double)` conversion and that refuses a JsonData holding an int:
-        # an emulator run answered the integer with `InvalidCastException:
-        # Instance of JsonData doesn't hold a double` thrown out of
-        # `Message..ctor`, which killed the whole login callback.
-        "id": message["id"], "date": float(message["date"]), "read": bool(message["read"]),
-        # A declared string field the client would otherwise hold null. No
-        # sender is modeled, so it carries the empty string rather than a name
-        # this project would have invented.
-        "from": "",
-        # An object keyed `default`/`ja`/`en`, which is what this server always
-        # sent. The three fields are named `mes_default`/`mes_ja`/`mes_en` and
-        # none of those names is a string literal in the client, which made a
-        # positional array look right; the constructor actually asks this value
-        # `Contains(key)`, and an emulator run answered the array with
-        # `InvalidOperationException: Instance of JsonData is not a dictionary`
-        # out of `Message..ctor`.
+        # `(double)` conversion, and that refuses a JsonData holding an int.
+        "id": message["id"], "date": float(message["date"]),
+        "read": bool(message["read"]), "daysLast": int(message["days_last"]),
+        # Every reward the client reads lives in one `gifts` entry. The
+        # constructor never looks at a top-level `coins`, `energy`, `chr`,
+        # `item`, `buddy`, `summon` or `title` -- which is why a present
+        # carrying 500 Coins still answered `get_hasGift` false and drew the
+        # plain "message" title instead of the gift one. Recovered by resolving
+        # the constructor's own key literals through the GOT relocations that
+        # supply them: `gifts` is indexed by integer, and inside an entry
+        # `item` is another integer-indexed array of `{id, num}` while `buddy`
+        # is one such pair.
+        "gifts": [{
+            "coins": int(message["coins"]),
+            "energy": int(message["free_energy"]),
+            "chr": int(message.get("character_id", 0)),
+            "item": [
+                {"id": int(item_id), "num": amount}
+                for item_id, amount in sorted(message["items"].items(), key=lambda value: int(value[0]))
+            ],
+            # Summon stays zero for the reason it always has: no owner is
+            # modeled, so a nonzero value would render a reward the read could
+            # not deliver. `title` lands on `multiplayTitle`, which has no
+            # owner modeled here either.
+            "summon": 0,
+            "buddy": {"id": companion_id, "num": 1 if companion_id else 0},
+            "title": 0,
+        }],
+        # An object, read with exactly these three keys.
         "messages": copy.deepcopy(texts),
-        "daysLast": int(message["days_last"]),
-        "coins": int(message["coins"]), "energy": int(message["free_energy"]),
-        "chr": int(message.get("character_id", 0)),
-        # Always present, never null: `get_hasGift` reaches this member for any
-        # present that carries no Coins, Energy or character, and dereferences
-        # it without a null check.
-        "items": [
-            _packed_item_code(int(item_id), amount)
-            for item_id, amount in sorted(message["items"].items(), key=lambda value: int(value[0]))
-        ],
-        # Summon stays zero for the reason it always has: no owner is modeled,
-        # so a nonzero value would render a reward the read could not deliver.
-        "summon": 0,
-        # One Companion, at the same packing every other reward identity uses.
-        "buddy": _packed_item_code(companion_id, 1) if companion_id else 0,
-        "multiplayTitle": 0,
     }
 
 
