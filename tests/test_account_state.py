@@ -410,3 +410,111 @@ class LinkTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WalletProjectionInvariantTest(unittest.TestCase):
+    """`valuables` must equal the flat wallet in every save this server writes.
+
+    The nested block is a projection the client reads; the flat fields beside
+    it are what the server spends and grants. Keeping them in step used to be a
+    per-site chore and most sites skipped it, so a tester's exported save failed
+    `account_state validate` after a ten-draw: `valuables.freeEnergy` read 72
+    against `freeEnergy` 22, the difference being the fifty the draw spent.
+    """
+
+    def _seed(self) -> dict[str, object]:
+        return {
+            "coins": 30_000, "energy": 0, "freeEnergy": 72,
+            "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+            "itemList": [0] * 181, "chrdata": [], "summonList": [0] * 16,
+            "buddyInfo": {"list": [], "record": []},
+        }
+
+    def test_a_ten_draw_paid_with_energy_leaves_the_projection_in_step(self) -> None:
+        from liminal_gate.bootstrap_server import BootstrapState
+        from liminal_gate.pact_draw_catalog import build_bundled_pact_policy
+        from tests.support import bootstrap_profile, post, start_server, stop_server
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(root / "state.json"),
+                pact_draw_catalog=build_bundled_pact_policy(),
+            )
+            try:
+                server.state.create_account("token", "account", self._seed())
+                status, payload = post(
+                    server, "/gd/do_slot", "ten-pull",
+                    "kind=1&count=10&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+                )
+                self.assertEqual((200, True), (status, payload["success"]))
+                userdata = server.state.accounts["account"]["userdata"]
+                # The draw really did spend it, and the projection followed.
+                self.assertEqual(22, userdata["freeEnergy"])
+                self.assertEqual(userdata["freeEnergy"], userdata["valuables"]["freeEnergy"])
+                for name in ("coins", "energy", "energyAppStore", "energyGooglePlay", "energyAndApp"):
+                    self.assertEqual(userdata[name], userdata["valuables"][name], name)
+            finally:
+                stop_server(server, thread)
+
+    def test_a_save_that_already_drifted_is_repaired_when_it_loads(self) -> None:
+        from liminal_gate.bootstrap_server import BootstrapState
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "drifted.json"
+            userdata = self._seed()
+            userdata["freeEnergy"] = 22
+            userdata["valuables"] = {
+                "coins": 30_000, "energy": 0, "freeEnergy": 72,
+                "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+            }
+            path.write_text(json.dumps({
+                "accounts": {"a": {"userdata": userdata, "tutorial_phase": "free_roam"}},
+                "tokens": {}, "active_account_id": "a",
+            }), encoding="utf-8")
+
+            state = BootstrapState(path)
+            try:
+                # The flat value is the truth: the player really was charged.
+                repaired = state.accounts["a"]["userdata"]
+                self.assertEqual(22, repaired["freeEnergy"])
+                self.assertEqual(22, repaired["valuables"]["freeEnergy"])
+            finally:
+                state.close()
+
+    def test_an_inbox_present_keeps_the_projection_in_step(self) -> None:
+        from liminal_gate.bootstrap_server import BootstrapState
+        from liminal_gate.message_catalog import load_message_catalog
+        from tests.support import bootstrap_profile, get, post, start_server, stop_server
+        from urllib.parse import urlencode
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog_path = root / "messages.toml"
+            catalog_path.write_text(
+                'schema_version = 1\nprovenance = "user-supplied"\nitem_slots = 181\n'
+                'max_free_energy = 999\nmax_coins = 99999\nmax_stack = 99\n\n'
+                '[[messages]]\nid = "m1"\ndate = 7.0\ndays_last = 3\n'
+                'messages = { default = "d", ja = "j", en = "e" }\n'
+                'coins = 500\nfree_energy = 3\nitems = {}\n',
+                encoding="utf-8",
+            )
+            catalog = load_message_catalog(catalog_path)
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(root / "state.json"),
+                message_catalog=catalog,
+            )
+            try:
+                server.state.create_account("token", "account", self._seed(), catalog)
+                get(server, "/gd/login?otk=token&uuid=account")
+                status, _ = post(
+                    server, "/gd/read_messages", "r1",
+                    urlencode({"idlist": json.dumps(["m1"]), "lastUpdate": "1"}),
+                )
+                self.assertEqual(200, status)
+                userdata = server.state.accounts["account"]["userdata"]
+                self.assertEqual(30_500, userdata["coins"])
+                self.assertEqual(userdata["coins"], userdata["valuables"]["coins"])
+                self.assertEqual(userdata["freeEnergy"], userdata["valuables"]["freeEnergy"])
+            finally:
+                stop_server(server, thread)
