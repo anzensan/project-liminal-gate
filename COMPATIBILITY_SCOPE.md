@@ -110,16 +110,27 @@ compatibility boundary, which is separate from the protocol slice above.
 | API 34 (Android 14) emulator, Google Play image with Translated ABI | Confirmed working | Reaches the title screen and streams local resources. Reported by an operator on a Pixel 4 image. |
 | API 29 (Android 10) emulator | Cannot install | `INSTALL_FAILED_NO_MATCHING_ABIS`: that image has no ARM translation. Use a Translated ABI image. |
 | Android 15, physical (Pixel 7 Pro, `arm64-v8a`) | Confirmed working | An operator installed the self-hosted combined APK, reached real gameplay progress, and then moved that save with `on_device_state export` and rebuilt in place with `update`, both from a Windows build host. This is the first physical-hardware gameplay report for the combined APK. It does not identify the installed artifact as the final source-exact build, and it carries no ARMv7 or preserved-trace claim. |
-| Android 16, physical (Samsung Galaxy S24 FE) | Combined APK carries a host guard for this; the separate-server route still crashes | Android 16 added an `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload to `ServiceConnection`. Unity's `bitter.jnibridge` proxies that interface, and a `java.lang.reflect.Proxy` dispatches `default` methods to its handler rather than inheriting them, so the first completed Google Play Services bind asks the 2017 bridge for a signature it does not know and it throws `NoSuchMethodError` on the main thread. The bridge is Unity's and cannot be rebuilt. |
+| Android 16, physical (Samsung Galaxy S24 FE, Galaxy S26) | Combined APK carries a host guard for this and is confirmed reaching gameplay on an S26; the separate-server route needs `--disable-google-services` | Android 16 added an `onServiceConnected(ComponentName, IBinder, IBinderSession)` overload to `ServiceConnection`. Unity's `bitter.jnibridge` proxies that interface, and a `java.lang.reflect.Proxy` dispatches `default` methods to its handler rather than inheriting them, so the first completed Google Play Services bind asks the 2017 bridge for a signature it does not know and it throws `NoSuchMethodError` on the main thread. The bridge is Unity's and cannot be rebuilt. |
 
-`--disable-google-services` rewrites 18 bind actions so they resolve to nothing,
-which prevents the bind from completing and so prevents the crash. Two are
-Google Play Billing, which a physical Android 16 log confirmed as the crashing
-bind; the other 16 are Play Services, which share the mechanism. It is opt-in: one reporter, one device, and the patch itself
-is not yet confirmed on Android 16 hardware. Nothing is given up — Play Games,
-the ads SDK, Google auth, and Nearby have no live service to reach — and the
-same reporter established that the client runs normally with Google Play
-Services disabled device-wide, which is the runtime equivalent.
+`--disable-google-services` rewrites the bind actions so they resolve to
+nothing, which prevents the bind from completing and so prevents the crash: 18
+in `classes.dex`, plus the advertising-ID action inside Unity's own
+`libunity.so` in both ABIs. The last is the one that carries the crash. Unity
+binds Play Services from native code using its own copy of that string, which no
+dex edit reaches, and its connection is a `java.lang.reflect.Proxy` — the only
+kind of `ServiceConnection` here that fails, because a Proxy routes an
+interface's `default` methods to its handler while an ordinary class inherits
+them. All twelve classes in the client dex that implement `ServiceConnection`
+are ordinary classes, so none of them can raise this. An earlier reading
+attributed the crash to Google Play Billing on the strength of a log line
+ordering; that is withdrawn.
+
+It remains opt-in: two reporters, two devices, and the `libunity.so` half is not
+yet confirmed on Android 16 hardware. Nothing is given up — Play Games, the ads
+SDK, Google auth, and Nearby have no live service to reach, and the advertising
+ID is analytics for a retired service. One reporter established that the client
+runs normally with Google Play Services disabled device-wide, which is the
+runtime equivalent.
 
 This is an engine boundary, not a protocol one: it applies equally to the
 separate-server and self-hosted routes, because both install the same client.

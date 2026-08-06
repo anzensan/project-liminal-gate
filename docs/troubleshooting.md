@@ -109,22 +109,32 @@ For the separate-server route, pass the same flag to
 `python3 -m liminal_gate.tester_setup`. Both routes install the same client, so
 both are affected.
 
-**The combined APK now survives this without the flag.** The host installs a
+**The combined APK survives this without the flag.** The host installs a
 main-thread guard before Unity starts, which drops exactly this one callback and
 keeps the app running. It is always on, logs each occurrence under the
-`LiminalGate` tag, and passes every other error through untouched. That covers
-binds the flag cannot reach: once Play Services loads code into the process
-through Dynamite, that code binds using its own string constants, which no edit
-to the client can change. The separate-server route has no host and so is not
-covered — use the flag there.
+`LiminalGate` tag, and passes every other error through untouched. It covers the
+crash whatever caused the bind, which is why the self-hosted route was never
+affected. The separate-server route has no host and so is not covered — use the
+flag there.
 
 **What the flag does.** The 2017 client's Unity bridge cannot dispatch an
 interface method Android 16 added to `ServiceConnection`, and it fails the
-moment a bind to a Google component completes. The flag rewrites 18 bind actions so they
-resolve to nothing and the bind never completes: Google Play Billing, which two
-separate physical Android 16 logs identify as the crashing bind, plus 16 Play
-Services actions. The store, Play Games, ads, Google auth, and Nearby are all
-retired for this game; nothing you can use is lost.
+moment a bind through that bridge completes. The flag rewrites the bind actions
+so they resolve to nothing and the bind never completes: 18 in the client's
+`classes.dex`, plus the one in Unity's own `libunity.so` that carries the crash,
+in both ABIs. The store, Play Games, ads, Google auth, and Nearby are all
+retired for this game; the last one costs Unity the advertising ID, which is
+analytics for a service that no longer exists. Nothing you can use is lost.
+
+**The `libunity.so` half was added after a Galaxy S26 crashed with the other 18
+already applied.** Unity binds Play Services from native code to read the
+advertising ID, using its own copy of the action string that no edit to the dex
+can reach. Only Unity's connection is vulnerable at all: it is built as a
+`java.lang.reflect.Proxy`, which routes an interface's `default` methods to its
+handler instead of inheriting them, while every ordinary Java class in the
+client inherits Android 16's new overload correctly. An earlier reading blamed
+Google Play Billing; that is withdrawn, because billing's connection is an
+ordinary class.
 
 The flag is off by default because it edits client bytes no other supported path
 touches and it is not yet confirmed on Android 16 hardware.
@@ -135,12 +145,23 @@ not help.** The two routes are checked differently, and the difference matters:
 | Route | How to check |
 | --- | --- |
 | On-device APK | The edit changes the build ID, so `/healthz` identifies which variant the install is running. Worth quoting in a bug report. |
-| Separate server | `/healthz` cannot answer this — it is the workstation's own server and knows nothing about the installed client. Read the generated plan instead: `python3 -c "import json;p=json.load(open('user-data/local-server-plan.json'));print(sum(1 for x in p['patches'] if x.get('repair_dex_header')))"` prints **18** when the flag was applied and **0** when it was not. |
+| Separate server | `/healthz` cannot answer this — it is the workstation's own server and knows nothing about the installed client. Read the installed APK itself, with the two commands below. |
+
+Do not read `user-data/local-server-plan.json` for this. It is rewritten by
+every setup run, so it describes the last build rather than the installed one,
+and the two disagree whenever a build succeeded but the install did not replace
+what was already on the device. Pull the APK the device is actually running:
+
+```sh
+adb shell pm path com.mistwalkercorp.guardians    # note the base.apk path it prints
+adb pull THAT_PATH installed.apk
+python3 -c "import zipfile,sys;d=zipfile.ZipFile(sys.argv[1]).read('classes.dex');a=b'com.android.vending.billing.InAppBillingService.BIND';print('flag IS applied' if d.count(a)==0 else 'flag NOT applied')" installed.apk
+```
 
 A build made without the flag crashes exactly as an unpatched one does, because
-it is one — which is what the one report of "the flag did not help" turned out
-to be. If the check prints 18 and the app still crashes, that is a new finding
-and the logcat is worth sending.
+it is one. If the check says the flag is applied and the app still crashes,
+that is a new finding and the logcat is worth sending — it is how the
+`libunity.so` half of the flag was found.
 
 **To confirm the diagnosis before rebuilding**, disable Google Play Services in
 Android's app settings and relaunch. If the game starts, this is the fault. That

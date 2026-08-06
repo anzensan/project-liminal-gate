@@ -4,6 +4,44 @@
 
 ### Fixed
 
+- **`--disable-google-services` now stops the bind that actually crashes.** A
+  Galaxy S26 on Android 16 crashed on launch with the flag correctly applied —
+  `NoSuchMethodError` on `ServiceConnection.onServiceConnected(ComponentName,
+  IBinder, IBinderSession)`, the same failure the flag exists to prevent.
+
+  The flag rewrote 18 bind actions in the client's `classes.dex`. It turns out
+  the crashing bind is not one of them and never was: Unity's own `libunity.so`
+  binds Play Services from native code to read the advertising ID, using its own
+  copy of `com.google.android.gms.ads.identifier.service.START` that no edit to
+  the dex reaches. The flag now rewrites that copy too, in both ABIs.
+
+  Only Unity's connection was ever vulnerable. It is built as a
+  `java.lang.reflect.Proxy`, which hands an interface's `default` methods to its
+  handler rather than inheriting them, so Android 16's new three-argument
+  overload arrives at a 2017 bridge that has never heard of it. Every ordinary
+  Java class inherits that overload correctly, and all twelve classes in the
+  client dex that implement `ServiceConnection` are ordinary classes.
+
+  That last point retracts the earlier diagnosis. A Galaxy S24 FE log showed
+  `UnityIAP: Billing service connected.` immediately before the fatal and Play
+  Billing was recorded as the crashing bind; billing's connection is
+  `com.unity.purchasing.googleplay.BillingServiceManager$1`, an ordinary class,
+  so it could not have thrown this and the line ordering was coincidence. The
+  billing and Play Services actions stay neutralized — they cost nothing — but
+  they are no longer described as the fault.
+
+  The cost of the new edit is that Unity cannot read the advertising ID, which
+  is analytics for a service retired years ago; Unity already handles the bind
+  failing and has its own message for it. The self-hosted route was never
+  affected, because its host guard catches the callback whatever caused the bind.
+
+  Also corrected: how to tell whether a build carries the flag. On the
+  separate-server route `/healthz` cannot answer it, and the generated plan must
+  not be used either — it is rewritten by every setup run, so it describes the
+  last build rather than the installed one. `docs/troubleshooting.md` now reads
+  the installed APK instead. Physical confirmation that the extended flag clears
+  the crash is pending.
+
 - **A Pact draw paid with Energy left the save failing its own validator.** The
   nested `valuables` block is a projection the client reads; the flat wallet
   fields beside it are what this server spends and grants. Keeping the two in

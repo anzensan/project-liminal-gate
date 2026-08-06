@@ -64,6 +64,32 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-06 Android 16 launch crash re-diagnosed and the flag corrected. A
+  Galaxy S26 crashed with all eighteen `--disable-google-services` dex edits
+  verified applied, which ruled the dex out. `libunity.so` binds Play Services
+  from native code for the advertising ID and carries its own copy of
+  `com.google.android.gms.ads.identifier.service.START`, once per ABI, that no
+  dex edit reaches; beside it sits the JNI table Unity builds its connection
+  proxy from, declaring only the two-argument `onServiceConnected`. That proxy
+  is the whole defect: a `java.lang.reflect.Proxy` routes an interface's
+  `default` methods to its handler, while an ordinary class inherits them, and
+  all twelve classes in the client dex implementing `ServiceConnection` are
+  ordinary classes. The earlier attribution to Play Billing is therefore
+  retracted — `BillingServiceManager$1` is an ordinary class and could not have
+  thrown it; the S24 FE log line ordering was coincidence. The flag now rewrites
+  the action's first byte in both `libunity.so` members, under per-member digest
+  guards, with offsets read from the member rather than recorded and a member
+  carrying the action twice refused. The head rather than the tail because a C
+  toolchain may tail-merge string literals. The dex half stays at no cost. Seven
+  focused tests cover both ABIs, the single-byte head edit, neighbour survival,
+  and all three refusals; all 1085 repository tests pass warning-strict. The
+  separate-server verification procedure is corrected too: `/healthz` cannot
+  answer it on that route and the generated plan must not be used, since it is
+  rewritten by every setup run and describes the last build rather than the
+  installed one. Physical confirmation that the extended flag clears the crash
+  is pending.
+
+
 - 2026-08-06 Orbling Cavern and Cryptid Forest reached. Repeated tester reports
   asked whether either was implemented; neither was, and neither was partially
   broken. `ChapterInterface::.cctor` identifies Chapters 7000--7009 as Orbling

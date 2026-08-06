@@ -867,6 +867,66 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   reported Companion 267, and asserts the box holds one copy at level 1 and the
   account returns to `free_roam`.
 
+## 2026-08-06: the Android 16 crash is Unity's own bind, not Play Billing
+
+- **Confirmed defect, from a physical Galaxy S26 on Android 16.** The client
+  crashed on launch with `NoSuchMethodError` on
+  `ServiceConnection.onServiceConnected(ComponentName, IBinder, IBinderSession)`
+  while carrying all eighteen `--disable-google-services` dex edits. The flag
+  was verified applied, so the crash had to come from a bind the dex does not
+  own.
+- **Where it comes from.** `libunity.so` binds Play Services from native code to
+  read the advertising ID and carries its own copy of everything it needs, none
+  of it in `classes.dex`: the action
+  `com.google.android.gms.ads.identifier.service.START` (once per ABI, at
+  `0xAD2760` in `lib/arm64-v8a` and `0xBAFFC3` in `lib/armeabi-v7a`), the package
+  name, the AIDL descriptor
+  `com.google.android.gms.ads.identifier.internal.IAdvertisingIdService`, and the
+  messages `Failed to obtain GoogleAdsId from GooglePlayService` and `Cannot bind
+  to GooglePlayService.`. Beside them sits the JNI method table Unity builds its
+  connection proxy from, declaring exactly one connect method:
+  `onServiceConnected (Landroid/content/ComponentName;Landroid/os/IBinder;)V`.
+- **Why only that one bind fails, Confirmed structurally.** Unity creates the
+  connection as a `java.lang.reflect.Proxy` through `bitter.jnibridge`, and a
+  Proxy hands every interface method to its `InvocationHandler` including
+  `default` ones. An ordinary Java class inherits Android 16's new overload and
+  is unaffected. Parsing the client dex's `class_def` interface lists finds
+  twelve classes implementing `ServiceConnection` --
+  `com.unity.purchasing.googleplay.BillingServiceManager$1`,
+  `com.google.android.gms.common.internal.BaseGmsClient$zze`, the support-library
+  and downloader ones -- and every one is a real class. None of them can raise
+  this error.
+- **Retraction.** The Galaxy S24 FE log put `UnityIAP: Billing service
+  connected.` immediately before the fatal, and this project read Play Billing
+  as the crashing bind; `PLAY_BILLING_BIND_ACTIONS` was added on that basis and
+  the claim was repeated in `COMPATIBILITY_SCOPE.md` and the troubleshooting
+  guide. It is withdrawn on the structural argument above: billing's connection
+  is `BillingServiceManager$1`, an ordinary class, so it never could have thrown
+  this. The line ordering was coincidence. The S26 log shows the same shape --
+  `com.android.vending` unfrozen 20ms after `IAB helper created.` and a fatal
+  50ms later -- and it is the same coincidence, because that build's billing
+  action was already inert.
+- **Correction.** The flag now also rewrites the action's first byte inside both
+  `libunity.so` members. An ELF `.rodata` string has no ordering to preserve, so
+  unlike the dex any byte would do; the head is taken because a C toolchain may
+  tail-merge string literals, meaning a shorter string can be a pointer into
+  this one's suffix, while a head is never shared. In the reviewed build the
+  adjacent `com.google.android.gms` is a separate NUL-terminated string rather
+  than a merged suffix, so nothing is shared either way. Offsets are read from
+  each member under its own digest guard rather than recorded, and a member
+  carrying the action twice is refused.
+- **Cost.** Unity cannot read the advertising ID. That is analytics for a
+  service retired years ago, and Unity already handles the bind failing --
+  `Cannot bind to GooglePlayService.` is its own message for this path.
+- **Also corrected: how to tell whether a build carries the flag.** On the
+  separate-server route `/healthz` cannot answer it, and
+  `user-data/local-server-plan.json` must not be used either -- it is rewritten
+  by every setup run, so it describes the last build rather than the installed
+  one. The installed APK is the only authority; see the troubleshooting guide.
+- **Pending.** Physical confirmation that the extended flag clears the crash.
+  The dex half stays, at no cost, rather than being removed on the strength of
+  this reasoning alone.
+
 ## 2026-08-06: Orbling Cavern and Cryptid Forest were gated behind a prefix scan
 
 - **Confirmed defect, from repeated tester reports.** Neither area ever appeared
