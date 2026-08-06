@@ -175,7 +175,9 @@ from liminal_gate.secondary_world_data import (
 from liminal_gate.luck_runtime import (
     EMPTY_SLOT,
     apply_luck_up_table,
+    chest_characters,
     chest_coins,
+    chest_companions,
     chest_items,
     party_team_luck,
     roll_luck_result,
@@ -2846,6 +2848,10 @@ class BootstrapState:
                         row = _granted_character_row(character_id)
                         userdata["chrdata"].append(row); by_id[character_id] = row
                         announced[character_id] = 1
+            # The chest's own Companions and characters. Granted after the
+            # roster merge for the same reason the Luck gain below is: a stale
+            # client's `chrdata` must not overwrite what this clear awarded.
+            announced |= _award_chest_grants(userdata, authored_chest)
             # The Luck gain rolled at start is committed here, after the roster
             # merge, so a stale client's chrdata cannot overwrite it -- the same
             # ordering `_preserved_roster` exists to guarantee for grants.
@@ -4338,6 +4344,68 @@ def _apply_monster_recruits(userdata: dict[str, Any], recruited: list[int]) -> d
 # The Chapter-1100 settlement shares the Hunting grant path below and the same
 # 1000-Companion box ceiling every bundled Companion policy uses.
 _WORLD_MAP_SPECIAL_COMPANION_BOX = 1000
+
+#: The client's own Companion box capacity, which a chest may not push past.
+_CHEST_COMPANION_BOX = 1000
+#: A chest-dropped Companion arrives at level 1, as every other drop does.
+_CHEST_COMPANION_DROP_LEVEL = 1
+
+
+def _award_chest_grants(userdata: dict[str, Any], slots: list[str]) -> dict[int, int]:
+    """Grant the Companions and characters an authored chest awards.
+
+    Coins and items are reconciled against the client's own submission, because
+    the client folds those into the balances it sends. The other two reward
+    forms have no such field: the generic story clear body carries `chrdata`,
+    `itemList` and `summonList` and no Companion box at all, so nothing the
+    client does can report either one back. The chest was authored by this
+    server at battle start and persisted in `active_luck_result`, so it is
+    granted here from what was authored rather than from what was claimed.
+
+    Before this existed the two forms were simply dropped. A chest could show a
+    Companion -- thirty-nine of them across twenty-seven stage and tier slots --
+    and the clear settled Coins and items, returned 200, and kept none of it.
+
+    Runs inside the clear's own transaction, so an exact replay returns the
+    cached payload and cannot grant twice. Returns the levels each newly
+    granted character arrived at, for the caller to announce, matching
+    `_apply_message_grants`.
+    """
+    granted: dict[int, int] = {}
+    companions = chest_companions(slots)
+    characters = chest_characters(slots)
+    if not companions and not characters:
+        return granted
+    rows = userdata.setdefault("chrdata", [])
+    held = {row.get("id") for row in rows if isinstance(row, dict)}
+    for character_id in characters:
+        # A duplicate grants nothing. A Pact raises a duplicate's Skill Boost,
+        # but no source says a chest did, and inventing one would be a reward
+        # this project made up -- the reasoning an inbox present already uses.
+        if character_id in held:
+            continue
+        rows.append(_granted_character_row(character_id))
+        held.add(character_id)
+        granted[character_id] = 1
+    if not companions:
+        return granted
+    info = userdata.setdefault("buddyInfo", {"list": [], "record": []})
+    owned = info.setdefault("list", [])
+    next_id = userdata.get("nextCompanionInventoryId", max((row["iid"] for row in owned), default=0) + 1)
+    for companion_id in companions:
+        if len(owned) >= _CHEST_COMPANION_BOX:
+            # A full box drops the remainder rather than refusing the clear:
+            # the alternative strands a won battle over a reward the player
+            # cannot make room for in the middle of settlement.
+            break
+        owned.append({
+            "bid": companion_id, "lv": _CHEST_COMPANION_DROP_LEVEL, "date": 0.0,
+            "iid": next_id, "exp": 0, "flag": 0, "chrID": 0,
+        })
+        next_id += 1
+    userdata["nextCompanionInventoryId"] = next_id
+    userdata["buddyInfo"] = _companion_info(owned)
+    return granted
 
 
 def _granted_hunting_companions(

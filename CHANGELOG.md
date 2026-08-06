@@ -4,6 +4,55 @@
 
 ### Fixed
 
+- **A Luck Treasure Chest could show a Companion and give you nothing.** Chests
+  award four kinds of reward. Coins and items were settled from the start; the
+  other two were computed and then dropped on the floor. `chest_companions()`
+  existed, was unit-tested, and had no caller anywhere in the server, while the
+  chest pools carried thirty-nine Companion rewards across twenty-seven stage
+  and tier slots. A clear returned 200, the items and Coins landed, and the
+  Companion was simply gone. Nothing in the suite looked at an authored chest
+  end to end, which is how it shipped.
+
+  The asymmetry is structural rather than a slip. The generic story clear body
+  is an exact field tuple — `chrdata`, `itemList`, `summonList` and no Companion
+  box — so there is no field for the client to report a chest Companion back
+  through, and no amount of reconciliation could have caught it. Coins and items
+  work because the client folds those into the balances it submits. The server
+  authored the chest at battle start and persists it in `active_luck_result`, so
+  it now grants what it authored, inside the clear's own transaction: an exact
+  replay returns the cached payload and cannot grant twice, and the grant
+  survives a restart.
+
+### Added
+
+- **Sixty-five character rewards recovered into the Luck chest pools.** The
+  scrape behind those pools dropped ninety-nine rewards it could not resolve,
+  sixty-eight of them character icons, and character rewards were consequently
+  absent from every pool even though the record shows chests award them. The
+  icons kept their names, so sixty-five resolve by exact match against the
+  operator's own `ChrDatabase` and are now emitted in the client's `M` wire
+  form. Nineteen of the thirty pooled stages still lose at least one reward,
+  down from twenty-eight.
+
+  Three do not resolve, and it is a real ambiguity rather than a lookup failure:
+  the wiki writes `Mage (Ice)` and `Lizardfolk Mage (Fire)` while the master
+  data holds four characters named `Mage` and four named `Lizardfolk Mage`,
+  separated by an element the catalog does not name. Choosing one would be a
+  guess, so they stay unresolved and are named in the module.
+
+  Recorded and deliberately not acted on: the four rewards the scrape filed as
+  unresolvable *item* names are not items. Three name characters the master data
+  holds, and the fourth, `Metal Minion`, is Companion 128 — already used by
+  these pools elsewhere. All four look like a wiki editor reaching for
+  `{{Item icon}}` where the reward was not an item. Correcting a source is a
+  different decision from reading it, and is left to be made deliberately.
+
+  Adding rewards to a tier changes which one a given seed selects from that
+  tier. Nothing durable depends on a seed-to-reward mapping, and the per-tier
+  draw already isolates neighbouring tiers, so this affects only which reward a
+  future chest rolls.
+
+
 - **A Companion delivered by an inbox present was owned but invisible.** A
   reporter opened the Companions screen after a present granted one, saw
   nothing, restarted the app, still saw nothing, then drew a Companion and
