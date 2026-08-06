@@ -19,6 +19,7 @@ from liminal_gate.luck_pool_catalog import (
     load_luck_pool_catalog,
 )
 from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, pool_for
+from liminal_gate.luck_pool_interpolation import build_luck_pools, donor_chapters
 from liminal_gate.luck_runtime import roll_luck_result
 
 #: A stage the community record does document, so an override is observable.
@@ -188,3 +189,84 @@ class LuckPoolCatalogRollTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InterpolatedLuckPoolTest(unittest.TestCase):
+    """Donated pools for the stages the record does not document.
+
+    On by default, because the record covers thirty story stages and the rest of
+    the game would otherwise never show a chest. What it chooses is placement,
+    not contents: every reward it can produce is one the record documents for a
+    chapter adjacent to the one being played.
+    """
+
+    def setUp(self) -> None:
+        self.pools = build_luck_pools()
+
+    def test_a_documented_stage_is_never_touched(self) -> None:
+        """The thirty sourced stages stay exactly as sourced."""
+        for (chapter, section), tiers in LUCK_CHEST_POOLS.items():
+            for tier, pool in tiers.items():
+                with self.subTest(stage=(chapter, section), tier=tier):
+                    self.assertEqual(pool, self.pools.pool_for(chapter, section, tier))
+
+    def test_a_tier_a_documented_stage_leaves_empty_stays_empty(self) -> None:
+        """The record naming a stage and omitting a tier is the record
+        speaking, not a gap to fill."""
+        stage = next(k for k, tiers in LUCK_CHEST_POOLS.items() if "D" not in tiers)
+        self.assertEqual((), self.pools.pool_for(*stage, "D"))
+
+    def test_an_undocumented_stage_gains_a_pool(self) -> None:
+        self.assertNotIn(UNDOCUMENTED, LUCK_CHEST_POOLS)
+        self.assertEqual((), pool_for(*UNDOCUMENTED, "A"))
+        self.assertTrue(self.pools.pool_for(*UNDOCUMENTED, "A"))
+
+    def test_it_donates_from_the_two_documented_chapters_it_brackets(self) -> None:
+        self.assertEqual((9, 13), donor_chapters(10))
+        self.assertEqual((1, 4), donor_chapters(2))
+        # Past the last documented chapter there is only one side to take.
+        self.assertEqual((36,), donor_chapters(42))
+        self.assertEqual((1,), donor_chapters(1))
+
+    def test_every_donated_reward_appears_in_the_record(self) -> None:
+        """The whole claim: placement is chosen, contents are not."""
+        recorded = {
+            reward
+            for tiers in LUCK_CHEST_POOLS.values()
+            for pool in tiers.values()
+            for reward in pool
+        }
+        for chapter in range(1, 43):
+            for tier in CHEST_TIERS:
+                for reward in self.pools.pool_for(chapter, 1, tier.name):
+                    with self.subTest(chapter=chapter, tier=tier.name, reward=reward):
+                        self.assertIn(reward, recorded)
+
+    def test_a_donated_pool_never_repeats_a_reward(self) -> None:
+        """A repeat inside an equal-weight tier is a weight by another name."""
+        for chapter in range(1, 43):
+            for tier in CHEST_TIERS:
+                pool = self.pools.pool_for(chapter, 1, tier.name)
+                with self.subTest(chapter=chapter, tier=tier.name):
+                    self.assertEqual(len(set(pool)), len(pool))
+
+    def test_disabling_it_restores_the_record_only_behaviour(self) -> None:
+        self.assertIsNone(build_luck_pools(interpolate=False))
+        self.assertEqual([""] * len(CHEST_TIERS),
+                         roll_luck_result(*UNDOCUMENTED, 1000, "r", "b"))
+
+    def test_an_operator_catalog_still_wins_over_a_donated_pool(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pools.json"
+            path.write_text(json.dumps(catalog_document([
+                {"chapter": UNDOCUMENTED[0], "section": UNDOCUMENTED[1],
+                 "tiers": {"A": ["C777"]}},
+            ])), encoding="utf-8")
+            layered = build_luck_pools(load_luck_pool_catalog(path))
+        self.assertEqual(("C777",), layered.pool_for(*UNDOCUMENTED, "A"))
+        # And a stage the operator did not name still gets its donation.
+        self.assertTrue(layered.pool_for(11, 1, "A"))
+
+    def test_the_roll_stays_replay_stable(self) -> None:
+        first = roll_luck_result(*UNDOCUMENTED, 1000, "r", "b", catalog=self.pools)
+        self.assertEqual(first, roll_luck_result(*UNDOCUMENTED, 1000, "r", "b", catalog=self.pools))

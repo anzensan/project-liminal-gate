@@ -145,6 +145,7 @@ def server_arguments(
     companion_equipment_catalog: Path | None = None,
     event_catalog: Path | None = None,
     luck_pool_catalog: Path | None = None,
+    interpolated_luck_pools: bool = True,
     enable_stamina: bool = False,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
@@ -154,6 +155,8 @@ def server_arguments(
     luck_pool_flags = (
         [] if luck_pool_catalog is None else ["--luck-pool-catalog", str(luck_pool_catalog)]
     )
+    if not interpolated_luck_pools:
+        luck_pool_flags = luck_pool_flags + ["--no-interpolated-luck-pools"]
     outcome_flags = (
         [] if story_outcome_catalog is None else ["--story-outcome-catalog", str(story_outcome_catalog)]
     )
@@ -247,6 +250,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--no-interpolated-luck-pools",
+        action="store_true",
+        help=(
+            "roll chests only for the thirty story stages the community record "
+            "documents, instead of also donating a nearby documented chapter's "
+            "pools to the rest"
+        ),
+    )
+    parser.add_argument(
         "--luck-pool-catalog",
         type=Path,
         help=(
@@ -328,10 +340,19 @@ def main() -> int:
         luck_pool_catalog = resolve_luck_pool_catalog(
             args.luck_pool_catalog, data_directory,
         )
-        if luck_pool_catalog is None:
+        if args.no_interpolated_luck_pools and luck_pool_catalog is None:
             print(
                 "Luck Treasure Chests: the thirty story stages the community "
                 "record documents; every other stage rolls six empty slots"
+            )
+        elif luck_pool_catalog is None:
+            # Said plainly on every start. The thirty documented stages are the
+            # record's; the rest are this project's arrangement of it, and a
+            # running server should not let the two look alike.
+            print(
+                "Luck Treasure Chests: thirty story stages from the community "
+                "record, and the rest donated from the nearest documented "
+                "chapter (--no-interpolated-luck-pools to disable)"
             )
         else:
             # Named deliberately. These pools are the operator's own, not
@@ -362,6 +383,7 @@ def main() -> int:
                 companion_equipment_catalog=equipment_catalog,
                 event_catalog=event_catalog,
                 luck_pool_catalog=luck_pool_catalog,
+                interpolated_luck_pools=not args.no_interpolated_luck_pools,
                 enable_stamina=args.enable_stamina,
             )
         )

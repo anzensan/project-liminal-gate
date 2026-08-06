@@ -183,6 +183,7 @@ from liminal_gate.luck_runtime import (
     roll_luck_result,
     roll_luck_up_table,
 )
+from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_pool_catalog import LuckPoolCatalog, LuckPoolCatalogError, load_luck_pool_catalog
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
@@ -5424,6 +5425,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--daily-quests", action="store_true", help="enable the fourteen recovered Daily Quest stages with bounded local settlement")
     parser.add_argument("--secondary-worlds", action="store_true", help="enable the BreaSoul and Five Emperors secondary world maps with bounded local settlement")
+    parser.add_argument("--no-interpolated-luck-pools", action="store_true", help="roll chests only for the thirty story stages the community record documents, instead of also donating a nearby documented chapter's pools to the rest")
     parser.add_argument("--luck-pool-catalog", type=Path, help="operator-supplied Luck Treasure Chest pools for stages the community record does not document; see liminal_gate/luck_pool_catalog.py")
     parser.add_argument("--cavern-forest", action="store_true", help="enable Orbling Cavern and Cryptid Forest, the two standing World 1 areas, with bounded local settlement")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
@@ -5455,7 +5457,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "luck_pool_catalog",
     )
     flag_fields = (
-        "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "jobs", "rebirth", "status_items",
+        "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "no_interpolated_luck_pools", "jobs", "rebirth", "status_items",
         "companion_draw", "companion_sale", "companion_strengthen",
         "companion_evolution", "trading_post", "drop_eligibility",
         "achievements", "summon_skills", "outcome_strict", "enable_stamina",
@@ -5494,6 +5496,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         daily_quests=getattr(args, 'daily_quests', False),
         secondary_worlds=getattr(args, 'secondary_worlds', False),
         cavern_forest=getattr(args, 'cavern_forest', False),
+        no_interpolated_luck_pools=getattr(args, 'no_interpolated_luck_pools', False),
         jobs=getattr(args, 'jobs', False),
         rebirth=getattr(args, 'rebirth', False),
         status_items=getattr(args, 'status_items', False),
@@ -5614,7 +5617,13 @@ def build_server(
                 hunts = HuntingCatalog(areas, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
             else:
                 hunts = replace(hunts, stages=hunts.stages + areas)
-        luck_pools = None if args.luck_pool_catalog is None else load_luck_pool_catalog(args.luck_pool_catalog)
+        # Interpolation is on unless refused: the record covers thirty story
+        # stages and the rest of the game would otherwise never show a chest.
+        # It only ever answers where the record is silent.
+        luck_pools = build_luck_pools(
+            None if args.luck_pool_catalog is None else load_luck_pool_catalog(args.luck_pool_catalog),
+            interpolate=not args.no_interpolated_luck_pools,
+        )
         if args.achievements and args.achievement_catalog is not None:
             raise ProfileError("--achievements cannot be combined with --achievement-catalog")
         achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))

@@ -64,6 +64,26 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-06 chests reach the whole game. The community record documents thirty
+  story stages, so every other stage rolled six empty slots and a player past
+  those chapters never saw a chest. An undocumented stage is now answered with
+  the pools the record documents for the two chapters it sits between, merged
+  across their sections and deduplicated -- on by default, with
+  `--no-interpolated-luck-pools` restoring record-only behaviour, and
+  `--luck-pool-catalog` still overriding both for any stage an operator names.
+  No reward is invented: a test asserts every reward the rule can produce
+  appears in the record for an adjacent chapter, and no Coin curve is fitted
+  because the record's own values do not sit on one. Both bracketing chapters
+  are taken rather than the nearer one, since single-chapter coverage is often a
+  two-reward stub. The thirty sourced stages are never touched and a documented
+  stage's empty tier stays empty, so what the record says stays separable from
+  what this project arranged, and the server names its mode on every start.
+  `PARITY_ROADMAP.md` continues to classify the real rates and pools as
+  unrecoverable, because arranging the record's contents does not recover the
+  retired service's table. Twenty-six focused tests; all 1126 repository tests
+  pass warning-strict.
+
+
 - 2026-08-06 Luck chest delivery and character-reward recovery. A tester asking
   why the post-battle chest screen never populated turned up two expected
   reasons — chapter 10 has no documented pool, and their team Luck was 0.1

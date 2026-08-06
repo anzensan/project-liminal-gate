@@ -76,7 +76,7 @@ _PATH_FIELDS = (
     "luck_pool_catalog",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
-_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict", "enable_stamina", "original_mail_shape"}
+_OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "no_interpolated_luck_pools", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict", "enable_stamina", "original_mail_shape"}
 
 
 @dataclass(frozen=True)
@@ -91,6 +91,7 @@ class ServerConfig:
     daily_quests: bool = False
     secondary_worlds: bool = False
     cavern_forest: bool = False
+    no_interpolated_luck_pools: bool = False
     jobs: bool = False
     rebirth: bool = False
     status_items: bool = False
@@ -152,6 +153,7 @@ def load_server_config(path: Path) -> ServerConfig:
     daily_quests = document.get("daily_quests", False)
     secondary_worlds = document.get("secondary_worlds", False)
     cavern_forest = document.get("cavern_forest", False)
+    no_interpolated_luck_pools = document.get("no_interpolated_luck_pools", False)
     jobs = document.get("jobs", False)
     rebirth = document.get("rebirth", False)
     status_items = document.get("status_items", False)
@@ -177,6 +179,7 @@ def load_server_config(path: Path) -> ServerConfig:
         "daily_quests": daily_quests,
         "secondary_worlds": secondary_worlds,
         "cavern_forest": cavern_forest,
+        "no_interpolated_luck_pools": no_interpolated_luck_pools,
         "jobs": jobs,
         "rebirth": rebirth,
         "status_items": status_items,
@@ -195,7 +198,7 @@ def load_server_config(path: Path) -> ServerConfig:
     for field, value in boolean_values.items():
         if type(value) is not bool:
             raise ServerConfigError(f"{field} must be a boolean")
-    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, daily_quests=daily_quests, secondary_worlds=secondary_worlds, cavern_forest=cavern_forest, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, enable_stamina=enable_stamina, original_mail_shape=original_mail_shape, **paths)
+    return ServerConfig(host=host, port=port, core_story=core_story, pacts=pacts, hunting=hunting, daily_quests=daily_quests, secondary_worlds=secondary_worlds, cavern_forest=cavern_forest, no_interpolated_luck_pools=no_interpolated_luck_pools, jobs=jobs, rebirth=rebirth, status_items=status_items, companion_draw=companion_draw, companion_sale=companion_sale, companion_strengthen=companion_strengthen, companion_evolution=companion_evolution, trading_post=trading_post, drop_eligibility=drop_eligibility, achievements=achievements, summon_skills=summon_skills, outcome_strict=outcome_strict, enable_stamina=enable_stamina, original_mail_shape=original_mail_shape, **paths)
 
 
 def _path(value: object, root: Path, field: str, required: bool) -> Path | None:
