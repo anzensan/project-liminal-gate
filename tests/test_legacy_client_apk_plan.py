@@ -22,7 +22,11 @@ from liminal_gate.legacy_client_apk_plan import (
     FINAL_CLIENT_DEX_SHA256,
     GOOGLE_SERVICE_BIND_ACTIONS,
     PLAY_BILLING_BIND_ACTIONS,
+    ARMV7_UNITY_MEMBER,
     DISABLED_BIND_ACTIONS,
+    UNITY_ADVERTISING_ID_ACTION,
+    UNITY_BIND_ACTION_MEMBERS,
+    _disabled_unity_bind_action_patches,
     INERT_ACTION_BYTE,
     _dex_string_table,
     _disabled_bind_action_patches,
@@ -288,11 +292,14 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
             self.assertNotIn(descriptor, DISABLED_BIND_ACTIONS)
 
     def test_the_billing_bind_is_covered(self) -> None:
-        """The action a physical Android 16 device was observed crashing on.
+        """Still neutralized, but no longer believed to be the crash.
 
-        `UnityIAP: Billing service connected.` is the last line before the VM
-        dies. Play Billing is `com.android.vending`, so none of the Play
-        Services actions reach it.
+        A Galaxy S24 FE log put `UnityIAP: Billing service connected.` directly
+        before the fatal and this project read it as the cause. Withdrawn:
+        billing's connection is a real class in the dex, and a class inherits
+        an interface's `default` methods, so it cannot raise this error. Only a
+        `java.lang.reflect.Proxy` can, and Unity makes exactly one -- see
+        `UnityNativeBindPatchTest`. Covering billing costs nothing, so it stays.
         """
         billing = b"com.android.vending.billing.InAppBillingService.BIND"
         self.assertIn(billing, PLAY_BILLING_BIND_ACTIONS)
@@ -307,3 +314,112 @@ class GoogleServiceBindPatchTest(unittest.TestCase):
             set(DISABLED_BIND_ACTIONS),
             set(GOOGLE_SERVICE_BIND_ACTIONS) | set(PLAY_BILLING_BIND_ACTIONS),
         )
+
+
+class UnityNativeBindPatchTest(unittest.TestCase):
+    """The bind that carries the crash, which the dex edits cannot reach.
+
+    Unity's own `libunity.so` binds Play Services from native code to read the
+    advertising ID, using its own copy of the action string. A Galaxy S26 on
+    Android 16 crashed with all eighteen dex actions already rewritten, which is
+    what identified this one: the dex copy was inert and Unity's still resolved.
+    """
+
+    #: Unity's copy sits beside its package name as a separate NUL-terminated
+    #: string rather than a merged suffix. The fixture reproduces that layout so
+    #: a patch that reached into a neighbour would be visible here.
+    NEIGHBOUR = b"com.google.android.gms"
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.root = Path(self.temporary_directory.name)
+        self.payloads = {
+            member: b"\0filler\0" + UNITY_ADVERTISING_ID_ACTION + b"\0" + self.NEIGHBOUR + b"\0"
+            for member in UNITY_BIND_ACTION_MEMBERS
+        }
+        self.source = self.root / "source.apk"
+        with zipfile.ZipFile(self.source, "w") as archive:
+            for member, payload in self.payloads.items():
+                archive.writestr(member, payload)
+        self.digest = patch(
+            "liminal_gate.legacy_client_apk_plan._sha256_member",
+            side_effect=lambda apk, member: UNITY_BIND_ACTION_MEMBERS[member],
+        )
+        self.digest.start()
+        self.addCleanup(self.digest.stop)
+
+    def _apply(self, member: str, patches: list[dict]) -> bytes:
+        payload = bytearray(self.payloads[member])
+        for item in patches:
+            if item["member"] != member:
+                continue
+            offset, expected = item["offset"], bytes.fromhex(item["expected_hex"])
+            self.assertEqual(expected, payload[offset:offset + len(expected)])
+            payload[offset:offset + len(expected)] = bytes.fromhex(item["replacement_hex"])
+        return bytes(payload)
+
+    def test_both_abis_are_patched(self) -> None:
+        """A device running either one makes the same bind."""
+        patches = _disabled_unity_bind_action_patches(self.source)
+        self.assertEqual(
+            sorted(UNITY_BIND_ACTION_MEMBERS), sorted(item["member"] for item in patches),
+        )
+        self.assertEqual(2, len(patches))
+
+    def test_each_is_a_single_byte_edit_of_the_action_head(self) -> None:
+        """The head, not the tail: a C toolchain may tail-merge string literals,
+        so a shorter string can be a pointer into this one's suffix. A head is
+        never shared that way."""
+        for item in _disabled_unity_bind_action_patches(self.source):
+            with self.subTest(member=item["member"]):
+                self.assertEqual(UNITY_ADVERTISING_ID_ACTION[:1].hex(), item["expected_hex"])
+                self.assertEqual(INERT_ACTION_BYTE.hex(), item["replacement_hex"])
+                # Nothing here may repair a dex header; these are ELF members.
+                self.assertNotIn("repair_dex_header", item)
+
+    def test_applying_it_clears_the_action_and_spares_its_neighbour(self) -> None:
+        patches = _disabled_unity_bind_action_patches(self.source)
+        for member in UNITY_BIND_ACTION_MEMBERS:
+            with self.subTest(member=member):
+                patched = self._apply(member, patches)
+                self.assertNotIn(UNITY_ADVERTISING_ID_ACTION, patched)
+                self.assertIn(INERT_ACTION_BYTE + UNITY_ADVERTISING_ID_ACTION[1:], patched)
+                # The package name is a separate string and must survive intact.
+                self.assertIn(b"\0" + self.NEIGHBOUR + b"\0", patched)
+                self.assertEqual(len(self.payloads[member]), len(patched))
+
+    def test_refuses_a_member_that_was_not_reviewed(self) -> None:
+        with patch(
+            "liminal_gate.legacy_client_apk_plan._sha256_member", return_value="0" * 64,
+        ):
+            with self.assertRaises(PlanGenerationError) as raised:
+                _disabled_unity_bind_action_patches(self.source)
+        self.assertIn("does not match the supported final client", str(raised.exception))
+
+    def test_refuses_a_member_carrying_the_action_twice(self) -> None:
+        """Two would mean a second call site this reasoning never looked at."""
+        member = ARMV7_UNITY_MEMBER
+        doubled = self.root / "doubled.apk"
+        with zipfile.ZipFile(doubled, "w") as archive:
+            for name, payload in self.payloads.items():
+                archive.writestr(
+                    name, payload + UNITY_ADVERTISING_ID_ACTION + b"\0" if name == member else payload,
+                )
+        with self.assertRaises(PlanGenerationError) as raised:
+            _disabled_unity_bind_action_patches(doubled)
+        self.assertIn("exactly once, found 2", str(raised.exception))
+
+    def test_refuses_a_member_missing_the_action(self) -> None:
+        empty = self.root / "empty.apk"
+        with zipfile.ZipFile(empty, "w") as archive:
+            for name in self.payloads:
+                archive.writestr(name, b"\0nothing here\0")
+        with self.assertRaises(PlanGenerationError) as raised:
+            _disabled_unity_bind_action_patches(empty)
+        self.assertIn("exactly once, found 0", str(raised.exception))
+
+    def test_the_dex_carries_its_own_separate_copy(self) -> None:
+        """Both copies exist and both must be rewritten; patching either alone
+        leaves a live bind. This is the defect the S26 report exposed."""
+        self.assertIn(UNITY_ADVERTISING_ID_ACTION, DISABLED_BIND_ACTIONS)

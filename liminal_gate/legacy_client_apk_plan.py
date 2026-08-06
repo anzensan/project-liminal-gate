@@ -142,16 +142,6 @@ GOOGLE_SERVICE_BIND_ACTIONS = (
     b"com.google.android.gms.signin.service.START",
 )
 
-# The bind that was actually observed crashing an Android 16 device, and the
-# reason this flag exists. A physical Galaxy S24 FE log ends:
-#
-#   W ServiceBindIntentUtils: Dynamic lookup for intent failed for action: ...
-#   I UnityIAP: Billing service connected.
-#   D AndroidRuntime: Shutting down VM
-#   E AndroidRuntime: FATAL EXCEPTION: main
-#     java.lang.NoSuchMethodError: ...ServiceConnection.onServiceConnected(
-#       ComponentName, IBinder, IBinderSession)
-#
 # Play Billing lives in `com.android.vending`, a different package from Play
 # Services, so none of the actions above affect it. Nothing is given up: the
 # store this talked to has been retired for years, and `IAP_MODAL_PATCHES`
@@ -160,15 +150,76 @@ GOOGLE_SERVICE_BIND_ACTIONS = (
 #
 # `MarketBillingService.BIND` is the retired v2 billing endpoint, included for
 # the same reason and by the same evidence about the store being gone.
+#
+# **These two are not the crash.** A Galaxy S24 FE log showed `UnityIAP:
+# Billing service connected.` immediately before the fatal and this project
+# read it as the cause; that reading is withdrawn. Billing's connection is
+# `com.unity.purchasing.googleplay.BillingServiceManager$1`, a real class in
+# `classes.dex`, and a class *inherits* an interface's `default` methods. Only
+# a `java.lang.reflect.Proxy` routes them to its handler, so only a Proxy can
+# raise this error. Twelve classes in the dex implement `ServiceConnection` and
+# every one of them is a genuine class, which leaves none of them able to throw
+# it. They stay neutralized because they cost nothing to neutralize, not
+# because they were ever the fault.
 PLAY_BILLING_BIND_ACTIONS = (
     b"com.android.vending.billing.InAppBillingService.BIND",
     b"com.android.vending.billing.MarketBillingService.BIND",
 )
 
-#: Every action the flag neutralizes. Kept as two named tuples above because
-#: the evidence differs: billing is confirmed by a device log, while the Play
-#: Services set is inference from the same crash mechanism.
+#: Every dex action the flag neutralizes. Kept as two named tuples above
+#: because the evidence differs, though neither set is now believed to carry
+#: the crash — see `UNITY_ADVERTISING_ID_ACTION`, which does.
 DISABLED_BIND_ACTIONS = GOOGLE_SERVICE_BIND_ACTIONS + PLAY_BILLING_BIND_ACTIONS
+
+
+# The bind that actually crashes, and the one the dex edits above cannot reach.
+#
+# Unity's own `libunity.so` binds Play Services from native code to read the
+# advertising ID. It carries its own copy of the action, its own AIDL
+# descriptor, and its own failure messages, none of which live in `classes.dex`:
+#
+#   com.google.android.gms.ads.identifier.service.START
+#   com.google.android.gms
+#   com.google.android.gms.ads.identifier.internal.IAdvertisingIdService
+#   Failed to obtain GoogleAdsId from GooglePlayService
+#   Cannot bind to GooglePlayService.
+#
+# and beside them the JNI method table it builds the connection proxy from,
+# which declares exactly one connect method:
+#
+#   android/content/ServiceConnection
+#     onServiceConnected  (Landroid/content/ComponentName;Landroid/os/IBinder;)V
+#
+# That is the whole defect. Unity creates this `ServiceConnection` as a
+# `java.lang.reflect.Proxy` through `bitter.jnibridge`; Android 16's three-
+# argument overload is a `default` method, a Proxy hands every interface method
+# to its handler rather than inheriting it, and the 2017 bridge has no such
+# signature. A physical Galaxy S26 on Android 16 crashed exactly this way with
+# all eighteen dex actions already rewritten, which is what identified it: the
+# dex copy was inert and Unity's own copy still resolved.
+#
+# Unlike the dex, an ELF `.rodata` string has no ordering to preserve, so any
+# byte will do. The *first* is taken rather than the last because a C toolchain
+# may tail-merge string literals — a shorter string can be a pointer into this
+# one's suffix — and the head of a string is never shared that way. In the
+# reviewed build the neighbouring `com.google.android.gms` is a separate,
+# adjacent, NUL-terminated string rather than a merged suffix, so nothing here
+# is shared either way; patching the head keeps that true for a build where it
+# might not be.
+#
+# Nothing is lost. The advertising ID is analytics for a service retired years
+# ago, and Unity already handles the bind failing — `Cannot bind to
+# GooglePlayService.` is its own message for exactly this path.
+UNITY_ADVERTISING_ID_ACTION = b"com.google.android.gms.ads.identifier.service.START"
+ARMV7_UNITY_MEMBER = "lib/armeabi-v7a/libunity.so"
+FINAL_ARMV7_UNITY_SHA256 = "c5e1eae55f03d0bca06d11fd5eae523c2ba49a8189e83bd1475ffeff16cd974d"
+#: Member to the digest that proves which build its offset was read out of.
+#: Both ABIs ship the string once, and both are patched: a device running
+#: either one makes the same bind.
+UNITY_BIND_ACTION_MEMBERS = {
+    ARM64_UNITY_MEMBER: FINAL_ARM64_UNITY_SHA256,
+    ARMV7_UNITY_MEMBER: FINAL_ARMV7_UNITY_SHA256,
+}
 
 
 def _dex_string_table(data: bytes) -> list[tuple[int, bytes]]:
@@ -236,6 +287,43 @@ def _disabled_bind_action_patches(source_apk: Path) -> list[dict[str, object]]:
     return patches
 
 
+def _disabled_unity_bind_action_patches(source_apk: Path) -> list[dict[str, object]]:
+    """Neutralize the advertising-ID bind Unity's own native code makes.
+
+    Offsets are read from each member rather than recorded, for the same reason
+    the dex builder reads its own: the digest guard is then the single source of
+    truth about which build this applies to, and a stale table cannot disagree
+    with it in silence. Requiring exactly one occurrence is part of that -- two
+    would mean a second call site this reasoning never looked at.
+    """
+    patches: list[dict[str, object]] = []
+    for member, expected_sha256 in UNITY_BIND_ACTION_MEMBERS.items():
+        actual = _sha256_member(source_apk, member)
+        if actual != expected_sha256:
+            raise PlanGenerationError(
+                f"selected APK's {member} does not match the supported final client "
+                f"(member SHA-256 {actual}); refusing to rewrite bytes that were not reviewed"
+            )
+        with zipfile.ZipFile(source_apk) as archive:
+            data = archive.read(member)
+        found = [
+            offset for offset in range(len(data))
+            if data.startswith(UNITY_ADVERTISING_ID_ACTION, offset)
+        ]
+        if len(found) != 1:
+            raise PlanGenerationError(
+                f"reviewed {member} must contain "
+                f"{UNITY_ADVERTISING_ID_ACTION.decode()} exactly once, found {len(found)}"
+            )
+        patches.append({
+            "member": member,
+            "offset": found[0],
+            "expected_hex": UNITY_ADVERTISING_ID_ACTION[:1].hex(),
+            "replacement_hex": INERT_ACTION_BYTE.hex(),
+        })
+    return patches
+
+
 def _sha256_member(source_apk: Path, member: str) -> str:
     digest = hashlib.sha256()
     with zipfile.ZipFile(source_apk) as archive:
@@ -298,9 +386,11 @@ def generate_legacy_client_plan(
     """Generate only local routing edits for a selected APK.
 
     `disable_google_services` additionally makes the client's Play Services bind
-    actions unresolvable. It is off by default: it edits client bytes that no
-    other supported path touches, and it exists for devices whose Android
-    version crashes on the bind. See `DISABLED_BIND_ACTIONS`.
+    actions unresolvable, in the dex and in Unity's own native runtime. It is
+    off by default: it edits client bytes that no other supported path touches,
+    and it exists for devices whose Android version crashes on the bind. See
+    `DISABLED_BIND_ACTIONS` and `UNITY_ADVERTISING_ID_ACTION` -- the second is
+    the one that carries the crash.
     """
     origin = normalize_server_origin(server_origin)
     unity_sha256 = _sha256_member(source_apk, ARM64_UNITY_MEMBER)
@@ -330,6 +420,7 @@ def generate_legacy_client_plan(
     )
     if disable_google_services:
         plan["patches"].extend(_disabled_bind_action_patches(source_apk))
+        plan["patches"].extend(_disabled_unity_bind_action_patches(source_apk))
     plan["text_asset_json_aliases"] = [COIN_CREEPS_BANNER_ALIASES]
     return plan
 
