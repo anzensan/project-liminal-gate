@@ -923,9 +923,13 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   `user-data/local-server-plan.json` must not be used either -- it is rewritten
   by every setup run, so it describes the last build rather than the installed
   one. The installed APK is the only authority; see the troubleshooting guide.
-- **Pending.** Physical confirmation that the extended flag clears the crash.
-  The dex half stays, at no cost, rather than being removed on the strength of
-  this reasoning alone.
+- **Pending, and narrower than it looks.** Physical confirmation that the
+  extended flag clears the crash. An on-device combined APK is confirmed running
+  on an Android 16 Galaxy S26, and that does *not* close this: the host guard
+  catches the callback whatever caused the bind, so the self-hosted route
+  survived this crash before the patch existed. Only a separate-server build,
+  which has no guard, can close it. The dex half stays, at no cost, rather than
+  being removed on the strength of this reasoning alone.
 
 ## 2026-08-06: Orbling Cavern and Cryptid Forest were gated behind a prefix scan
 
@@ -992,6 +996,14 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   the Hunting transaction. Per-section flags rather than chapter-level ones do
   both jobs at once: each answers its own card's `CheckQuestFlag` directly, and
   each also carries the prefix its map point scans.
+- **Confirmed on hardware.** An operator reached both map points, opened both
+  two-card selectors, cleared Orbling Cavern and received its Companion, and
+  cleared Cryptid Forest with its job materials and Luck settling. The recovered
+  identities, the two prefixes, the `openChapter` thresholds, the hardcoded
+  selector lists, and the `dropBuddies` decode are therefore all confirmed by
+  the original client rather than by derivation alone. It also settles the
+  `battleCnt` question outright: Orbling Cavern declares zero battles and is
+  playable, so that field does not mark a placeholder.
 
 ## 2026-08-05: Chapter 7010 is Cryptid Forest, and its Lucky enemy is a Runner
 

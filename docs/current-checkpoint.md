@@ -28,8 +28,10 @@ so four stages. `--cavern-forest` sends the four per-section flags once an
 account passes the client's own `openChapter`, and the stages settle through the
 Hunting transaction as unadvertised rows -- `UISpecialSelect` modes 1 and 2 read
 hardcoded lists and never consult a served one, so the server opens the door and
-nothing more. Physical-client confirmation of both selectors and of the Orbling
-Cavern Companion award remains pending.
+nothing more. Physical-client confirmation is complete: an operator
+opened both map points and both two-card selectors, cleared Orbling Cavern
+and received its Companion, and cleared Cryptid Forest with its job
+materials and Luck settling.
 
 Latest Android-host correction: the Android 16 launch crash is Unity's own
 advertising-ID bind, not Play Billing. A Galaxy S26 crashed with all eighteen
@@ -41,7 +43,10 @@ routes an interface's `default` methods to its handler while an ordinary class
 inherits them. All twelve classes in the client dex implementing
 `ServiceConnection` are ordinary classes, which retracts the earlier attribution
 to Play Billing. The flag now patches both `libunity.so` members. Physical
-confirmation that the extended flag clears the crash remains pending.
+confirmation that the extended flag clears the crash remains pending: an
+on-device combined APK runs on an Android 16 S26, but its host guard catches the
+callback whatever caused the bind, so only a separate-server build can close
+this.
 
 Latest Luck-state correction: a user report that every character returned to
 zero after a battle matches a confirmed final-client wire detail: valid

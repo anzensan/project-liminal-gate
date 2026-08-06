@@ -87,7 +87,9 @@ machine-readable/current capability boundary.
   answer it on that route and the generated plan must not be used, since it is
   rewritten by every setup run and describes the last build rather than the
   installed one. Physical confirmation that the extended flag clears the crash
-  is pending.
+  is pending, and an on-device Android 16 run does not supply it: that route's
+  host guard catches the callback whatever caused the bind, so only a
+  separate-server build can close it.
 
 
 - 2026-08-06 Orbling Cavern and Cryptid Forest reached. Repeated tester reports
@@ -120,8 +122,11 @@ machine-readable/current capability boundary.
   the binary carries a `ChapterNNNN` class. Thirty-six focused tests cover the
   data policy, the flag gate and prefix property, real-HTTP entry, settlement,
   replay across restart, refusal without stranding the battle, and the same
-  transactions again under `--outcome-strict`. Physical-client confirmation of
-  both selectors and of the Companion award remains pending.
+  transactions again under `--outcome-strict`. Physical-client confirmation is complete: an
+  operator opened both map points and both two-card selectors on hardware,
+  cleared Orbling Cavern and received its Companion, and cleared Cryptid
+  Forest with its job materials and Luck settling. Every claim these four
+  stages carried is now closed.
 
 
 - 2026-08-05 Issue 46 Strikes Back settlement: the first observed Counter
