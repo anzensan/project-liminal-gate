@@ -183,6 +183,7 @@ from liminal_gate.luck_runtime import (
     roll_luck_result,
     roll_luck_up_table,
 )
+from liminal_gate.luck_pool_catalog import LuckPoolCatalog, LuckPoolCatalogError, load_luck_pool_catalog
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 from liminal_gate.world_map_special import (
@@ -2589,7 +2590,7 @@ class BootstrapState:
     def apply_generic_story_start(
         self, token: str, request_id: str, body: bytes, catalog: StoryCatalog | StoryProgressionCatalog | EventCatalog,
         settlement_catalog: SettlementCatalog | None = None, now: float | None = None,
-        *, stamina: bool = False,
+        *, stamina: bool = False, luck_pool_catalog: LuckPoolCatalog | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Start one catalog-declared local story stage after the tutorial."""
         now = time.time() if now is None else now
@@ -2669,7 +2670,7 @@ class BootstrapState:
             # the request identity so a retry cannot re-roll a better chest.
             luck_slots = roll_luck_result(
                 stage.chapter, stage.section, party_team_luck(userdata),
-                request_id, body_hash,
+                request_id, body_hash, catalog=luck_pool_catalog,
             )
             # 2006 Lucia and 7010 Cryptid Forest reach the client through this
             # handler rather than the Hunting one, so the `allowLucky` source
@@ -3171,6 +3172,7 @@ class BootstrapServer(ThreadingHTTPServer):
         daily_quests: bool = False,
         secondary_worlds: bool = False,
         cavern_forest: bool = False,
+        luck_pool_catalog: LuckPoolCatalog | None = None,
         world_map_special_catalog: WorldMapSpecialCatalog | None = None,
         public_data_root: Path | None = None,
         outcome_strict: bool = False,
@@ -3223,6 +3225,7 @@ class BootstrapServer(ThreadingHTTPServer):
         self.daily_quests = daily_quests
         self.secondary_worlds = secondary_worlds
         self.cavern_forest = cavern_forest
+        self.luck_pool_catalog = luck_pool_catalog
         # The client always draws a stamina bar -- it is `ServerConstants` and
         # local `UserData`, not a server-side UI this server could remove.  Off
         # therefore means the meter is pinned full: entry debits nothing and
@@ -3858,6 +3861,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return (
                 state.apply_generic_story_start(
                     token, request_id, body, catalog, stamina=self.server.stamina,
+                    luck_pool_catalog=self.server.luck_pool_catalog,
                 )
                 if catalog is not None
                 else ("unsupported_start_quest", None)
@@ -5420,6 +5424,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--daily-quests", action="store_true", help="enable the fourteen recovered Daily Quest stages with bounded local settlement")
     parser.add_argument("--secondary-worlds", action="store_true", help="enable the BreaSoul and Five Emperors secondary world maps with bounded local settlement")
+    parser.add_argument("--luck-pool-catalog", type=Path, help="operator-supplied Luck Treasure Chest pools for stages the community record does not document; see liminal_gate/luck_pool_catalog.py")
     parser.add_argument("--cavern-forest", action="store_true", help="enable Orbling Cavern and Cryptid Forest, the two standing World 1 areas, with bounded local settlement")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
     parser.add_argument("--rebirth", action="store_true", help="enable the bundled local Rebirth recipe policy")
@@ -5447,6 +5452,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_equipment_catalog", "companion_strengthen_catalog",
         "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "event_catalog", "character_catalog", "hunting_catalog",
         "achievement_catalog", "message_catalog", "exchange_catalog",
+        "luck_pool_catalog",
     )
     flag_fields = (
         "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "jobs", "rebirth", "status_items",
@@ -5608,6 +5614,7 @@ def build_server(
                 hunts = HuntingCatalog(areas, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
             else:
                 hunts = replace(hunts, stages=hunts.stages + areas)
+        luck_pools = None if args.luck_pool_catalog is None else load_luck_pool_catalog(args.luck_pool_catalog)
         if args.achievements and args.achievement_catalog is not None:
             raise ProfileError("--achievements cannot be combined with --achievement-catalog")
         achievements = build_bundled_achievement_policy() if args.achievements else (None if args.achievement_catalog is None else load_achievement_catalog(args.achievement_catalog))
@@ -5652,6 +5659,7 @@ def build_server(
             daily_quests=args.daily_quests,
             secondary_worlds=args.secondary_worlds,
             cavern_forest=args.cavern_forest,
+            luck_pool_catalog=luck_pools,
             public_data_root=args.public_data_root,
             outcome_strict=getattr(args, "outcome_strict", False),
             companion_equipment_catalog=companion_equipment,

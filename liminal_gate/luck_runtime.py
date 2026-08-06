@@ -22,6 +22,8 @@ community record's -- so only the slope between them is chosen.
 
 from __future__ import annotations
 
+from typing import Any
+
 import hashlib
 import random
 
@@ -89,17 +91,28 @@ def party_team_luck(userdata: dict) -> int:
 
 def roll_luck_result(
     chapter: int, section: int, team_luck_tenths: int, *seed: object,
+    catalog: Any = None,
 ) -> list[str]:
     """Return the six chest slots for one battle, in the client's order.
 
     A stage with no documented pool for a tier yields an empty slot rather than
     an invented reward, so most of the game returns six empty slots. That is a
     limit of the record, not a claim that those stages had no chests.
+
+    ``catalog`` is an operator's own `LuckPoolCatalog`, which answers for the
+    stages it names and defers to the record for the rest. Note that a pool's
+    *size* is part of the draw, so supplying one changes which reward a given
+    seed selects from that tier -- but only within that tier, because each tier
+    draws whether or not it can pay out.
     """
     generator = _seeded("luckResult", chapter, section, team_luck_tenths, *seed)
     slots: list[str] = []
     for tier in CHEST_TIERS:
-        pool = pool_for(chapter, section, tier.name)
+        pool = (
+            catalog.pool_for(chapter, section, tier.name)
+            if catalog is not None
+            else pool_for(chapter, section, tier.name)
+        )
         chance = tier.probability(team_luck_tenths)
         # Draw for every tier whether or not it can pay out, so that adding a
         # pool later cannot shift the rolls of the tiers beside it.
