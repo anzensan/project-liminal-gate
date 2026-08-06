@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-08-04
+Date: 2026-08-06
 
 Mode: public-release implementation hardening and private on-device packaging.
 
@@ -17,6 +17,31 @@ Fast validation lane:
 PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest discover -s tests -v
 python3 -m compileall -q liminal_gate tests
 ```
+
+Latest reachability correction: Orbling Cavern and Cryptid Forest, the two
+standing World 1 areas, had never appeared for any tester. The client builds
+each map point only when `EventManager.IsEnabledAny` finds an enabled flag under
+`sp_ch_700` or `sp_ch_701`, a prefix scan over the served `eventFlags`, and no
+key under either had ever been sent. `ChapterInterface::.cctor` identifies
+7000--7009 and 7010--7019 as the two ranges; only 7000 and 7010 carry sections,
+so four stages. `--cavern-forest` sends the four per-section flags once an
+account passes the client's own `openChapter`, and the stages settle through the
+Hunting transaction as unadvertised rows -- `UISpecialSelect` modes 1 and 2 read
+hardcoded lists and never consult a served one, so the server opens the door and
+nothing more. Physical-client confirmation of both selectors and of the Orbling
+Cavern Companion award remains pending.
+
+Latest Android-host correction: the Android 16 launch crash is Unity's own
+advertising-ID bind, not Play Billing. A Galaxy S26 crashed with all eighteen
+`--disable-google-services` dex edits verified applied; `libunity.so` carries its
+own copy of `com.google.android.gms.ads.identifier.service.START`, once per ABI,
+that no dex edit reaches, and builds its `ServiceConnection` as a
+`java.lang.reflect.Proxy` -- the only kind here that fails, because a Proxy
+routes an interface's `default` methods to its handler while an ordinary class
+inherits them. All twelve classes in the client dex implementing
+`ServiceConnection` are ordinary classes, which retracts the earlier attribution
+to Play Billing. The flag now patches both `libunity.so` members. Physical
+confirmation that the extended flag clears the crash remains pending.
 
 Latest Luck-state correction: a user report that every character returned to
 zero after a battle matches a confirmed final-client wire detail: valid
