@@ -1094,3 +1094,54 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   does not matter, which bears on the invented 0.5 the Orbling chapters still
   use. It is a dated primary source about a mechanic this server approximates;
   acting on it needs its own derivation.
+
+## 2026-08-06: the Fellowship pool was flat, and one of its IDs named nobody
+
+The bundled Fellowship roster was a single sorted tuple with no availability
+data, so every member was drawable from the first pull. The community wiki's
+"Availability by Chapter" table (operator-approved, `Pact of Fellowship`, in
+the sense of `external-quest-reference-ledger.md`) describes the pool as
+cumulative instead: completing a chapter adds that chapter's characters and
+keeps every earlier one. Roughly half the roster was therefore reachable
+earlier than the record says it should be — 54 of 103 members open at
+Chapter 1, the remaining 49 spread across 21 later gates through Chapter 38.
+
+- **Applied as bounded policy.** Each member now carries the earliest chapter
+  that can draw it, and the draw route filters on `chapter_for_progress` of the
+  account's own `progressCode` — the same `_chapterNo` low bits that already
+  gate achievement claims and stage entry, not a new progress notion. Same
+  evidence class as the rates alongside it: community record for a retired
+  service, no APK table to cross-validate, because the server owned pool
+  selection entirely. Truth carries no comparable availability record, so its
+  pool stays whole rather than borrowing Fellowship's curve, and a
+  user-supplied schema version 1 catalog has no availability data to honour, so
+  an operator's pool is still served whole — the same restraint the Fate/Luck
+  refusal in the draw route already applies.
+
+- **Corrected: character ID 122 was not a character.** The roster carried 122,
+  which names nothing in the decoded name table and appears in no character
+  catalog; 126 (Megacell, Chapter 15, class B) was absent. The surrounding run
+  is 123/124/128 against a wiki cluster of Regenercell, Mechavirus 3721,
+  Megacell, Wastecell, so this reads as a transcription slip of 126 to 122.
+  Megacell was unobtainable from Fellowship, and roughly one pull in 103 minted
+  a `chrdata` row for a character the client has no master data for.
+
+- **What found it, and what now enforces it.** A count check passes on the
+  broken table — 103 against 103. The error surfaced only by resolving the
+  wiki's *names* to IDs through the operator's decoded name table and then
+  cross-checking each matched ID's recovered `rarity` against the wiki's class
+  column, under the D/C/B/A/S/SS/Z = 2--8 banding this bundle already
+  documents. All 103 agree on class, which is what makes the roster itself
+  corroborated rather than merely transcribed. `validate_bundled_pools` now
+  refuses to start a Pact-enabled server when any bundled pool member does not
+  resolve in the operator's own character catalog. It is deliberately not part
+  of `build_bundled_pact_policy`, which stays tolerant of a partial mapping:
+  an unclassifiable member is a documented gap in *weighting* policy, whereas
+  an unresolvable one is an inconsistency between two documents describing the
+  same client, and this project fails those visibly.
+
+- **Not addressed.** Whether Truth has its own availability curve is unread;
+  its pool resolves completely (122 of 122) against the operator's catalog, so
+  only membership timing is open. The wiki's own caveat — that Pact
+  availability is not the same as where a monster can be recruited in game —
+  means this table bounds the Pact and nothing else.

@@ -80,6 +80,23 @@ card fix, which says so in its own text.
   replay returns the cached payload and cannot grant twice, and the grant
   survives a restart.
 
+- **One Pact of Fellowship slot was a character that does not exist.** The
+  bundled roster listed ID 122, which names nothing in the client's own decoded
+  name table and appears in no character catalog, while 126 — Megacell — was
+  missing entirely. Megacell was unobtainable from the Pact, and roughly one
+  pull in 103 handed back a character the client has no data for.
+
+  A count check could never have caught it: 103 IDs listed, 103 expected. It
+  surfaced by resolving the community record's *names* into IDs and then
+  checking each one's recovered class against the class the record printed. All
+  103 now agree, which corroborates the roster rather than merely transcribing
+  it. The neighbouring entries are 123, 124 and 128 against a documented cluster
+  of Regenercell, Mechavirus 3721, Megacell and Wastecell, so 122 was a slip of
+  the pen for 126.
+
+  A Pact-enabled server now refuses to start if any pool member fails to resolve
+  in your own character catalog, rather than waiting for someone to draw it.
+
 ### Added
 
 - **Chests now appear across the whole game, not only the thirty documented
@@ -196,6 +213,32 @@ card fix, which says so in its own text.
   book was monotonic — whether selling your last copy of a Companion should
   forget it. Every path here derives the book from what is currently owned, so
   it does forget, and that behaviour is unchanged rather than newly decided.
+
+### Changed
+
+- **The Pact of Fellowship now opens up as you play, instead of all at once.**
+  The bundled pool was flat: a brand-new account could pull Ancient Sadness or
+  Giant Nega — Chapter 38 characters — on its first 3,000-Coin draw. The
+  community record describes the pool as cumulative instead, each chapter adding
+  its own characters and keeping every earlier one, and roughly half the roster
+  was reachable ahead of that. Fifty-four of the 103 members are available at
+  Chapter 1; the other forty-nine arrive across twenty-one gates up to
+  Chapter 38.
+
+  Each member now carries the earliest chapter that can draw it, and a draw is
+  filtered against your account's own story progress — the same chapter reading
+  that already gates achievement claims and stage entry, not a new notion of
+  progress. Fellowship Tickets pay differently but draw the same gated pool.
+
+  **Two pools are deliberately left alone.** The Pact of Truth keeps its full
+  roster: no comparable availability record was found for it, and borrowing
+  Fellowship's curve would be inventing one. An operator-supplied catalog also
+  keeps its pool whole, because a schema version 1 catalog carries no
+  availability data to honour — the same restraint that already stops such a
+  catalog from silently acquiring a Fate/Luck policy.
+
+  This does not touch selection *odds*, which remain uniform within the pool and
+  remain local policy rather than recovered service values.
 
 ## 1.0.5 — 2026-08-06
 
