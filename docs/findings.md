@@ -1181,10 +1181,24 @@ Chapter 1, the remaining 49 spread across 21 later gates through Chapter 38.
   structural: a transcription error in either document now shows up as a group
   of the wrong size, and a test asserts the five counts.
 
-- **Not addressed.** The displayed table also carried a per-Companion rate, and
-  a pool that shrank as members hit 100% Skill Boost and left it. Neither
-  survives in the record, so an even split within a class remains local policy,
-  the same caveat the Pact of Truth shares carry. The normal pool stays uniform
+- **Not addressed.** The displayed table also carried a per-Companion rate,
+  which does not survive in the record, so an even split within a class remains
+  local policy — the same caveat the Pact of Truth shares carry.
+
+- **Does not apply here, unlike the character Pact.** The Pact of Truth shares
+  carry a second caveat, that the pool shrank as characters hit 100% Skill
+  Boost and left it, redistributing their share. That one is implemented, in
+  the Pact draw route: selection runs over an `eligible` list filtered on the
+  account's own `skillBoost` against `max_skill_boost` — or `luck` against
+  `max_luck` for Fate — and an exhausted pool answers `errorCode` 3. It has no
+  Companion counterpart because Companions have no Skill Boost to cap. Their
+  owned record is `bid`/`lv`/`date`/`iid`/`exp`/`flag`/`chrID`, and they are
+  instanced rather than unique per master: a draw mints a new `iid` and an
+  account may hold a thousand, so no per-master state exists that could max out
+  and leave the pool. Companion strengthening is levels and EXP through the
+  same-Companion and ByeBye multipliers, a different mechanic entirely.
+
+- **Also not addressed.** The normal pool stays uniform
   deliberately: no displayed-rate record was found for it, and its two classes
   are near-evenly sized, so a uniform draw is already close to whatever the
   service did.
