@@ -423,7 +423,7 @@ catalog is passed at launch:
 | `--companion-equipment-catalog` | user-derived character-family and active-job species restrictions for new Companion equip links |
 | `--companion-strengthen-catalog` | Companion EXP and bonus policy |
 | `--companion-evolution-catalog` | Companion evolution recipes |
-| `--companion-draw-catalog` | local Companion draw pool and costs |
+| `--companion-draw-catalog` | local Companion rare-slot pool and costs (the Coin-priced normal-slot pool has no schema version 1 shape; `--companion-draw` carries it) |
 | `--pact-draw-catalog` | ordinary Pact pool, cost, and duplicate policy |
 
 All mutations are designed to persist local state and replay an identical
@@ -498,7 +498,7 @@ local installation.
 | `--jobs` | 284 job-unlock rows across 142 characters: Coin and material costs |
 | `--rebirth` | all 65 Rebirth recipes, with Joker Lambda as character 1018 |
 | `--status-items` | the 7 status-up items and per-character Luck ceilings |
-| `--companion-draw` | the 114-Companion rare-slot pool, ticket item, and Energy fallback |
+| `--companion-draw` | both Companion pools -- 114 rare-slot and 81 normal-slot -- with their two ticket items, the Coin price, and the Energy fallback |
 | `--companion-sale` | base Coin values for all 497 Companion masters |
 | `--companion-strengthen` | progression values for all 497 masters, plus the same-Companion and ByeBye multipliers |
 | `--companion-evolution` | all 153 evolution recipes, including the two duplicate-consuming Metal Minions |

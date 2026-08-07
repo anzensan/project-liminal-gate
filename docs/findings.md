@@ -489,14 +489,32 @@ Private inputs, captures, account state, and original assets remain excluded.
   with `luckType=true`. The bundled archive policy uses the corresponding
   Fellowship/Truth pool and level-plus-Luck duplicates. Its Luck increment and
   ceiling are explicit local policy, not recovered production odds.
-- **Confirmed statically and by real-HTTP replay/restart regression; original
-  client acceptance pending:** `NormalItem=20` is the exact one-draw Item 81
-  Fellowship Ticket payment form. It reuses the Fellowship pool for ordinary
-  Skill Boost draws and the Fellowship-side Fate Luck policy when
-  `luckType=true`, spends no Coins or Energy, and returns the post-spend
-  `itemList`. Coin Fellowship draws are refused while a ticket remains because
-  no mixed ticket/coin batch is recovered. Campaign/event selectors remain
-  outside this boundary.
+- **Confirmed statically and by real-HTTP replay/restart regression; a
+  one-result-only reading of it was refuted by original-client reports:**
+  `NormalItem=20` is the Item 81 Fellowship Ticket payment form. It reuses the
+  Fellowship pool for ordinary Skill Boost draws and the Fellowship-side Fate
+  Luck policy when `luckType=true`, spends no Coins or Energy, and returns the
+  post-spend `itemList`. Coin Fellowship draws are refused while a ticket
+  remains because no mixed ticket/coin batch is recovered. Campaign/event
+  selectors remain outside this boundary. The form is **not** limited to one
+  result: the single capture behind that earlier reading was a one-ticket
+  press, and `UIBarSlot.OnClickNormalBulk`/`OnClickNormalBulk2` reach the same
+  `SlotKind.NormalItem` through the ten-pull control, with `InitChrMenu`
+  sizing the batch from the held Item 81 count (`numNormalSlot`, capped at
+  ten). Testers reported Network Error on every multi-ticket press, which is
+  what a `count>1` refusal looks like from the client's side.
+- **Confirmed statically; original-client acceptance reported:** the Companion
+  page posts four payment variants to `do_buddy_slot`, not two.
+  `UIBarSlot.OnClickBuddyNormal`/`OnClickBuddyNormalBulk` read
+  `NormalSlotItemId` (Item 81) and post `SlotKind.Normal` (0) or
+  `NormalItem` (20); `OnClickBuddyRare`/`OnClickBuddyRareBulk` read
+  `BuddySlotItemId` (Item 112) and post `Rare` (1) or `BuddyItem` (21). The
+  two pools are the `SlotKind` members of BuddyDatabase: 81 records at
+  `Normal` for the Coin pull, 114 at `Rare` for the Energy pull, disjoint. A
+  server accepting only the rare pair answered every Fellowship Ticket press
+  on the Companion page with an unsigned 501, which the client shows as
+  Network Error -- the reported symptom, and unlike the character page it had
+  no working single-press path to fall back on.
 - **Confirmed by a migrated-state transport regression:** original-client
   `chrdata` stores packed level/EXP values as integral JSON doubles. Pact draws
   now preserve those packed values and full roster records while returning the

@@ -62,10 +62,13 @@ Fellowship keeps uniform selection because no comparable record of its rates was
 found. If you have a better-sourced table, `--pact-draw-catalog` replaces the
 bundled one.
 
-The exact `kind=20,count=1` form spends one Item 81 Fellowship Ticket before
+The `kind=20` form spends one Item 81 Fellowship Ticket per result before
 Coins, for either an ordinary Fellowship draw or its `luckType=true` Fate
-variant. Mixed ticket/coin batches, campaign Pacts, and event-specific Pacts
-remain unsupported.
+variant, in batches of one through ten exactly as the Coin and Energy forms
+allow. The same ticket pays for the Coin-priced Companion pull on the
+Companion page (`do_buddy_slot`), which draws the 81 normal-slot Companions.
+Mixed ticket/coin batches, campaign Pacts, and event-specific Pacts remain
+unsupported.
 
 Ordinary clear results use the client-reported local result; the server does
 **not** bundle an original reward/drop table. Unusual scripted stages may still

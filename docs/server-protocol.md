@@ -86,15 +86,32 @@ Original-client Bahl navigation beyond the first result remains an acceptance
 boundary rather than a confirmed public capture.
 
 The permanent Fellowship Ticket form is
-`kind=20&count=1&luckType=<false|true>&campaignChrID=0&eventFlag=0&lastUpdate=1`.
+`kind=20&count=<1..10>&luckType=<false|true>&campaignChrID=0&eventFlag=0&lastUpdate=<n>`.
 Item 81 pays for the existing Fellowship pool: ordinary draws use the local
 Skill Boost duplicate policy, while `luckType=true` uses the Fellowship-side
-Fate Luck policy. A successful transaction consumes exactly one ticket,
-returns the post-spend `itemList`, and does not charge Coins or Energy. A
+Fate Luck policy. A successful transaction consumes exactly one ticket per
+result, returns the post-spend `itemList`, and does not charge Coins or Energy.
+The ticket is not a one-at-a-time form: `UIBarSlot` wires its ten-pull control
+to `SlotKind.NormalItem` too, and `InitChrMenu` sizes that batch from the held
+Item 81 count, so a player holding three tickets posts `count=3`. A batch
+larger than the tickets still held is refused whole rather than part-paid. A
 Fellowship-side coin draw is refused while a ticket remains because no mixed
 ticket/coin batch has been recovered. Missing-ticket error 2 is compatibility
 policy pending a live refusal capture. Nonzero campaign/event selectors remain
 unsupported.
+
+`do_buddy_slot` carries the same four payment variants for Companions, in the
+one form `kind=<0|1|20|21>&count=<n>&campaignID=0&eventFlag=0&lastUpdate=<n>`.
+`SlotKind.Normal` (0) draws the 81 normal-slot Companions for
+`NormalBuddySlotCoins`, and `NormalItem` (20) is that pull paid with the same
+Item 81 Fellowship Ticket the character page spends -- one ticket per result.
+`Rare` (1) draws the 114 rare-slot Companions for `RareBuddySlotEnergy`, and
+`BuddyItem` (21) is that pull paid with Item 112. Either pull spends its own
+ticket ahead of its currency when the player holds enough, and a shortfall is
+answered with the pool's own `DoBuddySlotErrorCode`: NotEnoughCoins (2) for the
+normal pool, NotEnoughEnergy (1) for the rare one. A user-supplied
+`--companion-draw-catalog` describes only the rare pool, so under one the two
+normal-pool kinds stay unsupported rather than drawing from the wrong pool.
 
 The guided core-story path settles the retail first-clear ticket rewards
 directly: Metal Ticket (Item 50) x2 after Chapters 5 and 7, and Companion Ticket

@@ -6,32 +6,34 @@ Every entry below needs only a server restart; none changes the client.
 
 ### Fixed
 
-- **Tapping a purchase or "watch ad" button no longer strands the game in
-  Network Error.** The client still calls three routes for services that were
-  retired with the original operator: `buy_energy`, which submits a store
-  receipt, and `showed_ad_movie_main` / `showed_ad_movie_continue`, which claim
-  a rewarded video. None was listed in the compatibility profile, so all three
-  fell to the `route_not_implemented` fallback — and that body is *unsigned*.
-  The client cannot verify it, reads it as a transport failure, shows Network
-  Error, and retries the same dead route. There is no way out but force-stopping
-  the app, which is why an accidental tap cost a play session.
+- **Tickets of Fellowship work in batches, and work on Companions at all.**
+  Two separate refusals wore the same face: an unsigned 501, which the client
+  can only read as Network Error.
 
-  All three are now refused in the endpoint's own namespace instead of the
-  transport's, using the soft shape the Daily Quest gate already used: a signed
-  body whose refusal code rides `cmdError`, which the client hands to the
-  callback belonging to the screen that asked. The button now fails the way the
-  game itself fails a refused action.
+  On the character page, the ticket form was accepted for exactly one result.
+  That came from a single capture of a one-ticket press, and it was the wrong
+  generalization: `UIBarSlot` wires its ten-pull control to the ticket variant
+  as well, and sizes that batch from the ticket count the player is holding, so
+  anyone with more than one ticket who used the bulk button posted a `count`
+  the server rejected. Tickets now settle in the same one-through-ten batches
+  every other Pact form allows, one ticket per result, refused whole rather
+  than part-paid when the batch outruns the tickets left.
 
-  **Nothing is granted and nothing is charged.** `buy_energy` answers the
-  client's own `FailedToVerifyReceipt` (3) — literally true, since no local
-  server holds a store key — and never inspects the receipt. The ad routes grant
-  no energy: no reachable network can have served the video, so paying out
-  `AdMovieFreeEnergy` would invent a reward, exactly as honoring a receipt would
-  invent a purchase. They answer 1, the first error slot every other enum in
-  this client uses, because the client declares no error enum for these two.
+  On the Companion page nothing worked, because the server knew only half of
+  that screen. The Companion draw has two pools, and the server implemented
+  one: the Energy-priced rare pull and its Companion Ticket. The Coin-priced
+  pull -- the one the Fellowship Ticket pays for, drawing from a different and
+  disjoint 81-Companion pool -- was never a supported wire kind, so every press
+  of it failed, ticket or Coins, one or ten. Both pools are now served, each
+  spending its own ticket ahead of its own currency, and a shortfall answers
+  with that pool's own error code instead of a dead route.
 
-  The buttons themselves are still drawn — removing them is a client change, not
-  a server one. This makes pressing one harmless.
+  The Coin pool is bundled policy under `--companion-draw` (a standard flag),
+  where its 81 members are recovered client data and its uniform selection is
+  local policy, the same split the rare pool already documents. A
+  user-supplied `--companion-draw-catalog` has no schema for a second pool, so
+  under one the Coin pull stays unsupported rather than quietly drawing from
+  the rare pool.
 
 - **A Luck Treasure Chest could show a Companion and give you nothing.** Chests
   award four kinds of reward. Coins and items were settled from the start; the
