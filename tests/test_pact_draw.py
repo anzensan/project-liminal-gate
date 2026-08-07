@@ -27,11 +27,21 @@ class PactDrawTest(unittest.TestCase):
                 b"&eventFlag=0&lastUpdate=1"
             ),
         )
+        # The ticket shares the ten-pull control the Coin and Energy forms use:
+        # `UIBarSlot.InitChrMenu` sizes the batch from the held Item 81 count,
+        # so a ticket batch is as ordinary as any other batch this size.
+        self.assertEqual(
+            (20, 10, False),
+            _parse_ordinary_pact_draw(
+                b"kind=20&count=10&luckType=false&campaignChrID=0"
+                b"&eventFlag=0&lastUpdate=2"
+            ),
+        )
         for body in (
-            b"kind=20&count=2&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+            b"kind=20&count=11&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+            b"kind=20&count=0&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
             b"kind=20&count=1&luckType=false&campaignChrID=1&eventFlag=0&lastUpdate=1",
             b"kind=20&count=1&luckType=false&campaignChrID=0&eventFlag=1&lastUpdate=1",
-            b"kind=20&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=2",
         ):
             with self.subTest(body=body):
                 self.assertIsNone(_parse_ordinary_pact_draw(body))
@@ -135,6 +145,50 @@ class PactDrawTest(unittest.TestCase):
                 self.assertEqual(1, len(persisted["chrdata"]))
             finally:
                 stop_server(restarted, restarted_thread)
+
+    def test_http_fellowship_ticket_batch_spends_one_ticket_per_result(self) -> None:
+        """The ten-pull control spends the batch it sized from the inventory.
+
+        Its count is the held ticket count capped at ten, so a three-ticket
+        batch must settle three results for three tickets and leave the
+        player's Coins untouched.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            profile = bootstrap_profile()
+            policy = build_bundled_pact_policy()
+            items = [0] * 181
+            items[80] = 3
+            server, thread = start_server(
+                ("127.0.0.1", 0),
+                profile,
+                BootstrapState(Path(directory) / "state.json"),
+                pact_draw_catalog=policy,
+            )
+            try:
+                server.state.create_account(
+                    "token", "account",
+                    {"coins": policy.coin_cost, "energy": 0, "freeEnergy": 0, "itemList": items, "chrdata": []},
+                )
+                status, payload = post(
+                    server, "/gd/do_slot", "ticket-batch",
+                    "kind=20&count=3&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+                )
+                short_status, short = post(
+                    server, "/gd/do_slot", "ticket-batch-short",
+                    "kind=20&count=2&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1",
+                )
+            finally:
+                stop_server(server, thread)
+            self.assertEqual((200, 200), (status, short_status))
+            self.assertTrue(payload["success"], payload)
+            self.assertEqual(
+                (3, 0, policy.coin_cost),
+                (len(payload["chrdata"]), payload["itemList"][80], payload["coins"]),
+            )
+            pool = {draw.character_id for draw in policy.fellowship_draws}
+            self.assertLessEqual({row["id"] for row in payload["chrdata"]}, pool)
+            # A batch larger than the tickets left is refused, not part-paid.
+            self.assertEqual(2, short["cmdError"])
 
     def test_http_fate_ticket_uses_fellowship_luck_policy_without_spending_coins(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

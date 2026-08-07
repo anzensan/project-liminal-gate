@@ -64,6 +64,27 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-06 Fellowship Tickets settle in batches, and reach the Companion
+  page. Two reports -- a Network Error on every multi-ticket press, and no
+  Companion draw working with tickets at all -- turned out to be two different
+  gaps behind one unsigned 501. The character-page ticket form had been read
+  from a single one-ticket capture as a one-result-only form; the client's
+  ten-pull control reaches the same `SlotKind.NormalItem` and sizes the batch
+  from the tickets held, so every bulk press was refused. It now settles one
+  through ten, one ticket per result, refusing a batch that outruns the
+  remaining tickets rather than part-paying it. The Companion page turned out
+  to carry four payment variants, not two: the implemented Energy pull and
+  Companion Ticket, plus a Coin pull and its Fellowship Ticket variant drawing
+  a separate 81-Companion pool, which was not a supported wire kind at all.
+  Both pools now settle, each spending its own ticket ahead of its own
+  currency, with the pool's own `DoBuddySlotErrorCode` on a shortfall. Pool
+  membership is recovered from BuddyDatabase and cross-checked by
+  reproducing the existing 114-member rare pool exactly; uniform selection
+  within the new pool stays declared local policy, as the rare pool's already
+  was. A user-supplied `--companion-draw-catalog` has no shape for a second
+  pool, so under one the Coin kinds stay refused rather than drawing from the
+  wrong pool. Eight focused tests; all 1135 repository tests pass.
+
 - 2026-08-06 chests reach the whole game. The community record documents thirty
   story stages, so every other stage rolled six empty slots and a player past
   those chapters never saw a chest. An undocumented stage is now answered with

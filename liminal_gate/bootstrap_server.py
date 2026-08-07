@@ -126,7 +126,7 @@ from liminal_gate.companion_equipment_catalog import (
 from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog, CompanionStrengthenCatalogError, build_bundled_companion_strengthen_policy, load_companion_strengthen_catalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, build_bundled_companion_evolution_policy, load_companion_evolution_catalog
-from liminal_gate.companion_draw_catalog import CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
+from liminal_gate.companion_draw_catalog import BundledCompanionDrawPolicy, CompanionDraw, CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
 from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
 from liminal_gate.message_catalog import (
@@ -1782,7 +1782,14 @@ class BootstrapState:
             self._persist_locked()
             return "success", payload
 
-    def draw_companions(self, token: str, request_id: str, body: bytes, catalog: CompanionDrawCatalog | None) -> tuple[str, dict[str, Any] | None]:
+    def draw_companions(self, token: str, request_id: str, body: bytes, catalog: CompanionDrawCatalog | BundledCompanionDrawPolicy | None) -> tuple[str, dict[str, Any] | None]:
+        """Settle a Companion pull from whichever pool the wire kind names.
+
+        Pool membership, both ticket items, and the two prices are catalog
+        policy. The client picks the payment variant from what the player
+        holds, so a pull that names a pool this catalog does not describe is
+        refused rather than drawn from the other one.
+        """
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
             if account is None:
@@ -1796,20 +1803,38 @@ class BootstrapState:
             if catalog is None or request is None:
                 return "unsupported_companion_draw", None
             kind, count = request
+            draws = catalog.draws_for_kind(kind)
+            cost = catalog.cost_for_kind(kind)
+            ticket_item_id = catalog.ticket_item_for_kind(kind)
+            if not draws or cost is None or ticket_item_id is None:
+                return "unsupported_companion_draw", None
+            currency, unit_cost = cost
             userdata = account["userdata"]
             items = userdata.get("itemList")
             buddy_info = userdata.get("buddyInfo", {"list": [], "record": []})
             owned = buddy_info.get("list") if isinstance(buddy_info, dict) else None
-            if not isinstance(items, list) or len(items) != catalog.item_slots or type(items[catalog.ticket_item_id - 1]) is not int or items[catalog.ticket_item_id - 1] < 0 or not isinstance(owned, list) or type(userdata.get("energy", 0)) is not int or type(userdata.get("freeEnergy", 0)) is not int or type(userdata.get("coins", 0)) is not int:
+            if not isinstance(items, list) or len(items) != catalog.item_slots or type(items[ticket_item_id - 1]) is not int or items[ticket_item_id - 1] < 0 or not isinstance(owned, list) or type(userdata.get("energy", 0)) is not int or type(userdata.get("freeEnergy", 0)) is not int or type(userdata.get("coins", 0)) is not int:
                 return "unsupported_companion_draw", None
             if len(owned) + count > catalog.max_owned:
                 payload = {"success": False, "errorCode": 4}
             else:
-                uses_ticket = items[catalog.ticket_item_id - 1] >= count
-                ticket_only = kind == 21
-                total_energy = catalog.energy_cost * count
-                if (ticket_only and not uses_ticket) or (not uses_ticket and userdata["energy"] + userdata["freeEnergy"] < total_energy):
-                    payload = {"success": False, "errorCode": 1}
+                uses_ticket = items[ticket_item_id - 1] >= count
+                # `SlotKind.BuddyItem` and `NormalItem` are the client's own
+                # statement that it is paying with the ticket, so a batch it
+                # can no longer cover is refused rather than silently charged.
+                ticket_only = kind in {20, 21}
+                total_currency = unit_cost * count
+                affordable = (
+                    userdata["coins"] >= total_currency
+                    if currency == "coins"
+                    else userdata["energy"] + userdata["freeEnergy"] >= total_currency
+                )
+                if (ticket_only and not uses_ticket) or not (uses_ticket or affordable):
+                    # `DoBuddySlotErrorCode`: NotEnoughEnergy for the Rare pool,
+                    # NotEnoughCoins for the Normal one. A ticket the player no
+                    # longer holds is reported as the pool's own shortfall, the
+                    # same compatibility policy the Pact route applies.
+                    payload = {"success": False, "errorCode": 2 if currency == "coins" else 1}
                 else:
                     candidates = copy.deepcopy(owned)
                     known_ids: set[int] = set()
@@ -1823,27 +1848,31 @@ class BootstrapState:
                     drawn: list[dict[str, Any]] = []
                     results: list[dict[str, int]] = []
                     for _ in range(count):
-                        selected = _draw_companion_id(catalog)
+                        selected = _draw_companion_id(draws)
                         record = {"bid": selected, "lv": 1, "date": 0.0, "iid": next_id, "exp": 0, "flag": 0, "chrID": 0}
                         drawn.append(record)
                         results.append({"bid": selected, "lv": 1})
                         next_id += 1
                     new_items = copy.deepcopy(items)
+                    coins = userdata["coins"]
                     energy = userdata["energy"]
                     free_energy = userdata["freeEnergy"]
                     if uses_ticket:
-                        new_items[catalog.ticket_item_id - 1] -= count
+                        new_items[ticket_item_id - 1] -= count
+                    elif currency == "coins":
+                        coins -= total_currency
                     else:
-                        free_spend = min(free_energy, total_energy)
+                        free_spend = min(free_energy, total_currency)
                         free_energy -= free_spend
-                        energy -= total_energy - free_spend
+                        energy -= total_currency - free_spend
                     candidates.extend(drawn)
                     userdata["buddyInfo"] = _companion_info(candidates)
                     userdata["itemList"] = new_items
+                    userdata["coins"] = coins
                     userdata["energy"] = energy
                     userdata["freeEnergy"] = free_energy
                     userdata["nextCompanionInventoryId"] = next_id
-                    payload = {"success": True, "coins": userdata["coins"], "energy": energy, "freeEnergy": free_energy, "itemList": new_items, "buddyInfo": copy.deepcopy(userdata["buddyInfo"]), "result": results}
+                    payload = {"success": True, "coins": coins, "energy": energy, "freeEnergy": free_energy, "itemList": new_items, "buddyInfo": copy.deepcopy(userdata["buddyInfo"]), "result": results}
             payload = _canonical_payload(payload)
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -3181,7 +3210,7 @@ class BootstrapServer(ThreadingHTTPServer):
         companion_catalog: CompanionCatalog | None = None,
         companion_strengthen_catalog: CompanionStrengthenCatalog | None = None,
         companion_evolution_catalog: CompanionEvolutionCatalog | None = None,
-        companion_draw_catalog: CompanionDrawCatalog | None = None,
+        companion_draw_catalog: CompanionDrawCatalog | BundledCompanionDrawPolicy | None = None,
         pact_draw_catalog: PactDrawCatalog | BundledPactPolicy | None = None,
         achievement_catalog: AchievementCatalog | None = None,
         message_catalog: MessageCatalog | None = None,
@@ -4507,9 +4536,9 @@ def _granted_hunting_companions(
     return _companion_info(rows)
 
 
-def _draw_companion_id(catalog: CompanionDrawCatalog) -> int:
-    threshold = random.SystemRandom().randrange(sum(draw.weight for draw in catalog.draws))
-    for draw in catalog.draws:
+def _draw_companion_id(draws: tuple[CompanionDraw, ...]) -> int:
+    threshold = random.SystemRandom().randrange(sum(draw.weight for draw in draws))
+    for draw in draws:
         if threshold < draw.weight:
             return draw.companion_id
         threshold -= draw.weight

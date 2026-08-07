@@ -340,7 +340,11 @@ def _parse_companion_draw(body: bytes) -> tuple[int, int] | None:
         values = {name: int(value) for name, value in pairs}
     except ValueError:
         return None
-    if values["kind"] not in {1, 21} or not 1 <= values["count"] <= 100 or values["campaignID"] != 0 or values["eventFlag"] != 0 or values["lastUpdate"] < 0:
+    # `UIBarSlot` posts this route for both Companion pools: the Normal pool
+    # priced in Coins (`SlotKind.Normal`) or its Item 81 payment variant
+    # (`NormalItem`), and the Rare pool priced in Energy (`SlotKind.Rare`) or
+    # its Item 112 variant (`BuddyItem`). All four are one wire form.
+    if values["kind"] not in {0, 1, 20, 21} or not 1 <= values["count"] <= 100 or values["campaignID"] != 0 or values["eventFlag"] != 0 or values["lastUpdate"] < 0:
         return None
     return values["kind"], values["count"]
 
@@ -356,16 +360,13 @@ def _parse_ordinary_pact_draw(body: bytes) -> tuple[int, int, bool] | None:
     if values["kind"] not in {"0", "1", "20"} or values["luckType"] not in {"false", "true"} or values["campaignChrID"] != "0" or values["eventFlag"] != "0" or not values["count"].isdecimal() or not values["lastUpdate"].isdecimal():
         return None
     kind, count = int(values["kind"]), int(values["count"])
-    if kind == 20:
-        return (
-            (kind, count, values["luckType"] == "true")
-            if count == 1 and values["lastUpdate"] == "1"
-            else None
-        )
     # The client emits an affordable remainder when its ten-pull control has
     # less than a full batch available (for example, count=6 with 20 Energy).
     # Button labels are not the wire contract; retain the strict envelope but
-    # accept every client-visible batch from one through ten.
+    # accept every client-visible batch from one through ten. The Item 81
+    # payment variant shares that control: `UIBarSlot.InitChrMenu` sets the
+    # batch size to the held ticket count when the player holds any, so a
+    # ticket ten-pull posts `kind=20` with the same one-through-ten count.
     if not 1 <= count <= 10:
         return None
     return kind, count, values["luckType"] == "true"
