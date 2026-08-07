@@ -3,7 +3,45 @@
 ## Unreleased
 
 Every entry below needs only a server restart, except the Attack of Coin Creeps
-card fix, which says so in its own text.
+card fix and Melting Pot, which each say so in their own text.
+
+### Added
+
+- **Melting Pot is playable — 45 sections that were sitting in the APK
+  unread.** Chapters 9100–9102 are Melting Pot: Lizardfolk, Beastfolk, and
+  Human, fifteen five-battle sections each. They had been excluded because the
+  client files them under a chapter range it calls "Donation", and the earlier
+  reading took that label for the content. The content is not donation
+  content: BattleData titles them `[るつぼの都]`, and their stamina and level
+  curves match the community record quest for quest.
+
+  The stated reason they stayed disabled has also not survived checking. Two
+  client functions were cited as making the range impossible to recreate;
+  both are dead in the final build. `DispDonationQuest` is a single `ret`, and
+  `GetDonationQuestAmount` and `InDonationQuest` are never called at all. What
+  the client does still do for these chapters helps rather than hinders: it
+  hard-codes their section count at fifteen, so each race is advertised as one
+  card and the client expands it, and the one request the selector makes for
+  them is a route this server already answers.
+
+  They unlock after Chapter 3, the same permanent local gate Tower and the
+  Eidolon quests use, and settle from the drops the client reports — the same
+  settlement Strikes Back uses.
+
+  **This one needs more than a server restart.** The event catalog is derived
+  from your own APK's BattleData, so an existing `user-data/event-catalog.json`
+  predates these chapters and will not contain them. Re-run the guided setup to
+  regenerate it, then restart the server. No APK rebuild is needed — nothing on
+  the client side changed.
+
+- **Candy finally has somewhere to come from.** Melting Pot is where the candy
+  items live, and the reason none had ever appeared is that no enemy in the
+  game drops them: of the 1,930 enemies carrying a drop table, not one names a
+  candy. These chapters attach their drops a different way, written into the
+  battle programs themselves — the Candy Pot carries all three Candyboxes at a
+  100 ratio, and each race's six bosses carry Level, Skill, and Luck Candy at
+  3. That is recovered data, not a table this project invented, which is why
+  it could be turned on at all.
 
 ### Fixed
 

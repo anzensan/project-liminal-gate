@@ -9,10 +9,13 @@ VS, Raid, and Donation remain disabled.
 
 ### Confirmed static client contract
 
-- `ChapterInterface::.cctor` defines Chapters 9010--9013 as Tower of
-  Temptation and Chapters 9100--9102 as Donation. The predicates are
+- `ChapterInterface::.cctor` defines Chapters 9010--9099 as Tower of
+  Temptation and 9100--9199 as the Donation range. The predicates are
   `IsTowerOfTemptationQuest` at ARM64 RVA `0xD060D4` and `IsDonationQuest` at
-  `0xD0617C`.
+  `0xD0617C`; both are bounds checks against those `.cctor` literals. The
+  chapters actually present in the Donation range are 9100--9102, and their
+  BattleData titles name them Melting Pot rather than any donation content --
+  see the 2026-08-07 entry in `findings.md`.
 - The final client has a dedicated `ServerConstants.towerQuestList` field.
 - `UISpecialSelect.Mode.TowerQuest` is mode 5, separate from ordinary Special
   Quests, Hunting, Counter Descent, and multiplayer Arena.
@@ -22,9 +25,13 @@ VS, Raid, and Donation remain disabled.
 - `ChapterBase._execSection` calls ordinary `AppServerUtil.ClearQuest` for the
   completed solo-stage branch. Tower uses the same generic entry/result
   transport as other locally hosted solo events.
-- Donation has separate UI/state consumers, including
-  `EventManager.GetDonationQuestAmount` and
-  `UISpecialItem.DispDonationQuest`; a generic quest list cannot recreate it.
+- **Withdrawn.** This plan previously held that "Donation has separate UI/state
+  consumers, including `EventManager.GetDonationQuestAmount` and
+  `UISpecialItem.DispDonationQuest`; a generic quest list cannot recreate it."
+  Both named consumers are dead in the final build --
+  `DispDonationQuest` (`0xF833F0`) is a single `ret`, and
+  `GetDonationQuestAmount` and `InDonationQuest` have no callers. The claim was
+  made from the presence of the symbols, not from their call sites.
 
 The inspected derived `dump.cs` has SHA-256
 `093b32f0015b1498be710fef7c857634ee1350b2ed065c55ae12b02bcb062a34`.
@@ -66,9 +73,10 @@ is invented.
 - `POST /gd/clear_quest` requires the active Tower identity, unchanged story
   progress/world map, and a reconcilable wallet. It commits before reply and
   supports exact replay after restart.
-- Chapters 9100--9102 are not generated or advertised. They remain disabled
-  until Donation's community aggregate and reward semantics are recovered or
-  a separately labeled redesign is deliberately chosen.
+- Chapters 9100--9102 are generated and advertised as Melting Pot, the content
+  BattleData names them. They are ordinary local events settled under
+  `projected_rewards`; the community-aggregate mechanic those chapters' class
+  fields hint at is not reconstructed and is not claimed.
 - `/gd/multiplay_enable` remains exactly `enable=false` and
   `enablemain=false`; no VS, matchmaking, rank, or peer route is enabled.
 

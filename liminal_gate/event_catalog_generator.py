@@ -42,6 +42,8 @@ from liminal_gate.event_manifest_data import (
     EIDOLON_PLAYABLE_SECTIONS,
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
+    MELTING_POT_MANIFEST_ROWS,
+    MELTING_POT_SECTIONS,
     FOLDED_ARCHIVE_CHAPTERS,
     TOWER_MANIFEST_ROWS,
 )
@@ -143,6 +145,25 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
             continue
         for section in sections:
             rows.append(row(event_id, flag, chapter, unlock_after, section, character_ids=[]))
+
+    for event_id, flag, chapter, unlock_after in MELTING_POT_MANIFEST_ROWS:
+        sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
+        if not sections:
+            notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
+            continue
+        if len(sections) != MELTING_POT_SECTIONS:
+            raise EventCatalogGeneratorError(
+                f"{event_id}: expected {MELTING_POT_SECTIONS} BattleData sections in chapter "
+                f"{chapter}, found {len(sections)}"
+            )
+        for section in sections:
+            rows.append(row(
+                event_id, flag, chapter, unlock_after, section,
+                character_ids=[],
+                # One folded card per chapter: the client already knows these
+                # chapters hold fifteen sections and expands them itself.
+                selector_id=str(chapter),
+            ))
 
     for event_id, flag, chapter, unlock_after, drops in EIDOLON_MANIFEST_ROWS:
         imported = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])

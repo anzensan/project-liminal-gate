@@ -1430,9 +1430,9 @@ def choose_local_server_options(event_catalog: Path | None) -> LocalServerOption
     """
     print("\nLocal setup")
     print(
-        "Story, Archive Special Quests, Tower, solo Eidolon quests, Strikes Back, Hunting zones, "
-        "Daily Quests, Orbling Cavern, Cryptid Forest, BreaSoul, the Five Emperors, Pacts, "
-        "and Companions are all enabled."
+        "Story, Archive Special Quests, Tower, Melting Pot, solo Eidolon quests, Strikes Back, "
+        "Hunting zones, Daily Quests, Orbling Cavern, Cryptid Forest, BreaSoul, the Five Emperors, "
+        "Pacts, and Companions are all enabled."
     )
     print("The recovered 15-day item/monster double-drop rotation is enabled; custom drop-rate controls are not available.")
     print(

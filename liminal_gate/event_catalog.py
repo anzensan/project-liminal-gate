@@ -116,6 +116,21 @@ def _counter_descent_stamina(chapter: int) -> tuple[int, ...] | None:
     return None
 
 
+def _is_melting_pot(chapter: int) -> bool:
+    """Melting Pot: the three chapters inside the client's Donation range.
+
+    They settle from the client's own reported drops for the same reason
+    Counter Descent does -- no service reward table survives -- but on stronger
+    evidence than Counter Descent has. Their drops are attached per spawn in
+    the chapter program itself: `Init_DROPPOD` calls
+    `SetDropItem(e, 0, 100, {175, 176, 177})` and each race's six boss spawns
+    call `SetDropItem(e, 1, 3, {161, 162, 163})`, which is where the Candyboxes
+    and Candy a player collects here actually come from. Bounding the stages by
+    those operands is possible follow-up work; see `findings.md`, 2026-08-07.
+    """
+    return 9100 <= chapter <= 9102
+
+
 def build_bundled_counter_descent_policy() -> EventCatalog:
     """Return the fourteen packaged non-collaboration Strikes Back families.
 
@@ -310,7 +325,10 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                     else "special"
                 ),
                 unlock_after_chapter=unlock_after_chapter,
-                projected_rewards=_counter_descent_stamina(chapter) is not None,
+                projected_rewards=(
+                    _counter_descent_stamina(chapter) is not None
+                    or _is_melting_pot(chapter)
+                ),
                 selector_id=selector_id,
             )
         )

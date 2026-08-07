@@ -85,6 +85,36 @@ TOWER_MANIFEST_ROWS: tuple[tuple[str, str, int, int], ...] = (
     ("tower_of_temptation_4", "sp_ch_9013", 9013, 3),
 )
 
+#: `ChapterInterface.NumOfDonationQuestSections`, the section count the final
+#: client returns from `GetSectionCount` for every chapter in that range. The
+#: generator checks the BattleData import against it rather than trusting
+#: either source alone.
+MELTING_POT_SECTIONS = 15
+
+# event_id, flag, chapter, unlock_after_chapter
+#
+# Melting Pot. The final client's `ChapterInterface..cctor` puts 9100--9199 in
+# the Donation range, but the only chapters present in it are 9100--9102 and
+# BattleData titles them `[るつぼの都] トカゲ / ケモノ / ヒト` -- Melting Pot:
+# Lizardfolk, Beastfolk, and Human. Each carries fifteen five-battle sections
+# whose stamina and assumed levels match the community record quest for quest.
+#
+# The client hard-codes `NumOfDonationQuestSections` = 15 and returns it from
+# `UISpecialSelect.GetSectionCount` for any chapter in the range, so these are
+# advertised as one folded card per chapter and the client expands the sections
+# itself -- the same shape the folded archive chapters use. Chapter 3 is the
+# same permanent local archive gate Tower and the Eidolon quests carry, not a
+# recovered schedule.
+#
+# See `findings.md`, 2026-08-07: the two consumers once cited as making Donation
+# unrecreatable (`DispDonationQuest`, `GetDonationQuestAmount`) are dead code in
+# the final build.
+MELTING_POT_MANIFEST_ROWS: tuple[tuple[str, str, int, int], ...] = (
+    ("melting_pot_lizardfolk", "sp_ch_9100", 9100, 3),
+    ("melting_pot_beastfolk", "sp_ch_9101", 9101, 3),
+    ("melting_pot_human", "sp_ch_9102", 9102, 3),
+)
+
 # event_id, flag, chapter, unlock_after_chapter, (section, summon_id) drops
 #
 # Chapters 4100--4111 are the final client's converted single-player Eidolon

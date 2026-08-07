@@ -29,6 +29,8 @@ from liminal_gate.event_manifest_data import (
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
     FOLDED_ARCHIVE_CHAPTERS,
+    MELTING_POT_MANIFEST_ROWS,
+    MELTING_POT_SECTIONS,
     TOWER_MANIFEST_ROWS,
 )
 
@@ -36,7 +38,14 @@ from liminal_gate.event_manifest_data import (
 def _battledata(*chapters: int) -> dict:
     stages = []
     for chapter in chapters:
-        for section in (1, 2):
+        # Melting Pot is the one family whose section count the client itself
+        # fixes, and the generator checks the import against it.
+        sections = (
+            range(1, MELTING_POT_SECTIONS + 1)
+            if any(chapter == row[2] for row in MELTING_POT_MANIFEST_ROWS)
+            else (1, 2)
+        )
+        for section in sections:
             stages.append({
                 "chapter": chapter, "section": section, "stamina": 15,
                 "coins": 0, "battle_count": 5, "has_battle": True,
@@ -118,7 +127,10 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual((148,), by_section[1])
         self.assertEqual((), by_section[2])
 
-    def test_tower_projects_every_imported_stage_and_excludes_donation(self) -> None:
+    def test_tower_and_melting_pot_are_separate_selectors(self) -> None:
+        # 9010--9013 and 9100--9102 are adjacent client chapter ranges with
+        # different selectors: the dedicated Tower list, and the ordinary
+        # Special list as one folded card per race.
         battledata = _battledata(9010, 9011, 9012, 9013, 9100, 9101, 9102)
         _, _, loaded = self._generate(battledata, ())
         self.assertEqual(
@@ -126,6 +138,11 @@ class EventCatalogGeneratorTest(unittest.TestCase):
                 (chapter, section)
                 for chapter in (9010, 9011, 9012, 9013)
                 for section in (1, 2)
+            ]
+            + [
+                (chapter, section)
+                for chapter in (9100, 9101, 9102)
+                for section in range(1, MELTING_POT_SECTIONS + 1)
             ],
             sorted(loaded.by_identity()),
         )
@@ -144,8 +161,20 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual(15, stage.stamina)
         self.assertEqual("tower", stage.selector)
         self.assertEqual(TOWER_MANIFEST_ROWS[0][3], stage.unlock_after_chapter)
-        self.assertFalse(
-            {9100, 9101, 9102} & {stage.chapter for stage in loaded.stages}
+        # Melting Pot rides the Special list as one card per chapter, and
+        # settles from the client's own reported drops.
+        self.assertEqual(
+            ["9100", "9101", "9102"],
+            [
+                row for row in loaded.client_lists(after)["specialQuestList"]
+                if row.startswith("91")
+            ],
+        )
+        melting_pot = loaded.by_identity()[(9100, 1)]
+        self.assertEqual("special", melting_pot.selector)
+        self.assertTrue(melting_pot.projected_rewards)
+        self.assertEqual(
+            MELTING_POT_MANIFEST_ROWS[0][3], melting_pot.unlock_after_chapter,
         )
 
     def test_only_banner_backed_battle_eidolon_sections_are_projected(self) -> None:
@@ -198,6 +227,7 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         chapters = (
             tuple(row[2] for row in EVENT_MANIFEST_ROWS)
             + tuple(row[2] for row in TOWER_MANIFEST_ROWS)
+            + tuple(row[2] for row in MELTING_POT_MANIFEST_ROWS)
             + tuple(row[2] for row in EIDOLON_MANIFEST_ROWS)
         )
         battledata = _battledata(*chapters)
@@ -213,6 +243,7 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual(
             len(EVENT_MANIFEST_ROWS)
             + len(TOWER_MANIFEST_ROWS)
+            + len(MELTING_POT_MANIFEST_ROWS)
             + len(EIDOLON_MANIFEST_ROWS),
             len({stage.event_id for stage in loaded.stages}),
         )
