@@ -5,9 +5,11 @@ Each row is ``(source_companion_id, destination_companion_id, max_level, coins,
 ``ItemCode`` values (``code >> 8`` is the item, ``code & 0xFF`` the count).
 
 153 of the 497 masters evolve.  Two of them, the Metal Minion rows 128 and 129,
-carry no item codes at all: they consume duplicate copies of themselves
-instead, ten and three respectively, which cannot be inferred from the item
-slots and is recorded here as a special rule.
+carry no item codes at all: they consume copies of themselves instead, ten and
+three respectively, which cannot be inferred from the item slots and is
+recorded here as a special rule.  That count is the whole Companion cost and
+includes the one being evolved, so ten means the base plus nine further
+duplicates.
 
 Every recipe's own ``evolveEnableVer`` is at or below the final client's
 version, so all of them are reachable; no availability gate is implied.

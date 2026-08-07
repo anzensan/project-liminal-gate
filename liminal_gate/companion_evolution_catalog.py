@@ -21,6 +21,9 @@ class CompanionEvolution:
     max_level: int
     coins: int
     items: dict[int, int]
+    #: Copies of the source Companion the recipe costs, counting the one being
+    #: evolved.  Ten means the base plus nine further duplicates, not eleven
+    #: Companions.  Zero and one both cost nothing beyond the base.
     duplicate_source_count: int
 
 
@@ -76,9 +79,10 @@ def build_bundled_companion_evolution_policy() -> CompanionEvolutionCatalog:
     """Return the guided-path local Companion evolution policy.
 
     All 153 evolving masters are recovered from the final client, including the
-    two Metal Minion rows whose cost is duplicate copies of themselves rather
-    than items.  Every recipe's version gate is at or below the final client's,
-    so none of them implies an availability claim.
+    two Metal Minion rows whose cost is copies of themselves rather than items.
+    Those counts include the Companion being evolved.  Every recipe's version
+    gate is at or below the final client's, so none of them implies an
+    availability claim.
     """
     recipes = {
         source: CompanionEvolution(source, destination, max_level, coins, dict(items), duplicates)

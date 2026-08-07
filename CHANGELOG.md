@@ -72,6 +72,18 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Metal Minion evolutions ate one Companion too many.** A tester reported the
+  two Metal Minion recipes costing eleven and four copies where the client's own
+  numbers are ten and three.
+
+  The recovered recipes carry a copy count instead of item costs, and that count
+  is the whole Companion cost — the one being evolved is the first of the ten,
+  not a twelfth Companion on top of them. This server had read it as duplicates
+  owed *besides* the base, so every Metal Minion evolution consumed one extra
+  and a player holding exactly the ten the client asked for was refused
+  outright. Both recipes now settle at their recovered cost. Server restart;
+  the recovered values themselves are unchanged.
+
 - **Candy items said no character could take them.** A tester with a Luck
   Candybox from Melting Pot's Candy Pot opened the item and was told it could
   not be used on anybody. Every candy item behaved the same way, and no error

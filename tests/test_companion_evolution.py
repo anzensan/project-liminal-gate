@@ -66,3 +66,30 @@ class BundledCompanionEvolutionRuntimeTest(unittest.TestCase):
             self.assertEqual(5000, payload["coins"])
             self.assertEqual([2], [row["bid"] for row in payload["buddyInfo"]["list"]])
             self.assertEqual([5, 5, 5], [payload["itemList"][item_id - 1] for item_id in (17, 20, 24)])
+
+    def test_metal_minion_copy_count_includes_the_companion_being_evolved(self) -> None:
+        """Master 128's ten copies are the base plus nine, not ten besides it."""
+        with tempfile.TemporaryDirectory() as directory:
+            profile = bootstrap_profile()
+            state = BootstrapState(Path(directory) / "state.json")
+            # One more than the recipe costs, so the survivor proves the count,
+            # plus one bystander of another master that must go untouched.
+            minions = [{"iid": iid, "bid": 128, "lv": 1, "exp": 0, "flag": 0, "chrID": 0} for iid in range(1, 12)]
+            bystander = {"iid": 12, "bid": 1, "lv": 1, "exp": 0, "flag": 0, "chrID": 0}
+            state.create_account("token", "account", {
+                "coins": 1106, "itemList": [0] * 181, "chrdata": [],
+                "buddyInfo": {"list": minions + [bystander], "record": []},
+            })
+            server, thread = start_server(("127.0.0.1", 0), profile, state,
+                                          companion_evolution_catalog=build_bundled_companion_evolution_policy())
+            try:
+                status, payload = post(server, "/gd/buddy_evolve", "metal", "baseID=1&lastUpdate=1")
+            finally:
+                stop_server(server, thread)
+            self.assertEqual(200, status)
+            self.assertTrue(payload["success"], payload)
+            self.assertEqual(0, payload["coins"])
+            # The base becomes master 129 and nine duplicates are eaten, ten
+            # minions in all; the eleventh and the bystander are never touched.
+            self.assertEqual([(1, 129), (11, 128), (12, 1)],
+                             sorted((row["iid"], row["bid"]) for row in payload["buddyInfo"]["list"]))
