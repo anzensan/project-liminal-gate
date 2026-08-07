@@ -38,6 +38,9 @@ class BootstrapServerTest(unittest.TestCase):
                 "signup": "/local/signup",
                 "login": "/local/login",
                 "userdata": "/local/userdata",
+                "buy_energy": "/local/buy_energy",
+                "showed_ad_movie_main": "/local/showed_ad_movie_main",
+                "showed_ad_movie_continue": "/local/showed_ad_movie_continue",
             },
             "response_signing": {
                 "algorithm": "md5-uppercase-slice",
@@ -81,6 +84,17 @@ class BootstrapServerTest(unittest.TestCase):
         connection.close()
         return response.status, body
 
+    def post(self, path: str, body: str) -> tuple[int, dict[str, object]]:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request(
+            "POST", path, body=body.encode("utf-8"),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
     def test_bootstrap_sequence_persists_account_and_signs_responses(self) -> None:
         status, signup = self.request("/local/time?otk=pre-signup-token")
         self.assertEqual(200, status)
@@ -101,6 +115,31 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual(16, len(response["digest"]))
         self.assertTrue(self.state_path.is_file())
         self.assertEqual(0, json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"]["local-account"]["userdata"]["coins"])
+
+    def test_retired_paid_and_ad_routes_refuse_in_the_endpoint_namespace(self) -> None:
+        # The point of the route class: a tester who hits one of these gets the
+        # screen's own refusal. The unsigned 501 these used to fall to reads as
+        # a transport failure, and the client retries it until it is force-stopped.
+        expected = {
+            "/local/buy_energy": 3,
+            "/local/showed_ad_movie_main": 1,
+            "/local/showed_ad_movie_continue": 1,
+        }
+        for path, code in expected.items():
+            for status, response in (
+                self.request(f"{path}?otk=refusal-token"),
+                self.post(f"{path}?otk=refusal-token&requestID=refusal", "countryCode=US&platform=android"),
+            ):
+                self.assertEqual(200, status, path)
+                self.assertEqual(16, len(response["digest"]), path)
+                self.assertIs(True, response["success"], path)
+                self.assertEqual(code, response["cmdError"], path)
+                # `errorCode` is the transport namespace, and a code left there
+                # shows the common error dialog instead of reaching the callback.
+                self.assertNotIn("errorCode", response, path)
+        status, response = self.request("/local/buy_energy")
+        self.assertEqual(400, status)
+        self.assertEqual("missing_local_account_token", response["error"])
 
     def test_healthz_is_unsigned_and_names_the_running_build(self) -> None:
         self.server.build_id = "combined-test-build"

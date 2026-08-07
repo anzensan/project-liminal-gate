@@ -6,6 +6,33 @@ Every entry below needs only a server restart; none changes the client.
 
 ### Fixed
 
+- **Tapping a purchase or "watch ad" button no longer strands the game in
+  Network Error.** The client still calls three routes for services that were
+  retired with the original operator: `buy_energy`, which submits a store
+  receipt, and `showed_ad_movie_main` / `showed_ad_movie_continue`, which claim
+  a rewarded video. None was listed in the compatibility profile, so all three
+  fell to the `route_not_implemented` fallback — and that body is *unsigned*.
+  The client cannot verify it, reads it as a transport failure, shows Network
+  Error, and retries the same dead route. There is no way out but force-stopping
+  the app, which is why an accidental tap cost a play session.
+
+  All three are now refused in the endpoint's own namespace instead of the
+  transport's, using the soft shape the Daily Quest gate already used: a signed
+  body whose refusal code rides `cmdError`, which the client hands to the
+  callback belonging to the screen that asked. The button now fails the way the
+  game itself fails a refused action.
+
+  **Nothing is granted and nothing is charged.** `buy_energy` answers the
+  client's own `FailedToVerifyReceipt` (3) — literally true, since no local
+  server holds a store key — and never inspects the receipt. The ad routes grant
+  no energy: no reachable network can have served the video, so paying out
+  `AdMovieFreeEnergy` would invent a reward, exactly as honoring a receipt would
+  invent a purchase. They answer 1, the first error slot every other enum in
+  this client uses, because the client declares no error enum for these two.
+
+  The buttons themselves are still drawn — removing them is a client change, not
+  a server one. This makes pressing one harmless.
+
 - **A Luck Treasure Chest could show a Companion and give you nothing.** Chests
   award four kinds of reward. Coins and items were settled from the start; the
   other two were computed and then dropped on the floor. `chest_companions()`

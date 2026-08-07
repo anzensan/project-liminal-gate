@@ -60,7 +60,27 @@ READ_ROUTE_NAMES = frozenset({
     "get_current_exchange",
 })
 
-SUPPORTED_PROFILE_OPERATIONS = READ_ROUTE_NAMES | MUTATION_ROUTE_NAMES
+# Routes the client calls but this server will never settle, answered with the
+# endpoint's own refusal code instead of the transport's 501. Each names a paid
+# or advertised service that was retired with the original operator: `buy_energy`
+# carries a store receipt no local server can verify, and the two ad routes claim
+# a rewarded video no reachable network can have played. Left unlisted they fall
+# to the `route_not_implemented` fallback, whose body is unsigned -- the client
+# reads that as a transport failure, shows Network Error, and retries the same
+# dead route, which is the loop a tester cannot leave without force-stopping.
+#
+# They carry no payload contract, no state, and no replay cache, which is why
+# they are a third class rather than members of either set above: a read returns
+# a document and a mutation settles into the save, and these do neither.
+REFUSED_ROUTE_NAMES = frozenset({
+    "buy_energy",
+    "showed_ad_movie_main",
+    "showed_ad_movie_continue",
+})
+
+SUPPORTED_PROFILE_OPERATIONS = (
+    READ_ROUTE_NAMES | MUTATION_ROUTE_NAMES | REFUSED_ROUTE_NAMES
+)
 TEMPLATED_RESPONSE_OPERATIONS = frozenset({
     "signup",
     "login",
