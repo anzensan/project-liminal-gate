@@ -34,7 +34,13 @@ JOB_LEVEL_MASK = 0xFFF
 LEVEL_CAP = 90
 #: The client's own inventory shape, shared with the Hunting catalogs.
 ITEM_SLOTS = 181
-MAX_ITEM_STACK = 999
+#: `ServerConstants.maxItemCount`, and it must stay that number.  This server
+#: sends the value the client then enforces, so a lower ceiling here does not
+#: bound the client -- it only makes the server call the client's own honest
+#: inventory impossible.  It read 999 until a Puppet Show clear that carried a
+#: slot past it was refused as an invalid settlement; see the CHANGELOG.
+#: `build_server_constants` sends this constant rather than its own literal.
+MAX_ITEM_STACK = 9999
 #: The items the pre-battle Power-Up Item slot can offer, read from the reviewed
 #: client's own `ItemSet.itemSet` table: exactly the rows whose `ItemData.kind`
 #: is `ItemKind.HelpItem` (1).  `UIHelpItemSelect.MakeList` builds its list by

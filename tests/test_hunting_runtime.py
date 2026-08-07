@@ -9,7 +9,8 @@ from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.event_flag_data import music_event_flags
-from liminal_gate.hunting_catalog import load_hunting_catalog
+from liminal_gate.hunting_catalog import build_bundled_hunting_policy, load_hunting_catalog
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
 
@@ -761,6 +762,93 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.server, self.thread = start_server(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path))
         status, refused = self.start("no-catalog", 1001, 1, 3)
         self.assertEqual(501, status, refused)
+
+
+class BundledHuntingStackCeilingTest(unittest.TestCase):
+    """A haul that carries a slot past 999 settles, at the client's ceiling.
+
+    Reported against Puppet Show 20-39 with 47 item chests: the clear was
+    refused, the refusal reached the client as an unsigned 409, and the item
+    screen looped Network Errors that only a force-close escaped
+    ([#57](https://github.com/anzensan/project-liminal-gate/issues/57)).
+    """
+
+    PROGRESS = 0x01000000 | (20 << 6) | 1
+    #: The ceiling this server used to project against, which the client was
+    #: never told and never enforced.
+    WITHDRAWN_CEILING = 999
+    CHARACTER = {
+        "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+        "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+    }
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        state = BootstrapState(self.state_path)
+        # One slot within a single Puppet Show haul of the old 999 ceiling.
+        items = [0] * ITEM_SLOTS
+        items[0] = self.WITHDRAWN_CEILING - 39
+        state.create_account("token", "account", {
+            "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
+            "progressCode": self.PROGRESS, "chrdata": [self.CHARACTER],
+            "itemList": items, "summonList": [0, 0],
+        })
+        with state.lock:
+            account = state.accounts["account"]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            state._persist_locked()
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), state,
+            hunting_catalog=build_bundled_hunting_policy(),
+        )
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.addCleanup(stop_server, self.server, self.thread)
+
+    def userdata(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]["userdata"]
+
+    def post(self, route: str, request_id: str, fields: list[tuple[str, str]]) -> tuple[int, dict]:
+        return post(self.server, route, request_id, urlencode(fields), token="token",
+                    headers={"Content-Type": "application/x-www-form-urlencoded"})
+
+    def test_a_haul_that_crosses_the_old_ceiling_settles(self) -> None:
+        status, started = self.post("/gd/start_quest", "start", [
+            ("stamina", "8"), ("coins", "0"), ("chapter", "1004"),
+            ("section", "2"), ("lastUpdate", "1"),
+        ])
+        self.assertEqual((200, True), (status, started["success"]))
+        userdata = self.userdata()
+        chests, held = 47, userdata["itemList"][0]
+        # What the client reports: its own inventory plus the drops, capped
+        # where the client caps it rather than where this server used to.
+        submitted = list(userdata["itemList"])
+        submitted[0] = min(MAX_ITEM_STACK, held + chests)
+        self.assertGreater(submitted[0], self.WITHDRAWN_CEILING,
+                           "the case only bites past the old ceiling")
+        status, cleared = self.post("/gd/clear_quest", "clear", [
+            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"],
+            })),
+            ("chrdata", json.dumps([self.CHARACTER])),
+            ("itemList", json.dumps(submitted)),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": 1004, "section": 2, "coins": 0, "exp": 0,
+                "items": {"1": chests}, "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0] * 6,
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+        self.assertEqual(200, status, cleared)
+        self.assertTrue(cleared["success"], cleared)
+        self.assertEqual(held + chests, self.userdata()["itemList"][0])
+        self.assertEqual("free_roam", json.loads(
+            self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]["tutorial_phase"])
 
 
 if __name__ == "__main__":
