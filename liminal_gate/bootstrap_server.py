@@ -127,7 +127,7 @@ from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, build_bundled_companion_evolution_policy, load_companion_evolution_catalog
 from liminal_gate.companion_draw_catalog import BundledCompanionDrawPolicy, CompanionDraw, CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
-from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog
+from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog, validate_bundled_pools
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
 from liminal_gate.message_catalog import (
     MessageCatalog,
@@ -1907,12 +1907,16 @@ class BootstrapState:
             # NormalItem is a payment variant of the Fellowship-side pool, not
             # a third pool. The exact recovered client form permits one result.
             draw_kind = 0 if ticket_draw else kind
-            draws = catalog.draws_for_kind(draw_kind)
+            userdata = account["userdata"]
+            # Fellowship membership is cumulative in the account's own story
+            # progress, the same `_chapterNo` low bits this server already
+            # gates achievements and stage entry on. The ticket variant pays
+            # differently but draws the same gated pool.
+            draws = catalog.draws_for_kind(draw_kind, chapter_for_progress(int(userdata.get("progressCode", 0))))
             cost = ("ticket", 1) if ticket_draw else catalog.cost_for_kind(kind)
             if not draws or cost is None:
                 return "unsupported_ordinary_pact", None
             currency, unit_cost = cost
-            userdata = account["userdata"]
             rows = userdata.get("chrdata")
             if not isinstance(rows, list) or type(userdata.get("coins")) is not int or type(userdata.get("energy", 0)) is not int or type(userdata.get("freeEnergy", 0)) is not int:
                 return "unsupported_ordinary_pact", None
@@ -5666,6 +5670,8 @@ def build_server(
         # which is what lets duplicate gains and Truth rates follow the class
         # bands instead of a flat uniform default.
         pact_rarity = load_character_rarity(args.character_catalog) if args.pacts and args.character_catalog is not None else None
+        if pact_rarity is not None:
+            validate_bundled_pools(pact_rarity)
         pact_draw = build_bundled_pact_policy(pact_rarity) if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))
         if (args.event_catalog is None) != (args.character_catalog is None):
             raise ProfileError("--event-catalog and --character-catalog must be supplied together")
