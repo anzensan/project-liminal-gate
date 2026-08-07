@@ -8,7 +8,10 @@ import json
 from pathlib import Path
 
 from liminal_gate.event_flag_data import event_flags_for
-from liminal_gate.event_manifest_data import EVENT_MANIFEST_ROWS
+from liminal_gate.event_manifest_data import (
+    EVENT_MANIFEST_ROWS,
+    STANDING_SPECIAL_MANIFEST_ROWS,
+)
 
 
 DEFAULT_EVENT_CATALOG = "event-catalog.json"
@@ -129,6 +132,18 @@ def _is_melting_pot(chapter: int) -> bool:
     those operands is possible follow-up work; see `findings.md`, 2026-08-07.
     """
     return 9100 <= chapter <= 9102
+
+
+def _is_standing_special(chapter: int) -> bool:
+    """The six standing Special Quests named in `STANDING_SPECIAL_MANIFEST_ROWS`.
+
+    They settle from the client's own reported drops for the same reason Counter
+    Descent and Melting Pot do: the retired result service authored their
+    rewards, every one of them declares an empty `dropBuddies`, and no capture
+    of a clear survives. Membership is read off the manifest rather than a
+    duplicated range test so the two cannot drift apart.
+    """
+    return chapter in {row[1] for row in STANDING_SPECIAL_MANIFEST_ROWS}
 
 
 def build_bundled_counter_descent_policy() -> EventCatalog:
@@ -319,7 +334,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                     "descent_hunting"
                     if _counter_descent_stamina(chapter) is not None
                     else "tower"
-                    if 9010 <= chapter <= 9013
+                    if 9000 <= chapter <= 9003
                     else "eidolon"
                     if 4100 <= chapter <= 4111
                     else "special"
@@ -328,6 +343,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 projected_rewards=(
                     _counter_descent_stamina(chapter) is not None
                     or _is_melting_pot(chapter)
+                    or _is_standing_special(chapter)
                 ),
                 selector_id=selector_id,
             )

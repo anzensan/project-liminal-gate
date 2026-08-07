@@ -464,8 +464,17 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
             family="tin_parade", chapter=1002, stamina=stamina[section],
             max_coins=0, max_items_total=63 if section == 1 else 93, item_maxima=tin_items, **common,
         ))
+        # Attack of the Coin Creeps is served from Chapter 3002, not the 1003
+        # copy the other three zones' numbering would suggest. BattleData carries
+        # the family twice: 1003 and 3002 hold the same three `マネマネ参上`
+        # sections at the same 10/15/20 stamina and the same assumed levels 1, 20
+        # and 40. Only 3002 has retained `sp3002-1`--`sp3002-3` banner bundles;
+        # 1003 has none, which is why the earlier 1003 placement had to derive
+        # its three cards from one retained family bundle and hit the Unity
+        # internal-name collision that blanked them. Serving the copy the
+        # original archive actually shipped cards for needs no derivation.
         stages.append(HuntingStage(
-            family="coin_creeps", chapter=1003, stamina={1: 10, 2: 15, 3: 20}[section],
+            family="coin_creeps", chapter=3002, stamina={1: 10, 2: 15, 3: 20}[section],
             max_coins={1: 1500, 2: 5000, 3: 11000}[section], max_items_total=0, item_maxima={}, **common,
         ))
         puppet_items = _span(1, 8, 60) if section < 3 else ({1: 60, 3: 60, 5: 60, 7: 60} | {2: 2, 4: 2, 6: 2, 8: 2})

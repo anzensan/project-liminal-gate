@@ -92,9 +92,12 @@ class BundledHuntingPolicyTest(unittest.TestCase):
 
     def test_declares_every_recovered_stage(self) -> None:
         self.assertEqual(
-            [(chapter, section) for chapter in (1001, 1002, 1003, 1004) for section in (1, 2, 3)]
+            [(chapter, section) for chapter in (1001, 1002, 1004) for section in (1, 2, 3)]
             + [(chapter, 1) for chapter in (1200, 1201)]
             + [(3000, section) for section in (*range(1, 8), *range(11, 18))]
+            # Attack of the Coin Creeps is Chapter 3002, the copy of the family
+            # whose banner bundles the retained archive still carries.
+            + [(3002, section) for section in (1, 2, 3)]
             + [(3003, 1), (3004, 1)],
             sorted(self.stages),
         )
@@ -104,7 +107,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         for identity, stamina in (
             ((1001, 1), 5), ((1001, 2), 8), ((1001, 3), 10),
             ((1002, 1), 5), ((1002, 2), 8), ((1002, 3), 10),
-            ((1003, 1), 10), ((1003, 2), 15), ((1003, 3), 20),
+            ((3002, 1), 10), ((3002, 2), 15), ((3002, 3), 20),
             ((1004, 1), 5), ((1004, 2), 8), ((1004, 3), 10),
         ):
             with self.subTest(identity):
@@ -122,10 +125,10 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         self.assertEqual((93, 31), (self.stages[(1002, 2)].max_items_total, self.stages[(1002, 2)].item_maxima[22]))
         self.assertEqual(
             [1500, 5000, 11000],
-            [self.stages[(1003, section)].max_coins for section in (1, 2, 3)],
+            [self.stages[(3002, section)].max_coins for section in (1, 2, 3)],
         )
         for section in (1, 2, 3):
-            creeps = self.stages[(1003, section)]
+            creeps = self.stages[(3002, section)]
             self.assertEqual(({}, 0), (creeps.item_maxima, creeps.max_items_total))
             self.assertEqual(60, self.stages[(1004, section)].max_items_total)
         self.assertEqual(2, self.stages[(1004, 3)].item_maxima[2])
@@ -231,7 +234,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         self.assertEqual([], before_any["huntingHuntingList"])
         tier_one = self.catalog.client_lists(0x01000000 | (4 << 6) | 1)
         self.assertEqual(
-            ["1001-1", "1002-1", "1003-1", "1004-1", "3004-1"],
+            ["1001-1", "1002-1", "1004-1", "3002-1", "3004-1"],
             sorted(tier_one["huntingHuntingList"]),
         )
         every_tier = self.catalog.client_lists(0x01000000 | (19 << 6) | 1)
@@ -285,7 +288,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
             {
                 "sp_ch_1001-1": {"name": "sp_ch_1001-1", "value": True},
                 "sp_ch_1002-1": {"name": "sp_ch_1002-1", "value": True},
-                "sp_ch_1003-1": {"name": "sp_ch_1003-1", "value": True},
+                "sp_ch_3002-1": {"name": "sp_ch_3002-1", "value": True},
                 "sp_ch_1004-1": {"name": "sp_ch_1004-1", "value": True},
                 "sp_ch_3000-1": {"name": "sp_ch_3000-1", "value": True},
                 "sp_ch_3000-11": {"name": "sp_ch_3000-11", "value": True},
@@ -327,9 +330,9 @@ class BundledHuntingPolicyTest(unittest.TestCase):
     def test_tier_one_hunting_rows_are_flagged_once_unlocked(self) -> None:
         """Regression for the Hunting Zone flash: 1000-series rows need flags."""
         locked = self.catalog.client_event_flags(0x01000000 | (3 << 6) | 1)
-        self.assertNotIn("sp_ch_1003-1", locked)
+        self.assertNotIn("sp_ch_3002-1", locked)
         unlocked = self.catalog.client_event_flags(0x01000000 | (4 << 6) | 1)
-        for chapter in (1001, 1002, 1003, 1004):
+        for chapter in (1001, 1002, 1004, 3002):
             self.assertIn(f"sp_ch_{chapter}-1", unlocked)
 
     def test_regular_and_king_metal_sections_are_both_advertised_and_startable(self) -> None:

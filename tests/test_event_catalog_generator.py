@@ -31,6 +31,8 @@ from liminal_gate.event_manifest_data import (
     FOLDED_ARCHIVE_CHAPTERS,
     MELTING_POT_MANIFEST_ROWS,
     MELTING_POT_SECTIONS,
+    STANDING_SPECIAL_MANIFEST_ROWS,
+    STANDING_SPECIAL_SECTION_ALLOWLIST,
     TOWER_MANIFEST_ROWS,
 )
 
@@ -128,15 +130,15 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual((), by_section[2])
 
     def test_tower_and_melting_pot_are_separate_selectors(self) -> None:
-        # 9010--9013 and 9100--9102 are adjacent client chapter ranges with
+        # 9000--9003 and 9100--9102 are client chapter ranges with
         # different selectors: the dedicated Tower list, and the ordinary
         # Special list as one folded card per race.
-        battledata = _battledata(9010, 9011, 9012, 9013, 9100, 9101, 9102)
+        battledata = _battledata(9000, 9001, 9002, 9003, 9100, 9101, 9102)
         _, _, loaded = self._generate(battledata, ())
         self.assertEqual(
             [
                 (chapter, section)
-                for chapter in (9010, 9011, 9012, 9013)
+                for chapter in (9000, 9001, 9002, 9003)
                 for section in (1, 2)
             ]
             + [
@@ -152,12 +154,12 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual(
             [
                 f"{chapter}-{section}"
-                for chapter in (9010, 9011, 9012, 9013)
+                for chapter in (9000, 9001, 9002, 9003)
                 for section in (1, 2)
             ],
             loaded.client_lists(after)["towerQuestList"],
         )
-        stage = loaded.by_identity()[(9010, 1)]
+        stage = loaded.by_identity()[(9000, 1)]
         self.assertEqual(15, stage.stamina)
         self.assertEqual("tower", stage.selector)
         self.assertEqual(TOWER_MANIFEST_ROWS[0][3], stage.unlock_after_chapter)
@@ -229,6 +231,9 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             + tuple(row[2] for row in TOWER_MANIFEST_ROWS)
             + tuple(row[2] for row in MELTING_POT_MANIFEST_ROWS)
             + tuple(row[2] for row in EIDOLON_MANIFEST_ROWS)
+            # The standing Special rows carry their chapter in position 1: they
+            # build their flag per section rather than naming one per chapter.
+            + tuple(row[1] for row in STANDING_SPECIAL_MANIFEST_ROWS)
         )
         battledata = _battledata(*chapters)
         for stage in battledata["stages"]:
@@ -244,10 +249,44 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             len(EVENT_MANIFEST_ROWS)
             + len(TOWER_MANIFEST_ROWS)
             + len(MELTING_POT_MANIFEST_ROWS)
-            + len(EIDOLON_MANIFEST_ROWS),
+            + len(EIDOLON_MANIFEST_ROWS)
+            + len(STANDING_SPECIAL_MANIFEST_ROWS),
             len({stage.event_id for stage in loaded.stages}),
         )
         self.assertFalse([note for note in notes if "skipped" in note])
+
+    def test_standing_specials_ride_sectioned_rows_and_per_section_flags(self) -> None:
+        chapters = tuple(row[1] for row in STANDING_SPECIAL_MANIFEST_ROWS)
+        _, _, loaded = self._generate(_battledata(*chapters), ())
+        after_gate = 0x01000000 | (4 << 6) | 1
+        # Every row is sectioned. The client's section-title lookup is 1-based,
+        # so a bare chapter here would index -1 and abort the selector.
+        rows = [
+            row for row in loaded.client_lists(after_gate)["specialQuestList"]
+            if row.startswith(("3001", "3100", "32", "3300"))
+        ]
+        self.assertTrue(all("-" in row for row in rows))
+        self.assertIn("3200-1", rows)
+        stage = loaded.by_identity()[(3200, 1)]
+        self.assertEqual("special", stage.selector)
+        self.assertEqual("sp_ch_3200-1", stage.flag)
+        # No reward table for these survived, so a clear settles from the
+        # client's own reported drops, as Counter Descent and Melting Pot do.
+        self.assertTrue(stage.projected_rewards)
+
+    def test_unbannered_standing_special_sections_are_withheld(self) -> None:
+        # Chapter 3001 has three BattleData sections but only two retained
+        # banner bundles; the third must not reach the selector.
+        battledata = _battledata(3001)
+        battledata["stages"].append({
+            "chapter": 3001, "section": 3, "stamina": 20,
+            "coins": 0, "battle_count": 1, "has_battle": True,
+        })
+        _, _, loaded = self._generate(battledata, ())
+        self.assertEqual(
+            STANDING_SPECIAL_SECTION_ALLOWLIST[3001],
+            tuple(sorted(section for _chapter, section in loaded.by_identity())),
+        )
 
     def test_event_catalog_adds_no_unsupported_fixed_clear_increment(self) -> None:
         _, _, loaded = self._generate(_battledata(2004, 8000), (673,))

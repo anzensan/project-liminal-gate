@@ -2,10 +2,37 @@
 
 ## Unreleased
 
-Every entry below needs only a server restart, except the Attack of Coin Creeps
-card fix and Melting Pot, which each say so in their own text.
+Every entry below needs only a server restart, except Melting Pot and the six
+standing Special Quests, which are derived from your own APK's BattleData and
+need the event catalog regenerated first — each says so in its own text. The
+earlier Attack of Coin Creeps card fix no longer needs an APK rebuild; it was
+superseded before release and says so where it stands.
 
 ### Added
+
+- **Six standing Special Quests that were never advertised.** Gormandizer Hunt
+  (two sections, shown as Tears and Particles), The Hunt For Joker, Blade
+  Falcon, Bone Killer and Ethereal, and KINO World — Chapters 3001, 3100,
+  3200–3202 and 3300. Each has a nonzero BattleData battle count and each has
+  its own retained banner bundles, so they are advertised from the archive the
+  operator already owns and nothing is derived. Their names here are the ones
+  the running client renders, which corrected two readings of the Japanese:
+  `ブレイドイーグル` is Blade *Falcon*, and `インビジブル` is Ethereal.
+
+  Every one carries an empty `dropBuddies`, so a clear settles from the
+  client's own reported drops, the same way Strikes Back and Melting Pot do.
+  They unlock after Chapter 3, the same permanent local gate the rest of the
+  archive uses.
+
+  Chapter 3001's third section is deliberately not advertised. It has a battle,
+  but only two of its three cards were retained, and a card the archive cannot
+  draw is exactly the failure the Coin Creeps fix below was about.
+
+  **This one needs more than a server restart.** The event catalog is derived
+  from your own APK's BattleData, so an existing `user-data/event-catalog.json`
+  predates these chapters. Re-run the guided setup to regenerate it, then
+  restart the server. No APK rebuild is needed — all six were already carded
+  and catalogued on the client side; only this server had never named them.
 
 - **Melting Pot is playable — 45 sections that were sitting in the APK
   unread.** Chapters 9100–9102 are Melting Pot: Lizardfolk, Beastfolk, and
@@ -44,6 +71,35 @@ card fix and Melting Pot, which each say so in their own text.
   it could be turned on at all.
 
 ### Fixed
+
+- **Attack of the Coin Creeps and Tower of Temptation were being served from
+  the copy of themselves that has no artwork.** BattleData carries both
+  families twice. Chapters 1003 and 3002 hold the same three `マネマネ参上`
+  sections at the same 10/15/20 stamina and the same assumed levels; Chapters
+  9010–9013 and 9000–9003 hold the same four `[誘いの塔]` bosses across three
+  sections at 15 stamina, chained by the same `parentQuest` links. The two
+  copies are not variants. They are the same stages under a second chapter
+  number.
+
+  Only one copy of each pair was ever card-backed. The client's own
+  `AssetVersions` catalog has records for `sp3002-1`–`-3` and for
+  `sp9000`–`sp9003`, and **none at all** for `sp1003-*` or `sp9010-*`. This
+  server had picked the un-carded copy both times, which is why the Coin Creeps
+  cards had to be derived from one retained family bundle in the first place —
+  the artwork was never missing, it was filed under 3002. Tower had been
+  advertising four cards the archive cannot draw.
+
+  Both families now come from the copy the original archive shipped cards for.
+  Verified against the reviewed client: all four Tower cards render, Attack of
+  the Coin Creeps renders, and its `start_quest` settles. The separate Coin
+  Creeps card derivation is left in place but is no longer reached.
+
+  Coin Creeps needs only a server restart — its stages are declared in the
+  bundled Hunting policy. Tower is carried by the event catalog, which is
+  derived from your own APK, so an existing `user-data/event-catalog.json`
+  still names 9010–9013: regenerate it with the guided setup, then restart. No
+  APK rebuild either way, because the client already carries every catalog
+  record involved.
 
 - **A save that failed to write could still be reported as saved.** Every
   mutation changes the account in memory and records the answer it will give to
@@ -166,6 +222,13 @@ card fix and Melting Pot, which each say so in their own text.
   complete setup command, which rederives the three bundles, and reinstall the
   newly signed APK. Your save is untouched: it lives on the server, not in the
   client.
+
+  **Superseded before release by the Chapter 3002 move above.** The reason the
+  three cards had to be derived at all was that Chapter 1003 has no retained
+  artwork; Chapter 3002 is the same three sections and has all three cards. The
+  server now serves 3002, so nothing requests `sp1003-*` and neither the
+  derivation nor the APK rebuild described here is required. This entry is kept
+  because it is where the Unity internal-name invariant is written down.
 
 - **Tickets of Fellowship work in batches, and work on Companions at all.**
   Two separate refusals wore the same face: an unsigned 501, which the client
