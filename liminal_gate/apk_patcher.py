@@ -72,6 +72,10 @@ class TextAssetJsonAliases:
     collection: str
     source_name: str
     aliases: tuple[str, ...]
+    #: Fields replaced in every copy, as ordered pairs so the plan stays frozen.
+    #: The source record supplies the rest, and each named field must already
+    #: exist in it: an alias states what it changes, never what it invents.
+    overrides: tuple[tuple[str, str | int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -217,7 +221,18 @@ def _parse_text_asset_json_aliases(value: object) -> TextAssetJsonAliases:
         or source_name in aliases
     ):
         raise PatchPlanError("text-asset aliases must be unique nonempty strings distinct from source_name")
-    return TextAssetJsonAliases(member, asset_name, collection, source_name, tuple(aliases))
+    overrides = value.get("overrides", {})
+    if (
+        not isinstance(overrides, dict)
+        or any(not isinstance(field, str) or not field or field == "name" for field in overrides)
+        or any(type(entry) not in (str, int) for entry in overrides.values())
+    ):
+        raise PatchPlanError(
+            "text-asset alias overrides must map field names other than name to strings or integers"
+        )
+    return TextAssetJsonAliases(
+        member, asset_name, collection, source_name, tuple(aliases), tuple(overrides.items())
+    )
 
 
 def _decode_hex(value: object, name: str) -> bytes:
@@ -316,7 +331,13 @@ def _alias_text_asset_document(script: str | bytes, patch: TextAssetJsonAliases)
     if collisions:
         raise PatchPlanError(f"TextAsset alias already exists: {', '.join(collisions)}")
     source = sources[0]
-    entries.extend({**source, "name": alias} for alias in patch.aliases)
+    unknown = sorted(field for field, _ in patch.overrides if field not in source)
+    if unknown:
+        raise PatchPlanError(
+            f"TextAsset alias override names a field {patch.source_name} does not have: {', '.join(unknown)}"
+        )
+    overrides = dict(patch.overrides)
+    entries.extend({**source, **overrides, "name": alias} for alias in patch.aliases)
     return json.dumps(document, ensure_ascii=False, separators=(",", ":"))
 
 

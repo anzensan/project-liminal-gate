@@ -27,15 +27,24 @@ WEBSITE_BASE_LITERAL = b"http://www.terra-battle.com"
 
 # The final catalog skips Attack of Coin Creeps even though the selector still
 # advertises all three Chapter 1003 sections. Copying the retained 3003-1 record
-# supplies the same 610x140/version metadata under the missing logical names;
-# resource setup separately prefers exact operator-owned sp1003 bundles and
-# otherwise derives internally renamed bundles from retained Coin Creeps art.
+# supplies the same 610x140 metadata under the missing logical names; resource
+# setup separately prefers exact operator-owned sp1003 bundles and otherwise
+# derives internally renamed bundles from retained Coin Creeps art.
+#
+# The client caches every downloaded image as `<asset>_<ver>.bin` and reuses it
+# without asking again, deleting only the other versions of the same asset. A
+# corrected bundle served at the unchanged URL would therefore never reach an
+# install that had already cached the first one, so these aliases carry their
+# own version. It is a local cache identity, not a claim about the retired
+# service's versioning: it only has to differ from the 110 served before it.
+COIN_CREEPS_BANNER_VERSION = 111
 COIN_CREEPS_BANNER_ALIASES = {
     "member": DATA_BUNDLE_MEMBER,
     "asset_name": "AssetVersions",
     "collection": "SpecialBanner",
     "source_name": "sp3003-1",
     "aliases": ["sp1003-1", "sp1003-2", "sp1003-3"],
+    "overrides": {"ver": COIN_CREEPS_BANNER_VERSION},
 }
 
 # The retired Unity IAP bootstrap always reports PurchasingUnavailable (zero).

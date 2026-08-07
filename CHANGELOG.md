@@ -2,9 +2,35 @@
 
 ## Unreleased
 
-Every entry below needs only a server restart; none changes the client.
+Every entry below needs only a server restart, except the Attack of Coin Creeps
+card fix, which says so in its own text.
 
 ### Fixed
+
+- **Attack of Coin Creeps cards no longer blank out at random.** Two testers
+  reported the same shape from different directions: one card empty after
+  playing an unrelated quest, another missing and then "strangely" back later.
+  The artwork was never absent. All three Chapter 1003 cards are derived from
+  one retained Coin Creeps-family bundle, and the derivation renamed the
+  texture, the container path, and the bundle — but not the serialized file
+  inside it, which all three inherited from the source. Unity keys a loaded
+  bundle by that internal file and refuses to load one another loaded bundle
+  already provides, so whenever two of the cards overlapped, the second load
+  returned nothing and the card drew empty. The client unloads each bundle on a
+  delay after reading its texture, which is why the same card could be blank
+  once and fine the next time. Decoding 1,200 retained bundles found no
+  duplicate internal name anywhere: uniqueness was an invariant of the original
+  archive that only the derivation broke. Each derived card now carries its own.
+
+  **This one needs an APK rebuild and regenerated derived files, not just a
+  server restart.** The client stores downloaded artwork as `<asset>_<ver>.bin`
+  and reuses it without asking again, so an install that already cached the
+  broken cards would keep them no matter what the server serves. The three
+  aliased catalog records now carry their own asset version, which is what makes
+  the client discard the stale copies and fetch the corrected ones. Rerun the
+  complete setup command, which rederives the three bundles, and reinstall the
+  newly signed APK. Your save is untouched: it lives on the server, not in the
+  client.
 
 - **Tickets of Fellowship work in batches, and work on Companions at all.**
   Two separate refusals wore the same face: an unsigned 501, which the client

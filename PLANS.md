@@ -104,6 +104,12 @@ Result:
   the exact section-1 derivation. All 927 warning-strict tests pass.
 - The original/fallback artwork distinction is explicit. A reinstall and
   physical-client visual check remain the next boundary.
+- Superseded 2026-08-06: the physical check found the cards blanking each other
+  at random. The three copies shared the source bundle's internal serialized
+  file name, which Unity keys loaded bundles by, so overlapping loads failed.
+  Each derived bundle now carries its own, and the aliased catalog records carry
+  their own asset version so a client holding the cached first derivation
+  replaces it. See `docs/findings.md`.
 
 ## 2026-08-03 client-trusted Hunting settlement
 
