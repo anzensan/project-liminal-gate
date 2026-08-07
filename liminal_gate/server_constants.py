@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from liminal_gate.save_validation import MAX_ITEM_STACK
+
 
 # The final archive client is 5.5.7, so the final-major state is advertised
 # explicitly rather than inferred.
@@ -78,7 +80,10 @@ def build_server_constants(
         "maxCoins": 99999999,
         "maxEnergy": 9999,
         "maxFreeEnergy": 9999,
-        "maxItemCount": 9999,
+        # The client enforces this ceiling on its own inventory, and every
+        # server-side item projection is compared against what the client then
+        # reports, so the two have to be one number rather than two literals.
+        "maxItemCount": MAX_ITEM_STACK,
         "refillInterval": 120,
         "refillCost": 1,
         "maxMessages": 100,

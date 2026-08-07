@@ -72,6 +72,36 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A big enough haul ended in a Network Error loop at the item screen.**
+  Reported against Puppet Show Lv. 20-39 with 47 item chests
+  ([#57](https://github.com/anzensan/project-liminal-gate/issues/57), on-device
+  on a Pixel 7 Pro): the post-battle item screen showed Network Error over and
+  over and only a force-close escaped it.
+
+  This server told the client one inventory ceiling and enforced another. The
+  constants block sends `maxItemCount` 9999, which is what the client then
+  allows a slot to hold; every server-side item projection was written against
+  999, a figure that entered as a save-editor invariant and was never checked
+  against the client. A clear whose drops carried any slot past 999 therefore
+  reported an inventory this server called impossible, and refused it with
+  `invalid_local_hunting_result` — an unsigned 409, which the client reads as a
+  transport failure rather than an endpoint refusal, so it showed the network
+  dialog and retried. The refusal also leaves the battle open, so every retry
+  was refused identically, exactly as in the Counter Descent defect below.
+
+  Nothing needed to be unusual about the run except its size: 47 chests is
+  roughly the width of the gap, so it was the players deepest into farming the
+  species materials who hit it first. The one ceiling is now the client's own,
+  named once and sent from the same constant it is enforced against, so the two
+  cannot drift apart again. The lower figure was also refusing valid saves in
+  the editor's validator and truncating mailed, achievement, and Trading Post
+  item grants at 999; all of those now reach the ceiling the client honours.
+
+  **Hunting, Metal Zone, Daily Quests, and events need only a server restart.**
+  A `user-data/story-outcomes.json` generated before this fix carries the old
+  999 in its own capacities block, so story-stage clears keep refusing until it
+  is regenerated — re-run the guided setup, then restart.
+
 - **Metal Minion evolutions ate one Companion too many.** A tester reported the
   two Metal Minion recipes costing eleven and four copies where the client's own
   numbers are ten and three.

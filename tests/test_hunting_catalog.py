@@ -8,6 +8,7 @@ from liminal_gate.hunting_catalog import (
     HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds,
     load_hunting_catalog,
 )
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from tests.support import write_json
 
 
@@ -101,7 +102,9 @@ class BundledHuntingPolicyTest(unittest.TestCase):
             + [(3003, 1), (3004, 1)],
             sorted(self.stages),
         )
-        self.assertEqual((181, 999), (self.catalog.item_slots, self.catalog.max_stack))
+        # The stack ceiling is the client's own `maxItemCount`, not a lower one
+        # this server would then refuse honest inventories against.
+        self.assertEqual((ITEM_SLOTS, MAX_ITEM_STACK), (self.catalog.item_slots, self.catalog.max_stack))
 
     def test_carries_the_recovered_entry_costs(self) -> None:
         for identity, stamina in (

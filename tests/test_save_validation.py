@@ -7,8 +7,9 @@ from liminal_gate.master_strings import (
     decrypt_encrypted_string, load_inverse_table,
 )
 from liminal_gate.save_validation import (
-    ITEM_SLOTS, LEVEL_CAP, decode_job_level, encode_job_level, validate_document,
+    ITEM_SLOTS, LEVEL_CAP, MAX_ITEM_STACK, decode_job_level, encode_job_level, validate_document,
 )
+from liminal_gate.server_constants import build_server_constants
 
 
 def character(character_id: int = 3, packed: float = 3930566726.0) -> dict:
@@ -101,8 +102,22 @@ class SaveValidationTest(unittest.TestCase):
     def test_the_inventory_shape_and_stack_ceiling_are_enforced(self) -> None:
         self.assertIn("itemList", errors(save(itemList=[0] * 8)))
         overflowing = [0] * ITEM_SLOTS
-        overflowing[4] = 1000
+        overflowing[4] = MAX_ITEM_STACK + 1
         self.assertIn("itemList[4]", errors(save(itemList=overflowing)))
+        # A stack the client itself allows is not an overflow. Four figures
+        # were refused here while the client was being told it could hold them.
+        at_ceiling = [0] * ITEM_SLOTS
+        at_ceiling[4] = MAX_ITEM_STACK
+        self.assertEqual([], errors(save(itemList=at_ceiling)))
+
+    def test_the_stack_ceiling_is_the_one_the_client_is_told(self) -> None:
+        """A ceiling the client does not share is not a ceiling at all.
+
+        The server sends `maxItemCount` and the client enforces it, so a lower
+        server-side ceiling never bounds anything -- it only makes an honest
+        inventory unrepresentable, which is refused as an invalid settlement.
+        """
+        self.assertEqual(MAX_ITEM_STACK, build_server_constants()["maxItemCount"])
 
     def test_a_wallet_that_disagrees_with_its_projection_is_an_error(self) -> None:
         disagreeing = save(coins=801)
