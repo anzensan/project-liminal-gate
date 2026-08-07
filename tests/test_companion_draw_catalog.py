@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from liminal_gate.companion_draw_catalog import build_bundled_companion_draw_policy, CompanionDrawCatalogError, load_companion_draw_catalog
+from liminal_gate.companion_draw_catalog import _RARE_SLOT_CLASSES, build_bundled_companion_draw_policy, CompanionDrawCatalogError, load_companion_draw_catalog
 from tests.support import write_json
 
 
@@ -107,7 +107,36 @@ class BundledCompanionDrawPolicyTest(unittest.TestCase):
         self.assertEqual([81, 81, 112, 112], [self.catalog.ticket_item_for_kind(kind) for kind in (0, 20, 1, 21)])
         self.assertEqual(((), None, None), (self.catalog.draws_for_kind(10), self.catalog.cost_for_kind(10), self.catalog.ticket_item_for_kind(10)))
 
-    def test_selection_is_uniform_local_policy_not_historical_odds(self) -> None:
-        # The bundled Pact policy makes the same choice for the same reason:
-        # pool membership is recovered, per-rarity base rates are not asserted.
-        self.assertEqual({1}, {draw.weight for draw in self.catalog.normal_draws + self.catalog.rare_draws})
+    def test_rare_pool_groups_match_the_recovered_class_counts(self) -> None:
+        # The community record and the recovered `BuddyData.rarity` field agree
+        # on this split, which is what lets the bundle carry the map at all. A
+        # group of the wrong size means one of the two was transcribed wrong.
+        self.assertEqual(
+            {"z": 19, "ss": 13, "s": 50, "a": 30, "b": 2},
+            {name: len(ids) for name, ids in _RARE_SLOT_CLASSES.items()},
+        )
+        grouped = [companion_id for ids in _RARE_SLOT_CLASSES.values() for companion_id in ids]
+        self.assertEqual(len(grouped), len(set(grouped)))
+        self.assertEqual(sorted(grouped), [draw.companion_id for draw in self.catalog.rare_draws])
+
+    def test_rare_selection_follows_the_displayed_class_shares(self) -> None:
+        # Z 3%, SS 8%, S 10%, A 30%, B 49% -- the rates the service displayed
+        # in-game. Uniform selection over this pool would instead return 16.7%
+        # Z and 1.8% B, inverting the two commonest outcomes.
+        weights = {draw.companion_id: draw.weight for draw in self.catalog.rare_draws}
+        total = sum(weights.values())
+        for name, share in (("z", 0.03), ("ss", 0.08), ("s", 0.10), ("a", 0.30), ("b", 0.49)):
+            drawn = sum(weights[companion_id] for companion_id in _RARE_SLOT_CLASSES[name])
+            self.assertAlmostEqual(share, drawn / total, places=6)
+
+    def test_rare_selection_is_even_within_a_class(self) -> None:
+        # The displayed table gave a per-Companion rate this record does not
+        # preserve, so an even split within the class is the local policy.
+        for ids in _RARE_SLOT_CLASSES.values():
+            weights = {draw.weight for draw in self.catalog.rare_draws if draw.companion_id in ids}
+            self.assertEqual(1, len(weights))
+
+    def test_normal_selection_stays_uniform_local_policy(self) -> None:
+        # No displayed-rate record was found for the Coin pool, so it keeps the
+        # uniform weight rather than borrowing the Rare pool's table.
+        self.assertEqual({1}, {draw.weight for draw in self.catalog.normal_draws})

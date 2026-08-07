@@ -87,25 +87,78 @@ BUNDLED_MAX_OWNED = 1000
 BUNDLED_NORMAL_TICKET_ITEM_ID = 81
 BUNDLED_COIN_COST = 3000
 # `SlotKind.Rare` (`kind == 2`) members of the final client's BuddyDatabase:
-# 114 of its 497 records, split 19 Z, 13 SS, 50 S, 30 A, 2 B.  Membership is
-# recovered; the uniform weight below is not a claim about retired odds.
-_RARE_SLOT_IDS = (
-    1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 16, 17, 18, 19, 22, 23, 24, 25, 28,
-    29, 30, 31, 32, 33, 34, 35, 42, 43, 44, 45, 46, 47, 48, 49, 59, 60, 61,
-    62, 63, 64, 65, 66, 67, 78, 79, 80, 81, 82, 84, 85, 86, 89, 100, 102,
-    104, 106, 112, 113, 114, 115, 116, 117, 122, 123, 124, 125, 126, 127,
-    150, 158, 159, 160, 161, 167, 198, 199, 200, 201, 202, 203, 204, 205,
-    206, 229, 230, 231, 232, 246, 247, 248, 249, 252, 253, 259, 303, 304,
-    305, 306, 307, 371, 372, 373, 374, 377, 378, 379, 380, 410, 411, 412,
-    413, 414, 415,
-)
+# 114 of its 497 records, grouped here by the `BuddyData.rarity` each record
+# carries.  Both fields are recovered from the same master object, and grouping
+# the roster by class rather than listing it flat is what makes the two-way
+# check structural: the per-class counts below are the counts the community
+# record states for the pool, so a transcription error in either the membership
+# or the rarity shows up as a group of the wrong size.
+#
+# `Rarity` is the same enum the character side uses -- D 2, C 3, B 4, A 5,
+# S 6, SS 7, Z 8 -- so these keys mean the classes the client displays.
+_RARE_SLOT_CLASSES: dict[str, tuple[int, ...]] = {
+    "z": (
+        303, 304, 305, 306, 307, 371, 372, 373, 374, 377, 378, 379,
+        380, 410, 411, 412, 413, 414, 415,
+    ),
+    "ss": (
+        3, 5, 13, 19, 25, 31, 45, 46, 47, 79, 80, 81, 82,
+    ),
+    "s": (
+        4, 10, 16, 22, 28, 42, 43, 44, 49, 59, 60, 61, 62, 63, 64, 65,
+        66, 67, 78, 89, 113, 122, 123, 124, 125, 127, 150, 158, 159,
+        160, 161, 198, 199, 200, 201, 202, 203, 204, 205, 206, 229,
+        230, 231, 232, 246, 247, 248, 249, 253, 259,
+    ),
+    "a": (
+        2, 7, 11, 12, 17, 18, 23, 24, 29, 30, 32, 33, 34, 35, 48, 84,
+        85, 86, 100, 102, 104, 106, 112, 114, 115, 116, 117, 126, 167,
+        252,
+    ),
+    "b": (
+        1, 6,
+    ),
+}
+_RARE_SLOT_IDS = tuple(sorted(
+    companion_id for companion_ids in _RARE_SLOT_CLASSES.values() for companion_id in companion_ids
+))
+
+# Rare-pool class shares, in parts per million of one pull.  These are the base
+# rates the service displayed in-game from 2018-02-28, as the community record
+# transcribes them on the Companions of Truth page: Z 3%, SS 8%, S 10%, A 30%,
+# B 49%.  Same evidence class as the Pact of Truth shares in
+# :mod:`liminal_gate.pact_draw_catalog` -- community record of a displayed
+# figure, with no APK table to cross-validate, because the retired server owned
+# pool selection entirely.  The client's only rate-related symbol for this pool
+# is the Energy cost this bundle already sends.
+#
+# What the display had that this table does not is a per-Companion rate.
+# Splitting a class's share evenly across its own members is the only reading
+# the source supports, and it is the same choice the Pact shares document.
+#
+# Weighting matters more here than the flat weight it replaces suggests: the
+# pool is lopsided the opposite way from the rates.  Half its members are S and
+# only two are B, so a uniform draw returns Z at 16.7% against a displayed 3%
+# and B at 1.8% against a displayed 49% -- inverting the two commonest outcomes.
+_RARE_CLASS_SHARE_PPM = {
+    "z": 30_000,
+    "ss": 80_000,
+    "s": 100_000,
+    "a": 300_000,
+    "b": 490_000,
+}
+_WEIGHT_SCALE = 1_000_000
 
 
 # `SlotKind.Normal` (`kind == 1`) members of the same BuddyDatabase: 81 of its
-# 497 records, split 41 C and 40 D on the rarity scale the Rare split above
-# uses.  This is the pool the Coin-priced Companion draw and its Fellowship
-# Ticket variant pull from; membership is recovered, the uniform weight is not
-# a claim about retired odds.
+# 497 records, split 41 C and 40 D on the rarity scale the Rare groups above
+# use.  This is the pool the Coin-priced Companion draw and its Fellowship
+# Ticket variant pull from; membership is recovered, and this pool stays
+# uniform deliberately.  No displayed-rate record was found for it -- the
+# Companions of Truth page documents the Rare pool only -- and a two-class pool
+# that a uniform draw already splits near evenly is not worth inventing a table
+# for.  Weighting Rare and not Normal is the same asymmetry the Pact policy
+# carries between Truth and Fellowship, for the same reason.
 _NORMAL_SLOT_IDS = (
     8, 14, 20, 26, 36, 37, 38, 68, 69, 70, 71, 83, 87, 88, 108, 109, 110,
     111, 131, 132, 133, 134, 135, 136, 137, 138, 139, 151, 152, 153, 154,
@@ -152,25 +205,36 @@ class BundledCompanionDrawPolicy:
         return self.ticket_item_id if kind in {1, 21} else None
 
 
+def _rare_weights() -> dict[int, int]:
+    """Split each Rare class's displayed share evenly across its own members.
+
+    The scale factor keeps the smallest share an integer with room to spare:
+    the narrowest split, Z across nineteen members, still lands near 1.6e9, so
+    the floor division loses parts per billion rather than anything a draw
+    could observe.
+    """
+    weights: dict[int, int] = {}
+    for name, companion_ids in _RARE_SLOT_CLASSES.items():
+        share = _RARE_CLASS_SHARE_PPM[name] * _WEIGHT_SCALE // len(companion_ids)
+        for companion_id in companion_ids:
+            weights[companion_id] = max(share, 1)
+    return weights
+
+
 def build_bundled_companion_draw_policy() -> BundledCompanionDrawPolicy:
     """Return the guided-path local Companion draw policy.
 
-    Pool membership, both ticket items, the displayed three-Energy fallback,
-    the Coin price, and the Companion box ceiling are recovered from the final
-    client.  Selection is uniform across each pool as an explicit local policy.
-    The community record (Companions of Truth, terrabattle.fandom.com)
-    transcribes the officially displayed base rates as Z 3%, SS 8%, S 10%,
-    A 30%, B 49%, and the Rare pool's per-rarity counts above are known -- but
-    the public bundle does not store which of the 114 IDs belongs to which
-    class, so applying that table here would mean bundling an unrecovered
-    membership map.  An operator who imports per-Companion rarity from their
-    own BuddyDatabase can supply a weighted catalog through
-    ``load_companion_draw_catalog`` instead; until then the uniform weight
-    stays, deliberately not a claim about retired odds.
+    Pool membership, per-Companion rarity, both ticket items, the displayed
+    three-Energy fallback, the Coin price, and the Companion box ceiling are
+    recovered from the final client.  Rare-pool selection follows the displayed
+    class shares documented above; the even split within a class, and the
+    Normal pool's uniform selection, are local policy rather than claims about
+    retired odds.
     """
+    rare_weights = _rare_weights()
     return BundledCompanionDrawPolicy(
         BUNDLED_ITEM_SLOTS, BUNDLED_TICKET_ITEM_ID, BUNDLED_NORMAL_TICKET_ITEM_ID,
         BUNDLED_COIN_COST, BUNDLED_ENERGY_COST, BUNDLED_MAX_OWNED,
         tuple(CompanionDraw(companion_id, 1) for companion_id in _NORMAL_SLOT_IDS),
-        tuple(CompanionDraw(companion_id, 1) for companion_id in _RARE_SLOT_IDS),
+        tuple(CompanionDraw(companion_id, rare_weights[companion_id]) for companion_id in _RARE_SLOT_IDS),
     )

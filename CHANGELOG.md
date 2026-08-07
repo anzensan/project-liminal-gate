@@ -7,6 +7,30 @@ card fix, which says so in its own text.
 
 ### Fixed
 
+- **Companion pulls now follow the rates the game displayed.** A tester
+  reported 12 Companion Ticket pulls coming back 5 Z, 4 S, 2 A, 1 B, and
+  suspected the tickets. The tickets were fine — they pay for the same pool the
+  Energy press draws from, and payment never touched selection. The pool did
+  not weight its members at all. Every one of the 114 rare-slot Companions was
+  equally likely, so what came out reflected who was *in* the pool rather than
+  the odds the service advertised, and the pool leans the opposite way from its
+  own rates: half its members are S and only two are B. That returned Z at
+  16.7% against a displayed 3%, and B at 1.8% against a displayed 49% —
+  the two commonest results, inverted. Twelve pulls were enough to see it: that
+  spread is about 54,000 times more likely under the flat pool than under the
+  real table.
+
+  The rates were known but unusable, because the bundle had no record of which
+  Companion belonged to which class. `BuddyData.rarity` has carried it all
+  along, on the same master object the pool membership and the Companion sale
+  and evolution tables already come from. The 114 are now grouped by it and
+  each class draws its displayed share: Z 3%, SS 8%, S 10%, A 30%, B 49%. The
+  grouping agrees with the community record exactly — 19 Z, 13 SS, 50 S, 30 A,
+  2 B — so the two records corroborate each other rather than one being taken
+  on trust. Within a class the split stays even, which is as far as the record
+  goes. The Coin pool is unchanged and still uniform; nothing was found that
+  describes its rates, and its two classes are near-evenly sized anyway.
+
 - **Attack of Coin Creeps cards no longer blank out at random.** Two testers
   reported the same shape from different directions: one card empty after
   playing an unrelated quest, another missing and then "strangely" back later.
