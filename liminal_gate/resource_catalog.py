@@ -25,6 +25,12 @@ class ResourceEntry:
     size: int
     file: Path | None = None
     member: str | None = None
+    #: The manifest digest, retained for filesystem entries so serving can
+    #: check the file again rather than trusting a load-time result. APK
+    #: members do not carry one: they are read through a `ZipFile` handle the
+    #: catalog holds open, so the bytes served are the bytes validated even if
+    #: the package on disk is replaced underneath a running server.
+    sha256: str | None = None
 
 
 class ResourceCatalog:
@@ -50,9 +56,37 @@ class ResourceCatalog:
         return self.entries.get(path) or self.casefolded_entries.get(path.casefold())
 
     def open(self, entry: ResourceEntry) -> BinaryIO:
-        """Open one validated resource without materializing it in memory."""
+        """Open one resource, re-checking a filesystem entry as it does.
+
+        Validating at load and then reopening the path per request trusted a
+        result that stops being true the moment the file changes: a replacement
+        was served under the manifest's identity, and a replacement of a
+        *different length* also made the `Content-Length` already computed from
+        the manifest disagree with the bytes streamed, which reaches the client
+        as a truncated or over-long body rather than as an error.
+
+        So the file is measured and digested again here, before the caller has
+        framed a response around the manifest's numbers. The cost is one read
+        of a file that is about to be read anyway.
+        """
         if entry.file is not None:
-            return entry.file.open("rb")
+            stream = entry.file.open("rb")
+            try:
+                size = entry.file.stat().st_size
+                if size != entry.size:
+                    raise ResourceCatalogError(
+                        f"resource {entry.path} changed size on disk since it was "
+                        f"validated ({entry.size} to {size}); reload the manifest"
+                    )
+                if entry.sha256 is not None and _sha256_rewinding(stream) != entry.sha256:
+                    raise ResourceCatalogError(
+                        f"resource {entry.path} changed on disk since it was validated; "
+                        f"reload the manifest"
+                    )
+            except BaseException:
+                stream.close()
+                raise
+            return stream
         if self._archive is None or entry.member is None:
             raise ResourceCatalogError("resource catalog is closed")
         return self._archive.open(entry.member, "r")
@@ -131,7 +165,10 @@ def _load_file_entry(resource: object, root: Path) -> ResourceEntry:
         raise ResourceCatalogError("resource file is unavailable")
     if _sha256_file(candidate) != expected_hash:
         raise ResourceCatalogError("resource file hash does not match local manifest")
-    return ResourceEntry(path, content_type, candidate.stat().st_size, file=candidate)
+    return ResourceEntry(
+        path, content_type, candidate.stat().st_size,
+        file=candidate, sha256=expected_hash,
+    )
 
 
 def _load_apk_catalog(resources: list[object], apk: Path) -> ResourceCatalog:
@@ -201,6 +238,20 @@ def _safe_zip_member(value: str) -> bool:
 def _sha256_file(path: Path) -> str:
     with path.open("rb") as stream:
         return _sha256_stream(stream)
+
+
+def _sha256_rewinding(stream: BinaryIO) -> str:
+    """Digest an open stream and hand it back ready to read from the start.
+
+    Separate from `_sha256_stream`, which closes what it reads: this one is for
+    the stream that is about to be served, so the file is read once rather than
+    opened a second time and risking a different file between the two.
+    """
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+    stream.seek(0)
+    return digest.hexdigest()
 
 
 def _sha256_stream(stream: BinaryIO) -> str:

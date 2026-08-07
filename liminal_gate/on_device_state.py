@@ -138,6 +138,91 @@ def describe(document: dict[str, Any]) -> str:
     return f"{len(accounts)} account(s), active {active or 'none'}"
 
 
+#: The two `userdata` fields whose movement across a transfer is the server's
+#: own bookkeeping rather than lost progress. `refillStartTime` is the stamina
+#: meter's fill origin, which the server rebases when it loads a save and pins
+#: outright when the stamina policy is off; `lastupdate` is a wire echo it
+#: rewrites on every settlement. Everything else in `userdata` is a player's
+#: progress and has to survive a transfer unchanged.
+EPHEMERAL_USERDATA_FIELDS = frozenset({"refillStartTime", "lastupdate"})
+
+
+def _comparable(value: Any) -> Any:
+    """Normalize a save value so only real differences compare unequal.
+
+    The one difference that is never a loss is numeric spelling: the client
+    reads several fields as LitJson doubles, so the server coerces whole
+    numbers to floats when it serves them, and a level that leaves as `1` comes
+    back as `1.0`. Comparing those as unequal would report every transfer as a
+    failure.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        return {key: _comparable(item) for key, item in sorted(value.items())}
+    if isinstance(value, list):
+        return [_comparable(item) for item in value]
+    return value
+
+
+def durable_state(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Each account's progress, normalized and stripped of ephemeral fields."""
+    accounts = document.get("accounts")
+    if not isinstance(accounts, dict):
+        return {}
+    projection: dict[str, dict[str, Any]] = {}
+    for account_id, account in accounts.items():
+        userdata = account.get("userdata") if isinstance(account, dict) else None
+        if not isinstance(userdata, dict):
+            projection[account_id] = {}
+            continue
+        projection[account_id] = {
+            field: _comparable(value)
+            for field, value in userdata.items()
+            if field not in EPHEMERAL_USERDATA_FIELDS
+        }
+    return projection
+
+
+def durable_state_differences(
+    before: dict[str, Any], after: dict[str, Any],
+) -> list[str]:
+    """Name every way `after` fails to carry `before`'s progress.
+
+    Checking that the account *identities* survived is not the same as checking
+    that the saves did: a transfer that kept every account ID and zeroed the
+    progress inside them passed that check and printed reassurance. This
+    compares the progress itself and names the fields that moved, so the
+    message a tester acts on is specific enough to act on.
+    """
+    expected, actual = durable_state(before), durable_state(after)
+    differences: list[str] = []
+    for account_id in sorted(expected):
+        if account_id not in actual:
+            differences.append(f"account {account_id} is missing")
+            continue
+        was, now = expected[account_id], actual[account_id]
+        for field in sorted(set(was) | set(now)):
+            if field not in now:
+                differences.append(f"account {account_id}: {field} is gone")
+            elif field not in was:
+                continue
+            elif was[field] != now[field]:
+                differences.append(
+                    f"account {account_id}: {field} was {was[field]!r}, is now {now[field]!r}"
+                )
+    return differences
+
+
+def _summarize_differences(differences: list[str], limit: int = 8) -> str:
+    shown = differences[:limit]
+    remainder = len(differences) - len(shown)
+    text = "; ".join(shown)
+    return f"{text}; and {remainder} more" if remainder else text
+
+
 def default_backup_path(data_directory: Path, build_id: str) -> Path:
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     return data_directory / BACKUP_DIRECTORY / f"{stamp}-{build_id[:12]}.json"
@@ -203,6 +288,13 @@ def import_state(
             f"the app restarted on account {verified.get('active_account_id')}, not the imported "
             f"{active}. The previous save is still on the device as state.json.bak.1."
         )
+    differences = durable_state_differences(edited, verified)
+    if differences:
+        raise OnDeviceStateError(
+            f"the app restarted on the right account but not the imported progress: "
+            f"{_summarize_differences(differences)}. The previous save is still on the device "
+            f"as state.json.bak.1."
+        )
     print(f"Verified after relaunch: {describe(verified)}")
     return 0
 
@@ -265,7 +357,7 @@ def update(args: argparse.Namespace) -> int:
     with tester_setup.adb_forward(adb, device, LOOPBACK_PORT) as port:
         wait_for_health(port)
         current = fetch_state(port)
-    print(f"Installed and launched on {device}. The save survived the update: {describe(current)}")
+    print(f"Installed and launched on {device}: {describe(current)}")
     if backup is not None:
         before, _ = read_document(backup)
         expected = json.loads(before)
@@ -276,7 +368,19 @@ def update(args: argparse.Namespace) -> int:
                 f"Import that file to restore them: python3 -m liminal_gate.on_device_state import "
                 f"--device {device} {backup} --yes"
             )
-        print(f"  backup retained: {backup}")
+        # Every account still being present is not the same as every account
+        # still holding its progress, and the reassurance below is only worth
+        # printing once the progress itself has been compared.
+        differences = durable_state_differences(expected, current)
+        if differences:
+            raise OnDeviceStateError(
+                f"the updated install kept every account but not their progress: "
+                f"{_summarize_differences(differences)}. Restore the backup: "
+                f"python3 -m liminal_gate.on_device_state import --device {device} {backup} --yes"
+            )
+        print(f"  the save survived the update; backup retained: {backup}")
+    else:
+        print("  no backup existed, so nothing could be compared against.")
     return 0
 
 

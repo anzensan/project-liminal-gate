@@ -74,6 +74,36 @@ class ResourceCatalogTest(unittest.TestCase):
         self.assertEqual(501, status)
         self.assertEqual({"error": "route_not_implemented"}, json.loads(body))
 
+    def test_a_file_replaced_after_load_is_not_served_under_its_manifest(self) -> None:
+        """Validating at load and reopening per request trusted a stale result."""
+        entry = self.resource_root / "packs" / "entry.bin"
+        # Same length, so nothing about the response framing would give it away.
+        entry.write_bytes(b"X" * len(self.payload))
+        status, body, _ = self.request("GET", "/resources/packs/entry.bin")
+        self.assertEqual(503, status)
+        self.assertEqual("resource_changed_on_disk", json.loads(body)["error"])
+        # Non-latching: putting the manifested file back serves it again.
+        entry.write_bytes(self.payload)
+        status, body, _ = self.request("GET", "/resources/packs/entry.bin")
+        self.assertEqual((200, self.payload), (status, body))
+
+    def test_a_resized_file_is_refused_rather_than_mismatching_content_length(self) -> None:
+        # The sharper half: Content-Length comes from the manifest, so serving
+        # a resized file would frame a body the client cannot read to the end.
+        entry = self.resource_root / "packs" / "entry.bin"
+        entry.write_bytes(self.payload + b"-and-then-some")
+        status, body, headers = self.request("GET", "/resources/packs/entry.bin")
+        self.assertEqual(503, status)
+        self.assertEqual(str(len(body)), headers["Content-Length"])
+        self.assertIn("changed size on disk", json.loads(body)["detail"])
+
+    def test_a_head_request_also_refuses_a_changed_file(self) -> None:
+        # HEAD sends the manifest's Content-Length and no body, so it has to
+        # answer from the same check the body path uses.
+        (self.resource_root / "packs" / "entry.bin").write_bytes(b"X" * len(self.payload))
+        status, _body, _ = self.request("HEAD", "/resources/packs/entry.bin")
+        self.assertEqual(503, status)
+
     def test_rejects_unknown_and_traversal_paths(self) -> None:
         for path in ("/resources/packs/missing.bin", "/resources/%2e%2e/state.json"):
             status, body, _ = self.request("GET", path)
