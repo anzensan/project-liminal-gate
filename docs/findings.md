@@ -332,8 +332,10 @@ Private inputs, captures, account state, and original assets remain excluded.
   ARM64 callers of the Tower predicate are selector/title presentation, while
   completed `ChapterBase` stages call ordinary `AppServerUtil.ClearQuest`.
   Matching BattleData contains three one-battle, 15-stamina, zero-entry-Coin
-  stages in each Tower chapter. Donation has separate aggregate-state UI and
-  remains disabled.
+  stages in each Tower chapter. The claim that Donation "has separate
+  aggregate-state UI and remains disabled" is **withdrawn**; see the 2026-08-07
+  entry below. The chapter *range* is as stated, but its content is Melting Pot
+  and the aggregate-state UI is dead code in the final build.
 - **Explicit solo-adapter policy with real-HTTP restart proof:** guided setup
   advertises all 12 BattleData-backed stages in Chapters 9010--9013 through
   `towerQuestList` after Chapter 3, supplies their chapter flags, and settles
@@ -386,8 +388,10 @@ Private inputs, captures, account state, and original assets remain excluded.
   30/35/40/40, every Chapter 8000--8007 family has five at
   5/10/15/15/15, and every Chapter 8012--8017 family has three at 5/10/15.
   Chapters 9010--9013 each contain three one-battle, 15-stamina sections and
-  zero entry Coins. Chapters 9100--9102 instead contain the 45 Donation
-  sections and are not generated. This
+  zero entry Coins. Chapters 9100--9102 carry fifteen sections each, 45 in
+  total; they were recorded here as "the 45 Donation sections" on the strength
+  of the chapter range alone, and that reading is **withdrawn** -- their
+  BattleData titles name them Melting Pot, see the 2026-08-07 entry below. This
   confirms local section economics, not service-authored clear rewards.
 - **Confirmed by supplied final-APK analysis:** BattleData identifies Chapter
   3004-1 as *Crystal Road* (`クリスタルロード`): three battles and seven stamina.
@@ -1271,3 +1275,70 @@ condition-counted and service-authored rather than client-side drop programs;
 they are recoverable only as bounded local policy from the community record,
 the way the Trading Post already is. The server has always supported *spending*
 candy through `use_statusup_item`.
+
+## 2026-08-07: Chapters 9100--9102 are Melting Pot, and their candy is recovered
+
+Two earlier readings are corrected here. The chapter *range* was right; what
+sits in it, and what that costs, were not.
+
+- **Confirmed by BattleData titles.** Chapters 9100, 9101, and 9102 are
+  `[るつぼの都] トカゲ`, `ケモノ`, and `ヒト` -- Melting Pot: Lizardfolk,
+  Beastfolk, and Human -- fifteen sections each. Section economics match the
+  community record quest for quest: five battles per section, 5 stamina rising
+  to 15, assumed levels 15/15/25/25/35 and upward. `parentQuest` chains each
+  section to its predecessor, which is the record's "unlocked in order". They
+  were previously recorded as "the 45 Donation sections" from the chapter range
+  alone; the count was right and the identification was not.
+- **Confirmed by ARM64 disassembly -- the Donation blocker is dead code.**
+  `ChapterInterface..cctor` does assign the range: `TowerOfTemptationChapter`
+  9010 / `TowerOfTemptationEndChapter` 9099, `DonationQuestChapter` 9100 /
+  `DonationQuestEndChapter` 9199, and `NumOfDonationQuestSections` 15 -- the
+  client hard-codes the section count these chapters have, so no server list
+  needs to supply it. But the two consumers cited as the reason Donation "could
+  not be recreated by a generic quest list" do nothing in the final build:
+  `UISpecialItem.DispDonationQuest` (`0xF833F0`) is a single `ret`, and
+  `EventManager.GetDonationQuestAmount` (`0xD9749C`) and
+  `ChapterInterface.InDonationQuest` (`0xD06518`) have **no callers at all**.
+  `GetDonationQuestAmount` also returns 0 when `GetQuestParam` finds nothing,
+  so a server that authors no donation state cannot fault it.
+- **Confirmed -- what `IsDonationQuest` still does.** Four call sites, all
+  selector presentation: `UISpecialSelect.GetSectionCount` (returns the
+  hard-coded 15), `UISpecialSelect.InitItems`, `UISpecialSelect2.HasBanner`,
+  and `UISpecialSelect2.<GetList>`, where it sets a flag that makes the list
+  fetch `get_special_event_param` before rendering. That route already exists
+  in the bootstrap profile and answers from a canned signed response.
+- **Confirmed -- the candy drops are recovered, not service-authored.** An
+  earlier reading of this project's own evidence concluded candy was authored
+  by the retired service, because none of the 1,930 enemies carrying
+  `EnemyParams.items` names a candy ID. That is true and misleading: Melting
+  Pot attaches its drops *per spawn*, in the chapter program, through
+  `ChapterBase.SetDropItem(Entity, int itemIdx, int dropRatio, int[] itemList)`
+  at managed vtable slot 109. The immediates are literal:
+  - `Chapter910x.Init_DROPPOD` -- the record's "Candy Pot" -- builds
+    `new int[3] {175, 176, 177}` and calls `SetDropItem(e, 0, 100, ...)`: one
+    of Level, Skill, or Luck **Candybox**, at a 100 drop ratio. The record says
+    "Candy Pot drops one of the following" and lists exactly those three.
+  - Six boss spawns per race (`Init_SP9100_2_YAPKAR`, `_3_SHBER`, `_5_AMISAN`,
+    `_6_RAPROW`, `_8_RZONAND`, `_9_MACURI`, and the 9101/9102 equivalents)
+    build `new int[3] {161, 162, 163}` and call `SetDropItem(e, 1, 3, ...)`:
+    one of Level, Skill, or Luck **Candy**, at a 3 drop ratio.
+
+  Sixty-six such sites exist across the three chapters. This is the same class
+  of evidence the story chapters' drop ceilings rest on, read from the same
+  `Init_*` spawn methods `native_encounter_importer` already disassembles --
+  it is simply attached at the spawn rather than on the shared enemy master.
+
+**Local policy.** The three chapters are generated and advertised as ordinary
+local events under `projected_rewards`, the same settlement Counter Descent
+uses and for a weaker reason than Melting Pot can offer: Counter Descent has no
+recovered reward basis at all, while these two rates and six item identities
+*are* recovered. Bounding the stages by them would need the importer to record
+`SetDropItem` operands alongside spawn identity, which it does not yet do; the
+rates are written down here so that work has a source when it happens.
+
+**Still not recovered.** `Chapter910x` carries `enablePot`, `potRatio`,
+`donationOptionLists`, and `winRatioLists`. Whatever community-aggregate
+mechanic those served is not reconstructed, and nothing here claims it was.
+What is asserted is narrower: the fifteen sections per race, their economics,
+and their per-spawn drops are all in the client, and none of the three dead
+Donation consumers can refuse them.

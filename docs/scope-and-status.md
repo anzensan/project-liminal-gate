@@ -106,7 +106,8 @@ until your account has finished the chapter each row waits for.
 | Lucia archive | Chapter 13 |
 | Odin Descent | Chapter 20 |
 | Strikes Back families | Chapters 5 through 18, one family per chapter |
-| Tower of Temptation 9100-1 | Chapter 3 |
+| Tower of Temptation 9010-1 | Chapter 3 |
+| Melting Pot: Lizardfolk, Beastfolk, Human (9100 to 9102) | Chapter 3 |
 | Cryptid Forest (world map) | Chapter 5 |
 | Orbling Cavern (world map) | Chapter 6 |
 | Shin'en Lambda and Mutoh Lambda (world map) | Chapter 34 |
@@ -184,11 +185,18 @@ families. Their permanent progress gates, zero-Coin clears, and first-section
 associated-character grants are local archive policy rather than recovered
 schedules, probabilities, or complete historical reward tables.
 
-The first Tower of Temptation floor is a separate bounded compatibility slice:
-guided setup derives Chapter 9100-1 from your BattleData and advertises it
-through the client's dedicated Tower list after Chapter 3. Its permanent gate and
-zero-Coin clear are local policy, and original-client navigation and clear remain
-unverified. The other 44 recovered Chapter 9100–9102 floors stay unavailable.
+Tower of Temptation is a separate bounded compatibility slice: guided setup
+derives the twelve Chapter 9010–9013 floors from your BattleData and advertises
+them through the client's dedicated Tower list after Chapter 3. Their permanent
+gate and zero-Coin clear are local policy, and original-client clear return
+remains unverified.
+
+Melting Pot: Lizardfolk, Beastfolk, and Human are the 45 sections of Chapters
+9100–9102, derived the same way and advertised as one folded card per race after
+Chapter 3. They settle from the drops the client reports, which is where the
+candy items come from — those drops are attached per spawn inside the chapter
+programs rather than to the shared enemy records. The community-aggregate
+mechanic these chapters' class fields hint at is not reconstructed.
 
 Arena VS, rankings, and multiplayer remain disabled rather than presenting a menu
 that cannot complete.

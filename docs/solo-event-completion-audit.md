@@ -6,6 +6,13 @@ Scope: final Android 5.5.7-170 solo content reached from Arena or its Special
 Quest selectors. Arena VS, Photon rooms, rankings, Co-op, Raid, and Donation
 remain deliberately disabled.
 
+> **Superseded on 2026-08-07, for Chapters 9100--9102 only.** This audit treats
+> that range as Donation and excludes it, here and in the Tower row below. The
+> range label is the client's; the content in it is Melting Pot, and the two
+> client functions that justified excluding it are dead code in the final build.
+> All 45 sections are now generated and advertised. Everything else in this
+> audit stands as written. See `findings.md`, 2026-08-07.
+
 ## Client selector authority
 
 The normal Special Quest selector is server-driven when the server supplies a

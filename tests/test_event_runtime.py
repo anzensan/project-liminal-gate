@@ -737,6 +737,9 @@ class TowerRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         self.assertIn("sp_ch_9010", login["eventFlags"])
+        # Only this fixture's own stage is flagged. Melting Pot (9100--9102) is
+        # a separate catalog slice with its own tests; it is absent here because
+        # this catalog does not carry it, not because the range is disabled.
         self.assertNotIn("sp_ch_9100", login["eventFlags"])
 
         status, multiplayer = self.get(
