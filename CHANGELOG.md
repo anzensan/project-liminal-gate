@@ -72,6 +72,43 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Candy items said no character could take them.** A tester with a Luck
+  Candybox from Melting Pot's Candy Pot opened the item and was told it could
+  not be used on anybody. Every candy item behaved the same way, and no error
+  explained it.
+
+  The client filters that character list on one lookup: a table of item
+  effects the *server* sends with everything else in the status block, which
+  this server had never sent. With the key missing the client builds an empty
+  table, every item misses it, and every character is filtered out. The effects
+  themselves were already recovered and this server has always been able to
+  spend candy — only the client's own gate was absent, so it was refusing a use
+  the server would have settled.
+
+  The table is now sent, derived from the same policy the server applies, and
+  only while that policy is loaded — so the client offers exactly the items a
+  use would settle. Server restart; nothing on the client side changed.
+
+- **Chained event sections never opened, however many times you cleared the
+  one before.** Melting Pot stayed one section long per race, and Tower of
+  Temptation the same.
+
+  Those sections are unlocked by the client, not by this server: each one names
+  the section before it, and the client hides it until the account's own record
+  of cleared quests contains that parent with a date. This server had never
+  kept such a record — nothing in the save knew which individual stages had
+  been cleared — so the second section of every chained chapter was not greyed
+  out, it was never in the list.
+
+  Every clear the server settles — story, Archive events, Hunting, and the
+  Chapter 1100 Roads — now stamps the stage it cleared and hands the client the
+  updated record in the same response, so the next section appears without a
+  trip back to the title screen.
+
+  **Clears from before this change were not recorded and cannot be recovered.**
+  If Melting Pot Lizardfolk 1 was already cleared, clear it once more and
+  section 2 appears. Server restart; no APK rebuild.
+
 - **Attack of the Coin Creeps and Tower of Temptation were being served from
   the copy of themselves that has no artwork.** BattleData carries both
   families twice. Chapters 1003 and 3002 hold the same three `マネマネ参上`

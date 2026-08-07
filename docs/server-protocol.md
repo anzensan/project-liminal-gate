@@ -174,6 +174,16 @@ choice. The final client repeats its pre-entry ticket count in the later clear;
 only that one stale slot is reconciled, and the server-owned lower balance is
 returned. Stamina fallback and every other inventory slot remain exact.
 
+Every settled clear stamps `userdata.questClearDate` with
+`"<chapter>-<section>"` and the settlement instant, as a decimal, and restates
+the whole map in its response. This is the record chained event sections are
+unlocked from: `UISpecialSelect.IsQuestOpen` drops a section from the list it
+builds unless BattleData's `parentQuest` for that section has a nonzero clear
+date, so without it Melting Pot, Tower, and every other chained chapter stay
+one section long. The value must be a decimal, not a whole number: the client
+reads it with LitJson's double accessor, which raises rather than converting.
+Clears settled before this map existed are not reconstructed.
+
 ## Server constants
 
 `get_server_status` returns the complete required constants object. A partial
@@ -194,6 +204,16 @@ Counter Descent family to its tier-1 identity; login supplies only the matching
 chapter flags. Detailed static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
 
+`statusUpItems` is present only while a status-up policy is loaded, and is that
+policy projected into the client's own shape: one `"<itemID>"` key per item
+holding `[levels, skillBoostPercent, luckPercent, species]`, species zero
+meaning no gate. It is not display data. `UIChrSelectWindow.CalcMaxUseNum`
+looks the selected item up here before reading any character state, so an
+absent block empties the item-use character list and reports that no character
+can take the item. All four values are required because the advertised client
+version puts `IsStatusUpItemsDesignatedSpeciesImplemented` past its 4.99
+threshold, and each is read as an integer.
+
 `towerQuestList` is always present. After Chapter 3, the generated event
 catalog contributes all 12 BattleData-backed identities in Chapters
 9010--9013 and login supplies the matching chapter flags. Entry uses the
@@ -201,8 +221,10 @@ ordinary `start_quest` transaction with each stage's recovered stamina and
 zero entry Coins; clear uses the same durable event settlement and does not
 advance story progress. The permanent gate and zero fixed clear Coins are
 local policy. This is a solo adapter, not a recreation of the original shared
-HP and staged achievement state. Donation Chapters 9100--9102 remain disabled
-because their community aggregate and reward state are unrecovered.
+HP and staged achievement state. Chapters 9100--9102 sit in the range the
+client files under Donation and are Melting Pot; they are generated and
+advertised like any other local event, and only their unrecovered community
+aggregate stays out. See `findings.md`, 2026-08-07.
 Physical-client Tower navigation and first-stage battle loading are
 operator-confirmed. A preserved transport trace and the clear/result return
 remain unverified.

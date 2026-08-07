@@ -316,4 +316,10 @@ def _validate_floats(account_id: str, userdata: dict[str, Any]) -> list[Finding]
         for name in CHRDATA_FLOAT_FIELDS:
             if name in row:
                 check(row[name], f"chrdata[{index}].{name}")
+    # Each cleared stage's timestamp, for the same reason: `GetQuestClearDate`
+    # reads the value with LitJson's double accessor and raises on an integer
+    # rather than converting it.
+    cleared = userdata.get("questClearDate")
+    for quest, value in sorted((cleared if isinstance(cleared, dict) else {}).items()):
+        check(value, f"questClearDate.{quest}")
     return findings
