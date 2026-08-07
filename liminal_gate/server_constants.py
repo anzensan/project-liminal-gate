@@ -108,6 +108,14 @@ def build_server_constants(
         "supportEmail_en": "",
         "ChapterClearEnergyBonus": 1,
         "EnergyBonusByDailyQuest": 1,
+        # The pre-battle Power-Up Item slot is gated on this one flag and
+        # nothing else the account owns.  `UITeamPopup.<Setup>` caches
+        # `IsHelpItemEnabled()` (ARM64 `0xD65A08`), which returns false unless
+        # `UserData.helpItemEnabled` -- this key, at static offset `0x1F0` -- is
+        # true, so an absent key hid the whole row even for a player holding
+        # Disarmers.  The other two terms are the client's own: the slot stays
+        # hidden inside the tutorial and on World-0 map specials.
+        "helpItemEnabled": True,
         # `ServerConstants.maxCharacterCount` (ARM64 field offset 0x68) is the
         # character box, and the client falls back to 50 when the server does
         # not set it -- five tutorial characters plus forty-five Pact pulls, and

@@ -185,6 +185,7 @@ from liminal_gate.luck_runtime import (
 )
 from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_pool_catalog import LuckPoolCatalog, LuckPoolCatalogError, load_luck_pool_catalog
+from liminal_gate.save_validation import HELP_ITEM_IDS
 from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_server_constants
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 from liminal_gate.world_map_special import (
@@ -2275,15 +2276,29 @@ class BootstrapState:
             # addition* to stamina can refuse for want of the item.
             spends_ticket = stage.ticket_optional and held >= stage.entry_item_count
             stamina_due = 0 if spends_ticket else stage.stamina
+            # The Power-Up Item is read before the entry item is debited so that
+            # both spends see the same starting inventory; the projection is
+            # discarded unless the entry itself is accepted.
+            help_result, help_items = help_item_debit(
+                userdata, values["helpItemID"], catalog.item_slots,
+            )
+            if help_result == "unsupported":
+                return "unsupported_hunting_start", None
             origin = entry_stamina_origin(userdata, stamina_due, now, enabled=stamina)
             if coins < stage.coins or origin is None:
                 return "success", _canonical_payload({"success": False, "errorCode": 1})
-            if stage.entry_item_id and not stage.ticket_optional and held < stage.entry_item_count:
+            if help_result == "unavailable" or (
+                stage.entry_item_id and not stage.ticket_optional and held < stage.entry_item_count
+            ):
                 return "success", _canonical_payload({"success": False, "errorCode": 2})
             userdata["refillStartTime"] = origin
             userdata["coins"] = coins - stage.coins
+            if help_items is not None:
+                # Re-bind rather than mutate: the entry-item debit below indexes
+                # the live list, so both spends have to land on the same object.
+                items[:] = help_items
             if stage.entry_item_id and (spends_ticket or not stage.ticket_optional):
-                items[stage.entry_item_id - 1] = held - stage.entry_item_count
+                items[stage.entry_item_id - 1] = items[stage.entry_item_id - 1] - stage.entry_item_count
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "hunting_active"
             account["active_hunt"] = identity
@@ -2314,6 +2329,13 @@ class BootstrapState:
                 lucky_chapter=stage.chapter,
             )
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
+            if help_items is not None:
+                # An inventory is reported only when a Power-Up Item was spent,
+                # so an ordinary entry keeps the shape it has always had.  The
+                # list carries the entry ticket's debit too, which the client
+                # would otherwise repeat stale at clear; `_projected_hunting_items`
+                # accepts either count, so both orders settle.
+                payload = _canonical_payload(payload | {"itemList": list(items)})
             if any(luck_up):
                 # No chest is authored: the community record's own no-chest list
                 # names the Hunting and Metal zones, and `luckResult` is sent
@@ -2471,6 +2493,10 @@ class BootstrapState:
             if (
                 values is None or stage is None
                 or values["stamina"] != stage.stamina or values["coins"] != stage.coins
+                # The client hides the Power-Up Item slot on a World-0 map
+                # special -- `IsHelpItemEnabled` refuses on `InWMSpecial` -- so
+                # a start naming one here is not a form it produces.
+                or values["helpItemID"]
             ):
                 return "unsupported_start_quest", None
             userdata = account["userdata"]
@@ -2711,15 +2737,24 @@ class BootstrapState:
             # no such floor, so an undeclared coin cost is charged as zero
             # rather than on the client's word.
             coin_cost = stage.coins if stage.coins is not None else 0
+            help_result, help_items = help_item_debit(userdata, values["helpItemID"])
+            if help_result == "unsupported":
+                return "unsupported_start_quest", None
             origin = entry_stamina_origin(userdata, stamina_cost, now, enabled=stamina)
             if origin is None or int(userdata.get("coins", 0)) < coin_cost:
                 return "success", _canonical_payload(
                     {"success": False, "errorCode": 1}
                 )
+            if help_result == "unavailable":
+                return "success", _canonical_payload({"success": False, "errorCode": 2})
             userdata["refillStartTime"] = origin
             userdata["coins"] = int(userdata.get("coins", 0)) - coin_cost
+            if help_items is not None:
+                userdata["itemList"] = help_items
             _synchronize_wallet_projection(userdata)
             payload = {"success": True, "refillStartTime": origin}
+            if help_items is not None:
+                payload["itemList"] = list(help_items)
             # The Luck Treasure Chest is decided here, not at clear: the client
             # holds no chest table and renders whatever this names. Seeded from
             # the request identity so a retry cannot re-roll a better chest.
@@ -4262,6 +4297,47 @@ def release_abandoned_battle(account: dict[str, Any]) -> bool:
     account["active_world_map_special"] = None
     account["active_battle_continue_coins"] = 0
     return True
+
+
+def help_item_debit(
+    userdata: dict[str, Any], help_item_id: int, slots: int = BUNDLED_ITEM_SLOTS,
+) -> tuple[str, list[int] | None]:
+    """Project the inventory a start's Power-Up Item choice leaves behind.
+
+    Returns `("ok", items)` with the projected list when one was spent,
+    `("ok", None)` when the start named none, and a refusal otherwise.  Nothing
+    is written here: the caller commits only once the entry itself is accepted,
+    so a start that goes on to refuse for stamina or Coins does not eat the item.
+
+    The server is the sole authority for this spend.  `UITeamPopup.SetHelpItem`
+    only paints the slot -- it never touches the held count -- and the client
+    then overwrites its whole inventory from this response's `itemList`
+    (`UserData.LoadItemlistFromJson`).  So unlike the Metal Ticket, whose count
+    the client repeats stale at clear, the following clear reports the number
+    this debit produced and needs no reconciliation.
+
+    An ID outside the client's own HelpItem set is a wire-form refusal rather
+    than a soft failure: `UIHelpItemSelect` cannot offer one, so a start
+    carrying it did not come from the pre-battle slot.  `slots` is the caller's
+    own inventory width -- the Hunting catalogs declare theirs -- so an ID past
+    the end of a narrower one is refused rather than indexed for.
+    """
+    if help_item_id == 0:
+        return "ok", None
+    if help_item_id not in HELP_ITEM_IDS or help_item_id > slots:
+        return "unsupported", None
+    items = userdata.get("itemList")
+    if (
+        not isinstance(items, list) or len(items) != slots
+        or any(type(value) is not int for value in items)
+    ):
+        return "unsupported", None
+    held = items[help_item_id - 1]
+    if held < 1:
+        return "unavailable", None
+    projected = list(items)
+    projected[help_item_id - 1] = held - 1
+    return "ok", projected
 
 
 def entry_stamina_origin(

@@ -17,6 +17,15 @@ a recovered client chapter/section, selector, and bounded settlement contract.
   seven-stamina entry and published item/Metal Ticket reward table.
 - Terra Battle Wiki, [Special Quest category](https://terrabattle.fandom.com/wiki/Category:Special_Quests):
   the named Arena -> Special Quest inventory.
+- Terra Battle Wiki, [Items](https://terrabattle.fandom.com/wiki/Items) and its
+  per-item subpages: the item categories and each item's drop locations. Its
+  "Power-up items" category names the same eight items the client's own
+  `ItemData.kind` marks `HelpItem`, and its "Candy items" category the same
+  seven marked `UsableItem`, so the two records corroborate each other rather
+  than either being taken on trust. The subpages are the only surviving record
+  of where candy and the four Reinforcements came from (Tower of Temptation
+  milestones, Melting Pot Lizardfolk, Ultimate Five); none of that is
+  implemented, and it is the only route to it if it ever is.
 - [Terra Battle Stats](https://tbs.desile.fr/): external stage/drop/Metal Zone
   reference application. Its publicly served stage dataset is an older 4.6-era
   snapshot, so it cannot establish a final-version Crystal Road or Chapter

@@ -7,6 +7,44 @@ card fix, which says so in its own text.
 
 ### Fixed
 
+- **The pre-battle Power-Up Item slot is back.** A tester reported that the
+  row above Start Battle — the one that let you spend a Disarmer or an EXP
+  Boost on the run you were about to start — never appeared, and wondered
+  whether it was progress-locked. It was not locked; the server was never
+  turning it on. The client gates that row on a single server constant.
+  `UITeamPopup` caches `IsHelpItemEnabled()` while it builds the screen, and
+  that predicate returns false unless `UserData.helpItemEnabled` is true.
+  Nothing about the account is consulted, which is why a player holding
+  Disarmers saw the same empty screen as one holding none. The constants block
+  had never carried the key, so it defaulted to false for every account since
+  the server was written.
+
+  Sending the flag alone would have made things worse. When a power-up is
+  chosen, the client adds a `helpItemID` field to the start body — and only
+  then; it omits the field rather than sending zero, which is why the shorter
+  form is the only one ever seen so far. Under strict parsing the longer form
+  would have failed to parse and refused the battle outright, so choosing a
+  power-up would have broken starting the quest. Both start forms now accept
+  the field in the one position the client emits it, the ordinary one and the
+  Metal Zone ticket one.
+
+  The spend is the server's. The client only paints the slot — it never
+  decrements the count — and it replaces its whole inventory from the start
+  response, so the chosen item is debited here and the new inventory is
+  returned with the start. All eight of the client's own HelpItem-kind items
+  are accepted: Time Extension, Disarmer, EXP Boost, Coin Boost, and the four
+  Reinforcements. An ordinary start without a power-up is unchanged and still
+  reports no inventory at all.
+
+  Two things worth knowing while using it. Candy items and the four
+  Reinforcements have no local source yet — the only places they ever came
+  from were Tower of Temptation milestones, Melting Pot Lizardfolk, and
+  Ultimate Five, and those rewards were authored by the retired service rather
+  than by the client, so they exist nowhere in the APK to recover. The four
+  boosts do drop: Crystal Road, Crystal Roundelay, and the Trading Post all
+  pay them. And the slot stays hidden during the tutorial and on World-0 map
+  specials, which is the client's own rule, not a local one.
+
 - **Companion pulls now follow the rates the game displayed.** A tester
   reported 12 Companion Ticket pulls coming back 5 Z, 4 S, 2 A, 1 B, and
   suspected the tickets. The tickets were fine — they pay for the same pool the
