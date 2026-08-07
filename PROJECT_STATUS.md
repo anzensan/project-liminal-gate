@@ -64,6 +64,29 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-06 Attack of Coin Creeps cards stop blanking at random. Two reports
+  described the same defect from different sides: one card blank after an
+  unrelated Crystal Road run, another missing and later back on its own. The
+  2026-08-03 derivation renames each copy's texture, container path, and bundle
+  identity, but all three copies kept the serialized file name inherited from
+  the retained `sp3003-1` source. Unity keys a loaded bundle by that internal
+  file and refuses to load a second bundle providing it, so any two cards whose
+  loads overlapped left one empty; `AssetManager` unloads each bundle on a delay
+  after reading its texture, making it a timing race rather than a fixed blank.
+  Decoding 1,200 retained bundles yielded 1,274 distinct internal names and no
+  duplicates, establishing uniqueness as an archive invariant the derivation had
+  broken. Each derived bundle now carries its own. Because the client stores
+  images as `<asset>_<ver>.bin` and reuses them without asking again -- both
+  `LoadImageAsset` download paths use `Application.temporaryCachePath`, and no
+  route supplies a version -- the three aliased catalog records also carry
+  version 111 so an install holding the broken bytes discards them. This one
+  needs a rebuilt, reinstalled client, not only a server restart; saves are
+  unaffected. Real inputs verified both halves: three derivations from the
+  operator's own archive now hold three distinct internal names, all four
+  distinct from the source, at unchanged 610x140 artwork, and a real patched
+  `AssetVersions` carries the three alias records at version 111 beside the
+  untouched 110 source. Physical-client confirmation after reinstall is pending.
+
 - 2026-08-06 Fellowship Tickets settle in batches, and reach the Companion
   page. Two reports -- a Network Error on every multi-ticket press, and no
   Companion draw working with tickets at all -- turned out to be two different

@@ -26,7 +26,20 @@ The final client catalog and retained resource archive omit the complete
 `sp3003-1` record. Exact operator-owned `sp1003` bundles are preferred when
 present. Otherwise setup derives three user-local ENCA bundles from retained
 `sp3003-1` Coin Creeps-family art, changing only the internal texture, container,
-and bundle names required by each requested identity. The public-data transport
-serves the plain and client-MD5 URLs. This is labeled local presentation policy,
-not recovered original artwork. Chapter/section identity and battle state are
-not aliased.
+bundle, and serialized-file names required by each requested identity. The
+public-data transport serves the plain and client-MD5 URLs. This is labeled local
+presentation policy, not recovered original artwork. Chapter/section identity and
+battle state are not aliased.
+
+The serialized-file name matters as much as the others. Unity keys a loaded
+bundle by the file inside it rather than by the bundle's own name and refuses to
+load one another loaded bundle already provides, so bundles derived from a
+single source must not share the source's. Every bundle in the retained archive
+carries a distinct one.
+
+The aliased catalog records also carry their own asset version. The client
+stores each downloaded image as `<asset>_<ver>.bin` and reuses it without asking
+again, deleting only the other versions of the same asset, so an install that
+cached an earlier derivation keeps it until that version changes. Correcting
+derived bundle bytes therefore means rebuilding and reinstalling the client, not
+only rerunning setup.

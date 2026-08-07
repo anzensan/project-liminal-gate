@@ -30,6 +30,37 @@ def hashed_resource_name(logical_name: str) -> str:
     return f"{digest}{logical_name}.bin"
 
 
+def _serialized_file_name(bundle_name: str) -> str:
+    """The bundle-internal Unity file name, which must be unique per bundle.
+
+    Unity keys a loaded bundle by the serialized file inside it, not by the
+    bundle's own name, and refuses to load one whose internal file another
+    loaded bundle already provides.  Every retained bundle in the archive
+    therefore carries its own, so three cards derived from one source cannot
+    inherit the source's: whichever the client loaded first would win and its
+    neighbours would render blank until it was unloaded again.  The value is
+    only an identity, so any stable per-bundle derivation serves.
+    """
+    return f"CAB-{hashlib.md5(bundle_name.encode('utf-8')).hexdigest()}"
+
+
+def _rename_serialized_file(container: object, bundle_name: str) -> None:
+    """Give one derived bundle's single internal Unity file its own name."""
+    files = getattr(container, "files", None)
+    if not isinstance(files, dict) or len(files) != 1:
+        raise CoinCreepsBannerError(
+            f"retained {SOURCE_NAME} bundle does not hold exactly one internal Unity file"
+        )
+    (source_name, serialized), = files.items()
+    if not source_name.startswith("CAB-"):
+        raise CoinCreepsBannerError(
+            f"retained {SOURCE_NAME} bundle has an unexpected internal Unity file name"
+        )
+    derived_name = _serialized_file_name(bundle_name)
+    serialized.name = derived_name
+    container.files = {derived_name: serialized}
+
+
 def _encrypt_enca(source: bytes, forward_table: bytes) -> bytes:
     """Invert the reviewed ENCA decoder for a locally derived Unity bundle."""
     size = len(source)
@@ -104,6 +135,7 @@ def prepare_coin_creeps_banners(apk: Path, resource_root: Path, output_root: Pat
             writable = [item for item in environment.files.values() if hasattr(item, "save")]
             if len(writable) != 1:
                 raise CoinCreepsBannerError("retained Coin Creeps resource is not one writable Unity bundle")
+            _rename_serialized_file(writable[0], filename)
             encoded = _encrypt_enca(writable[0].save(packer="original"), forward)
             output = banner_root / filename
             with tempfile.NamedTemporaryFile(dir=banner_root, delete=False) as stream:

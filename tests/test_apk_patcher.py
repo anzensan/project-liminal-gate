@@ -87,6 +87,58 @@ class ApkPatcherTest(unittest.TestCase):
         with self.assertRaisesRegex(PatchPlanError, "already exists"):
             _alias_text_asset_document(json.dumps({"SpecialBanner": entries}), patch)
 
+    def _alias_plan(self, **alias: object) -> Path:
+        plan = self.root / "alias-plan.json"
+        plan.write_text(json.dumps({
+            "schema_version": PATCH_PLAN_SCHEMA_VERSION,
+            "source_sha256": sha256_file(self.source),
+            "patches": [{
+                "member": "assets/payload.dat",
+                "offset": 0,
+                "expected_hex": "6265666f7265",
+                "replacement_hex": "61667465722d",
+            }],
+            "text_asset_json_aliases": [{
+                "member": "assets/bin/Data/data.unity3d",
+                "asset_name": "AssetVersions",
+                "collection": "SpecialBanner",
+                "source_name": "sp3003-1",
+                "aliases": ["sp1003-1"],
+                **alias,
+            }],
+        }), encoding="utf-8")
+        return plan
+
+    def test_alias_overrides_are_parsed_as_ordered_pairs_and_strictly_checked(self) -> None:
+        parsed = load_patch_plan(self._alias_plan(overrides={"ver": 111})).text_asset_json_aliases
+        self.assertEqual((("ver", 111),), parsed[0].overrides)
+        self.assertEqual((), load_patch_plan(self._alias_plan()).text_asset_json_aliases[0].overrides)
+        for rejected in ({"name": "sp1003-1"}, {"": 1}, {"ver": 1.5}, {"ver": True}, {"ver": None}, []):
+            with self.assertRaisesRegex(PatchPlanError, "alias overrides"):
+                load_patch_plan(self._alias_plan(overrides=rejected))
+
+    def test_an_alias_may_replace_named_fields_the_source_record_already_has(self) -> None:
+        """A corrected bundle at an unchanged URL needs its own cache version.
+
+        The client reuses `<asset>_<ver>.bin` without asking the server again,
+        so replacing the copied version is the only way a rebuilt client stops
+        reading the artwork it cached the first time.
+        """
+        patch = TextAssetJsonAliases(
+            "assets/bin/Data/data.unity3d", "AssetVersions", "SpecialBanner",
+            "sp3003-1", ("sp1003-1",), (("ver", 111),),
+        )
+        source = json.dumps({"SpecialBanner": [{"id": 0, "h": 140, "name": "sp3003-1", "w": 610, "ver": 110}]})
+        entries = json.loads(_alias_text_asset_document(source, patch))["SpecialBanner"]
+        self.assertEqual([("sp3003-1", 110), ("sp1003-1", 111)], [(e["name"], e["ver"]) for e in entries])
+        self.assertEqual((0, 140, 610), (entries[1]["id"], entries[1]["h"], entries[1]["w"]))
+        unknown = TextAssetJsonAliases(
+            patch.member, patch.asset_name, patch.collection, patch.source_name,
+            patch.aliases, (("ver", 111), ("unrecovered", 1)),
+        )
+        with self.assertRaisesRegex(PatchPlanError, "sp3003-1 does not have: unrecovered"):
+            _alias_text_asset_document(source, unknown)
+
 
 class DropAbiTest(unittest.TestCase):
     """An ABI tree can be removed without touching ABI-independent patches.

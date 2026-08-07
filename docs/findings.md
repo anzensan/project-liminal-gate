@@ -450,6 +450,31 @@ Private inputs, captures, account state, and original assets remain excluded.
   round-tripped all three catalog records; all three derived bundles
   round-tripped through ENCA and Unity parsing, and real HTTP returned the exact
   172,451-byte section-1 derivation.
+- **Confirmed defect in that first derivation (2026-08-06):** the three derived
+  bundles rendered blank or not depending on what the client had loaded just
+  before, which two testers reported as cards vanishing after an unrelated
+  Hunting run and reappearing later. Renaming the texture, container path, and
+  bundle identity leaves a fourth name untouched: the serialized file inside
+  the bundle, which all three inherited from `sp3003-1`
+  (`CAB-14adb4c29162ab0d738835335430ce7e`). Unity keys a loaded bundle by that
+  internal file and refuses to load one another loaded bundle already
+  provides, so overlapping loads returned null and the card drew empty.
+  Decoding 1,200 retained bundles found 1,274 distinct internal names and no
+  duplicate at all, so uniqueness is an archive invariant only the derivation
+  broke. `AssetManager` reads the texture and calls `delayedUnloadAssetBundle`,
+  which is why the collision is a timing race rather than a permanent blank.
+  Each derived bundle now carries its own internal name.
+- **Confirmed client image caching (2026-08-06):** both
+  `LoadAssetFromCacheOrDownload` call sites inside `AssetManager.LoadImageAsset`
+  pass `useCacheFolder = 1`, and `GetCacheFolder` resolves to
+  `Application.temporaryCachePath`; `GetPersistantDataFolder` resolves to
+  `GameManager.storagePath` and holds unrelated client files. A downloaded
+  image is stored as `<asset>_<ver>.bin` and reused without asking the server
+  again, and `deleteOldVersion` removes only the other versions of the same
+  asset. The version comes solely from the client's own `AssetVersions`
+  TextAsset — no route sends one — so corrected bytes at an unchanged URL
+  reach an existing install only when that catalog version changes. The three
+  `sp1003` aliases therefore carry version 111 instead of the copied 110.
 - **Remaining evidence boundary:** the fallback is retained client artwork for
   the related Coin Creeps special quest, not a claim that it is the lost retail
   Attack of Coin Creeps banner. The rebuilt card still needs physical-client
