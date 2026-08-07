@@ -122,6 +122,35 @@ _BUNDLED_ITEMS: tuple[tuple[int, int, int, int, int | None], ...] = (
 )
 
 
+def client_status_up_items(catalog: StatusupCatalog) -> dict[str, list[int]]:
+    """Project one catalog into the client's own `statusUpItems` block.
+
+    This is not decoration: it is the whole gate on whether a candy item can be
+    used at all.  `UIChrSelectWindow.GetFilteredList` (ARM64 `0xEF4BEC`) keeps a
+    character in the item-use list only when `CalcMaxUseNum` (`0xEF82BC`)
+    returns at least one, and that method's first act is
+    `UserData.statusUpItems.Contains(itemID.ToString())` -- a miss returns zero
+    immediately.  `UserData.SetServerConstants` (`0x19D2A74`) fills that static
+    from this key and substitutes an *empty* `JsonData` when the key is absent,
+    so a server that never sends it leaves every candy item usable on nobody,
+    with no error to explain it.
+
+    The four values are read positionally: job levels, displayed Skill Boost
+    percent, displayed Luck percent, and the species a Machine-only item is
+    gated on, zero meaning no gate.  All four are required, because
+    `IsStatusUpItemsDesignatedSpeciesImplemented` (`0x19D7348`) compares both
+    advertised client versions against 4.99 and the status route advertises
+    5.57; a three-value row makes the client read the species as 1000 and
+    refuse every character.  They are also read through LitJson's *int*
+    accessor, which throws on a JSON double -- the same trap `jobLevels` carries
+    in the other direction.
+    """
+    return {
+        str(item.item_id): [item.level, item.skill_boost, item.luck, item.species or 0]
+        for item in catalog.items.values()
+    }
+
+
 def build_bundled_statusup_policy() -> StatusupCatalog:
     """Return the guided-path local status-up item policy.
 

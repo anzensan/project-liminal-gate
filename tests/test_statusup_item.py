@@ -6,7 +6,7 @@ import unittest
 
 from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.statusup_catalog import build_bundled_statusup_policy, load_statusup_catalog
-from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
+from tests.support import bootstrap_profile, get, post, start_server, stop_server, write_json
 
 
 class StatusupItemTest(unittest.TestCase):
@@ -117,3 +117,47 @@ class BundledStatusupPolicyRuntimeTest(unittest.TestCase):
             self.assertEqual([(1234, 16), (5, 10), (0, 0)],
                              [(int(v) >> 12, int(v) & 0xFFF) for v in row["jobLevels"]])
             self.assertEqual(2, payload["itemList"][175 - 1])
+
+
+class StatusupItemAdvertisementTest(unittest.TestCase):
+    """The constants block the client's item-use character filter reads.
+
+    Without it `UIChrSelectWindow.CalcMaxUseNum` returns zero for every
+    character, and a held candy item reports that nobody can take it.
+    """
+
+    def constants(self, statusup: object | None) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            state.create_account("token", "account", {"coins": 0, "itemList": [0] * 181, "chrdata": []})
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), state, statusup_catalog=statusup,
+            )
+            try:
+                status, payload = get(server, "/gd/get_server_status?otk=token&requestID=status")
+            finally:
+                stop_server(server, thread)
+        self.assertEqual(200, status)
+        return payload["constants"]
+
+    def test_every_bundled_item_is_advertised_as_four_integers(self) -> None:
+        rows = self.constants(build_bundled_statusup_policy())["statusUpItems"]
+        self.assertEqual(
+            ["161", "162", "163", "168", "175", "176", "177"], list(rows),
+        )
+        # Level, displayed Skill Boost, displayed Luck, designated species.
+        # The fourth value is required, not optional: the advertised client
+        # version puts `IsStatusUpItemsDesignatedSpeciesImplemented` past its
+        # 4.99 threshold, and a three-value row is read as species 1000.
+        self.assertEqual([0, 0, 3, 0], rows["177"])  # Luck Candybox
+        self.assertEqual([0, 0, 1, 0], rows["163"])  # Luck Candy
+        self.assertEqual([0, 1, 0, 8], rows["168"])  # Machine-only
+        for item_id, row in rows.items():
+            self.assertEqual(4, len(row), item_id)
+            # Read through LitJson's int accessor, which raises on a decimal.
+            self.assertTrue(all(type(value) is int for value in row), item_id)
+
+    def test_no_items_are_advertised_without_a_local_policy(self) -> None:
+        # The route answers `unsupported_statusup_item` with no catalog, so the
+        # client is offered nothing rather than a use the server would refuse.
+        self.assertNotIn("statusUpItems", self.constants(None))

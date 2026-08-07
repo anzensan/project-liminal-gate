@@ -216,6 +216,38 @@ class MeltingPotRuntimeTest(unittest.TestCase):
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
         self.assertEqual(1, self.account()["userdata"]["itemList"][CANDYBOXES[0] - 1])
 
+    def test_a_clear_stamps_the_date_the_next_section_is_chained_to(self) -> None:
+        """The chain is the client's, and it reads only this map.
+
+        `9100-2` carries BattleData `parentQuest` `9100-1`, and
+        `UISpecialSelect.IsQuestOpen` drops a section from the list it builds
+        unless `UserData.GetQuestClearDate` answers nonzero for that parent. The
+        stamp must be a decimal: the client reads it through LitJson's double
+        accessor, which raises rather than converting a whole number.
+        """
+        start = urlencode({
+            "stamina": "5", "coins": "0", "chapter": "9100", "section": "1", "lastUpdate": "1",
+        }).encode()
+        status, _started = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=mp-date-start", start,
+        )
+        self.assertEqual(200, status)
+        status, cleared = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=mp-date-clear",
+            self.clear_body(9100, 1, {str(CANDYBOXES[0]): 1}),
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(["9100-1"], list(cleared["questClearDate"]))
+        stamp = cleared["questClearDate"]["9100-1"]
+        self.assertIsInstance(stamp, float)
+        self.assertGreater(stamp, 0.0)
+        self.assertEqual({"9100-1": stamp}, self.account()["userdata"]["questClearDate"])
+        status, userdata = get(
+            self.server, f"/gd/userdata?otk={self.token}&requestID=mp-date-read",
+        )
+        self.assertEqual(200, status)
+        self.assertEqual({"9100-1": stamp}, userdata["questClearDate"])
+
     def test_a_boss_candy_drop_settles_on_a_later_section(self) -> None:
         start = urlencode({
             "stamina": "10", "coins": "0", "chapter": "9101", "section": "6", "lastUpdate": "1",

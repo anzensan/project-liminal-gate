@@ -1342,3 +1342,83 @@ mechanic those served is not reconstructed, and nothing here claims it was.
 What is asserted is narrower: the fifteen sections per race, their economics,
 and their per-spawn drops are all in the client, and none of the three dead
 Donation consumers can refuse them.
+
+## 2026-08-07: two client gates the server had never fed
+
+Both were reported together by a tester holding a Luck Candybox from Melting
+Pot's Candy Pot, and they turned out to be the same shape as the Power-Up Item
+slot above: a client feature gated on a server field this project had never
+sent, failing as a flat refusal rather than an error.
+
+### The candy items could not be used on any character
+
+**Reported symptom.** "Luck Candybox says I can't use it on any characters."
+The item is held, the item-use screen opens, and the character list is empty.
+
+- **Confirmed by ARM64 disassembly -- the filter is one lookup.**
+  `UIChrSelectWindow.GetFilteredList` (`0xEF4BEC`) keeps a character in mode 7
+  (`ItemUseChrSelect`) only when `CalcMaxUseNum` (`0xEF82BC`) returns at least
+  one. That method's first act is
+  `UserData.statusUpItems.Contains(itemID.ToString())`, and a miss returns zero
+  before any character state is read. Every held character therefore fails,
+  which is exactly "no characters", with no dialog to explain it.
+- **Confirmed -- the table is the server's, not the client's.**
+  `UserData.statusUpItems` is a static `JsonData` filled by
+  `UserData.SetServerConstants` (`0x19D2A74`) from the status route's
+  `constants` block, key `statusUpItems`, and set to an *empty* `JsonData` when
+  the key is absent (`0x19D4474`). The block this server sends had never
+  carried the key. The seven item effects themselves were already recovered and
+  already applied by `use_statusup_item`; only the client's own gate was
+  missing, so the server would have settled a use the client refused to offer.
+- **Confirmed -- the row shape, positionally.** `CalcMaxUseNum` reads
+  `statusUpItems[id]` as an array: `[0]` job levels against `ServerConstants.levelCap`,
+  `[1]` displayed Skill Boost percent against `Character.get_skillBoostRatio`
+  and 100, `[2]` displayed Luck percent against `Character.get_luckMax`/10 and
+  `get_luckRate`, `[3]` the designated species, compared against
+  `Character.GetJobParam(-1)` and skipped when below 1. All four are required
+  here: `IsStatusUpItemsDesignatedSpeciesImplemented` (`0x19D7348`) is true
+  whenever both advertised client versions exceed 4.99, and the status route
+  advertises 5.57, so a three-value row is read as species 1000 and matches
+  nobody. The values are read through LitJson's `int` accessor, which raises on
+  a JSON double.
+- **Local policy.** The key is sent only while a status-up policy is loaded, so
+  the client offers exactly the items `use_statusup_item` would settle rather
+  than a row the route answers with a 501. The projection is derived from that
+  same policy, so one table drives the client's gate and the server's effect.
+
+### No chained event section could ever open
+
+**Reported symptom.** "Despite clearing the first stage, the second stage
+didn't open up" -- Melting Pot Lizardfolk stayed one section long.
+
+- **Confirmed by ARM64 disassembly.** `UISpecialSelect.IsQuestOpen`
+  (`0xF84D84`) resolves `BattleData.Chapter.GetSection` for the id it is asked
+  about and, when that section's `parentQuest` is not empty, returns false
+  unless `UserData.GetQuestClearDate(parentQuest)` (`0x19D8ADC`) is nonzero. It
+  is called from `UISpecialSelect.<GetList>` and `UISpecialSelect2.<GetList>`,
+  so a section that fails is not greyed out -- it is never listed.
+- **Confirmed by BattleData.** Read through the same type trees
+  `battledata_importer` uses, Melting Pot's sections chain
+  `9100-1 <- 9100-2 <- ... <- 9100-15`, and identically for 9101 and 9102.
+  Tower's 9000/9003 sections chain the same way. Section 1 of each carries an
+  empty `parentQuest`, which is why the first section, and only the first, was
+  ever reachable.
+- **Confirmed -- the map is server state.** `UserData.questClearDate` is filled
+  by `AppServerUtil.LoadUserdataFromJson` (`0xDB6010`) from `userdata`'s
+  `questClearDate` object, and refreshed by the clear callback
+  (`AppServerUtil.<ClearQuest>`, `0xDC0FE0`) from the same key in the clear
+  response. This server had never written either, and nothing else in the save
+  recorded which stages had been cleared.
+- **Confirmed -- the value must be a decimal.** `GetQuestClearDate` reads the
+  entry with LitJson's `double` accessor (`0xFF4F84`), which throws
+  `InvalidCastException` on `JsonType.Int` rather than converting it. An
+  integer stamp would fault inside the client's response parsing, the same trap
+  `jobLevels` carries. `save_validation` now checks the map for it.
+- **Local policy.** Every stage clear the server settles -- generic story and
+  event (`clear_quest`), Hunting, and the Chapter-1100 Roads, which all reach
+  the client through that one route -- stamps `"<chapter>-<section>"` with the
+  settlement instant and restates the whole map in its response. Nothing
+  reconstructs clears that predate this: an account that cleared a section
+  before the change re-stamps it by clearing it again. The tutorial
+  transitions, which are profile-canned rather than identity-settled, are left
+  alone; the ordinary story is gated by `progressCode`, not by this map.

@@ -142,7 +142,7 @@ from liminal_gate.server_config import ServerConfig, ServerConfigError, load_ser
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
 from liminal_gate.settlement_catalog import SettlementCatalog, SettlementCatalogError, load_settlement_catalog
-from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError, build_bundled_statusup_policy, load_statusup_catalog
+from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError, build_bundled_statusup_policy, client_status_up_items, load_statusup_catalog
 from liminal_gate.story_catalog import StoryCatalog, StoryCatalogError, StoryStage, load_story_catalog
 from liminal_gate.story_progression_catalog import StoryProgressionCatalog, StoryProgressionCatalogError, build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalog, StoryOutcomeCatalogError, allowed as outcome_allowed, load_story_outcome_catalog
@@ -2441,6 +2441,7 @@ class BootstrapState:
                 announced |= _apply_monster_recruits(userdata, result["monsters"])
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
+            cleared_quests = _record_quest_clear(userdata, identity, now)
             account["tutorial_phase"] = "free_roam"
             account["active_luck_up"] = []
             account["active_hunt"] = None
@@ -2460,6 +2461,10 @@ class BootstrapState:
                 # post-spend origin.
                 "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
                 "chrdata": _announced_roster(userdata["chrdata"], announced), "itemList": copy.deepcopy(userdata["itemList"]),
+                # Every clear reaches the client through one route, so this
+                # settlement restates the clear-date map for the reason the
+                # generic story clear does; see `_record_quest_clear`.
+                "questClearDate": copy.deepcopy(cleared_quests),
             })
             # Only a settlement that actually granted Companions touches the box
             # or reports it, so the four item and Coin families keep the exact
@@ -2625,6 +2630,7 @@ class BootstrapState:
                 frontier[stage.route] = stage.battle + 1
             account["world_map_special_progress"] = frontier
             userdata["lastupdate"] = 1.0
+            cleared_quests = _record_quest_clear(userdata, identity, time.time())
             account["tutorial_phase"] = "free_roam"
             account["active_luck_up"] = []
             account["active_world_map_special"] = None
@@ -2644,6 +2650,8 @@ class BootstrapState:
                 "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
                 "chrdata": copy.deepcopy(userdata.get("chrdata", [])),
                 "itemList": copy.deepcopy(userdata.get("itemList", [])),
+                # Restated here too; see `_record_quest_clear`.
+                "questClearDate": copy.deepcopy(cleared_quests),
             })
             # Only a settlement that actually granted a Companion touches the
             # box or reports it, matching the Hunting clear's contract.
@@ -2949,6 +2957,7 @@ class BootstrapState:
             active_luck_up = account.get("active_luck_up")
             if isinstance(active_luck_up, list):
                 apply_luck_up_table(userdata, active_luck_up)
+            cleared_quests = _record_quest_clear(userdata, identity, time.time())
             payload = {
                 "success": True,
                 "lastupdate": 1.0,
@@ -2967,6 +2976,13 @@ class BootstrapState:
                 "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
                 "chrdata": _announced_roster(userdata["chrdata"], announced),
                 "itemList": copy.deepcopy(userdata["itemList"]),
+                # The clear callback carries the whole map rather than leaving
+                # it to the next userdata read: the client's own clear handler
+                # (`AppServerUtil.<ClearQuest>`, `0xDC0FE0`) copies this field
+                # straight into `UserData.questClearDate`, so the section this
+                # clear just unlocked appears in the selector without a round
+                # trip through the title screen.
+                "questClearDate": copy.deepcopy(cleared_quests),
             }
             if buddy_info is not None:
                 payload["buddyInfo"] = copy.deepcopy(buddy_info)
@@ -4244,6 +4260,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "towerQuestList": [],
             "eidolonQuestList": [],
         }
+        if self.server.statusup_catalog is not None:
+            # The client's item-use character list is filtered on this block
+            # alone; without it every candy item reports that no character can
+            # take it. It is sent only while a status-up policy is loaded, so
+            # the client offers exactly the items `use_statusup_item` would
+            # settle rather than a row the route answers with a 501.
+            constants["statusUpItems"] = client_status_up_items(self.server.statusup_catalog)
         progress = self.server.state.progress_for_status(
             token,
             self._client_host(),
@@ -4279,6 +4302,30 @@ def _cleared_identity(body: bytes) -> tuple[int, int] | None:
     """The chapter/section a clear request settles, if it is well formed."""
     clear = _parse_generic_story_clear(body)
     return None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
+
+
+def _record_quest_clear(userdata: dict[str, Any], identity: tuple[int, int], when: float) -> dict[str, float]:
+    """Stamp one cleared stage into the map the client gates chained quests on.
+
+    Event sections are unlocked in order by the client, not by the server:
+    `UISpecialSelect.IsQuestOpen` (ARM64 `0xF84D84`) drops a section from the
+    list it builds unless its BattleData `parentQuest` -- `"9100-1"` for Melting
+    Pot's second Lizardfolk section, and so on for every chained chapter -- has
+    a nonzero `UserData.GetQuestClearDate`.  That map is `userdata.questClearDate`
+    (`AppServerUtil.LoadUserdataFromJson`, `0xDB6010`), so a server that records
+    no clear dates leaves every chained event permanently one section long.
+
+    The stamp is a float on purpose.  `GetQuestClearDate` reads the value with
+    LitJson's *double* accessor, which raises `InvalidCastException` on a JSON
+    integer rather than converting it, and that throw lands inside the client's
+    response parsing.
+    """
+    cleared = userdata.get("questClearDate")
+    if not isinstance(cleared, dict):
+        cleared = {}
+    cleared[f"{identity[0]}-{identity[1]}"] = float(int(when))
+    userdata["questClearDate"] = cleared
+    return cleared
 
 
 def _started_identity(body: bytes) -> tuple[int, int] | None:
