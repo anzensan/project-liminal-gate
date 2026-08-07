@@ -34,6 +34,20 @@ gate continuously enabled is explicit preservation policy because the retired
 service event window was not captured. Physical badge and drop confirmation
 remain pending.
 
+An audit of the Pact of Fellowship against the community availability record
+found the bundled pool flat where the record describes it as cumulative: 54 of
+its 103 members open at Chapter 1, the rest across twenty-one gates to
+Chapter 38, so roughly half the roster was drawable ahead of its recorded
+unlock. Each member now carries its earliest chapter and the draw route filters
+on the account's own `progressCode`, reusing the chapter reading that already
+gates achievements and stage entry. The same audit found ID 122 in the roster —
+an ID naming no character in the client — standing in for 126, Megacell, which
+was consequently unobtainable. Truth keeps its whole pool, having no comparable
+record, and `validate_bundled_pools` now refuses to start a Pact-enabled server
+when a pool member does not resolve in the operator's character catalog. Pact
+selection odds are unchanged and remain local policy. Whether Truth has its own
+availability curve is unread.
+
 The reported post-battle Luck reset exposed a regression in the shared roster
 merge. A confirmed final-client clear legitimately omits the optional `luck`
 member, but the merge protected only monotonic levels and Skill Boost, so it
