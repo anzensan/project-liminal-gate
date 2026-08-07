@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from liminal_gate.pact_draw_catalog import PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog
+from liminal_gate.pact_draw_catalog import PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog, validate_bundled_pools
 from tests.support import write_json
 
 
@@ -86,6 +86,54 @@ duplicate_skill_boost = 5
         """No sourced Fellowship rate table exists, so none is invented."""
         policy = build_bundled_pact_policy({1: 8, 2: 4})
         self.assertEqual({1}, {draw.weight for draw in policy.draws_for_kind(0)})
+
+    def test_fellowship_availability_grows_with_the_cleared_chapter(self) -> None:
+        """The recorded pool is cumulative, so each gate is a superset."""
+        policy = build_bundled_pact_policy()
+        self.assertEqual(54, len(policy.draws_for_kind(0, 1)))
+        self.assertEqual(103, len(policy.draws_for_kind(0, 38)))
+        # Past the last documented unlock nothing further opens.
+        self.assertEqual(103, len(policy.draws_for_kind(0, 1100)))
+        previous: set[int] = set()
+        for chapter in range(1, 39):
+            current = {draw.character_id for draw in policy.draws_for_kind(0, chapter)}
+            self.assertTrue(previous <= current)
+            previous = current
+        # Truth carries no availability record, so its pool never narrows.
+        self.assertEqual(122, len(policy.draws_for_kind(1, 1)))
+
+    def test_megacell_unlocks_at_its_recorded_chapter(self) -> None:
+        """Guards the transcription error this table previously carried."""
+        policy = build_bundled_pact_policy()
+        at_fourteen = {draw.character_id for draw in policy.draws_for_kind(0, 14)}
+        at_fifteen = {draw.character_id for draw in policy.draws_for_kind(0, 15)}
+        self.assertNotIn(126, at_fourteen)
+        self.assertIn(126, at_fifteen)
+        self.assertNotIn(122, {draw.character_id for draw in policy.draws_for_kind(0)})
+
+    def test_user_supplied_catalogs_ignore_the_chapter_gate(self) -> None:
+        """A schema version 1 catalog carries no availability data to honour."""
+        document = {
+            "schema_version": 1, "provenance": "user-supplied", "coin_cost": 1,
+            "new_level": 1, "max_level": 2, "max_skill_boost": 1,
+            "draws": [{"character_id": 9001, "weight": 1, "duplicate_level_added": 1, "duplicate_skill_boost": 1}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pact.json"
+            write_json(path, document)
+            catalog = load_pact_draw_catalog(path)
+        self.assertEqual(catalog.draws, catalog.draws_for_kind(0, 1))
+
+    def test_bundled_pools_must_resolve_in_the_local_character_catalog(self) -> None:
+        from liminal_gate.pact_draw_catalog import _FELLOWSHIP_IDS, _TRUTH_IDS
+
+        complete = {character_id: 4 for character_id in _FELLOWSHIP_IDS + _TRUTH_IDS}
+        validate_bundled_pools(complete)
+        for absent in (_FELLOWSHIP_IDS[0], _TRUTH_IDS[-1]):
+            partial = {key: value for key, value in complete.items() if key != absent}
+            with self.assertRaises(PactDrawCatalogError) as raised:
+                validate_bundled_pools(partial)
+            self.assertIn(str(absent), str(raised.exception))
 
     def test_character_rarity_rejects_a_foreign_catalog(self) -> None:
         for document in (

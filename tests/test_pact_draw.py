@@ -341,6 +341,27 @@ class PactDrawTest(unittest.TestCase):
             finally:
                 restarted.close()
 
+    def test_http_fellowship_pool_is_gated_by_the_account_chapter(self) -> None:
+        """Early accounts cannot draw members recorded as later unlocks."""
+        policy = build_bundled_pact_policy()
+        early = {draw.character_id for draw in policy.draws_for_kind(0, 1)}
+        late = {draw.character_id for draw in policy.draws_for_kind(0, 38)} - early
+        self.assertTrue(late)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            profile = bootstrap_profile()
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path), pact_draw_catalog=policy)
+            try:
+                server.state.create_account("token", "account", {"coins": policy.coin_cost * 10, "energy": 0, "freeEnergy": 0, "progressCode": 0, "chrdata": []})
+                status, drawn = post(server, "/gd/do_slot", "fellowship-ten", f"kind=0&count=10&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1")
+                self.assertEqual((200, True), (status, drawn["success"]))
+                self.assertEqual(10, len(drawn["chrdata"]))
+                identifiers = {row["id"] for row in drawn["chrdata"]}
+                self.assertTrue(identifiers <= early)
+                self.assertFalse(identifiers & late)
+            finally:
+                stop_server(server, thread)
+
     def test_http_truth_pact_accepts_an_affordable_remainder_batch(self) -> None:
         """The ten-pull control can submit 1..10, not only its button labels."""
         with tempfile.TemporaryDirectory() as directory:
