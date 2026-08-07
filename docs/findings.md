@@ -1145,3 +1145,46 @@ Chapter 1, the remaining 49 spread across 21 later gates through Chapter 38.
   only membership timing is open. The wiki's own caveat — that Pact
   availability is not the same as where a monster can be recruited in game —
   means this table bounds the Pact and nothing else.
+
+## 2026-08-07: the Companion rare pool drew uniformly, inverting its own rates
+
+- **Reported empirically, then confirmed statically.** A tester reported 12
+  Companion Ticket pulls returning 5 Z, 4 S, 2 A, 1 B, and a second reported
+  five Z in one ten-pull against a single low-class result. Both are ordinary
+  outcomes of the pool as it was served and near-impossible under the rates the
+  service displayed: the observed 12 are about 54,000 times more likely under
+  uniform selection than under the displayed table, and five Z in twelve has
+  probability 3.6e-2 uniform against 1.6e-5 displayed.
+
+- **Cause.** `build_bundled_companion_draw_policy` gave every rare-slot member
+  weight 1, so `_draw_companion_id` selected uniformly across pool
+  *membership* rather than across rarity *class*. The rare pool is lopsided the
+  opposite way from its rates — 50 of its 114 members are S and only 2 are B —
+  so uniform selection returned Z at 16.7% against a displayed 3%, and B at
+  1.8% against a displayed 49%, inverting the two commonest outcomes. The
+  Companion Ticket was incidental: kinds 1 and 21 resolve to the same pool
+  through `draws_for_kind`, so the ticket changes who pays and never selection.
+
+- **Why it was uniform, and what changed.** The pool's per-class counts were
+  already documented, but the bundle stored no map from ID to class, and
+  applying the displayed table without one was not possible. `BuddyData.rarity`
+  carries it, on the same master object the bundled membership, base Coin
+  values, progression values, and evolution recipes already come from, so
+  bundling it is the evidence class this project already ships rather than a
+  new one. The 114 IDs are now grouped by that recovered field, and each
+  class's displayed share is split evenly across its own members.
+
+- **What corroborates the map.** The recovered `rarity` field groups the pool
+  as 19 Z, 13 SS, 50 S, 30 A, 2 B, which is exactly the split the community
+  record states, and the normal pool as 41 C and 40 D, also exactly. Grouping
+  the roster by class rather than listing it flat makes that agreement
+  structural: a transcription error in either document now shows up as a group
+  of the wrong size, and a test asserts the five counts.
+
+- **Not addressed.** The displayed table also carried a per-Companion rate, and
+  a pool that shrank as members hit 100% Skill Boost and left it. Neither
+  survives in the record, so an even split within a class remains local policy,
+  the same caveat the Pact of Truth shares carry. The normal pool stays uniform
+  deliberately: no displayed-rate record was found for it, and its two classes
+  are near-evenly sized, so a uniform draw is already close to whatever the
+  service did.

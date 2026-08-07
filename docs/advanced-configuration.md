@@ -498,7 +498,7 @@ local installation.
 | `--jobs` | 284 job-unlock rows across 142 characters: Coin and material costs |
 | `--rebirth` | all 65 Rebirth recipes, with Joker Lambda as character 1018 |
 | `--status-items` | the 7 status-up items and per-character Luck ceilings |
-| `--companion-draw` | both Companion pools -- 114 rare-slot and 81 normal-slot -- with their two ticket items, the Coin price, and the Energy fallback |
+| `--companion-draw` | both Companion pools -- 114 rare-slot and 81 normal-slot -- with their two ticket items, the Coin price, the Energy fallback, and the rare pool's displayed class rates (Z 3%, SS 8%, S 10%, A 30%, B 49%) |
 | `--companion-sale` | base Coin values for all 497 Companion masters |
 | `--companion-strengthen` | progression values for all 497 masters, plus the same-Companion and ByeBye multipliers |
 | `--companion-evolution` | all 153 evolution recipes, including the two duplicate-consuming Metal Minions |
