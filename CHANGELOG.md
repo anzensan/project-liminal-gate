@@ -45,6 +45,41 @@ card fix and Melting Pot, which each say so in their own text.
 
 ### Fixed
 
+- **A save that failed to write could still be reported as saved.** Every
+  mutation changes the account in memory and records the answer it will give to
+  a retry, then publishes the whole save. If that publish failed, both of those
+  survived in memory — so the request that failed came back as a dropped
+  connection, and the *retry* was answered from that record with a cheerful
+  success for a change the disk never took. It looked saved until the next
+  restart, when it was simply gone.
+
+  Publishing writes the entire save at once, so a failure means nothing landed
+  and the file still holds the last state that did. It is now re-read on that
+  path, which undoes the change and the recorded answer together. A retry then
+  does the work again for real and reaches the disk. Nothing about a successful
+  write changed.
+
+- **"The save survived the update" was not checking whether the save
+  survived.** The on-device update compared which accounts existed, and the
+  import compared which account was active. Neither looked inside them, so an
+  update that kept your account and emptied it — progress back to zero, coins
+  gone — printed the reassurance anyway, before even the account check ran.
+  Both now compare the progress itself and name what moved, and the message is
+  printed only once that comparison passes. The stamina meter's fill origin and
+  the timestamp the server rewrites are excluded, since those move on their own,
+  and whole numbers that come back as decimals are not treated as changes.
+
+- **A resource file replaced while the server ran was served as though it were
+  the original.** Files are hash-checked when the manifest loads and were then
+  reopened by path for every request, so anything that changed afterwards went
+  out under the manifest's identity. If the replacement was a different length
+  it was worse than wrong: the response still advertised the manifest's length,
+  leaving the client reading a body that could not match it, which reads as a
+  transport failure rather than as the stale manifest it is. Each file is now
+  measured and digested again as it is opened, before the response is framed,
+  and a changed one is refused with an error that says so. Putting the original
+  back serves it again.
+
 - **The pre-battle Power-Up Item slot is back.** A tester reported that the
   row above Start Battle — the one that let you spend a Disarmer or an EXP
   Boost on the run you were about to start — never appeared, and wondered

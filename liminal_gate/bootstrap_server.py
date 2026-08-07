@@ -3209,7 +3209,39 @@ class BootstrapState:
         finally:
             temporary.unlink(missing_ok=True)
 
+    def _restore_from_disk_locked(self) -> None:
+        """Drop every unpublished in-memory change by re-reading the save.
+
+        `_persist_locked` republishes the whole document, so a failure means
+        nothing of this mutation reached the disk and the file still holds the
+        last state that did.  Re-reading it therefore reverts the mutation
+        *and* the replay-cache entry the caller had already inserted, because
+        that cache lives inside the account dicts this replaces.
+
+        An absent file is the same situation with nothing to read back: the
+        state that was never published is simply gone.
+        """
+        if not self.path.exists():
+            self.accounts, self.tokens = {}, {}
+            self.active_account_id, self.client_hosts, self.account_aliases = None, {}, {}
+            return
+        self.accounts = self._load()
+
     def _persist_locked(self) -> None:
+        try:
+            self._publish_locked()
+        except BaseException:
+            # Without this the caller keeps a mutation the disk never took and,
+            # worse, the replay entry answering for it: an exact retry would
+            # then be served from that cache with a success the save does not
+            # contain, and the change would vanish at the next restart. If the
+            # save cannot be re-read either, that failure propagates in place of
+            # this one -- being unable to read the state is the graver of the
+            # two, and Python chains the write failure onto it as context.
+            self._restore_from_disk_locked()
+            raise
+
+    def _publish_locked(self) -> None:
         self._bound_locked()
         self._synchronize_wallets_locked()
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -4159,14 +4191,26 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _resource(self, status: HTTPStatus, resource: Any, *, include_body: bool = True) -> None:
-        self.server.events.record(self.command, self.path, status)
-        self.send_response(status)
-        self.send_header("Content-Type", resource.content_type)
-        self.send_header("Content-Length", str(resource.size))
-        self.end_headers()
-        if not include_body:
+        # Opened before anything is sent, because opening is what re-checks a
+        # filesystem resource against the manifest.  Discovering a changed file
+        # after `Content-Length` had gone out would leave the client reading a
+        # body that cannot match the header, which it reports as a transport
+        # failure rather than as the stale manifest it is.
+        try:
+            stream = self.server.resource_catalog.open(resource)
+        except ResourceCatalogError as error:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "error": "resource_changed_on_disk", "detail": str(error),
+            })
             return
-        with self.server.resource_catalog.open(resource) as stream:
+        with stream:
+            self.server.events.record(self.command, self.path, status)
+            self.send_response(status)
+            self.send_header("Content-Type", resource.content_type)
+            self.send_header("Content-Length", str(resource.size))
+            self.end_headers()
+            if not include_body:
+                return
             shutil.copyfileobj(stream, self.wfile, length=1024 * 1024)
 
     def _file(self, status: HTTPStatus, path: Path, content_type: str) -> None:

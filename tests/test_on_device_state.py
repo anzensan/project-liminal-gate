@@ -274,6 +274,58 @@ class UpdateCommandTest(unittest.TestCase):
         self.assertIn("missing account(s) a", str(raised.exception))
         self.assertIn("on_device_state import", str(raised.exception))
 
+    def _update_over(self, before: dict, after: dict) -> None:
+        with (
+            patch.object(tester_setup, "resolve_adb", return_value="adb"),
+            patch.object(tester_setup, "select_device", return_value="serial"),
+            patch.object(on_device_state, "validate_device"),
+            patch.object(tester_setup, "package_installed", return_value=True),
+            patch.object(on_device_state, "launch_apk"),
+            patch.object(on_device_state, "prepare_on_device_apk", return_value=self.root / "built.apk"),
+            patch.object(on_device_state, "wait_for_health", return_value="b" * 64),
+            patch.object(on_device_state, "fetch_state", side_effect=[before, after]),
+            patch.object(tester_setup, "adb_forward"),
+            patch.object(tester_setup, "install_apk"),
+        ):
+            self.assertEqual(0, on_device_state.update(self._args()))
+
+    def test_an_update_that_keeps_the_account_but_wipes_its_progress_is_refused(self) -> None:
+        # The account id surviving is not the save surviving. This exact shape
+        # once printed "The save survived the update".
+        before = {
+            "accounts": {"a": {"userdata": {"progressCode": 999, "coins": 12345}}},
+            "tokens": {}, "active_account_id": "a",
+        }
+        after = {
+            "accounts": {"a": {"userdata": {"progressCode": 0, "coins": 0}}},
+            "tokens": {}, "active_account_id": "a",
+        }
+        with self.assertRaises(on_device_state.OnDeviceStateError) as raised:
+            self._update_over(before, after)
+        message = str(raised.exception)
+        self.assertIn("progressCode was 999, is now 0", message)
+        self.assertIn("coins was 12345, is now 0", message)
+        self.assertIn("on_device_state import", message)
+
+    def test_an_update_that_only_moves_ephemeral_fields_is_accepted(self) -> None:
+        # The stamina origin is rebased on load and whole numbers come back as
+        # LitJson doubles; neither is lost progress.
+        before = {
+            "accounts": {"a": {"userdata": {
+                "progressCode": 999, "coins": 12345, "refillStartTime": 1.0,
+                "chrdata": [{"id": 9001, "jobLevels": [1, 0, 0]}],
+            }}},
+            "tokens": {}, "active_account_id": "a",
+        }
+        after = {
+            "accounts": {"a": {"userdata": {
+                "progressCode": 999, "coins": 12345, "refillStartTime": 987654.0,
+                "chrdata": [{"id": 9001, "jobLevels": [1.0, 0.0, 0.0]}],
+            }}},
+            "tokens": {}, "active_account_id": "a",
+        }
+        self._update_over(before, after)
+
 
 class ImportCommandTest(unittest.TestCase):
     def setUp(self) -> None:
