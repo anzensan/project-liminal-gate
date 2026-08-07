@@ -1761,14 +1761,19 @@ class BootstrapState:
             elif any(item_id > len(items) or type(items[item_id - 1]) is not int or items[item_id - 1] < count for item_id, count in recipe.items.items()):
                 payload = {"success": False, "errorCode": 2}
             else:
+                # The recipe's copy count is the whole cost in Companions, and
+                # the base being evolved is the first of them, so a ten-copy
+                # Metal Minion recipe eats the base plus nine further duplicates
+                # rather than ten on top of it.
+                fodder_count = max(recipe.duplicate_source_count - 1, 0)
                 copies = sorted((companion for companion in candidates if companion["iid"] != base_id and companion["bid"] == base["bid"] and not companion.get("chrID", 0) and not companion.get("flag", 0) & 2), key=lambda companion: companion["iid"])
-                if len(copies) < recipe.duplicate_source_count:
+                if len(copies) < fodder_count:
                     payload = {"success": False, "errorCode": 2}
                 else:
                     new_items = copy.deepcopy(items)
                     for item_id, count in recipe.items.items():
                         new_items[item_id - 1] -= count
-                    consumed_ids = {companion["iid"] for companion in copies[:recipe.duplicate_source_count]}
+                    consumed_ids = {companion["iid"] for companion in copies[:fodder_count]}
                     remaining = [companion for companion in candidates if companion["iid"] not in consumed_ids]
                     evolved = next(companion for companion in remaining if companion["iid"] == base_id)
                     evolved["bid"] = recipe.destination_companion_id
