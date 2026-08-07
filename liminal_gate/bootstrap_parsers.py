@@ -24,6 +24,27 @@ from liminal_gate.companion_equipment_catalog import CompanionEquipmentCatalog
 # Metal Zone starts carry the ticket the client would spend instead of stamina,
 # so their form has two fields the ordinary story start does not.
 _TICKET_START_FIELDS = ("stamina", "coins", "itemID", "itemCount", "chapter", "section", "lastUpdate")
+#: A start carries `helpItemID` only when the player picked a Power-Up Item.
+#: `AppServerUtil.<StartQuest>c__Iterator20.MoveNext` (ARM64 `0xFC4D24`) adds the
+#: field only when its value is at least 1, and always at this one position:
+#: after the entry pair when the ticket form sends one, otherwise straight after
+#: `coins`.  Both forms therefore have to parse with and without it.
+_HELP_ITEM_FIELD = "helpItemID"
+
+
+def _split_help_item(names: tuple[str, ...], after: str) -> tuple[tuple[str, ...], bool] | None:
+    """Strip `helpItemID` from a field list, reporting whether it was there.
+
+    Returns None when the field is present but misplaced: position is part of
+    the contract, so a body that carries it anywhere else is not a form this
+    client sends.
+    """
+    if _HELP_ITEM_FIELD not in names:
+        return names, False
+    index = names.index(_HELP_ITEM_FIELD)
+    if names.count(_HELP_ITEM_FIELD) != 1 or index == 0 or names[index - 1] != after:
+        return None
+    return names[:index] + names[index + 1:], True
 
 
 def _parse_hunting_start(body: bytes) -> dict[str, int] | None:
@@ -35,13 +56,16 @@ def _parse_hunting_start(body: bytes) -> dict[str, int] | None:
     """
     try:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
-        if tuple(name for name, _ in pairs) == _TICKET_START_FIELDS:
+        stripped = _split_help_item(tuple(name for name, _ in pairs), "itemCount")
+        if stripped is not None and stripped[0] == _TICKET_START_FIELDS:
             values = {name: int(value) for name, value in pairs}
             if any(value < 0 for value in values.values()) or values["chapter"] < 2 or values["section"] < 1:
                 return None
+            if stripped[1] and values[_HELP_ITEM_FIELD] < 1:
+                return None
             # Which form arrived is itself part of the contract: a stage without
             # a ticket alternative is never entered through this form.
-            return values | {"ticket_form": 1}
+            return values | {"helpItemID": values.get(_HELP_ITEM_FIELD, 0), "ticket_form": 1}
     except (UnicodeDecodeError, ValueError):
         return None
     ordinary = _parse_generic_story_start(body)
@@ -77,14 +101,19 @@ def _parse_generic_story_start(body: bytes) -> dict[str, int] | None:
     fields = ("stamina", "coins", "chapter", "section", "lastUpdate")
     try:
         pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
-        if tuple(name for name, _ in pairs) != fields:
+        stripped = _split_help_item(tuple(name for name, _ in pairs), "coins")
+        if stripped is None or stripped[0] != fields:
             return None
         values = {name: int(value) for name, value in pairs}
     except (UnicodeDecodeError, ValueError):
         return None
     if any(value < 0 for value in values.values()) or values["chapter"] < 2 or values["section"] < 1:
         return None
-    return values
+    # The client omits the field entirely rather than sending zero, so a
+    # declared zero is not a form it produces.
+    if stripped[1] and values[_HELP_ITEM_FIELD] < 1:
+        return None
+    return values | {"helpItemID": values.get(_HELP_ITEM_FIELD, 0)}
 
 
 def _parse_generic_story_clear(body: bytes) -> dict[str, Any] | None:

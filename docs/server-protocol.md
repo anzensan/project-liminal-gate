@@ -61,6 +61,21 @@ bytes after restart. Later tutorial response and party templates resolve from
 that durable starter. Older saves without the explicit field retain Grace, the
 only outcome the earlier profile could produce.
 
+A start carries `helpItemID` only when the player picked a Power-Up Item from
+the pre-battle slot, which the `helpItemEnabled` constant opens. The client
+omits the field rather than sending zero, and emits it in one fixed position in
+each start form: after `coins` in the ordinary form, after `itemCount` in the
+Metal Zone ticket form. Both forms are accepted with and without it; the field
+elsewhere, or declaring zero, is not a form the client produces. The named item
+must be one of the eight the client's own master data marks HelpItem kind (53,
+54, 55, 56, 166, 167, 172, 180) — anything else is refused as an unsupported
+form, since the selector cannot offer it — and one not held gets the soft
+`cmdError` 2 shape. The server owns the spend: it debits one at accepted entry
+and returns the resulting `itemList` with the start, which the client loads
+over its whole inventory. Starts without a power-up return no `itemList` at
+all. Chapter-1100 world-map specials refuse the field outright, matching the
+client's own `InWMSpecial` gate.
+
 The tutorial uses phase-bound structural `userdata` writes, not ordinary
 free-roam roster authority. After Chapter 1-1, a restarted final client can
 send the established ordered party-save structure while it resumes

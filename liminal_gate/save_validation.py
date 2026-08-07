@@ -35,6 +35,25 @@ LEVEL_CAP = 90
 #: The client's own inventory shape, shared with the Hunting catalogs.
 ITEM_SLOTS = 181
 MAX_ITEM_STACK = 999
+#: The items the pre-battle Power-Up Item slot can offer, read from the reviewed
+#: client's own `ItemSet.itemSet` table: exactly the rows whose `ItemData.kind`
+#: is `ItemKind.HelpItem` (1).  `UIHelpItemSelect.MakeList` builds its list by
+#: walking the account's held items and keeping only that kind, so this set is
+#: the complete acceptance set for the `helpItemID` a start may carry.  Master
+#: rows are zero-based and item IDs are one-based, hence rows 52--55 and
+#: 165/166/171/179.  The community record's "Power-up items" category lists the
+#: same eight and notes only one may be used at a time, which is why the client
+#: sends a single ID rather than a list.
+HELP_ITEM_IDS = (
+    53,   # Time Extension
+    54,   # Disarmer
+    55,   # EXP Boost
+    56,   # Coin Boost
+    166,  # Reinforcement Alika
+    167,  # Reinforcement Gugba
+    172,  # Reinforcement Bajanna
+    180,  # Reinforcement Zeera
+)
 #: `ServerConstants.maxCoins` and `maxEnergy`.
 MAX_COINS = 99999999
 MAX_ENERGY = 9999

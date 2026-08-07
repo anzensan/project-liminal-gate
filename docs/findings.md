@@ -1202,3 +1202,72 @@ Chapter 1, the remaining 49 spread across 21 later gates through Chapter 38.
   deliberately: no displayed-rate record was found for it, and its two classes
   are near-evenly sized, so a uniform draw is already close to whatever the
   service did.
+
+## 2026-08-07: the Power-Up Item slot was gated on a constant nobody sent
+
+**Reported symptom.** The pre-battle screen showed no Power-Up Item field
+above Start Battle, on an account holding Disarmers, with no sign the feature
+was progress-locked.
+
+- **Confirmed by ARM64 disassembly of the reviewed client.** The field is
+  gated on exactly one server constant and nothing the account owns.
+  `UITeamPopup.<Setup>c__Iterator2.MoveNext` calls
+  `UITeamPopup.IsHelpItemEnabled` (RVA `0xD65A08`) and caches the answer into
+  the popup's own `helpItemEnabled` field (offset `0x180`), which drives
+  `helpItemRoot`. The predicate is three terms: false if
+  `GameManager.GetCurrentChapter().InWMSpecial()`, false if
+  `UserData.helpItemEnabled` (static, offset `0x1F0`) is zero, otherwise
+  `!TutorialManager.InTutorial()`. That static is fed from the status route's
+  `constants` block, which had never carried a `helpItemEnabled` key — so it
+  stayed false for every account regardless of inventory or progress.
+- **Confirmed by the same disassembly — the wire form the flag makes
+  reachable.** `AppServerUtil.<StartQuest>c__Iterator20.MoveNext` (`0xFC4D24`)
+  builds the start body in insertion order `stamina`, `coins`, optional
+  `itemID`/`itemCount`, optional `helpItemID`, `chapter`, `section`, then the
+  multiplayer and weekly-challenge fields. `helpItemID` is emitted **only when
+  it is at least 1** (`cmp w8, #1; b.lt`), which is why every start seen
+  before this change parsed: with the field hidden the value was always zero.
+  Enabling the flag without extending the parsers would therefore have refused
+  the battle whenever a power-up was chosen. Field names were recovered by
+  resolving the GOT slots behind each `Dictionary.set_Item` key against
+  `script.json`'s `ScriptString` table.
+- **Confirmed by the client's own master data — the acceptance set.**
+  `UIHelpItemSelect.MakeList` walks the account's held items, calls
+  `ItemSet.GetItem`, and keeps only rows whose `ItemData.kind` (offset `0x14`)
+  is `ItemKind.HelpItem` (1). Reading `ItemSet.itemSet` out of the reviewed
+  `data.unity3d` gives exactly eight such rows; item IDs are one-based, so the
+  set is 53 Time Extension, 54 Disarmer, 55 EXP Boost, 56 Coin Boost, 166
+  Reinforcement Alika, 167 Reinforcement Gugba, 172 Reinforcement Bajanna, and
+  180 Reinforcement Zeera. The community record's "Power-up items" category
+  lists the same eight and adds that only one may be used at a time, which is
+  what the single `helpItemID` field already implies. The seven
+  `ItemKind.UsableItem` rows are the same seven the record calls candy items.
+- **Confirmed — the spend belongs to the server.** `UITeamPopup.SetHelpItem`
+  (`0xD69B58`) only paints the slot: labels, sprite, scale, and a confirmation
+  dialog. It never touches a held count. The start response's `itemList` is
+  fed to `UserData.LoadItemlistFromJson`, and every field in that callback is
+  guarded by a `ContainsKey` check, so an absent `itemList` is safely ignored
+  and a present one replaces the client's whole inventory. The debit is
+  therefore committed at start and reported back, and the following clear
+  submits the count the server produced. No stale-count reconciliation is
+  needed, unlike the Metal Ticket, whose slot the client does repeat stale.
+
+**Local policy.** All eight IDs are accepted. An ID outside the set is a
+wire-form refusal (`unsupported_start_quest` / `unsupported_hunting_start`)
+because `UIHelpItemSelect` cannot offer one; an ID the account does not hold is
+the soft `cmdError` 2 shape, so a client that asks for something it was not
+offering sees its own refusal rather than a Network Error. A power-up named on
+a World-0 map special is refused, matching the client's `InWMSpecial` term.
+What the items *do* is entirely client-side; the server authors no effect.
+
+**Related gap, not closed here.** Candy items (161, 162, 163, 168, 175, 176,
+177) and the four Reinforcements have no local source. Story stages cannot
+drop them — the 780 recovered `item_maxima` rows top out at item 165 — and
+neither can Huntland, Daily Quests, or the Trading Post. Their historical
+sources were Tower of Temptation milestone rewards, Melting Pot Lizardfolk,
+and Ultimate Five Luck chests. Tower's 12 stages carry no reward channel at
+all in the generated event catalog, consistent with those rewards being
+condition-counted and service-authored rather than client-side drop programs;
+they are recoverable only as bounded local policy from the community record,
+the way the Trading Post already is. The server has always supported *spending*
+candy through `use_statusup_item`.
