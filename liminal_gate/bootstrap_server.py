@@ -275,6 +275,27 @@ RESOLVED_MUTATION_KINDS = frozenset({
     "event_start",
 })
 
+#: The refusal code each retired paid or advertised route answers with, on the
+#: `cmdError` field `_endpoint_refusal_envelope` hoists it onto.
+#:
+#: `buy_energy` gets `BuyEnergyErrorCode.FailedToVerifyReceipt` (3), which is
+#: literally true here: the client hands over a store receipt, and no local
+#: server holds the Google Play or App Store key that would verify one. The
+#: adjacent `FailedToConnectVerifyServer` (2) would claim a verifier exists and
+#: was merely unreachable, which invites the retry this change is removing.
+#:
+#: The two ad routes get 1. Unlike every other endpoint the client declares no
+#: error enum for them -- the retired service had no reason to refuse a video it
+#: had just served -- so there is no recovered constant to cite. 1 is the first
+#: error slot in all fifteen enums this client does declare (`None` is always 0),
+#: and the value matters less than the shape: a signed body carrying any nonzero
+#: `cmdError` reaches the callback that asked, which the unsigned 501 never did.
+REFUSAL_ROUTE_CODES = {
+    "buy_energy": 3,
+    "showed_ad_movie_main": 1,
+    "showed_ad_movie_continue": 1,
+}
+
 MUTATION_RESULT_STATUSES = {
     "unknown_account": HTTPStatus.UNAUTHORIZED,
     "request_collision": HTTPStatus.CONFLICT,
@@ -3332,6 +3353,30 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         )
         return None
 
+    def _retired_route_refusal(self, path: str) -> int | None:
+        """The refusal code for a retired paid or advertised route, if this is one."""
+        for name, code in REFUSAL_ROUTE_CODES.items():
+            if path == self.server.profile.routes.get(name):
+                return code
+        return None
+
+    def _refuse_retired_route(self, code: int, query: dict[str, str]) -> None:
+        """Refuse one retired route in the endpoint's own namespace.
+
+        The soft shape the Daily Quest gate already uses: a signed body whose
+        refusal code `_endpoint_refusal_envelope` moves to `cmdError`, so the
+        screen that asked runs its own callback. Nothing is read, written, or
+        charged, so there is no replay cache to consult -- refusing twice under
+        one request id refuses identically.
+        """
+        token = self._required_account_token(query)
+        if token is None:
+            return
+        self._signed(
+            HTTPStatus.OK, token,
+            _canonical_payload({"success": False, "errorCode": code}),
+        )
+
     def _serves_local_state(self, path: str) -> bool:
         """Whether this server answers the operator save-transfer route here.
 
@@ -3527,6 +3572,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             result, payload = self.server.state.current_exchange(token, self.server.exchange_catalog)
             if result == "success": self._signed(HTTPStatus.OK, token or "", {"success": True, **(payload or {})})
             else: self._json(HTTPStatus.NOT_IMPLEMENTED if result == "unsupported_exchange" else HTTPStatus.UNAUTHORIZED, {"error": result})
+            return
+        refusal = self._retired_route_refusal(target.path)
+        if refusal is not None:
+            self._refuse_retired_route(refusal, query)
             return
         self._json(HTTPStatus.NOT_IMPLEMENTED, {"error": "route_not_implemented"})
 
@@ -3951,6 +4000,18 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             self._import_local_state()
             return
         profile = self.server.profile
+        # Which verb the retired routes used is not recovered -- this client
+        # sends both, and a receipt argues for POST -- so they are answered on
+        # either. The body is drained first regardless: a kept-alive connection
+        # whose unread body is left in the socket parses as the next request.
+        refusal = self._retired_route_refusal(target.path)
+        if refusal is not None:
+            if self._read_mutation_body() is None:
+                return
+            self._refuse_retired_route(
+                refusal, dict(parse_qsl(target.query, keep_blank_values=True)),
+            )
+            return
         mutation_routes = {profile.routes.get(name) for name in MUTATION_ROUTE_NAMES}
         if target.path not in mutation_routes:
             self._json(HTTPStatus.NOT_IMPLEMENTED, {"error": "route_not_implemented"})

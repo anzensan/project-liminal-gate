@@ -11,6 +11,14 @@ is machine-readable in `../protocol/endpoint_matrix.yaml`.
 - POST bodies require a nonnegative `Content-Length`, are capped at 4 MiB, and
   must contain exactly the declared number of bytes.
 - Unknown routes fail explicitly instead of returning generic success.
+- Three routes the client still calls are refused in the *endpoint's* namespace
+  rather than the transport's: `buy_energy`, `showed_ad_movie_main`, and
+  `showed_ad_movie_continue`. Each answers a signed body whose refusal code
+  rides `cmdError`, so the screen that asked runs its own callback. They are
+  refusals, not implementations — no energy is granted, no receipt inspected,
+  and no durable state touched. Answering them as unknown routes instead would
+  send an unsigned body the client reads as a transport failure and retries
+  against the same dead route, which is a loop only a force-stop escapes.
 
 ## Account routing and signing
 

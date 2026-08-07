@@ -72,8 +72,14 @@ capabilities:
     note: "the 12 nonzero-battle stages with matching final-client banners in 4100-4111 are projected after Chapter 3; 16 empty tier placeholders are excluded; generated solo collectible mapping awaits a result capture while explicit reviewed ceilings remain durable and replay-safe"
     transport_tests: true
     restart_tests: true
-  - family: multiplayer_social_commerce
-    routes: [multiplayer, matchmaking, friends, purchases, advertisements]
+  - family: multiplayer_social
+    routes: [multiplayer, matchmaking, friends]
     status: unsupported
     transport_tests: false
+    restart_tests: false
+  - family: retired_purchases_and_ads
+    routes: [buy_energy, showed_ad_movie_main, showed_ad_movie_continue]
+    status: unsupported
+    note: "refused in the endpoint's own namespace rather than the transport's: a signed body carrying cmdError reaches the screen that asked, where the unsigned 501 these previously fell to read as a transport failure the client retried until force-stopped; buy_energy answers the client's own FailedToVerifyReceipt (3) because no local server holds a store key, and the two ad routes answer 1 because the client declares no error enum for them; nothing is granted, charged, or persisted, and no receipt is inspected"
+    transport_tests: true
     restart_tests: false

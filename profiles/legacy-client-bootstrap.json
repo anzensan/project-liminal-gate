@@ -30,7 +30,10 @@
     "sell_buddies": "/gd/sell_buddies",
     "buddy_strengthen": "/gd/buddy_strengthen",
     "buddy_evolve": "/gd/buddy_evolve",
-    "do_buddy_slot": "/gd/do_buddy_slot"
+    "do_buddy_slot": "/gd/do_buddy_slot",
+    "buy_energy": "/gd/buy_energy",
+    "showed_ad_movie_main": "/gd/showed_ad_movie_main",
+    "showed_ad_movie_continue": "/gd/showed_ad_movie_continue"
   },
   "response_signing": {
     "algorithm": "md5-uppercase-slice",
