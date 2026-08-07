@@ -45,6 +45,8 @@ from liminal_gate.event_manifest_data import (
     MELTING_POT_MANIFEST_ROWS,
     MELTING_POT_SECTIONS,
     FOLDED_ARCHIVE_CHAPTERS,
+    STANDING_SPECIAL_MANIFEST_ROWS,
+    STANDING_SPECIAL_SECTION_ALLOWLIST,
     TOWER_MANIFEST_ROWS,
 )
 from liminal_gate.atomic_json import write_json_document
@@ -145,6 +147,25 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
             continue
         for section in sections:
             rows.append(row(event_id, flag, chapter, unlock_after, section, character_ids=[]))
+
+    for event_id, chapter, unlock_after in STANDING_SPECIAL_MANIFEST_ROWS:
+        sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])
+        allowed = STANDING_SPECIAL_SECTION_ALLOWLIST.get(chapter)
+        if allowed is not None:
+            sections = [section for section in sections if section["section"] in allowed]
+        if not sections:
+            notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
+            continue
+        for section in sections:
+            number = section["section"]
+            rows.append(row(
+                # The exact section flag, not the chapter fallback. These are
+                # advertised as one card per section, and a chapter-level flag
+                # would also open the sections this manifest deliberately
+                # withholds for want of a retained banner.
+                event_id, f"sp_ch_{chapter}-{number}", chapter, unlock_after, section,
+                character_ids=[],
+            ))
 
     for event_id, flag, chapter, unlock_after in MELTING_POT_MANIFEST_ROWS:
         sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])

@@ -74,16 +74,62 @@ ARCHIVE_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
 
 # event_id, flag, chapter, unlock_after_chapter
 #
-# The final client defines Chapters 9010--9013 as Tower of Temptation and
-# Chapters 9100--9102 as the separate Donation event. Matching BattleData has
-# three stages in each Tower chapter. Chapter 3 is a permanent local archive
-# gate, not a recovered Tower schedule or shared-progression model.
+# Tower of Temptation is served from Chapters 9000--9003, not the 9010--9013
+# copy. BattleData carries the family twice and the two blocks are the same
+# content: both hold the four `[誘いの塔]` bosses Arika, Guguba, Bahanna and
+# Jeera across three sections at 15 stamina, at assumed levels 35, 65 and 80,
+# chained by the same `parentQuest` links. Only 9000--9003 have retained
+# `sp<chapter>-1`--`-3` banner bundles; 9010--9013 have none, so the earlier
+# placement advertised four cards the retained archive cannot draw. Chapter 3
+# is a permanent local archive gate, not a recovered Tower schedule or
+# shared-progression model.
+#
+# Chapters 9100--9102 are the separate Donation range and carry Melting Pot;
+# see MELTING_POT_MANIFEST_ROWS below.
 TOWER_MANIFEST_ROWS: tuple[tuple[str, str, int, int], ...] = (
-    ("tower_of_temptation_1", "sp_ch_9010", 9010, 3),
-    ("tower_of_temptation_2", "sp_ch_9011", 9011, 3),
-    ("tower_of_temptation_3", "sp_ch_9012", 9012, 3),
-    ("tower_of_temptation_4", "sp_ch_9013", 9013, 3),
+    ("tower_of_temptation_1", "sp_ch_9000", 9000, 3),
+    ("tower_of_temptation_2", "sp_ch_9001", 9001, 3),
+    ("tower_of_temptation_3", "sp_ch_9002", 9002, 3),
+    ("tower_of_temptation_4", "sp_ch_9003", 9003, 3),
 )
+
+# event_id, chapter, unlock_after_chapter
+#
+# Six standing Special Quests the earlier manifest never named. Each is present
+# in BattleData with a nonzero battle count and each has its own retained
+# `sp<chapter>-<section>` banner bundles, so they are advertised from the
+# archive the operator already owns rather than from anything derived.
+#
+# The event_ids follow the names the running client renders, read off its own
+# Special Quest selector rather than translated from the BattleData titles:
+# Gormandizer Hunt (`ナミダン` and `リュウシン`, shown as Tears and Particles),
+# The Hunt For Joker, Blade Falcon, Bone Killer and Ethereal, and KINO World.
+# Two of those correct the obvious reading of the Japanese -- `ブレイドイーグル`
+# is Blade *Falcon* to the client, and `インビジブル` is Ethereal, not Invisible.
+#
+# Every one of them carries an empty `dropBuddies`, so no Companion manifest is
+# being left unread, and like Counter Descent and Melting Pot they settle from
+# the client's own reported drops -- the retired result service authored their
+# rewards and no capture survives. Chapter 3 is the same permanent local
+# availability gate Tower, the Eidolon quests and Melting Pot carry.
+STANDING_SPECIAL_MANIFEST_ROWS: tuple[tuple[str, int, int], ...] = (
+    ("gormandizer_hunt", 3001, 3),
+    ("joker_hunt", 3100, 3),
+    ("blade_falcon_hunt", 3200, 3),
+    ("bone_killer_hunt", 3201, 3),
+    ("ethereal_hunt", 3202, 3),
+    ("kino_world", 3300, 3),
+)
+
+#: Chapter 3001 is the one member whose retained banners do not cover every
+#: BattleData section: `sp3001-1` and `sp3001-2` exist, the third section's card
+#: does not. Advertising 3001-3 would place a card the archive cannot draw --
+#: the same blank-card failure the Coin Creeps derivation produced -- so the
+#: section is withheld rather than backed by invented artwork. The other five
+#: chapters are single-section and fully covered.
+STANDING_SPECIAL_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
+    3001: (1, 2),
+}
 
 #: `ChapterInterface.NumOfDonationQuestSections`, the section count the final
 #: client returns from `GetSectionCount` for every chapter in that range. The
