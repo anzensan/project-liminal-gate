@@ -42,7 +42,11 @@ class StatusupItemTest(unittest.TestCase):
                 })
                 status, level = post(server, "/gd/use_statusup_item", "level", "targetChrID=3&useItemID=1&useAmount=2")
                 self.assertEqual(200, status)
-                self.assertEqual({"chrdata", "itemList", "resultValues", "digest"}, set(level))
+                # `success` is not optional on any signed body: the transport
+                # casts it to bool unguarded, so a settled use answered without
+                # it hung the client on its own "Connecting" overlay.
+                self.assertEqual({"success", "chrdata", "itemList", "resultValues", "digest"}, set(level))
+                self.assertIs(True, level["success"])
                 changed = next(item for item in level["chrdata"] if item["id"] == 3)
                 self.assertEqual([111, 0], [int(value) >> 12 for value in changed["jobLevels"]])
                 self.assertEqual([90, 0], [int(value) & 0xFFF for value in changed["jobLevels"]])

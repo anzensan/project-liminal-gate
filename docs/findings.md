@@ -1422,3 +1422,51 @@ didn't open up" -- Melting Pot Lizardfolk stayed one section long.
   before the change re-stamps it by clearing it again. The tutorial
   transitions, which are profile-canned rather than identity-settled, are left
   alone; the ordinary story is gated by `progressCode`, not by this map.
+
+## 2026-08-08: two settled mutations answered without `success` and hung the client
+
+**Reported symptom.** A Luck Candybox could finally be used, and confirming it
+left the client on the "Connecting" overlay forever. Restarting showed the use
+had been applied in full -- the item spent, the Luck gained -- so the request
+had been settled and answered before the client stopped.
+
+- **Confirmed by ARM64 disassembly -- `success` is the one unguarded read in
+  the transport.** `AppServerUtil.<callAPI>c__Iterator4D.MoveNext` parses the
+  body and immediately casts `json["success"]` to bool at `0xDBE174`, with no
+  `Contains` ahead of it. Every field after it is guarded: `lastupdate`
+  (`0xDBE4B0`), `cmdError` (`0xDBE5B0`), and each key the endpoint callbacks
+  read. LitJson's string indexer raises `KeyNotFoundException` on a miss, and
+  the bool cast (`0xFF4EEC`) raises `InvalidCastException` on anything that is
+  not `JsonType.Boolean`, so the key is required and no default exists.
+- **Confirmed -- why it presents as a soft lock rather than an error.** The
+  throw happens inside the transport coroutine, after the mutation has been
+  settled, persisted, and answered. The endpoint callback never runs, so
+  nothing takes down the `UILoading.ForceShow` overlay the screen raised before
+  the request (`UIChrSelectWindow.<ShowItemUseDialog>`, `0xEAE638`), and the
+  retry/error dialogs live on paths that were never reached. This is the
+  freeze half of the pair recorded for refusals: an unsigned refusal reads as
+  Network Error, a thrown parse reads as a hang.
+- **Confirmed -- the scope was exactly two routes.** `use_statusup_item` and
+  `achived` were the only signed bodies this server ever emitted without a
+  `success` key; every other route either sets it or carries an `errorCode`
+  that `_endpoint_refusal_envelope` already rewrote into
+  `{"success": true, "cmdError": n}`. Neither had been exercised by a real
+  client: the candy route was unreachable until `statusUpItems` was sent the
+  day before, and no tester had claimed an achievement.
+- **Confirmed -- nothing else in the flow disagrees.** The rest of the
+  status-up response was already the shape the client reads:
+  `<UseStatusUpItem>` `<>m__0` (`0xFC8058`) takes `chrdata`, `itemList`, and
+  `resultValues`, each `Contains`-guarded; `UIUseItemResultWindow.<ShowMsg>`
+  (`0x10ECA08`) walks `addedLevels` as `((IDictionary)levels).Keys` and casts
+  each value with the *int* accessor, which is what an object of
+  `"<jobIndex>": <int>` provides; `addedSkillBoost` and `addedLuck` are read
+  the same way. `Character.LoadFromJson` (`0xD07C5C`) reads `id`, `jobID`,
+  `skillBoost`, `flags`, `buddy`, `luck`, and `plusCount` as ints, `date` and
+  `jobSlots` as doubles, and tests `IsInt` per `jobLevels` entry before
+  choosing an accessor.
+
+**Local policy.** The key is stamped in the wire layer rather than at each
+route, so a route cannot reintroduce the hang by forgetting it. A payload that
+carries no verdict of its own is answered with the one it was returned under;
+an explicit `false` is left untouched, and an endpoint refusal code still
+rides `cmdError` exactly as before.

@@ -72,6 +72,27 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Using a candy item, or claiming an achievement, hung the client on
+  "Connecting".** Reported straight after the candy fix below: the item could
+  finally be used, and confirming it left the loading screen up forever.
+  Restarting showed the use had gone through — item spent, Luck gained — so
+  the server had settled and answered it before the client stopped.
+
+  The client's transport reads one field of every reply without checking
+  whether it is there: the flag that says whether the request succeeded. Two
+  routes had never sent it. Missing, it does not read as a failure — it throws,
+  inside the transport itself, after the change is already saved. The screen
+  that was waiting is never told anything, so the overlay it raised stays up
+  and nothing short of a restart clears it.
+
+  Neither route had ever been reached by a real client before: candy was
+  unusable until the fix below, and no tester had claimed an achievement. The
+  flag is now stamped on every reply that does not carry a verdict of its own,
+  in one place, so no route can leave it off again. An endpoint's own refusal
+  code still rides the field it always did.
+
+  Server restart. Anything settled before a hang stays settled.
+
 - **A full Companion box turned a won Metal Zone battle into a Network Error
   loop.** Reported against All Hail The King 30-39
   ([#58](https://github.com/anzensan/project-liminal-gate/issues/58)): the

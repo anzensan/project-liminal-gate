@@ -52,6 +52,16 @@ committed together. Replay identity includes operation, request ID, and body,
 so the same ID with a different body is not mistaken for the earlier request.
 Caches are bounded and survive restart.
 
+Every signed body carries `success`. The transport casts `json["success"]` to
+bool with no `Contains` guard, and LitJson raises on both a missing key and a
+non-boolean, so an omitted verdict is not read as failure: it throws inside the
+transport coroutine, after the mutation has been settled and answered. No
+endpoint callback runs and no dialog appears — the screen simply keeps whatever
+loading overlay it raised, which only a restart clears. A payload that carries
+no verdict of its own is therefore stamped with the one it was returned under,
+in the wire layer rather than at each route. An endpoint's own refusal code
+still rides `cmdError`; see the `errorCode` note below.
+
 The exact first tutorial Pact form (`kind=10`) selects one of two profile
 outcomes with equal integer weight: Bahl (character 1) or Grace (character 3).
 Selection happens only after phase and request validation. The selected starter,
