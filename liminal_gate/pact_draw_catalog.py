@@ -68,6 +68,36 @@ _TRUTH_CLASS_SHARE_PPM = {
 }
 _WEIGHT_SCALE = 1_000_000
 
+# The "+" Pact.  A pull sometimes arrives decorated, granting the recruit extra
+# levels and extra Skill Boost -- or extra Luck, on a Fate-type pull, which
+# grants Luck where the others grant Skill Boost.  The client renders it from
+# fields the server fills: `levelAdded2`, `boostUp2` and `luckup2` on the pull
+# result, read by `AppServerUtil.<DoSlot>c__IteratorB`.  Version 2.6.0 added it.
+#
+# The two gain ranges are the published ones, documented identically in the
+# English and Japanese record: 1 to 5 levels, and 0.5% to 3.0% Skill Boost, in
+# the client's tenths.  The Fate-side Luck gain is documented on the same scale.
+#
+# **The frequency is local policy.**  It is the one number no source states --
+# both records say only "sometimes" -- because the retired service owned the
+# roll and the client holds no table for it.  Twenty-two percent is adopted
+# from operator-side observation and sits inside the only field estimate on
+# record, a tester's "2-3 times on a 10-pull".  It is a chosen number, on the
+# same footing as the Companion-strengthen EXP-bonus weights: honest to
+# change, and named here rather than buried in the draw.
+#
+# The *shape* of the roll inside those ranges is a second, smaller choice.  No
+# source describes it and the client cannot: it renders the numbers the server
+# sends and nothing in that path bounds them.  Uniform is the assumption with
+# the fewest parts, and it is the only other thing here that was chosen rather
+# than read.
+PLUS_PACT_CHANCE_PERCENT = 22
+#: Published: 1 to 5 additional levels.
+PLUS_PACT_LEVELS = (1, 5)
+#: Published: 0.5 to 3.0, in the client's tenths -- Skill Boost on a Truth or
+#: Fellowship pull, Luck on a Fate-type one.
+PLUS_PACT_TENTHS = (5, 30)
+
 
 def _duplicate_class(rarity: int) -> str:
     if rarity == _RARITY_Z:
