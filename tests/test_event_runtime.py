@@ -6,7 +6,7 @@ import threading
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState
+from liminal_gate.bootstrap_server import CLASS_LIMIT_ERROR_CODE, BootstrapServer, BootstrapState
 from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.event_catalog import (
     EventCatalog,
@@ -1120,3 +1120,85 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 clear,
             ),
         )
+
+
+class CaptiveGolemClassLimitTest(unittest.TestCase):
+    """Captive Golem admits only parties inside its declared class band.
+
+    Chapter 2008's four sections are the only ones in the game that carry
+    `classMin`/`classMax`, and the client's own start gate never reads them, so
+    an over-class party walked straight in
+    ([reported against Sayu, class 8](https://github.com/anzensan/project-liminal-gate)).
+    """
+
+    #: Class 8, above every Captive Golem section; and class 3, inside them all.
+    OVER_CLASS, WITHIN_CLASS = 831, 25
+
+    def catalog(self) -> EventCatalog:
+        stages = tuple(
+            EventStage(
+                "captive_golem_archive", "sp_ch_2008", 2008, section, 15, 0, 0, (),
+                class_min=low, class_max=high,
+            )
+            for section, (low, high) in ((1, (1, 6)), (2, (1, 5)), (3, (1, 4)), (4, (1, 3)))
+        )
+        return EventCatalog(stages, {self.OVER_CLASS: 8, self.WITHIN_CLASS: 3})
+
+    def start(self, party: list[int], section: int = 1) -> tuple[int, dict]:
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            state.create_account("token", "account", {
+                "coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777473,
+                "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": [],
+                "teamMembers": party,
+            })
+            state.accounts["account"]["tutorial_phase"] = "free_roam"
+            state._persist_locked()
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), state, event_catalog=self.catalog(),
+            )
+            try:
+                return support_post(
+                    server, "/gd/start_quest", "golem",
+                    f"stamina=15&coins=0&chapter=2008&section={section}&lastUpdate=1",
+                    token="token",
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+            finally:
+                stop_server(server, thread)
+
+    def test_an_over_class_party_is_refused_in_the_clients_own_shape(self) -> None:
+        status, payload = self.start([self.OVER_CLASS, 0, 0, 0, 0, 0])
+        # A refusal, not a transport error: 200 carrying the client's own
+        # ClassLimit code, so the game shows its dialog and the screen returns.
+        # A route's own refusal code rides `cmdError`; see docs/server-protocol.md.
+        self.assertEqual(200, status, payload)
+        self.assertEqual(CLASS_LIMIT_ERROR_CODE, payload["cmdError"])
+
+    def test_a_party_inside_the_band_still_enters(self) -> None:
+        status, payload = self.start([self.WITHIN_CLASS, 0, 0, 0, 0, 0])
+        self.assertEqual((200, True), (status, payload["success"]))
+
+    def test_the_band_tightens_with_each_section(self) -> None:
+        """Class 3 clears every rung; the ladder is 6, 5, 4, then 3."""
+        for section in (1, 2, 3, 4):
+            with self.subTest(section=section):
+                status, payload = self.start([self.WITHIN_CLASS, 0, 0, 0, 0, 0], section)
+                self.assertEqual((200, True), (status, payload["success"]))
+        for section in (1, 2, 3, 4):
+            with self.subTest(section=section, party="over"):
+                status, payload = self.start([self.OVER_CLASS, 0, 0, 0, 0, 0], section)
+                self.assertEqual(CLASS_LIMIT_ERROR_CODE, payload["cmdError"])
+
+    def test_an_uncapped_stage_admits_anyone(self) -> None:
+        """Every other section in the game declares no band and is unaffected."""
+        stage = EventStage("test", "sp_test", 2000, 1, 15, 0, 0, ())
+        self.assertTrue(stage.admits_class(8))
+        catalog = EventCatalog((stage,), {self.OVER_CLASS: 8})
+        self.assertFalse(catalog.over_class_limit(stage, [self.OVER_CLASS, 0, 0, 0, 0, 0]))
+
+    def test_a_character_the_catalog_cannot_describe_is_not_refused(self) -> None:
+        """The gate restores a declared limit; it does not invent one."""
+        catalog = self.catalog()
+        stage = catalog.by_identity()[(2008, 4)]
+        self.assertFalse(catalog.over_class_limit(stage, [999999, 0, 0, 0, 0, 0]))

@@ -210,3 +210,26 @@ EIDOLON_PLAYABLE_SECTIONS: dict[int, int] = {
 # reward. Variable battle Coins are reported separately by the surviving client
 # and reconciled against its submitted wallet during settlement.
 EVENT_CLEAR_COINS = 0
+
+#: Sections that admit only parties within a class band, as ``(chapter,
+#: section) -> (class_min, class_max)``.
+#:
+#: Recovered, not chosen: these are `BattleData.Section.classMin`/`classMax`
+#: read out of the reviewed client. Every section of every chapter it carries
+#: was checked -- all forty-two story chapters, both Huntland ranges and every
+#: event archive -- and Captive Golem's four are the only ones in the game that
+#: declare a limit at all. The descending ladder is the quest: 6, then 5, then
+#: 4, then 3, against the same class scale `ChrDatabase.rarity` uses, which the
+#: local character catalog carries as `rarity`.
+#:
+#: The limit is enforced here because nothing else enforces it. The client owns
+#: `StartQuestErrorCode.ClassLimit`, but the gate that returns it --
+#: `AppServerUtil.IsEnableToStartQuestLocal` -- reads only stamina, Coins,
+#: items and VS stamina; it makes no class-related call, so it cannot produce
+#: that code. See the CHANGELOG entry for the report that found this.
+SECTION_CLASS_LIMITS: dict[tuple[int, int], tuple[int, int]] = {
+    (2008, 1): (1, 6),
+    (2008, 2): (1, 5),
+    (2008, 3): (1, 4),
+    (2008, 4): (1, 3),
+}

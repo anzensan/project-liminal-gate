@@ -72,6 +72,32 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Captive Golem let any class in.** Reported after walking a class-8
+  character into the quest to see whether it would be stopped. It was not.
+
+  Chapter 2008's four sections declare `classMin`/`classMax` of 1-6, 1-5, 1-4
+  and 1-3 — a descending ladder that *is* the quest. They are the only sections
+  in the game that declare a class band at all; every section of all forty-two
+  story chapters, both Huntland ranges and every other event archive was
+  re-read from the reviewed APK to be sure of that.
+
+  Nobody enforced it. This server never carried the fields. The client owns
+  `StartQuestErrorCode.ClassLimit`, but the gate that returns it —
+  `AppServerUtil.IsEnableToStartQuestLocal` — reads only stamina, Coins, items
+  and VS stamina and makes no class-related call, so it cannot produce that
+  code. The limit was declared by the game and asserted by nothing.
+
+  The four bands are now carried, and a start whose party breaks one is refused
+  under the client's own `ClassLimit` code in the soft shape the Daily Quest
+  rotation already uses, so the player sees the game's refusal rather than a
+  Network Error. A character the local character catalog cannot describe is not
+  refused: this restores a declared limit, it does not invent one for state it
+  cannot read.
+
+  Server restart only, and no catalog regeneration: the bands are applied from
+  the recovered table when a catalog loads, so an `event-catalog.json` built
+  before this still gets them.
+
 - **Using a candy item, or claiming an achievement, hung the client on
   "Connecting".** Reported straight after the candy fix below: the item could
   finally be used, and confirming it left the loading screen up forever.

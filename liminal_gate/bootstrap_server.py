@@ -217,6 +217,10 @@ REPLAY_CACHE_FIELDS = (
 # generous headroom for a full roster while refusing an unbounded read from a
 # LAN peer: the guided server must listen beyond loopback for a physical device.
 MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024
+#: `AppServerUtil.StartQuestErrorCode.ClassLimit`, the client's own name for a
+#: party that breaks a section's class band. The enum the client renders start
+#: refusals from is the one this rides.
+CLASS_LIMIT_ERROR_CODE = 4
 # Operator save transfer, served only by a loopback-bound server. The packaged
 # Android build keeps its save where no workstation command can reach it, so
 # this route is the export/import path `liminal_gate.on_device_state` drives.
@@ -2716,6 +2720,16 @@ class BootstrapState:
                 int(userdata.get("progressCode", 0))
             ):
                 return "event_stage_locked", None
+            # Captive Golem's four sections are the only ones in the game that
+            # declare a class band, and nothing else enforces it: the client
+            # owns `StartQuestErrorCode.ClassLimit` but the gate that returns
+            # it never looks at the party. Refused in the client's own soft
+            # shape, under that same code, so the player sees the game's
+            # refusal rather than a Network Error.
+            if event and catalog.over_class_limit(stage, userdata.get("teamMembers")):
+                return "success", _canonical_payload(
+                    {"success": False, "errorCode": CLASS_LIMIT_ERROR_CODE}
+                )
             if isinstance(catalog, StoryProgressionCatalog):
                 current = int(userdata.get("progressCode", 0))
                 expected = catalog.expected_clear_progress(current, (stage.chapter, stage.section))
