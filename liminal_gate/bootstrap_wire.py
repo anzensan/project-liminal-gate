@@ -44,10 +44,22 @@ def _endpoint_refusal_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     a bare "ErrorCode : 3" server error instead of the counter's own message,
     because 3 is not a transport code. This server never emits a transport
     error in a signed body, so any refusal code in one belongs on `cmdError`.
+
+    `success` itself is not optional, and its absence does not read as false.
+    `AppServerUtil.<callAPI>` (ARM64 `0xDBE174`) casts `json["success"]`
+    straight to bool with no `Contains` guard ahead of it -- unlike
+    `lastupdate`, `cmdError`, and every field the endpoint callbacks read,
+    which are all guarded. A body without the key therefore raises inside the
+    transport coroutine, which is a soft lock rather than an error: the request
+    has already been settled and answered, the callback never runs, and the
+    "Connecting" overlay it raised is never taken down. So a payload that
+    carries no verdict of its own is stamped with the one it was returned
+    under. Adding the key here rather than at each route means a route cannot
+    reintroduce the hang by forgetting it; an explicit `False` is left alone.
     """
     code = payload.get("errorCode")
     if payload.get("success") is True or type(code) is not int:
-        return payload
+        return payload if "success" in payload else {"success": True, **payload}
     rest = {key: value for key, value in payload.items() if key not in {"success", "errorCode"}}
     return {"success": True, "cmdError": code, **rest}
 

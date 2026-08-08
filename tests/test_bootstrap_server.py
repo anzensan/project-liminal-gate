@@ -18,6 +18,7 @@ from liminal_gate.bootstrap_server import (
     ProfileError,
     load_profile,
 )
+from liminal_gate.bootstrap_wire import _endpoint_refusal_envelope
 from liminal_gate.story_progression_catalog import build_core_story_policy
 
 
@@ -459,6 +460,35 @@ class BootstrapServerTest(unittest.TestCase):
         self.assertEqual(321, event["reported_wallet_coins"])
         self.assertEqual({"chapter": 2000, "section": 1, "coins": 110, "exp": 1718}, event["reported_battle_result"])
         self.assertNotIn("private", self.event_log_path.read_text(encoding="utf-8"))
+
+
+class SignedEnvelopeTest(unittest.TestCase):
+    """Every signed body carries a verdict the transport can read.
+
+    `AppServerUtil.<callAPI>` casts `json["success"]` to bool with no
+    `Contains` guard, so a body without the key raises inside the transport
+    coroutine. That is worse than an error: the mutation has already been
+    settled and answered, no callback runs, and the loading overlay the screen
+    raised is never taken down. Two routes shipped that way -- the status-up
+    item and the achievement claim -- and both hung the client after a
+    successful settlement.
+    """
+
+    def test_a_payload_with_no_verdict_is_stamped_with_the_one_it_carries(self) -> None:
+        self.assertEqual(
+            {"success": True, "itemList": [1]},
+            _endpoint_refusal_envelope({"itemList": [1]}),
+        )
+
+    def test_an_endpoint_refusal_code_still_rides_cmdError(self) -> None:
+        self.assertEqual(
+            {"success": True, "cmdError": 3, "coins": 0},
+            _endpoint_refusal_envelope({"success": False, "errorCode": 3, "coins": 0}),
+        )
+
+    def test_an_explicit_verdict_is_never_rewritten(self) -> None:
+        for payload in ({"success": False}, {"success": True, "coins": 1}):
+            self.assertEqual(payload, _endpoint_refusal_envelope(dict(payload)))
 
 
 class IncludedBootstrapProfileTest(unittest.TestCase):

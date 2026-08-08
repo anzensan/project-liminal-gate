@@ -36,7 +36,11 @@ class AchievementClaimTest(unittest.TestCase):
                 server.state.create_account("token", "account", {"progressCode": 6 << 6, "freeEnergy": 1, "coins": 2, "itemList": [0, 1, 0]})
                 status, success = post(server, "/gd/achived", "one", "id=1&lastUpdate=1")
                 self.assertEqual(200, status)
-                self.assertEqual({"achivementFlags", "freeEnergy", "coins", "itemList", "digest"}, set(success))
+                # `success` is not optional on any signed body: the transport
+                # casts it to bool unguarded, so a claim answered without it
+                # raised inside the client's own coroutine and hung the screen.
+                self.assertEqual({"success", "achivementFlags", "freeEnergy", "coins", "itemList", "digest"}, set(success))
+                self.assertIs(True, success["success"])
                 self.assertEqual(([2], 3, 5, [0, 5, 0]), (success["achivementFlags"], success["freeEnergy"], success["coins"], success["itemList"]))
                 self.assertEqual((status, success), post(server, "/gd/achived", "one", "id=1&lastUpdate=1"))
                 # Reusing a spent requestID with a different body is no longer
