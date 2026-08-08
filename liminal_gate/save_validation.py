@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from liminal_gate.plus_type_data import PLUS_COUNT_MAX
+
 
 #: The low bits of a packed `jobLevels` entry hold the job level itself.
 JOB_LEVEL_MASK = 0xFFF
@@ -172,6 +174,13 @@ def _validate_roster(account_id: str, userdata: dict[str, Any]) -> list[Finding]
         if row["id"] in seen:
             findings.append(Finding(account_id, where, f"character id {row['id']} appears more than once"))
         seen.add(row["id"])
+        plus_count = row.get("plusCount")
+        if plus_count is not None and (type(plus_count) is not int or not 0 <= plus_count <= PLUS_COUNT_MAX):
+            findings.append(Finding(
+                account_id, f"{where}.plusCount",
+                f"a plus count is a whole number from 0 to {PLUS_COUNT_MAX}; the client "
+                f"reads a higher one as tampering and awards no bonus at all",
+            ))
         levels = row.get("jobLevels")
         if not isinstance(levels, list) or not levels:
             findings.append(Finding(account_id, f"{where}.jobLevels", "jobLevels must be a non-empty list"))

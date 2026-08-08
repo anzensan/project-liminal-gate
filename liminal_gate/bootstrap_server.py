@@ -5560,6 +5560,16 @@ def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[
             max(held["luck"], reported_luck)
             if type(reported_luck) is int else held["luck"]
         )
+    # A plus count is server-owned in one direction only: `Character.LoadFromJson`
+    # reads it and `Character.ToHashTable` never writes it back, so the client
+    # cannot report one and taking its row wholesale would drop the count on
+    # every clear. Kept the way Luck is, for the same reason.
+    if type(held.get("plusCount")) is int:
+        reported_plus = merged.get("plusCount")
+        merged["plusCount"] = (
+            max(held["plusCount"], reported_plus)
+            if type(reported_plus) is int else held["plusCount"]
+        )
     return merged
 
 
