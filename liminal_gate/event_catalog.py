@@ -10,8 +10,22 @@ from pathlib import Path
 from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.event_manifest_data import (
     EVENT_MANIFEST_ROWS,
+    SECTION_CLASS_LIMITS,
     STANDING_SPECIAL_MANIFEST_ROWS,
 )
+
+
+def _character_classes(characters: object) -> dict[int, int]:
+    """Map character ID to class from a local character catalog document."""
+    if not isinstance(characters, dict):
+        return {}
+    return {
+        row["character_id"]: row["rarity"]
+        for row in characters.get("characters", [])
+        if isinstance(row, dict)
+        and type(row.get("character_id")) is int
+        and type(row.get("rarity")) is int
+    }
 
 
 DEFAULT_EVENT_CATALOG = "event-catalog.json"
@@ -39,9 +53,20 @@ class EventStage:
     #: Descent is the only family that carries it; see `_projected_event_items`.
     projected_rewards: bool = False
     selector_id: str | None = None
+    #: The class band this section admits, or `(0, 0)` for the stages that
+    #: declare none -- which is every section in the game but Captive Golem's
+    #: four. Recovered; see `SECTION_CLASS_LIMITS`.
+    class_min: int = 0
+    class_max: int = 0
 
     def identity_label(self) -> str:
         return f"{self.chapter}-{self.section}"
+
+    def admits_class(self, character_class: int) -> bool:
+        """Whether a character of this class may enter the section."""
+        if not self.class_max:
+            return True
+        return self.class_min <= character_class <= self.class_max
 
     def unlocked_at(self, progress_code: int | None) -> bool:
         if self.unlock_after_chapter is None:
@@ -56,9 +81,28 @@ class EventStage:
 @dataclass(frozen=True)
 class EventCatalog:
     stages: tuple[EventStage, ...]
+    #: Character ID to class, from the same local character catalog the stages
+    #: were validated against. Only the class-limited sections read it, and an
+    #: empty map disables the check rather than barring an unknown character.
+    character_classes: dict[int, int] | None = None
 
     def by_identity(self) -> dict[tuple[int, int], EventStage]:
         return {(stage.chapter, stage.section): stage for stage in self.stages}
+
+    def over_class_limit(self, stage: EventStage, party: object) -> bool:
+        """Whether a party names a character the stage's class band excludes.
+
+        A character the local catalog does not describe is not refused: this
+        gate exists to restore a declared limit, not to invent one for state it
+        cannot read.
+        """
+        if not stage.class_max or not self.character_classes or not isinstance(party, list):
+            return False
+        return any(
+            not stage.admits_class(self.character_classes[member])
+            for member in party
+            if type(member) is int and member in self.character_classes
+        )
 
     def flags(self, progress_code: int | None = None) -> dict[str, dict[str, object]]:
         return {
@@ -346,6 +390,11 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                     or _is_standing_special(chapter)
                 ),
                 selector_id=selector_id,
+                # Applied from the recovered table rather than read off the
+                # document, so an operator's catalog generated before this
+                # existed still carries the limit its own client declares.
+                class_min=SECTION_CLASS_LIMITS.get((chapter, raw["section"]), (0, 0))[0],
+                class_max=SECTION_CLASS_LIMITS.get((chapter, raw["section"]), (0, 0))[1],
             )
         )
     if (
@@ -353,4 +402,4 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         or len({(stage.chapter, stage.section) for stage in stages}) != len(stages)
     ):
         raise EventCatalogError("event stages must be nonempty and unique")
-    return EventCatalog(tuple(stages))
+    return EventCatalog(tuple(stages), _character_classes(characters))
