@@ -101,6 +101,22 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A refused request could not be read from its own diagnostics.** Two reports
+  of a 501 arrived this week that the log could not tell apart. A refused
+  `start_quest` withheld the entry costs the client declared, so an unknown
+  stage and a cost disagreeing with the catalog produced identical lines; a
+  refused mail read withheld everything about `idlist`, so a malformed form and
+  an unknown message did too.
+
+  The declared entry costs (`stamina`, `coins`, `itemID`, `itemCount`,
+  `helpItemID`) are now recorded. They are stage economics -- the very values
+  the catalog is compared against -- not account state. For the mail routes the
+  log records whether `idlist` parsed and how many entries of what type it
+  named, and never the IDs themselves.
+
+  This changes no behaviour. It exists so the next report of either shape
+  answers its own question.
+
 - **A recode reported no gain, and carried less than it should have.** Two
   halves of the same gap, found while reading the client's recode callback: it
   reads `overlapped`, `addedSkillBoost`, `addedLuck` and `addedPlusCount`, and
