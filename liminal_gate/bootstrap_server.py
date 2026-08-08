@@ -221,6 +221,9 @@ MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024
 #: party that breaks a section's class band. The enum the client renders start
 #: refusals from is the one this rides.
 CLASS_LIMIT_ERROR_CODE = 4
+#: `AppServerUtil.StartQuestErrorCode.SpeciesLimit`, its sibling, for a party
+#: that breaks a stage's species lock. Only the two Roads declare one.
+SPECIES_LIMIT_ERROR_CODE = 6
 # Operator save transfer, served only by a loopback-bound server. The packaged
 # Android build keeps its save where no workstation command can reach it, so
 # this route is the export/import path `liminal_gate.on_device_state` drives.
@@ -2263,6 +2266,16 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             if not stage.unlocked_at(int(userdata.get("progressCode", 0))):
                 return "hunting_stage_locked", None
+            # Dragon and Machine Road are the only stages in the game that
+            # declare a species lock, and nothing else enforces it: the client
+            # owns `StartQuestErrorCode.SpeciesLimit` but its local start gate
+            # never walks the party. Refused before anything is charged, in the
+            # same soft shape the Daily Quest rotation uses, so the player sees
+            # the game's own refusal rather than a Network Error.
+            if catalog.over_species_limit(stage, userdata.get("teamMembers")):
+                return "success", _canonical_payload(
+                    {"success": False, "errorCode": SPECIES_LIMIT_ERROR_CODE}
+                )
             # A Daily Quest pays out once per UTC day, and only the two quests
             # the day's rotation names can be entered at all. The client greys
             # both cases out from the fields login sends, so reaching either

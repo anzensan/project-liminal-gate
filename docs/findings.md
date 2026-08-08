@@ -1470,3 +1470,46 @@ route, so a route cannot reintroduce the hang by forgetting it. A payload that
 carries no verdict of its own is answered with the one it was returned under;
 an explicit `false` is left untouched, and an endpoint refusal code still
 rides `cmdError` exactly as before.
+
+## 2026-08-08: the two Roads declare a species lock, and nothing asserted it
+
+Reported alongside the Captive Golem class band, as a suspected second case of
+the same defect. It is one, but it is a different field and a different code,
+so the class fix did not touch it.
+
+- **Confirmed by BattleData -- the Roads are the only species-locked sections
+  in the game.** `BattleData.Section.species` is 128 on 1200-1 and 256 on
+  1201-1 and zero on all 783 other sections, read through the same type trees
+  `battledata_importer` uses. The value is a bit per `Species` enum member:
+  128 is `1 << Dragon` (7), 256 is `1 << Machine` (8), which is what the
+  sections' own titles say -- `ドラゴンロード` and `メカロード`. Their
+  `classMin`/`classMax` are both zero, so the recovered class band does not
+  reach them and never would have.
+- **Confirmed -- neither limit can be produced by the client.**
+  `AppServerUtil.StartQuestErrorCode` carries `ClassLimit` (4) and
+  `SpeciesLimit` (6) as siblings, but the only local start gate,
+  `AppServerUtil.IsEnableToStartQuestLocal` (`0xDB0984`), calls
+  `BattleData.Section.get_stamina`, `EventManager.GetBoolean`,
+  `UserData.get_coins`, `UserData.GetItemCount` and
+  `MultiplayUserData.GetVsStaminaAndFillSec` -- it walks no party and reads
+  neither field, so it can raise neither code. Both limits were the retired
+  service's to assert, and this server asserted neither.
+- **Confirmed -- the species map needs no new input.** Each character's
+  `Species` is already recovered per character in
+  `statusup_character_data.STATUSUP_CHARACTER_ROWS`, taken from its base job
+  row, which is the same reading the status-up species gate uses. 346 rows,
+  including 24 Dragons and 23 Machines.
+
+**Local policy.** The masks are recovered into `SECTION_SPECIES_LIMITS` and
+applied by stage identity when a catalog is built, so the bundled policy and an
+operator's own hunting catalog both carry the limit without restating it. A
+start whose party breaks the lock is refused before anything is charged, under
+the client's own `SpeciesLimit` code in the soft shape the Daily Quest rotation
+uses, so it reaches the player as the game's dialog rather than a Network
+Error. A character the recovered table cannot describe is not refused: this
+restores a declared limit, it does not invent one for state it cannot read.
+
+**Worth stating plainly, because it is a visible change.** Dragon Road was
+being used as a general-purpose EXP route for any party. That was possible only
+because the limit went unasserted; the game declares otherwise. Nothing about
+either Road's rewards, stamina, or unlock changed.

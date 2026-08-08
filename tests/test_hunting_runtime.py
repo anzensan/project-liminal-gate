@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.bootstrap_server import SPECIES_LIMIT_ERROR_CODE, BootstrapState
 from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy, load_hunting_catalog
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
@@ -955,6 +955,113 @@ class BundledMetalZoneFullBoxTest(unittest.TestCase):
         self.assertEqual(200, self.start("start")[0])
         status, refused = self.clear("clear", [130])
         self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+
+
+class RoadSpeciesLimitTest(unittest.TestCase):
+    """Dragon and Machine Road admit only the species they declare.
+
+    `BattleData.Section.species` is 128 on 1200-1 and 256 on 1201-1 -- `1 <<
+    Dragon` and `1 << Machine` -- and they are the only two sections in the
+    game that declare it. The client owns `StartQuestErrorCode.SpeciesLimit`
+    but its local start gate never walks the party, so until now any party
+    could farm either Road's EXP.
+    """
+
+    PROGRESS = 0x01000000 | (9 << 6) | 1
+    DRAGON, MACHINE, HUMAN = 82, 91, 1
+    #: Outside the recovered species table entirely, as a monster ID is.
+    UNDESCRIBED = 999999
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.addCleanup(self.temporary_directory.cleanup)
+
+    def start(self, chapter: int, party: list[int], request_id: str = "road") -> tuple[int, dict]:
+        state = BootstrapState(self.state_path)
+        state.create_account("token", "account", {
+            "coins": 100, "energy": 100, "freeEnergy": 2, "worldMapNo": 0,
+            "progressCode": self.PROGRESS,
+            "chrdata": [{
+                "id": self.DRAGON, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+                "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+            }],
+            "itemList": [0] * ITEM_SLOTS, "summonList": [0, 0], "teamMembers": party,
+        })
+        with state.lock:
+            account = state.accounts["account"]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            state._persist_locked()
+        server, thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), state,
+            hunting_catalog=build_bundled_hunting_policy(),
+        )
+        try:
+            return post(
+                server, "/gd/start_quest", request_id,
+                urlencode([
+                    ("stamina", "15"), ("coins", "0"), ("chapter", str(chapter)),
+                    ("section", "1"), ("lastUpdate", "1"),
+                ]),
+                token="token", headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        finally:
+            stop_server(server, thread)
+
+    def test_a_party_of_the_wrong_species_is_refused_in_the_clients_own_shape(self) -> None:
+        # A refusal, not a transport error: 200 carrying the client's own
+        # SpeciesLimit code on `cmdError`, so the game shows its dialog and the
+        # screen returns rather than looping a Network Error.
+        for chapter, party in ((1200, [self.HUMAN, 0, 0, 0, 0, 0]), (1201, [self.DRAGON, 0, 0, 0, 0, 0])):
+            with self.subTest(chapter=chapter):
+                status, payload = self.start(chapter, party)
+                self.assertEqual(200, status, payload)
+                # An endpoint refusal rides `cmdError` on an accepted success;
+                # `errorCode` is the transport's own namespace and would show a
+                # bare server error instead. See docs/server-protocol.md.
+                self.assertEqual(
+                    (True, SPECIES_LIMIT_ERROR_CODE),
+                    (payload["success"], payload["cmdError"]),
+                )
+
+    def test_a_refused_entry_charges_nothing(self) -> None:
+        """The gate runs before the debit, so a refusal costs no stamina."""
+        self.start(1200, [self.HUMAN, 0, 0, 0, 0, 0])
+        account = json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]
+        self.assertEqual(100, account["userdata"]["energy"])
+        self.assertEqual("free_roam", account["tutorial_phase"])
+        self.assertIsNone(account.get("active_hunt"))
+
+    def test_the_declared_species_still_enters(self) -> None:
+        for chapter, member in ((1200, self.DRAGON), (1201, self.MACHINE)):
+            with self.subTest(chapter=chapter):
+                status, payload = self.start(chapter, [member, 0, 0, 0, 0, 0])
+                self.assertEqual((200, True), (status, payload["success"]))
+
+    def test_one_wrong_member_is_enough_to_refuse(self) -> None:
+        status, payload = self.start(1200, [self.DRAGON, self.HUMAN, 0, 0, 0, 0])
+        self.assertEqual(SPECIES_LIMIT_ERROR_CODE, payload["cmdError"])
+
+    def test_a_character_the_table_cannot_describe_is_not_refused(self) -> None:
+        """The gate restores a declared limit; it does not invent one."""
+        status, payload = self.start(1200, [self.DRAGON, self.UNDESCRIBED, 0, 0, 0, 0])
+        self.assertEqual((200, True), (status, payload["success"]))
+
+    def test_every_other_zone_admits_anyone(self) -> None:
+        """The Roads are the only stages that declare a species at all."""
+        catalog = build_bundled_hunting_policy()
+        locked = {
+            stage.identity_label() for stage in catalog.stages if stage.species_mask
+        }
+        self.assertEqual({"1200-1", "1201-1"}, locked)
+        for stage in catalog.stages:
+            if not stage.species_mask:
+                self.assertTrue(stage.admits_species(1), stage.identity_label())
+                self.assertFalse(
+                    catalog.over_species_limit(stage, [self.HUMAN, 0, 0, 0, 0, 0]),
+                    stage.identity_label(),
+                )
 
 
 if __name__ == "__main__":

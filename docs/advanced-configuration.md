@@ -925,6 +925,13 @@ becomes permanent after story chapters 3, 9, and 18, because the retired
 rotations were never captured — and Puppet Show's aggregate of 60 items, whose
 real-time board has no cumulative spawn counter to recover a true cap from.
 
+Dragon and Machine Road carry one further recovered limit that is *not* audit
+data and is always enforced: each admits only its own species, which is the
+only species lock any section in the game declares. It is applied by stage
+identity from the recovered table, so a hunting catalog you wrote yourself
+carries it without declaring it, and a stage of your own at another identity is
+unaffected.
+
 **Catalog ceilings are audit data, not the default play gate.** Metal Zone's
 ticket-or-stamina entries, EXP ceilings, and Companion manifests remain
 declared; Dragon and Machine Road retain their community-documented reward

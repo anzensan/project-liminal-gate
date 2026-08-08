@@ -130,6 +130,13 @@ open one at a time.
 
 ### The Roads give EXP plus one documented channel each
 
+**Each Road admits one species, and only that species.** Dragon Road takes
+Dragons and Machine Road takes Machines: they are the only two sections in the
+game that declare a species lock at all, and one party member outside it is
+enough to be turned away at the start, with the client's own refusal. The limit
+went unasserted until 2026-08-08, which is why either Road could be used as a
+general-purpose EXP route before then.
+
 **Dragon Road and Machine Road pay experience** — no Coins, no Companion
 drops, no Luck chest. The Companion refusal is the game's own: each section
 declares an empty Companion drop list in your copy of its data. The Luck chest

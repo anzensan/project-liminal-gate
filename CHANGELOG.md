@@ -101,6 +101,30 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Dragon Road and Machine Road let any party in.** Raised right after the
+  Captive Golem fix below, as a suspected second case of it. It is the same
+  defect — a limit the game declares and nothing enforces — but a different
+  field, so that fix did not reach it.
+
+  The Roads do not declare a class band. They declare a *species* lock, and
+  they are the only two sections in the entire game that declare one: 1200-1
+  admits Dragons, 1201-1 admits Machines, which is what their names have always
+  said. The client has a refusal for it, right beside the class one, but the
+  gate that would raise either never looks at your party — so both were the
+  server's to enforce, and it enforced neither.
+
+  A party that breaks the lock is now turned away before anything is charged,
+  with the game's own message rather than a Network Error. One wrong member is
+  enough, which is the limit as declared. A character the local tables cannot
+  describe is not refused.
+
+  **This is a visible change to how the Roads have been playable.** Dragon Road
+  in particular has been usable as a general-purpose EXP route for any party;
+  it was only ever open to that because nothing asserted the limit. Nothing
+  about either Road's rewards, stamina cost, or unlock changed. Server restart;
+  no APK rebuild and no catalog regeneration — an operator's own hunting
+  catalog picks the limit up from the recovered table by stage identity.
+
 - **Captive Golem let any class in.** Reported after walking a class-8
   character into the quest to see whether it would be stopped. It was not.
 
