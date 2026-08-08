@@ -630,3 +630,55 @@ class PlusPactTest(unittest.TestCase):
             # The reported level and Skill Boost are the post-bonus values.
             self.assertGreaterEqual(row["jobLevels"][0], row["levelAdded2"])
             self.assertGreaterEqual(row["skillBoost"], row["boostUp2"])
+
+
+class PactRefusalWalletTest(unittest.TestCase):
+    """A Pact you cannot afford is refused with the wallet still on the wire.
+
+    The client does not gate the button locally, so pressing a Pact while short
+    is an ordinary thing to do. Its pull callback reads `coins` and `energy`
+    off the response before it branches on the refusal code, so a bare
+    `{success, errorCode}` left it reading keys that were not there
+    ([#8](https://github.com/anzensan/project-liminal-gate/issues/8)).
+    """
+
+    FORM = "kind={kind}&count=1&luckType=false&campaignChrID=0&eventFlag=0&lastUpdate=1"
+
+    def refuse(self, coins: int, energy: int, kind: int) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            state.create_account("token", "account", {
+                "coins": coins, "energy": energy, "freeEnergy": 0,
+                "progressCode": 0x01000000 | (40 << 6) | 1, "worldMapNo": 0,
+                "chrdata": [], "itemList": [0] * ITEM_SLOTS, "summonList": [0] * 16,
+                "teamMembers": [0] * 6,
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          pact_draw_catalog=build_bundled_pact_policy())
+            try:
+                _, payload = post(server, "/gd/do_slot", "short", self.FORM.format(kind=kind),
+                                  token="token",
+                                  headers={"Content-Type": "application/x-www-form-urlencoded"})
+            finally:
+                stop_server(server, thread)
+        return payload
+
+    def test_a_truth_pull_short_of_energy_still_reports_the_wallet(self) -> None:
+        payload = self.refuse(coins=100, energy=2, kind=1)
+        self.assertEqual(1, payload["cmdError"])
+        self.assertEqual((100, 2, 0),
+                         (payload["coins"], payload["energy"], payload["freeEnergy"]))
+
+    def test_a_fellowship_pull_short_of_coins_still_reports_the_wallet(self) -> None:
+        payload = self.refuse(coins=1, energy=0, kind=0)
+        self.assertEqual(2, payload["cmdError"])
+        self.assertEqual((1, 0, 0),
+                         (payload["coins"], payload["energy"], payload["freeEnergy"]))
+
+    def test_a_refusal_spends_nothing(self) -> None:
+        payload = self.refuse(coins=100, energy=2, kind=1)
+        self.assertEqual(2, payload["energy"], "a refused pull must not charge")
