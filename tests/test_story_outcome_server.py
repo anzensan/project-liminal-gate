@@ -50,3 +50,49 @@ class StoryOutcomeServerTest(unittest.TestCase):
                 self.assertEqual((200, payload), (status, replay))
             finally:
                 stop_server(restarted, restarted_thread)
+
+    def test_a_full_companion_box_settles_the_clear_instead_of_refusing_it(self) -> None:
+        """A won battle is not invalidated by having nowhere to put its drop.
+
+        The client has no error code for a full box, so it enters, wins, and
+        reports the drop anyway; refusing that clear reaches it as a transport
+        failure and loops against a battle the refusal leaves open.
+        """
+        character = {"id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0], "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0}
+        story_document = {"schema_version": 1, "provenance": "user-supplied", "stages": [{"chapter": 2, "section": 2, "stamina": 5, "coins": 0, "clear_progress_code": 10, "clear_coins": 0}]}
+        outcome_document = {"schema_version": 1, "provenance": "user-supplied", "character_ids": [9001], "item_slots": 1, "max_stack": 99, "max_companions": 3, "companion_masters": [{"companion_id": 8001, "drop_level": 2}], "stages": [{"chapter": 2, "section": 2, "item_maxima": {}, "character_maxima": {"9001": 1}, "companion_maxima": {"8001": 1}}]}
+        full_box = [{"bid": 8001, "lv": 1, "date": 0.0, "iid": iid, "exp": 0, "flag": 0, "chrID": 0} for iid in (1, 2, 3)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            story_path, outcome_path, state_path = root / "story.json", root / "outcome.json", root / "state.json"
+            write_json(story_path, story_document)
+            write_json(outcome_path, outcome_document)
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
+                story_catalog=load_story_catalog(story_path),
+                story_outcome_catalog=load_story_outcome_catalog(outcome_path),
+            )
+            try:
+                server.state.create_account("token", "account", {
+                    "coins": 0, "worldMapNo": 0, "progressCode": 9, "chrdata": [character],
+                    "teamMembers": [9001, 0, 0, 0, 0, 0], "itemList": [0], "summonList": [],
+                    "buddyInfo": {"list": full_box, "record": []}, "nextCompanionInventoryId": 4,
+                })
+                with server.state.lock:
+                    server.state.accounts["account"]["tutorial_phase"] = "free_roam"
+                    server.state._persist_locked()
+                self.assertEqual(200, post(server, "/gd/start_quest", "start", urlencode([("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "2"), ("lastUpdate", "1")]))[0])
+                clear = [
+                    ("progressCode", "10"), ("worldMapNo", "0"),
+                    ("valuables", json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0})),
+                    ("chrdata", json.dumps([character])), ("itemList", "[0]"), ("summonList", "[]"),
+                    ("battle_result", json.dumps({"chapter": 2, "section": 2, "coins": 0, "exp": 0, "items": {}, "buddies": [8001], "monsters": [], "summons": [], "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0]})),
+                    ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+                ]
+                status, payload = post(server, "/gd/clear_quest", "clear", urlencode(clear))
+                self.assertEqual(200, status, payload)
+                # Settled, and the box kept its ceiling rather than growing past it.
+                self.assertEqual(3, len(payload["buddyInfo"]["list"]))
+                self.assertEqual("free_roam", server.state.accounts["account"]["tutorial_phase"])
+            finally:
+                stop_server(server, thread)

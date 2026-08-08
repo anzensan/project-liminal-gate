@@ -851,5 +851,111 @@ class BundledHuntingStackCeilingTest(unittest.TestCase):
             self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]["tutorial_phase"])
 
 
+class BundledMetalZoneFullBoxTest(unittest.TestCase):
+    """A Metal Zone clear settles with a full Companion box, keeping what fits.
+
+    Reported against All Hail The King 30-39
+    ([#58](https://github.com/anzensan/project-liminal-gate/issues/58)): the
+    screen after the Metal Minions dropped looped Network Errors. A box with no
+    room refused the whole won battle, and because a refusal leaves the battle
+    open every retry was refused identically.
+    """
+
+    PROGRESS = 0x01000000 | (25 << 6) | 1
+    CHAPTER, SECTION, STAMINA = 3000, 13, 10   # assumedLevel 30, the client's Lv 30-39
+    CHARACTER = {
+        "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+        "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+    }
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        state = BootstrapState(self.state_path)
+        self.capacity = build_bundled_hunting_policy().max_companions
+        box = [{"bid": 128, "lv": 1, "date": 0.0, "iid": iid, "exp": 0, "flag": 0, "chrID": 0}
+               for iid in range(1, self.capacity)]   # one free slot, three will drop
+        state.create_account("token", "account", {
+            "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
+            "progressCode": self.PROGRESS, "chrdata": [self.CHARACTER],
+            "itemList": [0] * ITEM_SLOTS, "summonList": [0, 0],
+            "buddyInfo": {"list": box, "record": []},
+            "nextCompanionInventoryId": self.capacity,
+        })
+        with state.lock:
+            account = state.accounts["account"]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            state._persist_locked()
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), state,
+            hunting_catalog=build_bundled_hunting_policy(),
+        )
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.addCleanup(stop_server, self.server, self.thread)
+
+    def account(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]
+
+    def post(self, route: str, request_id: str, fields: list[tuple[str, str]]) -> tuple[int, dict]:
+        return post(self.server, route, request_id, urlencode(fields), token="token",
+                    headers={"Content-Type": "application/x-www-form-urlencoded"})
+
+    def clear(self, request_id: str, buddies: list[int]) -> tuple[int, dict]:
+        userdata = self.account()["userdata"]
+        return self.post("/gd/clear_quest", request_id, [
+            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"],
+            })),
+            ("chrdata", json.dumps([self.CHARACTER])),
+            ("itemList", json.dumps(userdata["itemList"])),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": self.CHAPTER, "section": self.SECTION, "coins": 0, "exp": 250_000,
+                "items": {}, "buddies": buddies, "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0] * 6,
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+
+    def start(self, request_id: str) -> tuple[int, dict]:
+        return self.post("/gd/start_quest", request_id, [
+            ("stamina", str(self.STAMINA)), ("coins", "0"), ("itemID", "50"), ("itemCount", "1"),
+            ("chapter", str(self.CHAPTER)), ("section", str(self.SECTION)), ("lastUpdate", "1"),
+        ])
+
+    def test_an_overflowing_drop_settles_and_fills_the_box(self) -> None:
+        status, started = self.start("start")
+        self.assertEqual((200, True), (status, started["success"]))
+        status, cleared = self.clear("clear", [128, 128, 129])
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(self.capacity, len(cleared["buddyInfo"]["list"]))
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_a_box_with_no_room_still_settles_the_battle(self) -> None:
+        with self.server.state.lock:
+            userdata = self.server.state.accounts["account"]["userdata"]
+            userdata["buddyInfo"]["list"].append({
+                "bid": 128, "lv": 1, "date": 0.0, "iid": self.capacity,
+                "exp": 0, "flag": 0, "chrID": 0,
+            })
+            userdata["nextCompanionInventoryId"] = self.capacity + 1
+            self.server.state._persist_locked()
+        self.assertEqual(200, self.start("start")[0])
+        status, cleared = self.clear("clear", [128, 129])
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(self.capacity, len(cleared["buddyInfo"]["list"]))
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_a_companion_the_stage_cannot_author_is_still_refused(self) -> None:
+        """A full box does not turn an undeclared drop into an accepted one."""
+        self.assertEqual(200, self.start("start")[0])
+        status, refused = self.clear("clear", [130])
+        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+
+
 if __name__ == "__main__":
     unittest.main()

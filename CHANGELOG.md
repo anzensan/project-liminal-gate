@@ -72,6 +72,34 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A full Companion box turned a won Metal Zone battle into a Network Error
+  loop.** Reported against All Hail The King 30-39
+  ([#58](https://github.com/anzensan/project-liminal-gate/issues/58)): the
+  screen after the Metal Minions dropped looped Network Errors until a
+  force-close.
+
+  A drop with nowhere to go was treated as an invalid battle result. It is not
+  one — it is an ordinary game condition, and the client has no way to avoid it
+  or to say so: `StartQuestErrorCode` names stamina, Coins, items, class,
+  species and progress, and nothing about the Companion box, so the client
+  enters, wins, and reports the drop into a box it knows is full. The refusal
+  reached it as an unsigned 409, which reads as a transport failure rather than
+  an endpoint answer, and a refusal leaves the battle open, so every retry was
+  refused identically. Only selling Companions escaped it.
+
+  The battle now settles and the box keeps as many of the drops as it holds.
+  The overflow is dropped rather than granted past `maxBuddyBoxCount`, because
+  a box longer than the ceiling the client is told about is a shape its own
+  screens were never given. A drop the stage cannot author is still refused,
+  wherever it appears in the reported list — a full box does not turn an
+  undeclared Companion into an accepted one. Story stages settled Companion
+  drops through the same rule and had the same defect; both are fixed.
+
+  This one needs only a server restart. The stage's own drop manifests were not
+  the problem and are unchanged: Chapter 3000's `dropBuddies` were re-read from
+  the reviewed APK for all fourteen playable sections, and All Hail the King
+  declares exactly what the regular zones do.
+
 - **A big enough haul ended in a Network Error loop at the item screen.**
   Reported against Puppet Show Lv. 20-39 with 47 item chests
   ([#57](https://github.com/anzensan/project-liminal-gate/issues/57), on-device
