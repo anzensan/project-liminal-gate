@@ -101,6 +101,27 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A recode reported no gain, and carried less than it should have.** Two
+  halves of the same gap, found while reading the client's recode callback: it
+  reads `overlapped`, `addedSkillBoost`, `addedLuck` and `addedPlusCount`, and
+  this server sent only the first, so the result screen showed nothing however
+  much the recode carried. All four are sent now.
+
+  The carryover itself was also short. A fifth of each material monster's Skill
+  Boost comes across on top of the source's own -- a monster at 100% contributes
+  20%, the pair at most 40% -- and an already-owned destination takes 5 Luck.
+  Neither was applied. An owned destination also *gains* the carryover rather
+  than being overwritten by it, and keeps its level, which is the same record's
+  rule and the reason the fix above it stands.
+
+  This is documented community record rather than recovered structure -- the
+  retired service owned the arithmetic and the client holds no table for it --
+  so it is labeled as such beside the two constants, the same way the Pact
+  class shares are. Mistwalker's own play guide covers the requirements and
+  warnings but not the proportions.
+
+  Server restart only.
+
 - **Recoding into a character you already owned destroyed the copy you had.**
   The rebirthed unit replaced the held row outright, so a developed copy of the
   destination lost everything: a level 90 unit with 95.0 Skill Boost and 80.0

@@ -140,6 +140,8 @@ from liminal_gate.message_catalog import (
 from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, active_week_index, build_bundled_exchange_policy, load_exchange_catalog
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
+from liminal_gate.rebirth_recipe_data import MATERIAL_SKILL_BOOST_SHARE_PERCENT, OWNED_DESTINATION_LUCK_BONUS
+from liminal_gate.luck_data import LUCK_TENTHS_MAX
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
 from liminal_gate.settlement_catalog import SettlementCatalog, SettlementCatalogError, load_settlement_catalog
 from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError, build_bundled_statusup_policy, client_status_up_items, load_statusup_catalog
@@ -1445,6 +1447,27 @@ class BootstrapState:
                         overlapped = held_destination is not None
                         new_rows = [copy.deepcopy(row) for row in rows if row is not source and row.get("id") != recipe.destination_character_id]
                         destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
+                        # A fifth of each material's Skill Boost comes across
+                        # with the source's own, and an already-owned
+                        # destination gains 5 Luck. See the record cited beside
+                        # these two constants; the client's ceilings bound both.
+                        material_boost = sum(
+                            int(row.get("skillBoost", 0)) * MATERIAL_SKILL_BOOST_SHARE_PERCENT // 100
+                            for material_id, _ in recipe.materials
+                            for row in rows
+                            if isinstance(row, dict) and row.get("id") == material_id
+                            and type(row.get("skillBoost", 0)) is int
+                        )
+                        carried_boost = min(LUCK_TENTHS_MAX, int(source.get("skillBoost", 0)) + material_boost)
+                        carried_luck = min(LUCK_TENTHS_MAX, int(source.get("luck", 0)) + (OWNED_DESTINATION_LUCK_BONUS if overlapped else 0))
+                        held_boost = int(held_destination.get("skillBoost", 0)) if isinstance(held_destination, dict) and type(held_destination.get("skillBoost", 0)) is int else 0
+                        held_luck = int(held_destination.get("luck", 0)) if isinstance(held_destination, dict) and type(held_destination.get("luck", 0)) is int else 0
+                        held_plus = int(held_destination.get("plusCount", 0)) if isinstance(held_destination, dict) and type(held_destination.get("plusCount", 0)) is int else 0
+                        # An owned destination *gains* the carryover rather than
+                        # being overwritten by it, which is the same record's
+                        # rule and why its level is not reset either.
+                        destination["skillBoost"] = min(LUCK_TENTHS_MAX, held_boost + carried_boost)
+                        destination["luck"] = min(LUCK_TENTHS_MAX, held_luck + carried_luck)
                         if held_destination is not None:
                             # Recoding into a character the account already owns
                             # must not destroy the copy it owns. The rebirthed
@@ -1470,7 +1493,15 @@ class BootstrapState:
                         # which case the slot empties rather than duplicating.
                         _retarget_party(data, recipe.source_character_id, 0 if overlapped else recipe.destination_character_id)
                         data["chrdata"], data["itemList"], data["coins"], account["rebirth_used_material_ids"] = new_rows, new_items, data["coins"] - recipe.coins, sorted(used)
-                        payload = {"success": True, "buddyInfo": {"list": [], "record": []}, "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": overlapped}
+                        # The result screen reads all four of these: without
+                        # them a recode reports no gain at all, however much it
+                        # carried. Skill Boost and Luck are tenths on the wire
+                        # and whole units on the screen, the same conversion the
+                        # Power-Up Item result already makes.
+                        payload = {"success": True, "buddyInfo": {"list": [], "record": []}, "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": overlapped,
+                                   "addedSkillBoost": (destination["skillBoost"] - held_boost) // 10,
+                                   "addedLuck": (destination["luck"] - held_luck) // 10,
+                                   "addedPlusCount": int(destination.get("plusCount", 0)) - held_plus}
             payload = _canonical_payload(payload); requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}; self._persist_locked(); return "success", payload
 
     def apply_tutorial_transition(

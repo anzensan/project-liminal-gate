@@ -19,6 +19,29 @@ character IDs and Pact costs in :mod:`liminal_gate.pact_draw_catalog`.
 
 from __future__ import annotations
 
+#: What a recode carries into the character it produces, in the client's tenths.
+#:
+#: **Community record, not recovered structure.**  The retired service owned
+#: this arithmetic and the client holds no table for it, so this is the same
+#: evidence class as the Pact class shares -- a documented rule this bundle
+#: applies rather than a value read out of the APK.  Mistwalker's own play
+#: guide covers the requirements and the warnings
+#: (`terra-battle.com/en/playguide/post-5.html` and `post-4.html`) but not the
+#: proportions; the community wiki's Recode DNA page carries those, and states
+#: three things this implements:
+#:
+#: - a fifth of each material monster's Skill Boost carries over, so a monster
+#:   at 100% contributes 20% and the pair contribute at most 40%;
+#: - a recode into a character the account **already owns** does not reset that
+#:   character's level -- it gains the Skill Boost and Luck instead;
+#: - an already-owned destination gains 5 Luck on top.
+#:
+#: The carried total is bounded by the client's own ceilings either way.
+MATERIAL_SKILL_BOOST_SHARE_PERCENT = 20
+#: The Luck an already-owned destination gains, in tenths: 5.0 Luck, the same
+#: unit and the same size as the Fate duplicate gain in `pact_draw_catalog`.
+OWNED_DESTINATION_LUCK_BONUS = 50
+
 # recipe_id, source, destination, coins, ((item, count), ...), ((chr, level), ...)
 REBIRTH_RECIPE_ROWS: tuple[tuple[int, int, int, int, tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]], ...] = (
     (1, 2, 623, 30000, ((10, 15), (93, 5), (96, 1)), ((237, 50), (145, 50))),
