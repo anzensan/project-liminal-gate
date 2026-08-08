@@ -156,3 +156,37 @@ class RefusedWriteEventTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RefusalDiagnosticsTest(unittest.TestCase):
+    """A refused form has to be readable from its own log line.
+
+    Two 501s on `start_quest` could not be told apart while the declared entry
+    costs were withheld, and a refused mail read could not be told apart from a
+    malformed one. Both are stage or catalog economics, not account state.
+    """
+
+    def test_a_start_records_the_costs_it_declared(self) -> None:
+        details = safe_form_diagnostics(b"stamina=8&coins=0&chapter=1004&section=2&lastUpdate=1")
+        self.assertEqual(
+            {"stamina": "8", "coins": "0", "chapter": "1004", "section": "2", "lastUpdate": "1"},
+            details["request_values"],
+        )
+
+    def test_a_ticket_start_records_its_entry_pair(self) -> None:
+        details = safe_form_diagnostics(
+            b"stamina=13&coins=0&itemID=50&itemCount=1&chapter=3000&section=14&lastUpdate=1")
+        self.assertEqual(("50", "1"),
+                         (details["request_values"]["itemID"], details["request_values"]["itemCount"]))
+
+    def test_a_mail_read_records_the_shape_but_not_the_ids(self) -> None:
+        details = safe_form_diagnostics(b'idlist=%5B%22login%3Aconsecutive%3A1%22%5D&lastUpdate=1')
+        self.assertEqual("1 entries, str", details["idlist_shape"])
+        self.assertNotIn("idlist", details.get("request_values", {}))
+        self.assertNotIn("login:consecutive:1", json.dumps(details))
+
+    def test_a_malformed_id_list_is_distinguishable(self) -> None:
+        self.assertEqual("not JSON",
+                         safe_form_diagnostics(b"idlist=login&lastUpdate=1")["idlist_shape"])
+        self.assertEqual("2 entries, int",
+                         safe_form_diagnostics(b"idlist=%5B1%2C2%5D&lastUpdate=1")["idlist_shape"])

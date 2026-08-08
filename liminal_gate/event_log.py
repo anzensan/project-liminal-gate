@@ -31,11 +31,34 @@ def safe_form_diagnostics(body: bytes) -> dict[str, Any]:
     safe_values = {
         name: value
         for name, value in fields
-        if name in {"progressCode", "worldMapNo", "lastUpdate", "chapter", "section"}
+        # The entry costs a start declares are stage economics, not account
+        # state: they are what the catalog is compared against, and a refused
+        # start is unreadable without them. Two reports of a 501 on
+        # `start_quest` could not be told apart -- an unknown stage from a cost
+        # that disagreed with the catalog -- because these five were withheld.
+        if name in {
+            "progressCode", "worldMapNo", "lastUpdate", "chapter", "section",
+            "stamina", "coins", "itemID", "itemCount", "helpItemID",
+        }
     }
     if safe_values:
         details["request_values"] = safe_values
     raw = dict(fields)
+    if "idlist" in raw:
+        # The mail routes carry a JSON array of catalog message IDs. The IDs
+        # themselves stay out of the log; whether it parsed and how many it
+        # named is what separates a malformed form from an unknown message.
+        try:
+            identifiers = json.loads(raw["idlist"])
+        except json.JSONDecodeError:
+            details["idlist_shape"] = "not JSON"
+        else:
+            details["idlist_shape"] = (
+                f"{len(identifiers)} entries, "
+                + ", ".join(sorted({type(value).__name__ for value in identifiers}) or ["empty"])
+                if isinstance(identifiers, list)
+                else f"not an array: {type(identifiers).__name__}"
+            )
     try:
         valuables = json.loads(raw["valuables"]) if "valuables" in raw else None
         battle = json.loads(raw["battle_result"]) if "battle_result" in raw else None
