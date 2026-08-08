@@ -9,6 +9,7 @@ from liminal_gate.master_strings import (
 from liminal_gate.save_validation import (
     ITEM_SLOTS, LEVEL_CAP, MAX_ITEM_STACK, decode_job_level, encode_job_level, validate_document,
 )
+from liminal_gate.plus_type_data import PLUS_COUNT_MAX
 from liminal_gate.server_constants import build_server_constants
 
 
@@ -109,6 +110,19 @@ class SaveValidationTest(unittest.TestCase):
         at_ceiling = [0] * ITEM_SLOTS
         at_ceiling[4] = MAX_ITEM_STACK
         self.assertEqual([], errors(save(itemList=at_ceiling)))
+
+    def test_a_plus_count_outside_the_clients_range_is_an_error(self) -> None:
+        """The client reads a count past its ceiling as tampering, not as a cap."""
+        over = [character(3)]
+        over[0]["plusCount"] = PLUS_COUNT_MAX + 1
+        self.assertIn("chrdata[0].plusCount", errors(save(chrdata=over)))
+        for value in (0, PLUS_COUNT_MAX):
+            with self.subTest(plusCount=value):
+                row = [character(3)]
+                row[0]["plusCount"] = value
+                self.assertEqual([], errors(save(chrdata=row)))
+        # Absent is the ordinary case: nothing grants a count yet.
+        self.assertEqual([], errors(save(chrdata=[character(3)])))
 
     def test_the_stack_ceiling_is_the_one_the_client_is_told(self) -> None:
         """A ceiling the client does not share is not a ceiling at all.

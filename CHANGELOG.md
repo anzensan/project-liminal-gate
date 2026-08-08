@@ -70,6 +70,35 @@ superseded before release and says so where it stands.
   3. That is recovered data, not a table this project invented, which is why
   it could be turned on at all.
 
+### Added
+
+- **The plus-stat curves, recovered.** A character carries a *plus count*, and
+  the client turns it into flat ATK/DEF/SATK/SDEF through the curve its
+  `ChrInfo.plusType` names — `Entity.Status.EvaluatePlusEff` applies the result,
+  so this is battle stats, not decoration.
+
+  The table was not in the APK's asset data: `ChrDatabase.plusTypes` is a
+  *private* field, so Unity never serialized it, and `GetPlusTypeParams` builds
+  the fourteen entries in code on first use. They are read out of that method
+  into `plus_type_data.py`, and the count matches the fourteen distinct
+  `plusType` values across the client's 346 recruitable characters. Every
+  minimum is 0 and every coefficient 1.0 — the constructor sets both — so the
+  client's own `CalcValueAtCount` reduces to `maximum * count / 300`.
+
+  `plusCount` is also now carried on the roster row and preserved across a
+  clear. It is server-owned in one direction: `Character.LoadFromJson` reads it
+  and `Character.ToHashTable` never writes it back, so every clear arrives
+  without one and taking the client's row wholesale would drop it. It is kept
+  the way Luck already is. The save validator bounds it at 300, because a count
+  above `ActualMaxCount` does not clamp — the client logs it as tampering and
+  awards nothing at all.
+
+  **Nothing grants a plus count yet, so nothing changes in play.** The two
+  channels that did — a Pact result's `plusup` and a Rebirth's
+  `addedPlusCount` — were server-owned rules the retired service kept to
+  itself, and no recovered source gives their size. This describes what a count
+  is worth; it does not invent one.
+
 ### Fixed
 
 - **Captive Golem let any class in.** Reported after walking a class-8
