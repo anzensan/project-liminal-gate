@@ -22,10 +22,43 @@ from pathlib import Path
 from typing import Any
 
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
+from liminal_gate.statusup_character_data import STATUSUP_CHARACTER_ROWS
 
 
 class HuntingCatalogError(ValueError):
     """A user-local Hunting catalog is malformed."""
+
+
+#: Sections that admit only parties of one species, as ``(chapter, section) ->
+#: mask``.
+#:
+#: Recovered, not chosen: this is `BattleData.Section.species` read out of the
+#: reviewed client, and the two Roads are the only sections in the whole game
+#: that declare it -- all 785 were checked, the same sweep that found Captive
+#: Golem's four to be the only ones declaring a class band. The value is a bit
+#: per `Species` enum member, so 128 is `1 << Dragon` (7) and 256 is
+#: `1 << Machine` (8), which is exactly what their own titles say:
+#: `ドラゴンロード` and `メカロード`.
+#:
+#: The limit is enforced here because nothing else enforces it. The client owns
+#: `StartQuestErrorCode.SpeciesLimit` (6), the sibling of the `ClassLimit` (4)
+#: that Captive Golem's band rides, but the only local start gate --
+#: `AppServerUtil.IsEnableToStartQuestLocal` -- reads stamina, a multiplayer
+#: flag, Coins, item count and VS stamina and walks no party at all, so it can
+#: produce neither code. Both limits were the server's to assert.
+SECTION_SPECIES_LIMITS: dict[tuple[int, int], int] = {
+    (1200, 1): 1 << 7,   # Dragon Road admits Dragons
+    (1201, 1): 1 << 8,   # Machine Road admits Machines
+}
+
+#: Character ID to `Species`, from the recovered per-character rows the
+#: status-up policy already carries. Bundled rather than operator-supplied,
+#: because the species that decides a Road entry is the client's own reading of
+#: a character's base job, not a local choice -- so this gate needs no input the
+#: guided path does not already have.
+_RECOVERED_CHARACTER_SPECIES: dict[int, int] = {
+    character_id: species for character_id, species, _luck_cap in STATUSUP_CHARACTER_ROWS
+}
 
 
 #: Which client selector advertises a stage.  `UISpecialSelect` mode 7 reads
@@ -86,10 +119,18 @@ class HuntingStage:
     #: greyed a played Daily Quest out using its own `lastDailyQuestPlayTime`
     #: fields; this server does not send those, so it enforces the limit itself.
     once_per_utc_day: bool = False
+    #: The species this stage admits, as a `1 << Species` mask, or zero for the
+    #: stages that declare none -- which is every stage but the two Roads.
+    #: Recovered; see `SECTION_SPECIES_LIMITS`.
+    species_mask: int = 0
 
     def identity_label(self) -> str:
         """The `chapter-section` string the client's selector lists expect."""
         return f"{self.chapter}-{self.section}"
+
+    def admits_species(self, species: int) -> bool:
+        """Whether a character of this species may enter the stage."""
+        return not self.species_mask or bool(self.species_mask & (1 << species))
 
     def unlocked_at(self, progress_code: int) -> bool:
         """Whether an account's story progress has reached this stage.
@@ -115,6 +156,21 @@ class HuntingCatalog:
 
     def by_identity(self) -> dict[tuple[int, int], HuntingStage]:
         return {(stage.chapter, stage.section): stage for stage in self.stages}
+
+    def over_species_limit(self, stage: HuntingStage, party: object) -> bool:
+        """Whether a party names a character the stage's species lock excludes.
+
+        A character the recovered table cannot describe is not refused, for the
+        reason the class band gives: this restores a declared limit, it does not
+        invent one for state it cannot read.
+        """
+        if not stage.species_mask or not isinstance(party, list):
+            return False
+        return any(
+            not stage.admits_species(_RECOVERED_CHARACTER_SPECIES[member])
+            for member in party
+            if type(member) is int and member in _RECOVERED_CHARACTER_SPECIES
+        )
 
     def client_lists(self, progress_code: int) -> dict[str, list[str]]:
         """Return the zone lists the client's Huntland and Special selectors read.
@@ -252,6 +308,10 @@ def _parse_stage(raw: object, item_slots: int, max_stack: int) -> HuntingStage:
         monster_recruit_maxima=_parse_companion_counts(
             raw.get("monster_recruit_maxima", {}), "monster_recruit_maxima",
         ),
+        # Applied from the recovered table rather than read off the document,
+        # so an operator's own catalog carries the limit its client declares
+        # without having to restate it.
+        species_mask=SECTION_SPECIES_LIMITS.get((raw["chapter"], raw["section"]), 0),
     )
 
 
@@ -545,6 +605,7 @@ def _bundled_road_stages() -> list[HuntingStage]:
             max_coins=0, max_exp=_ROAD_EXP_CEILING,
             **({"max_items_total": 0, "item_maxima": {}} | per_road[chapter]),
             selector="metal",
+            species_mask=SECTION_SPECIES_LIMITS[(chapter, 1)],
         )
         for chapter in _ROAD_CHAPTERS
     ]
