@@ -3104,14 +3104,27 @@ class BootstrapState:
             current = userdata.get("progressCode")
             world_map = userdata.get("worldMapNo")
             expected = catalog.expected_reveal_progress(current) if type(current) is int else None
-            if (
-                account.setdefault("tutorial_phase", "initial") != "free_roam"
+            free_roam = account.setdefault("tutorial_phase", "initial") == "free_roam"
+            # A reveal the account has *already* applied is the client saying
+            # the map matches what the server holds, not a conflict. Refusing
+            # it cannot be recovered from: the refusal reaches the client as a
+            # transport failure, it re-announces the same map on the next open,
+            # and the dialog it raises has no way out. Answer the no-op.
+            settled = (
+                free_roam
+                and expected is None
+                and type(current) is int
+                and reveal["progressCode"] == current
+                and reveal["worldMapNo"] == world_map
+            )
+            if not settled and (
+                not free_roam
                 or expected is None
                 or reveal["progressCode"] != expected
                 or reveal["worldMapNo"] != world_map
             ):
                 return "tutorial_state_conflict", None
-            userdata["progressCode"] = expected
+            userdata["progressCode"] = current if settled else expected
             userdata["lastupdate"] = float(reveal["lastUpdate"])
             payload = _canonical_payload({"success": True, "lastupdate": float(reveal["lastUpdate"])})
             requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
