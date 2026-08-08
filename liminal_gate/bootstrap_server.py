@@ -4685,9 +4685,22 @@ def _granted_hunting_companions(
     """Project a Metal Zone clear's Companion drops onto the account's box.
 
     Returns the new Companion box, or `None` when the account's own box is
-    malformed or the grant would overflow it.  The reported drops have already
-    been checked against the stage's declared manifest; what is verified here is
-    the box this grant is being applied to.
+    malformed or names a Companion this stage cannot author.  The reported drops
+    have already been checked against the stage's declared manifest; what is
+    verified here is the box this grant is being applied to.
+
+    A box without room for every drop is a *game* condition, not an invalid
+    result.  The client has no error code for it -- `StartQuestErrorCode` names
+    stamina, Coins, items, class, species and progress, and nothing about the
+    Companion box -- so it lets the player enter, win, and report the drop into
+    a box it knows is full.  Refusing that clear reaches the client as an
+    unsigned 409, which it reads as a transport failure and retries against a
+    battle the refusal leaves open, so a full box turned every won Metal Zone
+    battle into a Network Error loop that only selling Companions escaped.  The
+    battle is settled instead, granting as many as the box holds.  The overflow
+    is dropped rather than granted past the ceiling the client is told about,
+    because a box longer than `maxBuddyBoxCount` is a shape the client's own
+    screens were never given.
     """
     raw_info = userdata.get("buddyInfo", {"list": [], "record": []})
     owned = raw_info.get("list") if isinstance(raw_info, dict) else None
@@ -4696,18 +4709,26 @@ def _granted_hunting_companions(
     ):
         return None
     known_ids = {row["iid"] for row in owned}
-    if len(known_ids) != len(owned) or len(owned) + len(result["buddies"]) > box_capacity:
+    if len(known_ids) != len(owned):
         return None
     next_id = userdata.get("nextCompanionInventoryId", max(known_ids, default=0) + 1)
     if type(next_id) is not int or next_id <= max(known_ids, default=0):
         return None
+    room = max(box_capacity - len(owned), 0)
     rows = copy.deepcopy(owned)
+    granted = 0
     for companion_id in result["buddies"]:
+        # Every reported drop is still checked, including one the box has no
+        # room for: an id the stage cannot author is a different failure and
+        # stays a refusal wherever it appears in the list.
         level = stage.companion_drop_levels.get(companion_id)
         if level is None:
             return None
+        if granted >= room:
+            continue
         rows.append({"bid": companion_id, "lv": level, "date": 0.0, "iid": next_id, "exp": 0, "flag": 0, "chrID": 0})
         next_id += 1
+        granted += 1
     userdata["nextCompanionInventoryId"] = next_id
     return _companion_info(rows)
 
@@ -5410,13 +5431,17 @@ def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identit
     if len(known_ids) != len(owned):
         return None
     reported_companions = Counter(result["buddies"])
-    if not outcome_allowed(reported_companions, rule.companion_maxima) or any(companion_id not in catalog.companion_masters for companion_id in reported_companions) or len(owned) + len(result["buddies"]) > catalog.max_companions:
+    if not outcome_allowed(reported_companions, rule.companion_maxima) or any(companion_id not in catalog.companion_masters for companion_id in reported_companions):
         return None
     next_id = userdata.get("nextCompanionInventoryId", max(known_ids, default=0) + 1)
     if type(next_id) is not int or next_id <= max(known_ids, default=0):
         return None
+    # A full box settles the battle and keeps what fits, for the reason
+    # `_granted_hunting_companions` spells out: the client cannot express the
+    # condition, so refusing the clear only loops it.
+    room = max(catalog.max_companions - len(owned), 0)
     rows = copy.deepcopy(owned)
-    for companion_id in result["buddies"]:
+    for companion_id in result["buddies"][:room]:
         rows.append({"bid": companion_id, "lv": catalog.companion_masters[companion_id].drop_level, "date": 0.0, "iid": next_id, "exp": 0, "flag": 0, "chrID": 0})
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
