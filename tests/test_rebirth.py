@@ -124,3 +124,65 @@ class RebirthPartyConsistencyTest(unittest.TestCase):
         self.assertEqual([0, 0, 0, 0, 0, 0], userdata["teamMembers"])
         self.assertEqual(0, userdata["teamMembers_VS"][0])
         self.assertEqual(200, status)
+
+
+class RebirthOverlapPreservesProgressTest(unittest.TestCase):
+    """Recoding into a character you already own must not destroy that copy.
+
+    The rebirthed unit starts at level 1 carrying the source's Skill Boost and
+    Luck, and a held copy can be further along in any of them. Replacing the
+    held row outright lost its levels, Skill Boost, Luck and plus count with no
+    route to recover them.
+    """
+
+    def rebirth_into_a_held_copy(self, held: dict) -> dict:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            items = [0] * 181
+            for item_id, count in recipe.items.items():
+                items[item_id - 1] = count + 5
+            rows = [
+                {"id": character_id, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
+                 "jobSlots": [], "skillBoost": 0, "luck": 0}
+                for character_id, level in [(recipe.source_character_id, 90)] + list(recipe.materials)
+            ]
+            rows.append({"id": recipe.destination_character_id, "jobID": 0, "jobSlots": [], **held})
+            state.create_account("token", "account", {
+                "coins": recipe.coins + 1000, "itemList": items, "summonList": [0] * 16,
+                "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
+                "teamMembers": [0] * 6, "teamMembers_VS": [0] * 18,
+                "chrdata": rows, "buddyInfo": {"list": [], "record": []},
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, payload = post(server, "/gd/rebirth", "rebirth", "rebirthID=1&useJoker=False")
+            finally:
+                stop_server(server, thread)
+        self.assertTrue(payload["success"], payload)
+        self.assertTrue(payload["overlapped"])
+        return next(row for row in payload["chrdata"]
+                    if row["id"] == recipe.destination_character_id)
+
+    def test_a_developed_copy_keeps_everything_it_had(self) -> None:
+        destination = self.rebirth_into_a_held_copy({
+            "jobLevels": [90.0, 0.0, 0.0], "skillBoost": 950, "luck": 800, "plusCount": 200,
+        })
+        self.assertEqual([90.0, 0.0, 0.0], destination["jobLevels"])
+        self.assertEqual((950, 800, 200),
+                         (destination["skillBoost"], destination["luck"], destination["plusCount"]))
+
+    def test_a_fresh_copy_still_takes_the_rebirthed_unit(self) -> None:
+        """The merge takes the larger of the two, so an undeveloped held copy
+        does not hold the rebirthed unit back."""
+        destination = self.rebirth_into_a_held_copy({
+            "jobLevels": [1.0, 0.0, 0.0], "skillBoost": 0, "luck": 0,
+        })
+        self.assertEqual([1.0, 0.0, 0.0], destination["jobLevels"])
+        self.assertEqual(0, destination["skillBoost"])
