@@ -1441,9 +1441,23 @@ class BootstrapState:
                     if missing and not use_joker: payload = {"success": False, "errorCode": 7 if joker is not None and catalog.joker_character_id not in used else 4}
                     elif missing and (joker is None or catalog.joker_character_id in used): payload = {"success": False, "errorCode": 4}
                     else:
-                        overlapped = any(isinstance(row, dict) and row.get("id") == recipe.destination_character_id for row in rows)
+                        held_destination = next((row for row in rows if isinstance(row, dict) and row.get("id") == recipe.destination_character_id), None)
+                        overlapped = held_destination is not None
                         new_rows = [copy.deepcopy(row) for row in rows if row is not source and row.get("id") != recipe.destination_character_id]
                         destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
+                        if held_destination is not None:
+                            # Recoding into a character the account already owns
+                            # must not destroy the copy it owns. The rebirthed
+                            # unit starts at level 1 and carries the source's
+                            # Skill Boost and Luck, and a held copy may be
+                            # further along in any of them -- so the two are
+                            # merged on the rule the clear settlement already
+                            # applies: progression only accumulates, so the
+                            # larger of the two values is the true one. Without
+                            # this a maxed unit was replaced outright by a
+                            # level 1 row, losing its levels, Skill Boost, Luck
+                            # and plus count with no route to get them back.
+                            destination = _preserved_progress(held_destination, destination)
                         new_rows.append(destination); new_rows.sort(key=lambda row: int(row["id"]))
                         new_items = copy.deepcopy(items)
                         for item_id, count in recipe.items.items(): new_items[item_id - 1] -= count

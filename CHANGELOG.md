@@ -101,6 +101,22 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Recoding into a character you already owned destroyed the copy you had.**
+  The rebirthed unit replaced the held row outright, so a developed copy of the
+  destination lost everything: a level 90 unit with 95.0 Skill Boost and 80.0
+  Luck came back at level 1 with zero of both, and no route exists to recover
+  any of it.
+
+  The two rows are now merged on the rule the clear settlement already applies
+  to a stale client -- job progression, Skill Boost, Luck and plus count only
+  ever accumulate, so the larger of the two values is the true one. The
+  rebirthed unit still starts at level 1 and still carries the source's Skill
+  Boost and Luck; what changed is that a held copy further along in any of them
+  keeps what it had.
+
+  Server restart only. A save already flattened by an earlier recode cannot be
+  repaired from here: the values it held were never written down.
+
 - **Dragon Road and Machine Road let any party in.** Raised right after the
   Captive Golem fix below, as a suspected second case of it. It is the same
   defect — a limit the game declares and nothing enforces — but a different
