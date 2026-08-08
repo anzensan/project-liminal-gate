@@ -10,6 +10,28 @@ superseded before release and says so where it stands.
 
 ### Added
 
+- **"+" Pacts appear again.** Reported after 30+ pulls without one
+  ([#53](https://github.com/anzensan/project-liminal-gate/issues/53)), and it
+  was not luck: this server never sent the fields a "+" is made of, so the
+  client had nothing to draw.
+
+  A pull result carries a second set of gain fields beside the ordinary ones --
+  `levelAdded2`, and `boostUp2` or `luckup2` -- which
+  `AppServerUtil.<DoSlot>c__IteratorB` reads and the result screen renders.
+  They are filled now, on a Fellowship or Truth pull as Skill Boost and on a
+  Fate-type pull as Luck, the same split the duplicate gains already make. The
+  gain lands on the roster as well as the screen.
+
+  The two ranges are published and are not invented: 1 to 5 levels, and 0.5 to
+  3.0 in the client's tenths. **The frequency is local policy** -- no source
+  states one, both records say only "sometimes" -- and 22% is adopted from
+  operator observation, sitting inside the only field estimate on record. The
+  shape of the roll inside each range is uniform, which is the second and last
+  thing here that was chosen rather than read. Both are named where they live
+  rather than buried in the draw, and both are honest to change.
+
+  Server restart only.
+
 - **Six standing Special Quests that were never advertised.** Gormandizer Hunt
   (two sections, shown as Tears and Particles), The Hunt For Joker, Blade
   Falcon, Bone Killer and Ethereal, and KINO World — Chapters 3001, 3100,

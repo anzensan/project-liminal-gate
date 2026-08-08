@@ -127,7 +127,7 @@ from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog
 from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, build_bundled_companion_evolution_policy, load_companion_evolution_catalog
 from liminal_gate.companion_draw_catalog import BundledCompanionDrawPolicy, CompanionDraw, CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
-from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog, validate_bundled_pools
+from liminal_gate.pact_draw_catalog import PLUS_PACT_CHANCE_PERCENT, PLUS_PACT_LEVELS, PLUS_PACT_TENTHS, BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog, validate_bundled_pools
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
 from liminal_gate.message_catalog import (
     MessageCatalog,
@@ -2057,6 +2057,10 @@ class BootstrapState:
                         }
                         if luck_type:
                             result["luck"] = 0
+                        _apply_plus_pact(
+                            current, result, luck_type, catalog.max_level,
+                            catalog.max_luck if luck_type else catalog.max_skill_boost,
+                        )
                         results.append(result)
                     elif (
                         not isinstance(current.get("jobLevels"), list)
@@ -2115,6 +2119,10 @@ class BootstrapState:
                                 "boostUp": boost - old_boost,
                                 "skillBoost": boost,
                             }
+                        _apply_plus_pact(
+                            current, result, luck_type, catalog.max_level,
+                            catalog.max_luck if luck_type else catalog.max_skill_boost,
+                        )
                         results.append(result)
                 else:
                     if currency == "coins":
@@ -4803,6 +4811,40 @@ def _granted_hunting_companions(
         granted += 1
     userdata["nextCompanionInventoryId"] = next_id
     return _companion_info(rows)
+
+
+def _apply_plus_pact(
+    current: dict[str, Any], result: dict[str, Any], luck_type: bool,
+    max_level: int, max_gain: int,
+) -> None:
+    """Decorate one pull result as a "+" Pact, some of the time.
+
+    The client draws the "+" from the second set of gain fields on the result
+    row -- `levelAdded2` beside `levelAdded`, and `boostUp2` or `luckup2`
+    beside their own -- so a pull that never fills them can never show one,
+    which is why none had ever appeared. A Fate-type pull grants Luck where the
+    others grant Skill Boost, the same split the duplicate gains already make.
+
+    The gains are applied to the account's own row as well as reported, because
+    the client renders what it is told and then reads the roster back.
+    """
+    random_source = random.SystemRandom()
+    if random_source.randrange(100) >= PLUS_PACT_CHANCE_PERCENT:
+        return
+    packed = int(current["jobLevels"][0])
+    old_level = packed & 0xFFF
+    level = min(max_level, old_level + random_source.randint(*PLUS_PACT_LEVELS))
+    encoded = (packed & ~0xFFF) | level
+    current["jobLevels"][0] = float(encoded) if type(current["jobLevels"][0]) is float else encoded
+    result["jobLevels"] = [level]
+    result["levelAdded2"] = level - old_level
+    gain = random_source.randint(*PLUS_PACT_TENTHS)
+    field = "luck" if luck_type else "skillBoost"
+    held = int(current.get(field, 0))
+    raised = min(max_gain, held + gain)
+    current[field] = raised
+    result[field] = raised
+    result["luckup2" if luck_type else "boostUp2"] = raised - held
 
 
 def _draw_companion_id(draws: tuple[CompanionDraw, ...]) -> int:

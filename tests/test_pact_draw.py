@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from liminal_gate.bootstrap_server import (
     BootstrapServer,
@@ -10,9 +11,15 @@ from liminal_gate.bootstrap_server import (
     _parse_ordinary_pact_draw,
 )
 from liminal_gate.pact_draw_catalog import build_bundled_pact_policy, load_pact_draw_catalog
+from liminal_gate.save_validation import ITEM_SLOTS
 from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
+# These pin exact result rows, durable packed levels and replayed payloads, so
+# the "+" Pact roll is held off across the class: they are about the draw
+# contract rather than the decoration, and a random gain would make them flap.
+# `PlusPactTest` below exercises the roll at its real rate.
+@patch("liminal_gate.bootstrap_server.PLUS_PACT_CHANCE_PERCENT", 0)
 class PactDrawTest(unittest.TestCase):
     def test_ticket_form_is_strict_and_does_not_admit_campaign_variants(self) -> None:
         prefix = "kind=20&count=1&luckType=false&campaignChrID=0&eventFlag=0"
@@ -556,3 +563,70 @@ class PactDrawTest(unittest.TestCase):
                 self.assertEqual(100, exhausted_server.state.userdata_for("token")["coins"])
             finally:
                 stop_server(exhausted_server, exhausted_thread)
+
+
+class PlusPactTest(unittest.TestCase):
+    """The "+" Pact, which the client draws from the second gain fields.
+
+    A pull that never fills `levelAdded2` and its siblings can never show a
+    "+", which is why none had ever appeared
+    ([#53](https://github.com/anzensan/project-liminal-gate/issues/53)).
+    """
+
+    FORM = "kind=1&count=10&luckType={luck}&campaignChrID=0&eventFlag=0&lastUpdate=1"
+
+    def pulls(self, luck: str, rounds: int) -> list[dict]:
+        rows: list[dict] = []
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            state.create_account("token", "account", {
+                "coins": 90_000_000, "energy": 99_000, "freeEnergy": 0,
+                "progressCode": 0x01000000 | (40 << 6) | 1, "worldMapNo": 0,
+                "chrdata": [], "itemList": [0] * ITEM_SLOTS, "summonList": [0] * 16,
+                "teamMembers": [0] * 6,
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          pact_draw_catalog=build_bundled_pact_policy())
+            try:
+                for index in range(rounds):
+                    _, payload = post(
+                        server, "/gd/do_slot", f"pull-{luck}-{index}", self.FORM.format(luck=luck),
+                        token="token", headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    )
+                    rows.extend(payload.get("chrdata", []))
+            finally:
+                stop_server(server, thread)
+        return rows
+
+    def test_a_skill_boost_pact_decorates_some_of_its_pulls(self) -> None:
+        rows = self.pulls("false", 40)
+        decorated = [row for row in rows if "levelAdded2" in row]
+        self.assertTrue(decorated, "no '+' appeared at all, which is the reported defect")
+        # Loose enough that the roll itself cannot fail the suite, tight enough
+        # that a broken rate would not pass: the policy is 20%.
+        self.assertLess(len(decorated) / len(rows), 0.5)
+        for row in decorated:
+            self.assertTrue(1 <= row["levelAdded2"] <= 5)
+            self.assertTrue(5 <= row["boostUp2"] <= 30)
+            self.assertNotIn("luckup2", row, "Skill Boost pacts do not grant Luck")
+
+    def test_a_fate_pact_grants_luck_where_the_others_grant_skill_boost(self) -> None:
+        rows = self.pulls("true", 40)
+        decorated = [row for row in rows if "levelAdded2" in row]
+        self.assertTrue(decorated)
+        for row in decorated:
+            self.assertTrue(5 <= row["luckup2"] <= 30)
+            self.assertNotIn("boostUp2", row)
+
+    def test_the_gain_lands_on_the_roster_and_not_only_the_screen(self) -> None:
+        """The client renders what it is told and then reads the roster back."""
+        rows = [row for row in self.pulls("false", 40) if "levelAdded2" in row]
+        self.assertTrue(rows)
+        for row in rows:
+            # The reported level and Skill Boost are the post-bonus values.
+            self.assertGreaterEqual(row["jobLevels"][0], row["levelAdded2"])
+            self.assertGreaterEqual(row["skillBoost"], row["boostUp2"])
