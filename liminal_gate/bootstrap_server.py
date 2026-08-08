@@ -1992,14 +1992,26 @@ class BootstrapState:
             # The final client exposes NormalItem as a distinct one-ticket
             # operation. No mixed ticket/coin batch has been recovered, so a
             # Fellowship-side coin request must spend the visible ticket first.
+
+            # Every refusal here carries the wallet. The pull callback reads
+            # `coins` and `energy` off the response before it branches on the
+            # refusal code, so a bare `{success, errorCode}` left the client
+            # reading keys that were not there and stranded it in an error
+            # state -- the one a player hits by pressing a Pact they cannot
+            # afford, which the client does not gate locally.
+            wallet = {
+                "coins": int(userdata.get("coins", 0)),
+                "energy": int(userdata.get("energy", 0)),
+                "freeEnergy": int(userdata.get("freeEnergy", 0)),
+            }
             if currency == "ticket" and ticket_count < total_cost:
-                payload = {"success": False, "errorCode": 2}
+                payload = {"success": False, "errorCode": 2, **wallet}
             elif currency == "coins" and ticket_count:
-                payload = {"success": False, "errorCode": 2}
+                payload = {"success": False, "errorCode": 2, **wallet}
             elif currency == "coins" and userdata["coins"] < total_cost:
-                payload = {"success": False, "errorCode": 2}
+                payload = {"success": False, "errorCode": 2, **wallet}
             elif currency == "energy" and userdata["energy"] + userdata["freeEnergy"] < total_cost:
-                payload = {"success": False, "errorCode": 1}
+                payload = {"success": False, "errorCode": 1, **wallet}
             else:
                 candidates = copy.deepcopy(rows)
                 by_id = {row.get("id"): row for row in candidates if isinstance(row, dict) and type(row.get("id")) is int}
@@ -2022,7 +2034,7 @@ class BootstrapState:
                         < eligibility_cap
                     ]
                     if not eligible:
-                        payload = {"success": False, "errorCode": 3}
+                        payload = {"success": False, "errorCode": 3, **wallet}
                         break
                     threshold = random.SystemRandom().randrange(sum(draw.weight for draw in eligible))
                     selected = eligible[-1]

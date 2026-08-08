@@ -123,6 +123,17 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Pressing a Pact you cannot afford left the game in an error state.** The
+  client does not gate that button locally, so pressing it while short is an
+  ordinary thing to do, and its pull callback reads `coins` and `energy` off
+  the response *before* it branches on the refusal code. The refusal carried
+  neither, so the client read keys that were not there.
+
+  Every Pact refusal now carries the wallet -- short of Coins, short of Energy,
+  short of a ticket, or a pool with nobody left in it. Nothing is charged and
+  nothing is drawn, exactly as before; the difference is that the client can
+  read the answer and show its own message.
+
 - **A map reveal the account had already applied was refused, with no way
   out.** The client announces the world map after a chapter boundary. If the
   server had already applied that reveal, the announcement was answered with a
