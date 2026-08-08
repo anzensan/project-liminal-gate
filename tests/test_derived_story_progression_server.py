@@ -119,6 +119,21 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         status, reused = self.post(reveal_path, [("progressCode", "0"), ("worldMapNo", "0"), ("lastUpdate", "1")])
         self.assertEqual(409, status)
         self.assertEqual("tutorial_state_conflict", reused["error"])
+        # Re-announcing a reveal the account has already applied, under a fresh
+        # request ID, is the client agreeing with the server rather than a
+        # conflict. Refusing it could not be recovered from: the refusal reads
+        # as a transport failure, the client re-announces the same map on the
+        # next open, and its dialog has no way out.
+        status, settled = self.post(
+            f"/gd/userdata?otk={self.token}&requestID=reveal-3-1-again", reveal)
+        self.assertEqual(200, status, settled)
+        self.assertTrue(settled["success"])
+        with self.server.state.lock:
+            self.assertEqual(
+                0x010000C1,
+                self.server.state.accounts[self.account_id]["userdata"]["progressCode"],
+                "a settled reveal must not move progress",
+            )
         status, started = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=start-3-1",
             [("stamina", "5"), ("coins", "0"), ("chapter", "3"), ("section", "1"), ("lastUpdate", "1")],

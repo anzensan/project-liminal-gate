@@ -123,6 +123,17 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A map reveal the account had already applied was refused, with no way
+  out.** The client announces the world map after a chapter boundary. If the
+  server had already applied that reveal, the announcement was answered with a
+  conflict -- and a conflict reaches the client as a transport failure, so it
+  raised a dialog, re-announced the same map on the next open, and was refused
+  identically. Nothing the player could do would clear it.
+
+  A reveal that names exactly the progress and world map the server already
+  holds is now answered as the settled no-op it is. Progress does not move and
+  nothing is written. A reveal naming anything else is still refused.
+
 - **A refused request could not be read from its own diagnostics.** Two reports
   of a 501 arrived this week that the log could not tell apart. A refused
   `start_quest` withheld the entry costs the client declared, so an unknown
