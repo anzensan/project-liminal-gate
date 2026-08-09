@@ -896,7 +896,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         ][self.account_id]
 
     def clear_body(
-        self, *, chapter: int = 8000, section: int = 5,
+        self, *, chapter: int = 8000, section: int = 4,
         experience: int = 0, coins: int = 0,
         items: dict[str, int] | None = None,
         summons: list[int] | None = None,
@@ -964,8 +964,8 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         self.assertEqual(
             sorted([
                 *music_event_flags(),
-                *(f"sp_ch_8000-{section}" for section in range(1, 6)),
-                *(f"sp_ch_8001-{section}" for section in range(1, 6)),
+                *(f"sp_ch_8000-{section}" for section in range(1, 5)),
+                *(f"sp_ch_8001-{section}" for section in range(1, 5)),
             ]),
             sorted(login["eventFlags"]),
         )
@@ -976,7 +976,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             locked,
         )
         self.assertEqual((409, "event_stage_locked"), (status, refused["error"]))
-        wrong = b"stamina=5&coins=0&chapter=8000&section=5&lastUpdate=1"
+        wrong = b"stamina=5&coins=0&chapter=8000&section=4&lastUpdate=1"
         self.assertEqual(
             501,
             self.post(
@@ -985,7 +985,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             )[0],
         )
 
-        start = b"stamina=15&coins=0&chapter=8000&section=5&lastUpdate=1"
+        start = b"stamina=15&coins=0&chapter=8000&section=4&lastUpdate=1"
         status, started = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=start",
             start,

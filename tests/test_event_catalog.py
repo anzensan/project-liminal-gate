@@ -101,7 +101,7 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
             [
                 (chapter, section)
                 for chapters, section_count in (
-                    (range(8000, 8008), 5),
+                    (range(8000, 8008), 4),
                     (range(8012, 8018), 3),
                 )
                 for chapter in chapters
@@ -111,16 +111,20 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         )
         for chapter in range(8000, 8008):
             self.assertEqual(
-                [5, 10, 15, 15, 15],
+                [5, 10, 15, 15],
                 [
                     self.catalog.by_identity()[(chapter, section)].stamina
-                    for section in range(1, 6)
+                    for section in range(1, 5)
                 ],
             )
+            # The fifth BattleData section is deliberately absent: the retired
+            # service shipped four banners per family and the client has no
+            # name for a fifth.
+            self.assertNotIn((chapter, 5), self.catalog.by_identity())
             self.assertTrue(
                 all(
                     self.catalog.by_identity()[(chapter, section)].projected_rewards
-                    for section in range(1, 6)
+                    for section in range(1, 5)
                 )
             )
         for chapter in range(8012, 8018):
@@ -163,8 +167,8 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         # that do not exist.
         self.assertEqual(
             [
-                *(f"sp_ch_8000-{section}" for section in range(1, 6)),
-                *(f"sp_ch_8001-{section}" for section in range(1, 6)),
+                *(f"sp_ch_8000-{section}" for section in range(1, 5)),
+                *(f"sp_ch_8001-{section}" for section in range(1, 5)),
             ],
             sorted(self.catalog.flags(self.progress_at(7))),
         )
@@ -194,7 +198,7 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
             sorted(name for name in flags if name.startswith("sp_ch_8012")),
         )
         self.assertEqual(
-            [f"sp_ch_8007-{section}" for section in range(1, 6)],
+            [f"sp_ch_8007-{section}" for section in range(1, 5)],
             sorted(name for name in flags if name.startswith("sp_ch_8007")),
         )
 
