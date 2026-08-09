@@ -105,11 +105,22 @@ class EventCatalogGeneratorTest(unittest.TestCase):
                 "2000", "2003-1", "2003-2", "2005-1", "2005-2",
                 "2007", "2008", "2009", "2010-1", "2010-2",
                 "2011-1", "2011-2", "2014-1", "2014-2",
-                "2015-1", "2015-2", "2016-1", "2016-2",
-                "2017-1", "2017-2", "2018-1", "2018-2",
+                # 2015 stays per-section although the client folds it: the
+                # placeholders below are what a folded card would advertise.
+                "2015-1", "2015-2",
+                # 2016 and 2017 fold, which is how the client names them and
+                # what keeps `specialQuestList` inside the length it can draw.
+                "2016", "2017",
+                "2018-1", "2018-2",
             ],
             loaded.client_lists(after_story)["specialQuestList"],
         )
+        # The client names 2015 bare too, and that literal is deliberately not
+        # honoured: a folded card offers a tier per section its flag answers
+        # for, and three of 2015's six are the placeholders below.
+        self.assertIn(2017, FOLDED_ARCHIVE_CHAPTERS)
+        self.assertIn(2016, FOLDED_ARCHIVE_CHAPTERS)
+        self.assertNotIn(2015, FOLDED_ARCHIVE_CHAPTERS)
         self.assertEqual((1, 2, 3), ARCHIVE_SECTION_ALLOWLIST[2015])
         self.assertFalse(
             {(2015, 4), (2015, 5), (2015, 6)} & set(loaded.by_identity())
@@ -121,6 +132,22 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual((1288,), loaded.by_identity()[(2018, 1)].character_ids)
         self.assertEqual((), loaded.by_identity()[(2017, 1)].character_ids)
         self.assertTrue({2000, 2007, 2008, 2009} <= FOLDED_ARCHIVE_CHAPTERS)
+
+    def test_a_folded_chapter_never_withholds_one_of_its_own_sections(self) -> None:
+        """The property that makes folding safe, and the 2015 trap in one line.
+
+        A folded card offers a tier per section its chapter flag answers for --
+        `CheckQuestFlag` retries an unset `sp_ch_<chapter>-<section>` as
+        `sp_ch_<chapter>` -- so the client will offer every section BattleData
+        carries, not just the ones this server serves. A chapter that withholds
+        any of its own sections therefore must not be folded, or it advertises
+        tiers this archive cannot draw and this server refuses to start.
+        """
+        self.assertEqual(
+            set(),
+            FOLDED_ARCHIVE_CHAPTERS & set(ARCHIVE_SECTION_ALLOWLIST),
+            "a chapter cannot both be folded and have sections withheld",
+        )
 
     def test_grant_rides_the_first_section_only(self) -> None:
         # Repeating it per section would grant the character once per stage.
