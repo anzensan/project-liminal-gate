@@ -16,7 +16,7 @@ from __future__ import annotations
 import unittest
 
 from liminal_gate.bootstrap_parsers import _valid_generic_character_record
-from liminal_gate.plus_type_data import PLUS_COUNT_MAX
+from liminal_gate.plus_type_data import PLUS_COUNT_DECLARED_MAX, PLUS_COUNT_MAX
 from liminal_gate.save_validation import _validate_roster
 
 
@@ -47,18 +47,41 @@ class RosterRecordShapeTest(unittest.TestCase):
         """
         findings = _validate_roster("account", {"chrdata": [row(plusCount=7)]})
         self.assertEqual(
-            [], [finding for finding in findings if "plusCount" in finding.where],
+            [], [finding for finding in findings if "plusCount" in finding.field],
             "save_validation accepts a plus count the clear parser must also read",
         )
         self.assertTrue(_valid_generic_character_record(row(plusCount=7)))
 
-    def test_a_count_the_client_reads_as_tampering_is_still_refused(self) -> None:
-        """Bounded, not merely typed: past `ActualMaxCount` the client awards
-        no bonus at all, so such a row is wrong in a way worth refusing."""
+    def test_a_count_the_client_reads_as_tampering_is_read_anyway(self) -> None:
+        """Typed, deliberately not bounded, and the reasoning is the whole point.
+
+        Past `ActualMaxCount` the client reads a count as tampering and awards
+        no bonus at all, so such a row *is* wrong -- but it is wrong in a way
+        the client already punishes, and refusing it here costs far more than
+        it saves. A refused parse is a refused clear, which leaves the battle
+        active and refuses every later stage too, for a value the player can
+        neither see nor repair. That is the failure this module exists to
+        document, and bounding the member here would have reintroduced it.
+
+        The client's two constants make the case concrete: it compares against
+        `ActualMaxCount` (300) but also declares `MaxCount` (1000), so a tool
+        honouring the declared one produces a count in between -- and that
+        account would have been unable to clear anything, anywhere, forever.
+        """
         self.assertTrue(_valid_generic_character_record(row(plusCount=PLUS_COUNT_MAX)))
-        self.assertFalse(_valid_generic_character_record(row(plusCount=PLUS_COUNT_MAX + 1)))
+        self.assertTrue(_valid_generic_character_record(row(plusCount=PLUS_COUNT_MAX + 1)))
+        self.assertTrue(_valid_generic_character_record(row(plusCount=PLUS_COUNT_DECLARED_MAX)))
+        # Type and sign are still contract, because neither is recoverable.
         self.assertFalse(_valid_generic_character_record(row(plusCount=-1)))
         self.assertFalse(_valid_generic_character_record(row(plusCount="1")))
+
+    def test_the_save_layer_is_where_an_impossible_count_is_reported(self) -> None:
+        """Refusing and reporting are different severities, and this is the
+        one that keeps the account playable while still naming the problem."""
+        findings = _validate_roster("account", {"chrdata": [row(plusCount=PLUS_COUNT_MAX + 1)]})
+        self.assertEqual(
+            ["chrdata[0].plusCount"], [finding.field for finding in findings],
+        )
 
     def test_the_shape_is_otherwise_exactly_as_strict(self) -> None:
         """Optional members are an allowlist, not an opening."""

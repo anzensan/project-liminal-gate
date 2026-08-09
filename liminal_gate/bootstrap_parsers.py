@@ -18,7 +18,6 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
 from liminal_gate.bootstrap_wire import _drop_trailing_last_update, _json_fields_match, _valid_last_update
-from liminal_gate.plus_type_data import PLUS_COUNT_MAX
 from liminal_gate.companion_equipment_catalog import CompanionEquipmentCatalog
 
 
@@ -200,10 +199,16 @@ def _valid_generic_character_record(row: object) -> bool:
         return False
     if any(type(row[name]) is not int or row[name] < 0 for name in ("id", "buddy", "jobID", "flags", "skillBoost")) or ("luck" in row and (type(row["luck"]) is not int or not 0 <= row["luck"] <= 1000)):
         return False
-    # Bounded rather than merely typed: the client reads a count above
-    # `ActualMaxCount` as tampering and awards no bonus at all, so a row
-    # carrying one is wrong in a way worth refusing.
-    if "plusCount" in row and (type(row["plusCount"]) is not int or not 0 <= row["plusCount"] <= PLUS_COUNT_MAX):
+    # Typed, deliberately not bounded. A count above `ActualMaxCount` is wrong
+    # -- the client reads it as tampering and awards no bonus at all -- but it
+    # is wrong in a way the client already punishes on its own, and refusing it
+    # here would cost far more than it saves: a refused parse is a refused
+    # clear, which leaves the battle active and refuses every later stage too,
+    # for a value the player cannot see and cannot repair. `save_validation`
+    # reports the same condition as a finding and keeps the save loadable,
+    # which is the severity this shares. The ceiling is only ever safely too
+    # generous, never too tight.
+    if "plusCount" in row and (type(row["plusCount"]) is not int or row["plusCount"] < 0):
         return False
     if type(row["date"]) not in {int, float} or not math.isfinite(row["date"]) or row["date"] < 0:
         return False
