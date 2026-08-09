@@ -12,6 +12,9 @@ from liminal_gate.apk_patcher import apply_patch_plan, load_patch_plan
 from liminal_gate.il2cpp_plan_generator import IL2CPP_METADATA_MAGIC, PlanGenerationError
 from liminal_gate.legacy_client_apk_plan import (
     API_BASE_LITERAL,
+    DRAG_TIME_SITES,
+    STOCK_DRAG_TIME_SECONDS,
+    drag_time_patches,
     ARM64_SCUDO_ALLOCATOR_PATCHES,
     ARM64_UNITY_MEMBER,
     FINAL_ARM64_UNITY_SHA256,
@@ -108,6 +111,56 @@ class LegacyClientApkPlanTest(unittest.TestCase):
             ],
             values,
         )
+
+    def test_drag_time_patches_both_abis_or_neither(self) -> None:
+        """`BattleManager.DraggableTime` is reachable no other way.
+
+        No config key, no master-data entry, no server field: it is a private
+        static float written once in the class constructor. Both shipped ABIs
+        carry the constant as the float's high half alone -- an AArch64 `MOVZ`
+        with a 16-bit shift, and an ARM `MOVT` beside a `MOVW #0` -- so one
+        instruction each changes. Both are patched or the knob would mean one
+        thing on a 64-bit device and another on a 32-bit one.
+        """
+        self.assertEqual([], drag_time_patches(STOCK_DRAG_TIME_SECONDS))
+        patches = drag_time_patches(6.0)
+        self.assertEqual(
+            [member for member, _ in DRAG_TIME_SITES],
+            [entry["member"] for entry in patches],
+        )
+        self.assertEqual(
+            ["0a10a852", "802044e3"], [entry["expected_hex"] for entry in patches],
+        )
+        self.assertEqual(
+            ["0a18a852", "c02044e3"], [entry["replacement_hex"] for entry in patches],
+        )
+        # Every replacement decodes back to the seconds that produced it.
+        for seconds in (1.0, 2.5, 4.0, 6.0, 8.0, 30.0):
+            arm64, v7a = (entry["replacement_hex"] for entry in drag_time_patches(seconds)) if seconds != 4.0 else ("0a10a852", "802044e3")
+            arm64_high = (struct.unpack("<I", bytes.fromhex(arm64))[0] >> 5) & 0xFFFF
+            v7a_word = struct.unpack("<I", bytes.fromhex(v7a))[0]
+            v7a_high = (((v7a_word >> 16) & 0xF) << 12) | (v7a_word & 0xFFF)
+            with self.subTest(seconds):
+                self.assertEqual(arm64_high, v7a_high, "the two ABIs must carry the same constant")
+                self.assertEqual(
+                    seconds,
+                    struct.unpack("<f", struct.pack("<I", arm64_high << 16))[0],
+                )
+
+    def test_drag_time_expectations_match_the_reviewed_apk(self) -> None:
+        """The offsets are only meaningful against the build they came from."""
+        apk = Path("local-input/terra-battle-5.5.7-170.apk")
+        if not apk.is_file():
+            self.skipTest("reviewed APK is not present on this machine")
+        with zipfile.ZipFile(apk) as archive:
+            for entry in drag_time_patches(6.0):
+                member = archive.read(entry["member"])
+                offset = entry["offset"]
+                with self.subTest(entry["member"]):
+                    self.assertEqual(
+                        entry["expected_hex"],
+                        member[offset:offset + 4].hex(),
+                    )
 
     def test_rejects_non_origin_or_too_long_server_address(self) -> None:
         for origin in ("localhost:8642", "http://host/path", "https://user@host", "http://host/?query=1"):

@@ -80,7 +80,7 @@ from liminal_gate.scenario_encounter_importer import (
 )
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
-from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT, write_default_tuning
+from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT, load_tuning, write_default_tuning
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
 from liminal_gate.story_outcome_generator import (
     StoryOutcomeGeneratorError,
@@ -1378,7 +1378,14 @@ def prepare_local_tester(
         except PactBannerImportError as error:
             print(f"Pact banner preparation skipped: {error}")
         prepare_coin_creeps_banners(apk, resource_root, data_directory / "public_data")
-        plan = generate_legacy_client_plan(apk, server_origin, disable_google_services)
+        # The document written above is the operator's, so the build reads it
+        # back rather than assuming defaults: `[client]` is applied by patching
+        # the APK here, and nowhere else can apply it.
+        client_tuning = load_tuning(data_directory / DEFAULT_TUNING_DOCUMENT).client
+        plan = generate_legacy_client_plan(
+            apk, server_origin, disable_google_services,
+            drag_time_seconds=client_tuning.drag_time_seconds,
+        )
         plan_path = data_directory / "local-server-plan.json"
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         unsigned = data_directory / "liminal-gate-unsigned.apk"
