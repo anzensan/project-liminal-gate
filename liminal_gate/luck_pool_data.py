@@ -8,15 +8,18 @@ scraped with page and revision provenance. Every row of that scrape carries
 
 Two consequences are deliberate and should not be quietly fixed later:
 
-* **Only thirty story stages have a pool at all.** Every other stage in the game
-  has none, and a stage with no pool yields no chest rather than a guessed one.
+* **Only thirty-one story stages have a pool at all.** Every other stage in the
+  game has none, and a stage with no pool yields no chest rather than a guessed
+  one.
   This is a floor on what the feature does, not a claim that other stages had no
   chests -- almost certainly they did, and the record simply does not cover them.
   An operator who wants to go past that floor supplies their own pools through
   :mod:`liminal_gate.luck_pool_catalog` and `--luck-pool-catalog`, which leaves
   this table exactly as sourced and says so in the server's startup output.
 * **Sixty-five of the ninety-nine dropped rewards have since been recovered**,
-  and nineteen of the thirty stages still lose at least one. The scrape dropped
+  and nineteen of the thirty-one stages still lose at least one. Chapter 25-7,
+  added after the first scrape missed its unheaded table, is not among them --
+  every cell the record fills for it resolved. The scrape dropped
   sixty-eight character icons, four item names that resolved to nothing, and
   twenty-seven empty or generic cells. The icons carried their names, so
   sixty-five of them resolve by exact match against the operator's own
@@ -70,6 +73,14 @@ LUCK_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     (13, 8): {"A": ('I6', 'I9',), "B": ('C275', 'I14',), "C": ('I5', 'I82',), "Luck 80": ('O128', 'M203',), "Luck 100": ('I86', 'O129', 'M110',)},  # incomplete
     (13, 10): {"A": ('C275',), "B": ('I6',), "C": ('I89',), "Luck 100": ('C550',)},  # incomplete
     (16, 10): {"A": ('C325', 'I4', 'I91',), "B": ('C325', 'I83', 'I6', 'I8', 'I2', 'I11', 'I89',), "C": ('C650', 'I83', 'I91',), "D": ('M124', 'M73',), "Luck 80": ('O129', 'O128', 'M204',), "Luck 100": ('C650', 'I33', 'O129', 'O128', 'M204', 'M65',)},
+    # The record's table for this stage carries no heading of any kind -- not the
+    # `=== Luck Treasure Chests ===` of Chapter 16, nor the bold line Chapters 1,
+    # 6 and 13 use -- which is how the original scrape walked past it. Its Luck
+    # 100 cell is empty on the page; that is the record having nothing there, not
+    # a reward this scrape failed to resolve, so the tier is absent rather than
+    # guessed and the row is not marked incomplete. Every other cell resolved by
+    # exact name: six items, Thornasaurus, and the two Metal Minion Companions.
+    (25, 7): {"A": ('I82',), "B": ('I2', 'I3', 'I91',), "C": ('C900', 'I92',), "D": ('I96',), "Luck 80": ('C900', 'M314', 'O128', 'O129',)},
     (28, 3): {"A": ('C475', 'I165', 'I14', 'I90', 'I4', 'I91',), "B": ('C475', 'I14', 'I13', 'I92', 'I6', 'I90', 'I91', 'I2',), "C": ('C950', 'I91', 'I82', 'I89', 'I92', 'I10', 'I6',), "D": ('C1425', 'I120', 'O128',), "Luck 80": ('C950', 'O129', 'O128', 'M264', 'M70', 'M64',), "Luck 100": ('C950', 'O129', 'O128', 'M264', 'M70', 'M73', 'M64', 'M165',)},
     (28, 9): {"A": ('C475', 'I12', 'I4', 'I92', 'I83', 'I91', 'I90', 'I8', 'I6', 'I7', 'I11', 'I5', 'I17', 'I14',), "B": ('C475', 'I13', 'I2', 'I92', 'I14', 'I17', 'I11', 'I9', 'I7', 'I5', 'I82', 'I91', 'I89',), "C": ('C950', 'I7', 'I8', 'I5', 'I2', 'I90', 'I9', 'I14', 'I17', 'I12', 'I11', 'I92', 'I82',), "D": ('C1425', 'I121', 'M64', 'M264', 'O128', 'O129',), "Luck 80": ('C950', 'M64', 'M70', 'M73', 'M264', 'O128', 'O129',), "Luck 100": ('C950', 'I121', 'M73', 'M70', 'M166', 'M264',)},  # incomplete
     (31, 1): {"A": ('I6',), "B": ('I4',), "C": ('I91',)},  # incomplete

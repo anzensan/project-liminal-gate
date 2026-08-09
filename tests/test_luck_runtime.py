@@ -53,6 +53,15 @@ class ChestRollTest(unittest.TestCase):
         self.assertFalse(has_documented_pool(99, 9))
         self.assertEqual([""] * 6, roll_luck_result(99, 9, LUCK_TENTHS_MAX, "r", "d"))
 
+    def test_the_stage_whose_table_carries_no_heading_is_recorded(self) -> None:
+        """Chapter 25-7's table has no heading at all, so the first scrape walked
+        past it. It is the only Chapter 25 stage the record documents, and every
+        cell the record fills for it resolved -- the empty Luck 100 cell is the
+        record's own gap, so that tier is absent rather than invented."""
+        self.assertTrue(has_documented_pool(25, 7))
+        self.assertEqual(("C900", "M314", "O128", "O129"), LUCK_CHEST_POOLS[(25, 7)]["Luck 80"])
+        self.assertNotIn("Luck 100", LUCK_CHEST_POOLS[(25, 7)])
+
     def test_a_full_luck_party_always_opens_the_two_named_chests(self) -> None:
         """Luck 80 and Luck 100 are guaranteed at 100.0, so a stage documenting
         both must fill both slots on every roll."""
