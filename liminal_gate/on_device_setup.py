@@ -568,6 +568,37 @@ def prepare_on_device_apk(
             "source APK SHA-256 is not the reviewed 5.5.7-170 input; do not build an on-device "
             f"package from it (got {source_sha256})"
         )
+    # Guaranteed here rather than assumed from `prepare_local_tester`, which
+    # also writes it: this function is what bakes the document in, so it owns
+    # having one. `write_default_tuning` never overwrites, so an operator's
+    # edits survive every rebuild. Parsed rather than trusted, because a
+    # document that fails to load would otherwise reach a device as a server
+    # that refuses to start, with no shell to fix it from. Checked before the
+    # derivation below rather than after it: that costs minutes, and this is a
+    # text file the operator just edited.
+    tuning_document = data_directory / DEFAULT_TUNING_DOCUMENT
+    write_default_tuning(tuning_document)
+    try:
+        tuning = load_tuning(tuning_document)
+    except TuningError as error:
+        raise OnDeviceSetupError(
+            f"the tuning document at {tuning_document} is not valid, so this build would "
+            f"install a server that cannot start: {error}"
+        ) from error
+    # Parsing is not enough. `build_server` cross-checks a raised EXP multiplier
+    # against the clear-state catalog it needs for the level curve, and this
+    # route ships no such catalog -- nothing in this project derives one, it is
+    # an expert document an operator authors. A build that let this through
+    # installed and then failed at `python_start` on the device, which is the
+    # one place with no shell to correct it from.
+    if tuning.exp.multiplier_percent != 100:
+        raise OnDeviceSetupError(
+            f"{tuning_document} sets exp.multiplier_percent to "
+            f"{tuning.exp.multiplier_percent}, and the on-device package cannot serve it: an EXP "
+            "multiplier needs a clear-state catalog for the level curve, which this route does "
+            "not ship and nothing here derives. Comment that line out (or set it back to 100) "
+            "and rebuild; every other section of the document works on device."
+        )
     tester_setup.prepare_local_tester(
         source, resource_root, data_directory, LOOPBACK_PORT, build_tools,
         dummy_dll_dir=dummy_dll_dir, device_host=tester_setup.EMULATOR_LOOPBACK_HOST,
@@ -575,21 +606,6 @@ def prepare_on_device_apk(
     )
     catalogs = catalog_inputs(data_directory)
     public_data = public_data_inputs(data_directory)
-    # Guaranteed here rather than assumed from `prepare_local_tester`, which
-    # also writes it: this function is what bakes the document in, so it owns
-    # having one. `write_default_tuning` never overwrites, so an operator's
-    # edits survive every rebuild. Parsed rather than trusted, because a
-    # document that fails to load would otherwise reach a device as a server
-    # that refuses to start, with no shell to fix it from.
-    tuning_document = data_directory / DEFAULT_TUNING_DOCUMENT
-    write_default_tuning(tuning_document)
-    try:
-        load_tuning(tuning_document)
-    except TuningError as error:
-        raise OnDeviceSetupError(
-            f"the tuning document at {tuning_document} is not valid, so this build would "
-            f"install a server that cannot start: {error}"
-        ) from error
     # The existing plan is the reviewed literal patch path. It guards source
     # bytes before any combined-APK work and keeps both original ABIs intact.
     plan_path = work_directory / "loopback-patch-plan.json"
