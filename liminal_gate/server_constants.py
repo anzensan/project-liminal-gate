@@ -76,6 +76,26 @@ def build_server_constants(
         "specialQuestList": [CLOSED_SPECIAL_QUEST_SENTINEL],
         "minStamina": 1,
         "maxStamina": 100,
+        # `WORLD_NUM` and `worldMaxChapter` belong beside this one and are
+        # deliberately absent. `UserData` declares both as server constants
+        # (`public static int WORLD_NUM` at 0x200, `public static int[]
+        # worldMaxChapter` at 0x1F8) alongside keys this block does send, and
+        # they pair with the `int[] worldProgressCode` (0x98) that feeds
+        # `GetWorldChapterNo`, `GetWorldSectionNo` and `IsSectionUnlocked` --
+        # the "To another world" scenarios, which the record says open after
+        # Chapter 19 (Ultimate Five) and Chapter 25 (The Death of Shay and
+        # Arionne).
+        #
+        # What is missing is not the plumbing but the contract. No capture or
+        # dump recovers how many worlds the retired service declared, what
+        # per-world ceilings it sent, or -- for `worldProgressCode`, which is a
+        # userdata key rather than one of these -- whether the client reads a
+        # JSON array matching its `int[]` or an object keyed by world index. A
+        # second reimplementation reports that an array hangs its client, which
+        # is a claim this project has not reproduced. Inventing any of the three
+        # would put a guessed contract on the wire, so they stay unsent until a
+        # client is asked directly, and the side worlds stay unreachable rather
+        # than half-declared.
         "maxChapter": 40,
         "maxCoins": 99999999,
         "maxEnergy": 9999,
