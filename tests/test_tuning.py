@@ -28,7 +28,7 @@ from liminal_gate.companion_draw_catalog import build_bundled_companion_draw_pol
 from liminal_gate.companion_strengthen_catalog import build_bundled_companion_strengthen_policy
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from liminal_gate.pact_draw_catalog import build_bundled_pact_policy
-from liminal_gate.tuning import DEFAULT_TUNING, TuningError, load_tuning
+from liminal_gate.tuning import DEFAULT_TUNING, DEFAULT_TUNING_DOCUMENT, TuningError, load_tuning
 
 
 PUBLIC_ROOT = Path(__file__).resolve().parents[1]
@@ -394,6 +394,66 @@ class TuningLaunchTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = self.config("--tuning", "t.toml", state=str(Path(directory) / "s.json"))
         self.assertEqual(Path("t.toml"), config.tuning)
+
+    def test_every_launcher_reaches_a_conventional_tuning_document(self) -> None:
+        """A policy no launcher passes is a policy nobody can use.
+
+        That is how Daily Quests once shipped -- implemented, tested,
+        documented, and reachable from neither launcher -- so both are asserted
+        here rather than only the one a change happened to touch.
+        """
+        from liminal_gate.server_setup import server_arguments as dedicated
+        from liminal_gate.tester_setup import server_arguments as guided
+
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            for name, command in (
+                ("guided", guided(Path("resources"), data, 8696)),
+                ("dedicated", dedicated(Path("resources"), data, "0.0.0.0", 8642)),
+            ):
+                with self.subTest(name, present=False):
+                    # Nothing generates this file, so naming one that is not
+                    # there would fail every install that never wrote one.
+                    self.assertNotIn("--tuning", command)
+            (data / DEFAULT_TUNING_DOCUMENT).write_text(_HEAD, encoding="utf-8")
+            for name, command in (
+                ("guided", guided(Path("resources"), data, 8696)),
+                ("dedicated", dedicated(Path("resources"), data, "0.0.0.0", 8642)),
+            ):
+                with self.subTest(name, present=True):
+                    self.assertEqual(
+                        str((data / DEFAULT_TUNING_DOCUMENT).resolve()),
+                        command[command.index("--tuning") + 1],
+                    )
+
+    def test_an_explicit_path_overrides_the_conventional_one(self) -> None:
+        from liminal_gate.server_setup import server_arguments as dedicated
+        from liminal_gate.tester_setup import server_arguments as guided
+
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            (data / DEFAULT_TUNING_DOCUMENT).write_text(_HEAD, encoding="utf-8")
+            chosen = Path(directory) / "elsewhere.toml"
+            for name, command in (
+                ("guided", guided(Path("resources"), data, 8696, None, chosen)),
+                ("dedicated", dedicated(Path("resources"), data, "0.0.0.0", 8642, tuning=chosen)),
+            ):
+                with self.subTest(name):
+                    # Resolved, the way every other catalog path is, so a unit
+                    # or a subprocess started elsewhere still finds the file.
+                    self.assertEqual(str(chosen.resolve()), command[command.index("--tuning") + 1])
+
+    def test_the_guided_command_line_the_launcher_builds_still_parses(self) -> None:
+        """The tuning flag must survive the round trip into `ServerConfig`."""
+        from liminal_gate.tester_setup import server_arguments as guided
+
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            (data / DEFAULT_TUNING_DOCUMENT).write_text(_HEAD, encoding="utf-8")
+            command = guided(Path("resources"), data, 8696)[3:]
+            with patch.object(sys, "argv", ["bootstrap_server", *command]):
+                config = load_launch_config(parse_args())
+        self.assertEqual((data / DEFAULT_TUNING_DOCUMENT).resolve(), config.tuning)
 
     def test_an_exp_multiplier_without_a_level_curve_refuses_the_launch(self) -> None:
         """Serving 100 silently would leave the operator no way to tell."""
