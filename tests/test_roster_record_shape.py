@@ -9,6 +9,14 @@ once. `plusCount` did it again -- accepted by `save_validation`, merged by
 row this project's own save layer called valid was one its clear path would not
 take. Recode is where a count first appears for most accounts, which is why the
 reports arrive at the chapter that unlocks it.
+
+Two instances of one defect were enough: an unmodelled member is now read
+rather than refused, because an allowlist of optional members only ever fixes
+the member already reported, and the cost of being wrong is an account that can
+never clear another stage. The required members are still required and every
+modelled member is still typed; what moved is where an unfamiliar shape is
+reported -- `save_validation` names it and keeps the save loadable, and a
+refused write records the member names this server models.
 """
 
 from __future__ import annotations
@@ -16,6 +24,7 @@ from __future__ import annotations
 import unittest
 
 from liminal_gate.bootstrap_parsers import _valid_generic_character_record
+from liminal_gate.luck_data import LUCK_TENTHS_MAX
 from liminal_gate.plus_type_data import PLUS_COUNT_DECLARED_MAX, PLUS_COUNT_MAX
 from liminal_gate.save_validation import _validate_roster
 
@@ -83,13 +92,55 @@ class RosterRecordShapeTest(unittest.TestCase):
             ["chrdata[0].plusCount"], [finding.field for finding in findings],
         )
 
-    def test_the_shape_is_otherwise_exactly_as_strict(self) -> None:
-        """Optional members are an allowlist, not an opening."""
-        self.assertFalse(_valid_generic_character_record(row(nonsense=1)))
-        self.assertFalse(_valid_generic_character_record(row(isNew=True, levelAdded=1)))
+    def test_an_unmodelled_member_is_read_rather_than_ending_the_account(self) -> None:
+        """The general form of this defect, after fixing two instances of it.
+
+        An allowlist of optional members only ever fixes the member already
+        reported. Twice a row carrying something this server did not model --
+        a grant's `isNew`/`levelAdded`, then `plusCount` -- cost an account
+        every clear it would ever attempt, and both times the member was
+        decoration the settlement never reads. An extra key is no longer fatal
+        to a route with no way to recover from one.
+        """
+        self.assertTrue(_valid_generic_character_record(row(nonsense=1)))
+        self.assertTrue(_valid_generic_character_record(row(unknown=1, alsoUnknown=2)))
+
+    def test_the_save_layer_reports_the_member_the_parser_now_admits(self) -> None:
+        """Strictness moved rather than disappeared."""
+        findings = _validate_roster("account", {"chrdata": [row(nonsense=1)]})
+        self.assertEqual(["chrdata[0]"], [finding.field for finding in findings])
+        self.assertIn("does not model", findings[0].message)
+
+    def test_required_members_and_their_types_are_still_contract(self) -> None:
+        """Admitting an extra member is not admitting a malformed one."""
         missing = row()
         del missing["flags"]
         self.assertFalse(_valid_generic_character_record(missing))
+        self.assertFalse(_valid_generic_character_record(row(jobSlots=[0, 0])))
+        self.assertFalse(_valid_generic_character_record(row(skillBoost=-1)))
+
+    def test_the_grant_shape_stays_unreadable_so_its_migration_still_fires(self) -> None:
+        """`_migrate_granted_character_rows` repairs only rows this refuses.
+
+        Admitting unknown members must not quietly disable that repair: the
+        grant shape is caught on its one-element `jobLevels` and empty
+        `jobSlots`, not on the two response-only keys it also carries.
+        """
+        granted = {"id": 25, "isNew": True, "levelAdded": 3, "jobLevels": [90], "jobSlots": []}
+        self.assertFalse(_valid_generic_character_record(granted))
+
+    def test_luck_is_typed_but_no_longer_bounded_either(self) -> None:
+        """The same disagreement as the plus count, one field over.
+
+        The parser capped Luck at the client's own 1000 tenths while
+        `save_validation` said nothing about the member at all, so a save this
+        project called clean was again one its clear path would not read.
+        """
+        self.assertTrue(_valid_generic_character_record(row(luck=LUCK_TENTHS_MAX + 1)))
+        self.assertFalse(_valid_generic_character_record(row(luck=-1)))
+        self.assertFalse(_valid_generic_character_record(row(luck="800")))
+        findings = _validate_roster("account", {"chrdata": [row(luck=LUCK_TENTHS_MAX + 1)]})
+        self.assertEqual(["chrdata[0].luck"], [finding.field for finding in findings])
 
 
 if __name__ == "__main__":

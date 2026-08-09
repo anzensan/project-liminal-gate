@@ -104,8 +104,14 @@ _JSON_FORM_FIELDS = (
 _KNOWN_KEYS = frozenset({
     # The Companion row and the stored `buddyInfo` projection around it.
     "bid", "lv", "date", "iid", "exp", "flag", "chrID", "list", "record",
-    # Roster and party.
+    # Roster and party. Every member `_valid_generic_character_record` names,
+    # because that validator gates the clear parser: a row it will not read
+    # refuses every clear the account attempts afterwards, and the refusal is
+    # unreadable unless the log can say *which* member was unfamiliar. A
+    # recoded row carrying `plusCount` did exactly that and logged only
+    # "6 unrecognized keys", naming none of them.
     "id", "teamMembers", "jobLevels", "job", "equip",
+    "buddy", "jobSlots", "jobID", "flags", "skillBoost", "luck", "plusCount",
     # Wallet projections.
     "coins", "energy", "freeEnergy", "energyAppStore", "energyAndApp",
     "energyGooglePlay", "bonusStamina", "refillStartTime",
