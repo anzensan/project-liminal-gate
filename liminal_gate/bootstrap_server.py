@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import copy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 import hashlib
 import json
 import math
@@ -6076,6 +6076,38 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     )
 
 
+def report_tuning(tuning: Tuning, path: Path | None) -> None:
+    """Say which tuning document was read and what it actually changed.
+
+    Tuning was silent: an operator who uncommented a line and restarted had no
+    way to tell whether the server read the file, read a different copy of it,
+    or read it and applied exactly what they asked for.  "Nothing seems to have
+    changed" is the same observation for all three, which is the failure this
+    project's strict parsing exists to prevent everywhere else.
+
+    Reported by comparing against the bundled defaults rather than by echoing
+    the document, so an override that parses but matches the default is named
+    as no change at all -- the case an operator is least able to see.
+    """
+    if path is None:
+        print("Tuning: bundled defaults (no tuning document passed)")
+        return
+    changed: list[str] = []
+    for section in ("pact", "companion", "hunting", "gates", "exp"):
+        loaded, bundled = getattr(tuning, section), getattr(DEFAULT_TUNING, section)
+        changed.extend(
+            f"{section}.{field.name}={getattr(loaded, field.name)}"
+            for field in fields(loaded)
+            if getattr(loaded, field.name) != getattr(bundled, field.name)
+        )
+    if not changed:
+        print(f"Tuning: {path} read, every value still the bundled default")
+        return
+    print(f"Tuning: {path} read, {len(changed)} override(s) in effect")
+    for entry in changed:
+        print(f"  {entry}")
+
+
 def build_server(
     args: ServerConfig,
     *,
@@ -6091,6 +6123,7 @@ def build_server(
     resources = resource_catalog
     try:
         tuning = DEFAULT_TUNING if args.tuning is None else load_tuning(args.tuning)
+        report_tuning(tuning, args.tuning)
         if (args.resource_root is None) != (args.resource_manifest is None):
             raise ProfileError("--resource-root and --resource-manifest must be supplied together")
         if resources is None and args.resource_root is not None:
