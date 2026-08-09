@@ -416,3 +416,44 @@ class CompanionUserdataTest(unittest.TestCase):
                 self.assertEqual((200, first), post(restarted, "one", body))
             finally:
                 stop_server(restarted, restarted_thread)
+
+    def test_http_empty_companion_delta_settles_without_changing_the_box(self) -> None:
+        """A save carrying no dirty Companion is a save, not a bad request.
+
+        A tester saw a Network Error after every Companion sale.  The sale
+        itself settles: what fails is the ordinary save behind it.
+        `SendDirtyData` posts whatever `UserData`'s dirty flag names, and the
+        sale's own answer rebuilds every `Buddy` through `LoadBuddyInfo`, which
+        discards the per-Companion dirty bits while `UserDataKind.Buddies` is
+        still pending.  `SerializeJsonUserData` then serialises the empty list
+        as `[]` -- it only omits the field when the value is the empty string --
+        so the client posts a delta naming nobody.  Refusing that answered a
+        routine save with a 501 the client shows as a Network Error, and the
+        `chrdata` half accepted the same empty array all along.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            profile = bootstrap_profile()
+            state = BootstrapState(Path(directory) / "state.json")
+            state.create_account("token", "account", {
+                "chrdata": [{"id": 3, "buddy": 1}],
+                "buddyInfo": {"list": [{"bid": 1, "lv": 1, "date": 0.0, "iid": 1, "exp": 0, "flag": 1, "chrID": 3}], "record": []},
+            })
+            state.accounts["account"]["tutorial_phase"] = "free_roam"
+            before = json.loads(json.dumps(state.userdata_for("token")["buddyInfo"]["list"]))
+            server, thread = start_server(("127.0.0.1", 0), profile, state)
+            try:
+                empty = json.dumps([], separators=(",", ":"))
+                alone = urlencode({"buddyInfo": empty, "lastUpdate": "1"})
+                status, payload = support_post(server, "/gd/userdata", "alone", alone)
+                self.assertEqual((200, True, 1.0), (status, payload["success"], payload["lastupdate"]))
+                # The equip form carries both halves; a sale empties both.
+                both = urlencode({"chrdata": json.dumps([], separators=(",", ":")), "buddyInfo": empty, "lastUpdate": "1"})
+                status, payload = support_post(server, "/gd/userdata", "both", both)
+                self.assertEqual((200, True), (status, payload["success"]))
+                # A blank or non-array value stays a malformed body.
+                for value in ("", "{}"):
+                    body = urlencode({"buddyInfo": value, "lastUpdate": "1"})
+                    self.assertEqual(501, support_post(server, "/gd/userdata", "bad" + value, body)[0])
+                self.assertEqual(before, server.state.userdata_for("token")["buddyInfo"]["list"])
+            finally:
+                stop_server(server, thread)
