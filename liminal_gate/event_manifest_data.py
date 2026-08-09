@@ -59,8 +59,23 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
 # or empty. Some packaged chapters use one folded chapter card while later
 # additions use one explicit card per section. The generator records that
 # presentation identity separately from the start/clear stage identity.
+#
+# Which is which is read off the client's own quest-identity strings: a chapter
+# it names bare (``"2017"``) is a folded card, one it names per section
+# (``"2003-1"``) is not. Getting this wrong is not cosmetic -- every row here is
+# a row of `specialQuestList`, and that list cannot exceed
+# `SPECIAL_QUEST_LIST_MAX` without hanging the client, so unfolding a family the
+# client folds spends rows this server then has to withhold from somewhere else.
+#
+# ``2015`` is the one chapter whose bare literal is deliberately **not**
+# honoured. The client folds it because it shipped six sections; sections 4--6
+# are the ``空き`` placeholders below, with zero battles and no banners, and a
+# folded card offers a tier per section the flag answers for -- `CheckQuestFlag`
+# retries an unset ``sp_ch_2015-4`` as ``sp_ch_2015``, which is set. Folding it
+# would advertise three tiers this archive cannot draw and this server refuses
+# to start. Per-section rows cost two extra rows and offer only what exists.
 FOLDED_ARCHIVE_CHAPTERS = frozenset({
-    2000, 2001, 2002, 2006, 2007, 2008, 2009,
+    2000, 2001, 2002, 2006, 2007, 2008, 2009, 2016, 2017,
 })
 
 # Chapter 2012 consists of three explicitly named attribute-test rows and
