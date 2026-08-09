@@ -148,32 +148,34 @@ class MultiplayProjectionTest(unittest.TestCase):
         self.assertEqual(50, multiplay_achievement_projection()["prize"])
         self.assertEqual([50, 50], multiplay_achievement_projection()["coopFreePlayNum"])
 
-    def test_the_object_carries_every_key_the_loader_reads(self) -> None:
-        """`LoadFromJsonNormal`'s own key list, in the order it reads them.
+    def test_it_sends_only_keys_a_condition_forces(self) -> None:
+        """Sending the object complete is what broke the login callback.
 
-        `rank` is absent because the client derives it from `exp` instead of
-        loading it, and the two running consecutive-win lists stay empty
-        because the conditions read the `...Max` lists beside them.
+        `showTitles` is read with `GetString` and `vsStaminaRefillStartTime`
+        with `GetLong`, and neither tolerates the value its name suggests: a
+        JSON `0` is a LitJson `Int`, which the explicit `long` conversion
+        refuses. Both raised inside `LoadUserdataFromJson` and hung the client
+        on "connecting" behind an HTTP 200. Every getter defaults an absent key
+        to exactly what an account that never played should carry, so the keys
+        no condition needs must stay off the wire.
         """
         projection = multiplay_achievement_projection()
-        self.assertEqual(
-            {
-                "exp", "titleList", "showTitles", "friendList", "prize",
-                "coopFriendPlayNum", "coopFreePlayNum", "coopSimplePlayNum",
-                "vsFreePlayNum", "vsFriendPlayNum", "vsFreeWinNum", "vsFriendWinNum",
-                "vsFreeConsectiveWinNum", "vsFriendConsectiveWinNum",
-                "vsFreeConsectiveWinMax", "vsFriendConsectiveWinMax",
-                "vsPlayChapter", "vsPlayMatchType", "vsStaminaRefillStartTime",
-            },
-            set(projection),
-        )
-        self.assertNotIn("rank", projection)
-        self.assertEqual([], projection["vsFreeConsectiveWinNum"])
-        self.assertEqual([], projection["vsFriendConsectiveWinNum"])
-        # An account that never played holds no titles and no multiplay rank.
-        self.assertEqual(0, projection["exp"])
-        self.assertEqual([], projection["titleList"])
-        self.assertEqual([], projection["friendList"])
+        self.assertEqual({row[2] for row in MULTIPLAY_ACHIEVEMENT_CONDITIONS}, set(projection))
+        for absent in ("showTitles", "vsStaminaRefillStartTime", "exp", "rank", "titleList", "friendList"):
+            self.assertNotIn(absent, projection, absent)
+
+    def test_every_value_is_the_type_its_getter_casts_to(self) -> None:
+        """`prize` goes through `GetInt`; the lists through `LoadJsonList`,
+        which reads each element with `(int)`. A bool would satisfy `isinstance`
+        against `int` and serialise as `true`, so the check is on exact type."""
+        projection = multiplay_achievement_projection()
+        self.assertIs(int, type(projection["prize"]))
+        for name, value in projection.items():
+            if name == "prize":
+                continue
+            with self.subTest(name):
+                self.assertIs(list, type(value))
+                self.assertTrue(all(type(element) is int for element in value))
 
     def test_a_userdata_read_installs_it_on_a_save_written_without_it(self) -> None:
         """The field is null on the client until a response carries the key.
