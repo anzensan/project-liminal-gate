@@ -319,6 +319,13 @@ MUTATION_RESULT_STATUSES = {
     "event_clear_world_map_conflict": HTTPStatus.CONFLICT,
     "event_clear_wallet_conflict": HTTPStatus.CONFLICT,
     "event_clear_battle_coins_conflict": HTTPStatus.CONFLICT,
+    # The core-story clear's six, named the same way the archive clear's are.
+    "story_clear_phase_conflict": HTTPStatus.CONFLICT,
+    "story_clear_active_stage_conflict": HTTPStatus.CONFLICT,
+    "story_clear_progress_conflict": HTTPStatus.CONFLICT,
+    "story_clear_world_map_conflict": HTTPStatus.CONFLICT,
+    "story_clear_wallet_conflict": HTTPStatus.CONFLICT,
+    "story_clear_battle_coins_conflict": HTTPStatus.CONFLICT,
     "unsupported_summon": HTTPStatus.NOT_IMPLEMENTED,
     "unsupported_userdata_write": HTTPStatus.NOT_IMPLEMENTED,
     "unsupported_story_progression_reveal": HTTPStatus.NOT_IMPLEMENTED,
@@ -3049,7 +3056,15 @@ class BootstrapState:
             )
             failed = next((name for name, passed in checks if not passed), None)
             if failed is not None:
-                return (f"event_clear_{failed}_conflict" if event else "tutorial_state_conflict"), None
+                # Name the check that refused, on both paths. The archive clear
+                # always did; the core-story clear answered all six with
+                # `tutorial_state_conflict`, a reason thirteen other call sites
+                # also return, so a refused story clear said only "something
+                # about this account is wrong" -- and a Chapter 20 stage refused
+                # for a progress code the client could never send read exactly
+                # like a wallet or phase disagreement. Which check failed is the
+                # whole diagnosis, and the server already knew it.
+                return f"{'event' if event else 'story'}_clear_{failed}_conflict", None
             projected_items = None
             if event and stage.projected_rewards:
                 projected_items = _projected_event_items(
