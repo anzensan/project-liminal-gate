@@ -1,17 +1,20 @@
-"""Recovered clear-chapter achievement rows from the final client's master data.
+"""Recovered achievement rows from the final client's master data.
 
-The client ships 99 achievement records.  Only these eight are settleable by a
-server: they are the ones whose `unlockType` is 0 (ClearChapter) with a positive
-`unlockValue1`, so the predicate is a story-progress comparison the server can
-evaluate on its own.  The other 91 are gated on client-local counters -- battles
-fought, Companions raised, and similar -- which this project has not
-reconstructed into authoritative server predicates and does not guess at.
+The client ships 99 achievement records.  Nine carry an `unlockType` of 0
+(ClearChapter) with a positive `unlockValue1`, so their predicate is a
+story-progress comparison this server can evaluate on its own; eight of those
+nine are reachable and keep their condition.  Every other record is decided by
+the client against its own state, which is why `ACHIEVEMENT_ROWS` below carries
+a zero `required_chapter` for them rather than a condition this server cannot
+see.
 
-Every one of the eight pays the same present list: one Energy and one of item
-50.  That uniformity is the client's, not a simplification made here.
+The nineteen Co-op and VS records are the one family whose state the server
+still supplies, through `UserData.multiplayData`; see
+`MULTIPLAY_ACHIEVEMENT_CONDITIONS`.
 
-Each row is ``(achievement_id, required_chapter)``.  The reward is constant and
-lives in :mod:`liminal_gate.achievement_catalog`.
+Each row is ``(achievement_id, required_chapter, free_energy, coins, items)``.
+The eight clear-chapter rows pay the same present list -- one Energy and one of
+item 50 -- and that uniformity is the client's, not a simplification made here.
 """
 
 from __future__ import annotations
@@ -142,3 +145,105 @@ ACHIEVEMENT_ROWS: tuple[tuple[int, int, int, int, dict[int, int]], ...] = (
 ACHIEVEMENT_FREE_ENERGY = 1
 ACHIEVEMENT_ITEM_ID = 50
 ACHIEVEMENT_ITEM_COUNT = 1
+
+
+#: The nineteen Co-op and VS conditions, read out of `AchievementUtil.IsUnlocked`
+#: in the reviewed ARM64 `libil2cpp.so`.  That method is a 27-way switch on
+#: `unlockType`; cases 11 through 20 all take the same shape::
+#:
+#:     UserData.instance.multiplayData.GetXxx(info.unlockValue1) >= info.unlockValue2
+#:
+#: so `unlockValue1` is a *list index* and `unlockValue2` is the threshold.  The
+#: shared `GetNumImpl` returns 0 when the index is past the list's end, and sums
+#: every element when the index is -1.  `CoopPrize` is the exception: it reads
+#: the scalar `prize` and compares it against `unlockValue1`, with no index at
+#: all, which is why those two rows carry `None`.
+#:
+#: Two details worth keeping: the `VsFreeConsectiveWin` and
+#: `VsFriendConsectiveWin` types read the `...Max` lists rather than the
+#: identically named `...Num` lists the client also carries, and every threshold
+#: is a `>=`.
+#:
+#: ``(achievement_id, key, field, index, threshold)``.  ``field`` is the JSON key
+#: `MultiplayUserData.LoadFromJsonNormal` loads that list from, not the C# field
+#: name, because two of them differ.
+MULTIPLAY_ACHIEVEMENT_CONDITIONS: tuple[tuple[int, str, str, int | None, int], ...] = (
+    (68, "Freedom", "coopFreePlayNum", -1, 30),
+    (69, "Friendly", "coopFriendPlayNum", -1, 30),
+    (70, "Ownership", "coopFreePlayNum", 0, 50),
+    (71, "Supporter", "coopFreePlayNum", 1, 50),
+    (72, "Speedy", "coopSimplePlayNum", -1, 30),
+    (73, "Prize1", "prize", None, 20),
+    (74, "VsMaster", "vsFreePlayNum", -1, 100),
+    (75, "VsMaster2", "vsFreePlayNum", -1, 300),
+    (76, "VsMaster3", "vsFreePlayNum", -1, 500),
+    (77, "FriendBattler", "vsFriendPlayNum", -1, 20),
+    (78, "VsKiller", "vsFreeWinNum", -1, 50),
+    (79, "VsKiller2", "vsFreeWinNum", -1, 150),
+    (80, "VsKiller3", "vsFreeWinNum", -1, 250),
+    (81, "FriendKiller", "vsFriendWinNum", -1, 50),
+    (82, "Striker", "vsFreeConsectiveWinMax", -1, 3),
+    (83, "Striker2", "vsFreeConsectiveWinMax", -1, 5),
+    (84, "Striker3", "vsFreeConsectiveWinMax", -1, 10),
+    (85, "FriendStriker", "vsFriendConsectiveWinMax", -1, 20),
+    (93, "Prize2", "prize", None, 50),
+)
+
+#: Every key `MultiplayUserData.LoadFromJsonNormal` reads, in the order it reads
+#: them.  The object is sent complete rather than trimmed to the counters the
+#: conditions need: `SafeJsonLoader` tolerates a missing key, but a partial
+#: object would leave the next reader of this file guessing which omissions were
+#: deliberate.  `rank` is absent on purpose -- the client derives it from `exp`
+#: rather than loading it.
+_MULTIPLAY_SCALARS: tuple[str, ...] = ("exp", "prize", "vsPlayChapter", "vsPlayMatchType", "vsStaminaRefillStartTime")
+_MULTIPLAY_LISTS: tuple[str, ...] = (
+    "titleList", "showTitles", "friendList",
+    "coopFriendPlayNum", "coopFreePlayNum", "coopSimplePlayNum",
+    "vsFreePlayNum", "vsFriendPlayNum", "vsFreeWinNum", "vsFriendWinNum",
+    "vsFreeConsectiveWinNum", "vsFriendConsectiveWinNum",
+    "vsFreeConsectiveWinMax", "vsFriendConsectiveWinMax",
+)
+
+
+def multiplay_achievement_projection() -> dict[str, object]:
+    """Return the `multiplayData` object that settles all nineteen conditions.
+
+    Co-op and VS ran against a player population, and no archive can restore
+    one, so these counters are the only channel by which their achievements can
+    ever be reached.  The values are *derived from the recovered conditions*
+    rather than picked: each indexed slot carries the largest threshold declared
+    for it, and a sum condition tops up the first slot only if the indexed
+    thresholds have not already covered it.  Nothing here exceeds what the
+    client asks for, and `test_achievement_policy` re-evaluates the client's own
+    predicate against the result.
+
+    This is a fabricated play history, and it is a deliberate one: the same
+    reasoning that lists these records at all -- that hiding them reproduces a
+    live service's judgement rather than an archive's -- decides that a screen
+    the player can otherwise never finish should be finishable.  The cost is
+    that `exp` stays 0 and the title lists stay empty, so the multiplay rank and
+    title surfaces these counters also feed report nothing rather than a rank
+    the account never held.
+    """
+    indexed: dict[str, dict[int, int]] = {}
+    sums: dict[str, int] = {}
+    scalars: dict[str, int] = {}
+    for _, _, field, index, threshold in MULTIPLAY_ACHIEVEMENT_CONDITIONS:
+        if index is None:
+            scalars[field] = max(scalars.get(field, 0), threshold)
+        elif index < 0:
+            sums[field] = max(sums.get(field, 0), threshold)
+        else:
+            slots = indexed.setdefault(field, {})
+            slots[index] = max(slots.get(index, 0), threshold)
+
+    projection: dict[str, object] = {name: scalars.get(name, 0) for name in _MULTIPLAY_SCALARS}
+    for name in _MULTIPLAY_LISTS:
+        slots = indexed.get(name, {})
+        values = [slots.get(position, 0) for position in range(max(slots, default=-1) + 1)]
+        shortfall = sums.get(name, 0) - sum(values)
+        if shortfall > 0:
+            values = (values or [0])[:]
+            values[0] += shortfall
+        projection[name] = values
+    return projection
