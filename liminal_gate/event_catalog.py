@@ -105,11 +105,41 @@ class EventCatalog:
         )
 
     def flags(self, progress_code: int | None = None) -> dict[str, dict[str, object]]:
-        return {
-            stage.flag: {"name": stage.flag, "value": True}
-            for stage in self.stages
-            if stage.unlocked_at(progress_code)
-        }
+        """Return every `sp_ch_` key the unlocked stages need.
+
+        A folded Counter Descent family is flagged per section and, unlike
+        every other family here, **not** by its chapter. That looks backwards
+        for a card the client lists by chapter, and it is the only shape that
+        works, because `CheckQuestFlag` falls back: an unset
+        `sp_ch_<chapter>-<section>` is retried as everything left of its last
+        `-`, so one chapter key answers for every section in the chapter.
+
+        The card still lists. `UISpecialSelect.<GetList>` admits a folded row
+        when any `IsQuestOpen("<chapter>-<i>")` holds for `i` up to
+        `GetSectionCount`, and `UpdateItems` revalidates it the same way each
+        frame, so a flagged tier 1 is enough to open the card and keep it.
+
+        What the chapter key would cost is the tiers that do not exist.
+        `GetSectionCount` returns the hard-coded five of
+        `ChapterInterface.NumOfCounterDescentQuestSections` for the whole
+        8000--8999 range, so a three-tier family expands to five rows. For a
+        row no section backs, `IsQuestOpen` finds no section and defers to the
+        flag alone -- which a chapter key would answer true, offering a tier
+        whose stamina and battles do not exist and whose start this server
+        refuses. Flagged per section, those two rows fail and are dropped.
+        `sp_ch_8001-2`, `-3`, and `-4` survive in the community flag table, so
+        the retired service named these sections individually too.
+        """
+        unlocked = [
+            stage for stage in self.stages if stage.unlocked_at(progress_code)
+        ]
+        names = [
+            event_flags_for(stage.chapter, stage.section)[1]
+            if stage.selector == "descent_hunting"
+            else stage.flag
+            for stage in unlocked
+        ]
+        return {name: {"name": name, "value": True} for name in names}
 
     def client_lists(self, progress_code: int | None) -> dict[str, list[str]]:
         """Project Special, Tower, and folded Strikes Back selector rows."""
@@ -139,10 +169,16 @@ class EventCatalog:
             "specialQuestList": special,
             "towerQuestList": tower,
             "eidolonQuestList": eidolon,
-            # Counter Descent is a folded five-tier card. The selector receives
-            # one row; the client expands the chapter's packaged sections.
+            # Counter Descent is a folded card, and the client folds on the
+            # shape of the id alone: `UISpecialSelect.IsFolded` is
+            # `!id.Contains("-")`. The bare chapter is therefore the row, and
+            # `UISpecialItem.OnClickedBtn` expands it into the tiers
+            # `GetSectionCount` declares. A `8000-1` row reads as an ordinary
+            # single stage instead, and tapping it starts tier 1 directly --
+            # which is what hid every higher tier behind a card that never
+            # opened.
             "descentHuntingList": [
-                f"{chapter}-1" for chapter in descent_chapters
+                str(chapter) for chapter in descent_chapters
             ],
         }
 

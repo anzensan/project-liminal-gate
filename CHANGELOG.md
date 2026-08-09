@@ -123,6 +123,28 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Strikes Back only ever offered its first stage.** Every family you had
+  unlocked showed one card, and the card was one battle. It read like the
+  higher tiers were waiting on later progress. They were not: they were
+  unreachable, and no amount of progress would have reached them.
+
+  A Strikes Back card is a folded card — the client expands it into its tiers
+  itself. But it decides whether a row folds by looking at the row's name: a
+  name carrying a section, like `8000-1`, is one stage, and a name that is just
+  the chapter, `8000`, is a card. This server sent the first form, so every
+  family was drawn as a single stage and tapping it started tier 1 directly.
+  The server now sends the chapter, and login names each tier the card
+  contains individually rather than naming the chapter once.
+
+  That last part matters more than it sounds. The client asks every Strikes
+  Back card for five tiers, but Chapters 8012–8017 only have three. Naming the
+  chapter once would have offered all five, and the two that do not exist have
+  no stamina, no battles, and no way to start. Naming the tiers individually
+  offers exactly the ones that are there.
+
+  Tiers 2 and up were always accepted by the server; nothing about their
+  stamina, rewards, or the Chapter 5–18 unlocks changed.
+
 - **Pressing a Pact you cannot afford left the game in an error state.** The
   client does not gate that button locally, so pressing it while short is an
   ordinary thing to do, and its pull callback reads `coins` and `energy` off

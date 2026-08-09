@@ -154,22 +154,48 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
             ],
         )
         lists = self.catalog.client_lists(self.progress_at(7))
-        self.assertEqual(["8000-1", "8001-1"], lists["descentHuntingList"])
+        self.assertEqual(["8000", "8001"], lists["descentHuntingList"])
         self.assertEqual([], lists["specialQuestList"])
         self.assertEqual([], lists["towerQuestList"])
         self.assertEqual([], lists["eidolonQuestList"])
+        # Per section and never by chapter: `CheckQuestFlag` retries an unset
+        # section key as its chapter, so a chapter key would answer for tiers
+        # that do not exist.
         self.assertEqual(
-            ["sp_ch_8000", "sp_ch_8001"],
+            [
+                *(f"sp_ch_8000-{section}" for section in range(1, 6)),
+                *(f"sp_ch_8001-{section}" for section in range(1, 6)),
+            ],
             sorted(self.catalog.flags(self.progress_at(7))),
         )
         self.assertEqual(
             [
-                *(f"{chapter}-1" for chapter in range(8000, 8008)),
-                *(f"{chapter}-1" for chapter in range(8012, 8018)),
+                *(str(chapter) for chapter in range(8000, 8008)),
+                *(str(chapter) for chapter in range(8012, 8018)),
             ],
             self.catalog.client_lists(self.progress_at(19))[
                 "descentHuntingList"
             ],
+        )
+
+    def test_a_three_tier_family_flags_only_the_sections_it_has(self) -> None:
+        """The client expands every 8000-series card to five rows regardless.
+
+        `GetSectionCount` reads the hard-coded
+        `ChapterInterface.NumOfCounterDescentQuestSections`, so a Chapter 8012
+        card offers `8012-4` and `8012-5`, which no section backs and
+        `start_quest` would refuse. Withholding the chapter key is what removes
+        those two rows: `CheckQuestFlag` retries an unset section key as its
+        chapter, so `sp_ch_8012` would answer true for both of them.
+        """
+        flags = self.catalog.flags(self.progress_at(19))
+        self.assertEqual(
+            ["sp_ch_8012-1", "sp_ch_8012-2", "sp_ch_8012-3"],
+            sorted(name for name in flags if name.startswith("sp_ch_8012")),
+        )
+        self.assertEqual(
+            [f"sp_ch_8007-{section}" for section in range(1, 6)],
+            sorted(name for name in flags if name.startswith("sp_ch_8007")),
         )
 
     def test_bundled_projected_reward_rows_own_generated_duplicates(self) -> None:

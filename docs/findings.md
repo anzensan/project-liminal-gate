@@ -403,11 +403,13 @@ Private inputs, captures, account state, and original assets remain excluded.
   clear confirms entry and reports 280 Coins plus 5,400/5,625 EXP; client
   acceptance after the relaxed settlement-policy change remains pending.
 - **Confirmed by static client analysis, live transport, and original-client
-  observation:** Strikes Back reads `descentHuntingList`. One folded tier-1 row
-  per unlocked Chapter 8000--8007 or 8012--8017 family plus its matching
-  chapter flag opens that family's card. Spinetrich Kino and Kraken Kino
-  rendered for the current progress, and Chapter 8000-1 reached `start_quest`
-  and loaded its battle resources.
+  observation:** Strikes Back reads `descentHuntingList`. One row per unlocked
+  Chapter 8000--8007 or 8012--8017 family opens that family's card. Spinetrich
+  Kino and Kraken Kino rendered for the current progress, and Chapter 8000-1
+  reached `start_quest` and loaded its battle resources. The reading that a
+  *tier-1* row plus a chapter flag is the right shape for that card is
+  **withdrawn**: it renders, but as a single stage rather than a card, which
+  is why only tier 1 was ever reachable. See the 2026-08-08 entry below.
 - **Confirmed by ARM64 disassembly (issue 20), original-client observation
   pending:** the final client validates a selector row *twice*, under two
   different rules, and the mismatch is what made the Hunting Zone selector
@@ -1513,3 +1515,72 @@ restores a declared limit, it does not invent one for state it cannot read.
 being used as a general-purpose EXP route for any party. That was possible only
 because the limit went unasserted; the game declares otherwise. Nothing about
 either Road's rewards, stamina, or unlock changed.
+
+## 2026-08-08: Strikes Back cards never expanded, so only tier 1 was reachable
+
+**Reported symptom.** "Are the Strikes Back higher level stages active? I have
+all of the stage 1s unlocked, but I assume the higher stages unlock later."
+They were not gated on later progress. They were unreachable.
+
+- **Confirmed by ARM64 disassembly -- the client folds on the shape of the id
+  alone.** `UISpecialSelect.IsFolded` (`0xF821DC`) is exactly
+  `!id.Contains("-")`; the `"-"` literal resolves through the GOT relocation at
+  `0x2AD43D8`. `UISpecialItem.OnClickedBtn` branches on it at `0xF81DD4`: a
+  folded id builds a tier sub-list from
+  `GetSectionTitlesIfSpecialFoldedQuest` or, failing that,
+  `GetSectionCount` and `Concat(chapter, "-", i)`; an unfolded id calls
+  `UISpecialSelect.StartSpecial` on that one stage. This server advertised
+  `8000-1`, which carries a section, so every Strikes Back card was an
+  ordinary single-stage row. Tapping it started tier 1. Tiers 2 and up were
+  never drawn, and no amount of story progress would have drawn them.
+- **Confirmed -- the list builder has the matching branch.**
+  `UISpecialSelect.<GetList>c__Iterator0.MoveNext` calls `IsFolded` at
+  `0xF897C8` and, for a folded row, admits the card when `IsQuestOpen(chapter)`
+  holds or, failing that, when any `IsQuestOpen("<chapter>-<i>")` for `i` in
+  `1..GetSectionCount` does (`0xF89818`--`0xF898B4`). A section-less id is
+  therefore safe: `IsQuestOpen` (`0xF84D84`) splits on `"-"` and tests
+  `parts.Length >= 2` at `0xF84FD0` before it reads a section at all.
+- **Confirmed -- the tiers inside the card are gated individually, and the
+  chapter key answers for all of them.** `IsQuestOpen` builds its key as
+  `Concat("sp_ch_", id)` (`0xF84F04`) for whatever id it is handed, and the
+  expanded sub-list runs through
+  `UISpecialSelect2.<GetList>c__Iterator0.MoveNext` (`IsQuestOpen` at
+  `0xD5422C`) with `UISpecialSelect2.UpdateItems` revalidating by
+  `CheckQuestFlag` every frame (`0xF8AD8C`). `CheckQuestFlag` (`0xF85108`) is
+  `GetBoolean(key)` or, failing that, `GetBoolean(key.Substring(0,
+  key.LastIndexOf("-")))` -- the chapter fallback `event_flag_data` already
+  documents. So the chapter key alone would have kept the tiers on screen; it
+  was never the missing half. `sp_ch_8001-2`, `-3`, and `-4` are in the
+  community flag table, so the retired service named sections individually
+  anyway, and the next entry is why that matters.
+- **Confirmed -- the client's tier count is hard-coded and wrong for half the
+  families, and the chapter fallback is what makes that dangerous.**
+  `UISpecialSelect.GetSectionCount` (`0xF82328`) parses the chapter and, for
+  `ChapterInterface.IsCounterDescentQuest`, returns
+  `NumOfCounterDescentQuestSections`, which its `.cctor` sets to 5 at
+  `0xD07608` across the whole 8000--8999 range (`0xD07588`, `0xD07598`).
+  Chapters 8012--8017 have three sections in BattleData, so their cards expand
+  to `-4` and `-5`, which no section backs. `IsQuestOpen` does not drop those
+  on its own: a null `BattleData.Chapter.GetSection` skips the parent test and
+  tail-calls `CheckQuestFlag` at `0xF85040`, so a chapter key would answer true
+  and offer a tier with no stamina, no battles, and a `start_quest` this server
+  refuses. Withholding the chapter key is the only thing that removes them.
+- **Confirmed by BattleData -- no clear-order chain is involved.** Read through
+  the same type trees `battledata_importer` uses, every section of Chapters
+  8000--8018 carries an empty `parentQuest`, unlike Tower 9000--9003 and
+  Melting Pot 9100--9102, which chain. The `questClearDate` gate that hid
+  Melting Pot's later sections does not reach Strikes Back.
+
+**Local policy.** `descentHuntingList` now advertises the bare chapter, and
+login flags one `sp_ch_<chapter>-<section>` per section the catalog declares
+and no chapter key -- the only family here flagged that way, and deliberately
+so. The card still lists, because `<GetList>` and `UpdateItems` both admit a
+folded row on any open tier, and the two phantom rows on a three-tier family
+fail the gate that a chapter key would have passed for them.
+
+`IsEnableToStartQuestLocal` (`0xDB0984`) is unaffected: its one
+`EventManager.GetBoolean` reads `multiplay_stamina_zero` (`0xDB0A0C`) and no
+`sp_ch_` key, so withholding the chapter flag reaches presentation only.
+
+No unlock schedule changed -- the families still open on their existing Chapter
+5--18 gates, and all of their tiers were already accepted by `start_quest`.

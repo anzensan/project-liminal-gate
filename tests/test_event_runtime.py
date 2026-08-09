@@ -953,14 +953,18 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         constants = server_status["constants"]
-        self.assertEqual(["8000-1", "8001-1"], constants["descentHuntingList"])
+        self.assertEqual(["8000", "8001"], constants["descentHuntingList"])
         self.assertEqual(["3003-1"], constants["specialQuestList"])
         status, login = self.get(
             f"/gd/login?otk={self.token}&uuid={self.account_id}&requestID=login"
         )
         self.assertEqual(200, status)
         self.assertEqual(
-            sorted([*music_event_flags(), "sp_ch_8000", "sp_ch_8001"]),
+            sorted([
+                *music_event_flags(),
+                *(f"sp_ch_8000-{section}" for section in range(1, 6)),
+                *(f"sp_ch_8001-{section}" for section in range(1, 6)),
+            ]),
             sorted(login["eventFlags"]),
         )
 
@@ -1074,8 +1078,8 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(
             [
-                *(f"{chapter}-1" for chapter in range(8000, 8008)),
-                *(f"{chapter}-1" for chapter in range(8012, 8018)),
+                *(str(chapter) for chapter in range(8000, 8008)),
+                *(str(chapter) for chapter in range(8012, 8018)),
             ],
             server_status["constants"]["descentHuntingList"],
         )
