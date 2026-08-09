@@ -27,9 +27,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from liminal_gate.luck_data import LUCK_TENTHS_MAX
 from liminal_gate.plus_type_data import PLUS_COUNT_MAX
 
 
+#: Every roster member this server models, which is exactly the set
+#: `_valid_generic_character_record` requires or types. A member outside it is
+#: reported here rather than refused there; see the note in `_validate_roster`.
+_MODELLED_ROSTER_MEMBERS = frozenset({
+    "id", "buddy", "date", "jobSlots", "jobLevels", "jobID", "flags",
+    "skillBoost", "luck", "plusCount",
+})
 #: The low bits of a packed `jobLevels` entry hold the job level itself.
 JOB_LEVEL_MASK = 0xFFF
 #: `ServerConstants.levelCap`, the highest level the client will show.
@@ -174,6 +182,26 @@ def _validate_roster(account_id: str, userdata: dict[str, Any]) -> list[Finding]
         if row["id"] in seen:
             findings.append(Finding(account_id, where, f"character id {row['id']} appears more than once"))
         seen.add(row["id"])
+        # The clear parser no longer refuses a roster row for carrying a member
+        # this server does not model -- doing so cost an account every clear it
+        # would ever attempt, twice. Reporting it here is where that strictness
+        # went: an unfamiliar member stays visible without being unplayable,
+        # which is the same severity an out-of-range plus count already has.
+        unmodelled = sorted(set(row) - _MODELLED_ROSTER_MEMBERS)
+        if unmodelled:
+            findings.append(Finding(
+                account_id, where,
+                f"carries {len(unmodelled)} roster member(s) this server does not model "
+                f"({', '.join(unmodelled)}); settlement ignores them and they are "
+                f"preserved as sent, but a member that should drive play is a gap here",
+            ))
+        luck = row.get("luck")
+        if luck is not None and (type(luck) is not int or not 0 <= luck <= LUCK_TENTHS_MAX):
+            findings.append(Finding(
+                account_id, f"{where}.luck",
+                f"Luck is a whole number of tenths from 0 to {LUCK_TENTHS_MAX} "
+                f"({LUCK_TENTHS_MAX // 10}%); the client clamps a higher one at its own cap",
+            ))
         plus_count = row.get("plusCount")
         if plus_count is not None and (type(plus_count) is not int or not 0 <= plus_count <= PLUS_COUNT_MAX):
             findings.append(Finding(
