@@ -15,6 +15,7 @@ python3 -m liminal_gate.release_audit
 
 - Strict parsing is policy: unknown wire/document shapes must fail visibly,
   never be silently accepted. Tests assert exact error-message strings.
+- Never make a new branch without checking with the user first.
 - Generated catalog bytes are hashed into provenance chains — do not change
   output formatting (indent, key order) casually.
 - The account state document is an implicit schema; renaming keys breaks
