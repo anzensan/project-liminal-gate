@@ -9,14 +9,17 @@ The server machine needs:
 
 - Python 3.11 or newer and this source checkout;
 - the matching Android resource tree;
+- your own copy of the APK, beside that resource tree;
 - a stable address that the client device can reach; and
 - an unused TCP port allowed by the machine's firewall.
 
-It does **not** need the APK, Android SDK, ADB, Java, a signing key, an emulator,
-or a connected Android device. Its local input layout is:
+It does **not** need the Android SDK, ADB, Java, a signing key, an emulator, or a
+connected Android device: this host never prepares a client. Its local input
+layout is:
 
 ```text
 local-input/
+  YOUR-CLIENT.apk
   resources/
     data_u2017/
       android/
@@ -25,6 +28,17 @@ local-input/
         ...other resource categories...
 user-data/
 ```
+
+**Why the APK is on this machine too.** Four of the catalogs the complete game
+needs are derived from it, and this host derives its own rather than waiting for
+copies from the machine that builds the client. That copy step is the one
+operators skip, and skipping it is close to invisible: the server starts, serves
+the story, and then refuses an ordinary Companion equip with a reply the client
+shows as a Network Error. Nothing is *sent* anywhere — the file is read locally,
+exactly as guided setup reads it.
+
+A host that genuinely cannot hold the APK still works; see [If this host cannot
+derive its own catalogs](#if-this-host-cannot-derive-its-own-catalogs).
 
 The examples below use port `8642`. Choose another port if necessary, but use
 that same port everywhere and keep it to four digits or fewer for the legacy
@@ -111,38 +125,34 @@ Three things a pull and a restart do **not** do:
 | --- | --- | --- |
 | Rebuild the APK | A release changes the client patch plan — an Android compatibility fix, for instance | Rebuild and reinstall from the APK workstation, with the same keystore. The changelog entry says when a release needs this. |
 | Change the address or port | You move the server or pick a different port | Both are compiled into the APK, so rebuild and reinstall |
-| Regenerate the derived catalogs | A release changes one of the *generators* rather than the server | Rerun guided setup on the APK workstation and copy the refreshed files over; see the next section |
+| Regenerate the derived catalogs | A release changes one of the *generators* rather than the server | Restart once with `--rederive-catalogs`; nothing is copied between machines |
 
-The server does refresh `resources.json` from the resource tree on every start,
-so that one needs nothing. `story-outcomes.json`, `event-catalog.json`,
-`character-catalog.json`, and `companion-equipment.json` are derived once and
-then read as they are, which is why a generator change needs the extra step.
+The server refreshes `resources.json` from the resource tree on every start, so
+that one needs nothing. The four derived catalogs are keyed to the APK they came
+from, so an ordinary restart reuses them and only a changed APK re-derives them.
+A corrected *generator* leaves the APK alone and therefore leaves them looking
+current, which is what `--rederive-catalogs` is for:
+
+```sh
+sudo systemctl stop project-liminal-gate
+cd /opt/project-liminal-gate && git pull --ff-only
+python3 -m liminal_gate.server_setup --port 8642 --rederive-catalogs --prepare-only
+sudo systemctl start project-liminal-gate
+```
+
+The changelog entry for that release says when this is needed; when it says
+server-only, a pull and a restart are genuinely all of it.
 
 If you are unsure whether an update needs more than a restart, the changelog for
 that release states which. When it says server-only, a restart is genuinely all
 of it.
 
-## Which generated files the server machine needs
+## What this host generates
 
-Retain the matching resource tree, `resources.json`, `story-outcomes.json`,
-`event-catalog.json`, `character-catalog.json`, `companion-equipment.json`,
-optional `public_data/`, and the server's durable `bootstrap-state.json`. Keep
-the remaining generated output on the setup workstation.
-
-If the dedicated host predates one of these generated runtime catalogs, rerun
-guided setup on the APK workstation and copy the matching generated files into
-the dedicated server's `user-data/` directory before updating the server. See
-[What setup generates](generated-files.md).
-
-## What this launcher generates, and what it only consumes
-
-This host derives everything it can from your own APK and resource tree: the
-resource manifest, the tuning document, and both banner families — the Pact
-artwork and the Attack of Coin Creeps cards, neither of which the archive
-retained in the form the client asks for.
-
-Four catalogs it does **not** derive, because they need the IL2CPP toolchain
-this launcher deliberately does not carry:
+Everything it needs, from your own APK and resource tree: the resource manifest,
+the tuning document, both banner families — the Pact artwork and the Attack of
+Coin Creeps cards, neither of which the archive retained in the form the client
+asks for — and these four catalogs:
 
 | Catalog | Without it |
 | --- | --- |
@@ -151,16 +161,38 @@ this launcher deliberately does not carry:
 | `event-catalog.json` | Archive Special Quests, Tower, and solo Eidolon quests are absent |
 | `character-catalog.json` | Pact class rates and duplicate gains fall back to uniform |
 
-Generate them once with [guided setup](../README.md#5-run-the-setup-command)
-on a machine that has the toolchain, then copy them into this host's data
-directory. Startup names each one it could not find, along with what a player
-loses by its absence, so a host missing one says so on every restart rather
-than quietly serving a smaller game.
+**There is nothing to copy from the APK workstation.** The two machines each read
+the same APK and each derive what they need from it: one builds a client, this
+one serves it.
 
-This is the division worth knowing: **guided setup is the generator, this
-launcher is the runner.** A dedicated host with an empty data directory starts
-and serves the story, but without those four files it is not the complete local
-game the README describes.
+The first start that sees a new APK does the derivation, which takes several
+minutes — it disassembles every chapter's battle program. Each catalog records
+the APK it came from, so every later start finds them current and begins
+immediately. Replacing the APK with a different build is what makes them stale,
+and the next start derives again.
+
+Deriving needs three tools that the client-facing half does not: UnityPy,
+Il2CppDumper with a .NET runtime, and a disassembler that understands AArch64.
+Install whatever is missing with:
+
+```sh
+python3 -m liminal_gate.doctor --install-missing
+```
+
+### If this host cannot derive its own catalogs
+
+It still starts and still serves the story. What it cannot do is the rest of the
+game, so the shortfall is reported at every start rather than left to be
+discovered as a Network Error mid-play: the reason the derivation did not happen,
+then one line per catalog naming what a player loses without it.
+
+Two ways to run a host like that deliberately:
+
+- Generate the four with [guided setup](../README.md#5-run-the-setup-command) on
+  the APK workstation and copy them into this host's `user-data/`. They are
+  ordinary files and the server does not care which machine produced them.
+- Pass `--no-derive-catalogs` so this host never attempts derivation and uses
+  whatever copies its data directory already holds.
 
 ## Keep the server running with systemd
 

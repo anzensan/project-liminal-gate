@@ -10,6 +10,43 @@ superseded before release and says so where it stands.
 
 ### Added
 
+- **A dedicated server is one command again, with nothing to copy.** Setting up
+  a separate always-on host used to mean running guided setup on the machine
+  that builds the APK and then hand-copying four generated catalogs onto the
+  server. That copy is the step operators skip, and skipping it does not look
+  like a mistake: the server starts, serves the story, and then refuses an
+  ordinary Companion equip with a reply the client shows as a Network Error the
+  player has to force-close to escape.
+
+  There is no copy step now. Put your own APK beside the resource tree the
+  server already needs, and `server_setup` derives `character-catalog.json`,
+  `companion-equipment.json`, `story-outcomes.json`, and `event-catalog.json`
+  itself. The APK is read locally and nothing is sent anywhere, exactly as
+  guided setup reads it.
+
+  The first start that sees a new APK spends several minutes disassembling
+  chapter programs. Each catalog records the APK it came from, so every later
+  start finds them current and begins immediately; only a changed APK derives
+  again. A release that corrects a *derivation* rather than the server leaves
+  the APK alone and so leaves them looking current — restart once with
+  `--rederive-catalogs` when a changelog entry says so.
+
+  Deriving needs UnityPy, Il2CppDumper with a .NET runtime, and an AArch64
+  disassembler; `python3 -m liminal_gate.doctor --install-missing` installs
+  what is absent. A host that cannot or should not hold the APK still works:
+  copy the four catalogs in as before, or pass `--no-derive-catalogs` to say so
+  deliberately.
+
+- **Startup says what this host is missing, at the end, in one block.** Every
+  shortfall was already reported at the moment it happened, which is the wrong
+  moment to read it — derivation and the catalog checks are minutes and
+  hundreds of lines apart. A start now ends either with one line confirming the
+  complete game, or with a framed block listing every missing catalog by what a
+  player will actually hit ("equipping any Companion fails with a Network
+  Error"), the one cause behind them, and the one command that fixes it. A
+  fatal startup error is framed the same way, because under systemd it is
+  otherwise followed within seconds by the whole start sequence again.
+
 - **The chosen numbers are now yours to choose.** Some of what this server
   serves is recovered from the client; some of it this project had to pick.
   Until now the picked half was module constants, so changing any of it meant
