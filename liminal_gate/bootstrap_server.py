@@ -130,6 +130,7 @@ from liminal_gate.companion_draw_catalog import BundledCompanionDrawPolicy, Comp
 from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog, validate_bundled_pools
 from liminal_gate.tuning import DEFAULT_TUNING, PactTuning, Tuning, TuningError, load_tuning
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
+from liminal_gate.achievement_data import multiplay_achievement_projection
 from liminal_gate.message_catalog import (
     MessageCatalog,
     MessageCatalogError,
@@ -987,6 +988,9 @@ class BootstrapState:
             # nested projection on every read so a Pact/quest mutation cannot
             # reappear as an old wallet after a restart.
             changed = _synchronize_wallet_projection(userdata) or changed
+            # The client's `multiplayData` is null until a response carries it,
+            # and the achievements screen dereferences it. See the function.
+            changed = _synchronize_multiplay_projection(userdata) or changed
             # The client reads ChrData.jobLevels with LitJson's double accessor.
             # Locally persisted values can otherwise be integers after a manual
             # test seed or a permissive local write, which makes the client fail
@@ -5020,6 +5024,32 @@ def _synchronize_wallet_projection(userdata: dict[str, Any]) -> bool:
     if not all(type(value) is int and value >= 0 for value in values.values()) or userdata.get("valuables") == values:
         return False
     userdata["valuables"] = values
+    return True
+
+
+def _synchronize_multiplay_projection(userdata: dict[str, Any]) -> bool:
+    """Install the `multiplayData` object the achievements screen dereferences.
+
+    `UserData..ctor` is a two-instruction tail call to its base constructor, so
+    `multiplayData` carries no field initializer and stays null until a response
+    contains the key.  `AppServerUtil.LoadUserdataFromJson` only loads it when
+    the key is present, so a server that never sends it leaves the field null
+    for the whole session.  That was survivable while the achievements screen
+    listed only the 42 `achive-1` records; once `achive-hide` is sent as well,
+    `AchievementUtil.IsUnlocked` reaches the Co-op and VS cases, and each of
+    them dereferences `UserData.instance.multiplayData` behind the il2cpp
+    null-check that raises `NullReferenceException`.  Both `CreateList` and the
+    badge's `GetUnlockedAchivementCount` call it, so the object has to exist.
+
+    It is rebuilt on every read rather than seeded once, exactly as the wallet
+    projection above is: it is derived from the recovered conditions, not player
+    state, and an account saved before this existed must not keep a screen that
+    cannot be finished.
+    """
+    projection = multiplay_achievement_projection()
+    if userdata.get("multiplayData") == projection:
+        return False
+    userdata["multiplayData"] = projection
     return True
 
 

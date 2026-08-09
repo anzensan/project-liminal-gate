@@ -27,6 +27,8 @@ from liminal_gate.achievement_data import (
     ACHIEVEMENT_ITEM_COUNT,
     ACHIEVEMENT_ITEM_ID,
     ACHIEVEMENT_ROWS,
+    MULTIPLAY_ACHIEVEMENT_CONDITIONS,
+    multiplay_achievement_projection,
 )
 from liminal_gate.event_flag_data import ACHIEVEMENT_EVENT_FLAGS, achievement_event_flags
 
@@ -94,6 +96,118 @@ class BundledAchievementPolicyTest(unittest.TestCase):
         flags = achievement_event_flags()
         self.assertEqual({"achive-1", "achive-hide"}, set(flags))
         self.assertTrue(all(entry["value"] is True for entry in flags.values()))
+
+
+def _client_reads(projection: dict[str, object], field: str, index: int | None) -> int:
+    """Evaluate `MultiplayUserData` exactly as the reviewed client does.
+
+    `CoopPrize` reads the scalar `prize`; every other Co-op and VS case goes
+    through `GetNumImpl`, which sums the whole list for index -1 and returns 0
+    for an index at or past the list's end rather than throwing.
+    """
+    value = projection[field]
+    if index is None:
+        assert isinstance(value, int)
+        return value
+    assert isinstance(value, list)
+    if index < 0:
+        return sum(value)
+    return value[index] if index < len(value) else 0
+
+
+class MultiplayProjectionTest(unittest.TestCase):
+    """The nineteen Co-op and VS records, settled through `multiplayData`.
+
+    Co-op and VS needed a player population, so these are the one family whose
+    conditions no amount of play can reach on an archived service. The client
+    evaluates them against counters the server supplies, which makes the
+    counters the only channel -- and makes it worth re-running the client's own
+    predicate here rather than trusting the derivation to stay right.
+    """
+
+    def test_every_recovered_condition_is_satisfied(self) -> None:
+        projection = multiplay_achievement_projection()
+        self.assertEqual(19, len(MULTIPLAY_ACHIEVEMENT_CONDITIONS))
+        for identifier, key, field, index, threshold in MULTIPLAY_ACHIEVEMENT_CONDITIONS:
+            with self.subTest(f"{identifier} {key}"):
+                self.assertGreaterEqual(_client_reads(projection, field, index), threshold)
+
+    def test_no_counter_exceeds_what_the_conditions_ask_for(self) -> None:
+        """A fabricated history is bounded by the thresholds that force it.
+
+        `coopFreePlayNum` is the one list two kinds of condition touch at once:
+        slots 0 and 1 each need 50, which already covers the separate sum
+        condition of 30, so nothing is topped up on its account.
+        """
+        for field in {row[2] for row in MULTIPLAY_ACHIEVEMENT_CONDITIONS if row[3] is not None}:
+            rows = [row for row in MULTIPLAY_ACHIEVEMENT_CONDITIONS if row[2] == field]
+            slots = {row[3]: row[4] for row in rows if row[3] >= 0}
+            wanted = max((row[4] for row in rows if row[3] < 0), default=0)
+            with self.subTest(field):
+                self.assertEqual(max(wanted, sum(slots.values())), sum(multiplay_achievement_projection()[field]))
+        self.assertEqual(50, multiplay_achievement_projection()["prize"])
+        self.assertEqual([50, 50], multiplay_achievement_projection()["coopFreePlayNum"])
+
+    def test_the_object_carries_every_key_the_loader_reads(self) -> None:
+        """`LoadFromJsonNormal`'s own key list, in the order it reads them.
+
+        `rank` is absent because the client derives it from `exp` instead of
+        loading it, and the two running consecutive-win lists stay empty
+        because the conditions read the `...Max` lists beside them.
+        """
+        projection = multiplay_achievement_projection()
+        self.assertEqual(
+            {
+                "exp", "titleList", "showTitles", "friendList", "prize",
+                "coopFriendPlayNum", "coopFreePlayNum", "coopSimplePlayNum",
+                "vsFreePlayNum", "vsFriendPlayNum", "vsFreeWinNum", "vsFriendWinNum",
+                "vsFreeConsectiveWinNum", "vsFriendConsectiveWinNum",
+                "vsFreeConsectiveWinMax", "vsFriendConsectiveWinMax",
+                "vsPlayChapter", "vsPlayMatchType", "vsStaminaRefillStartTime",
+            },
+            set(projection),
+        )
+        self.assertNotIn("rank", projection)
+        self.assertEqual([], projection["vsFreeConsectiveWinNum"])
+        self.assertEqual([], projection["vsFriendConsectiveWinNum"])
+        # An account that never played holds no titles and no multiplay rank.
+        self.assertEqual(0, projection["exp"])
+        self.assertEqual([], projection["titleList"])
+        self.assertEqual([], projection["friendList"])
+
+    def test_a_userdata_read_installs_it_on_a_save_written_without_it(self) -> None:
+        """The field is null on the client until a response carries the key.
+
+        A save from before this existed must not keep an achievements screen
+        that raises rather than lists, so the read rebuilds the projection the
+        same way it rebuilds the wallet.
+        """
+        import tempfile
+        from pathlib import Path
+
+        from liminal_gate.bootstrap_server import BootstrapState
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            try:
+                state.create_account("token", "account", {
+                    "coins": 30_000, "energy": 0, "freeEnergy": 72,
+                    "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+                    "itemList": [0] * 181, "chrdata": [], "summonList": [0] * 16,
+                    "buddyInfo": {"list": [], "record": []},
+                })
+                self.assertNotIn("multiplayData", state.accounts["account"]["userdata"])
+                served = state.userdata_for("token")
+                self.assertIsNotNone(served)
+                assert served is not None
+                self.assertEqual(multiplay_achievement_projection(), served["multiplayData"])
+                # And it is durable, so a restart does not serve a null field once.
+                self.assertEqual(
+                    multiplay_achievement_projection(),
+                    state.accounts["account"]["userdata"]["multiplayData"],
+                )
+            finally:
+                state.close()
 
 
 if __name__ == "__main__":
