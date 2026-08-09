@@ -260,43 +260,52 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual(409, status)
         self.assertEqual("world_map_special_active", self.phase())
 
-    def test_a_coin_claim_is_refused(self) -> None:
+    def test_a_reported_coin_drop_is_settled(self) -> None:
+        """The battle's own Coins land, the way Hunting's do.
+
+        This was refused while the chapter's rewards were unrecovered. The
+        client is the only party that ever knew what its battle paid, and a
+        refusal did not withhold the Coins so much as wedge the account: it
+        leaves the battle active until the same quest is replayed.
+        """
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
-        self.assertEqual(409, self.clear("wms-clear-a", SHINEN_FIRST, coins=500)[0])
-        self.assertEqual(100, self.userdata()["coins"])
+        self.assertEqual(200, self.clear("wms-clear-a", SHINEN_FIRST, coins=500)[0])
+        self.assertEqual(600, self.userdata()["coins"])
+        self.assertEqual("free_roam", self.phase())
 
     def test_the_battles_own_experience_is_accepted_up_to_its_ceiling(self) -> None:
         """A won level-90 battle grants EXP; refusing it failed the clear.
 
-        The section's own BattleData switches Coins, items, and Luck chests off,
-        so those stay refused. Experience is not one of those channels -- it is
-        what the battle produced -- and a zero ceiling meant 25 stamina bought a
-        fight the player won and the server then rejected.
+        Experience is what the battle produced, and a zero ceiling meant 25
+        stamina bought a fight the player won and the server then rejected.
+        The ceiling is still enforced, and is the one bound this clear keeps
+        over the channels the client reports.
         """
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
         self.assertEqual(200, self.clear("wms-clear", SHINEN_FIRST, exp=1000)[0])
 
-    def test_the_roster_may_gain_levels_but_not_members(self) -> None:
-        """Paying EXP must not turn the roster into a grant channel.
+    def test_the_roster_may_gain_both_levels_and_members(self) -> None:
+        """The roster is how a recruited monster reaches the account.
 
         Levels live in `chrdata`, so a clear that pays experience has to accept
-        a changed roster -- but this chapter mints nobody, and its reported
-        Companions are refused outright. A roster naming a character the account
-        does not hold would be exactly the grant the Companion check denies,
-        arriving through the other door.
+        a changed roster, and a recruit arrives through that same array.  The
+        membership check that used to refuse one refused the other with it,
+        which is why this chapter could never settle the recruit its own battle
+        rolled.  `_preserved_roster` is authoritative for every character the
+        submission names and still restores any the client omitted.
         """
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
-        intruder = dict(self.character, id=self.character["id"] + 991)
-        status, refused = self.clear(
-            "wms-injected", SHINEN_FIRST, exp=1000, roster=[self.character, intruder],
-        )
-        self.assertEqual(409, status)
-        self.assertEqual("invalid_local_world_map_special_result", refused["error"])
-        self.assertEqual("world_map_special_active", self.phase())
+        recruit = dict(self.character, id=self.character["id"] + 991)
+        self.assertEqual(200, self.clear(
+            "wms-recruit", SHINEN_FIRST, exp=1000, roster=[self.character, recruit],
+        )[0])
+        self.assertEqual("free_roam", self.phase())
         self.assertEqual(
-            [self.character["id"]], [row["id"] for row in self.userdata()["chrdata"]],
+            [self.character["id"], recruit["id"]],
+            [row["id"] for row in self.userdata()["chrdata"]],
         )
 
+        self.assertEqual(200, self.start("wms-start-2", SHINEN_FIRST)[0])
         levelled = dict(self.character, jobLevels=[9, 0, 0])
         self.assertEqual(
             200, self.clear("wms-levelled", SHINEN_FIRST, exp=1000, roster=[levelled])[0],
