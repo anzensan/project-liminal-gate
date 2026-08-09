@@ -32,6 +32,7 @@ from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASE
 from liminal_gate.pact_banner_importer import PACT_BANNERS
 from liminal_gate.server_config import standard_policy_fields
 from liminal_gate.file_digests import sha256_file
+from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT, TuningError, load_tuning, write_default_tuning
 
 
 DEFAULT_APK = tester_setup.DEFAULT_APK
@@ -42,6 +43,8 @@ HOST_ACTIVITY = "org.liminalgate.android.HostedActivity"
 MINIMUM_DEVICE_API = 24
 MINIMUM_DEVICE_FREE_BYTES = 4 * 1024**3
 REVIEWED_SOURCE_SHA256 = "f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15"
+#: Where the packaged tuning document lands in the app-private files dir.
+TUNING_RUNTIME_FILE = DEFAULT_TUNING_DOCUMENT
 GRADLE_VERSION = "8.11.1"
 GRADLE_URL = f"https://services.gradle.org/distributions/gradle-{GRADLE_VERSION}-bin.zip"
 GRADLE_SHA256 = "f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
@@ -225,6 +228,7 @@ def _build_id(
     catalogs: dict[str, Path],
     public_data: dict[str, Path],
     host_source: Path,
+    tuning: Path,
 ) -> str:
     """Bind readiness to the exact client, content, and embedded host sources."""
     digest = hashlib.sha256()
@@ -252,6 +256,10 @@ def _build_id(
     profile = Path(__file__).resolve().parent.parent / "profiles/legacy-client-bootstrap.json"
     digest.update(b"profile\0")
     digest.update(sha256_file(profile).encode())
+    # The operator's tuning is a build-time choice on this route, so a changed
+    # document has to change the build the device reports.
+    digest.update(b"tuning\0")
+    digest.update(sha256_file(tuning).encode())
     digest.update(f"{LOOPBACK_HOST}:{LOOPBACK_PORT}".encode())
     return digest.hexdigest()
 
@@ -294,7 +302,15 @@ def _update_source_tree_digest(
 
 
 def write_server_runtime(path: Path, build_id: str, catalogs: dict[str, Path]) -> None:
-    """Render the Android entrypoint's strict, app-private server config."""
+    """Render the Android entrypoint's strict, app-private server config.
+
+    `tuning` names a runtime file rather than an operator path. On this route
+    the document is a *build-time* choice: the device has no shell to edit one
+    in, and `_materialize_runtime_files` republishes every runtime member on
+    each launch, so anything written beside it on the device would be replaced.
+    The operator edits `tuning.toml` in their data directory and rebuilds, and
+    the build id below changes with it.
+    """
     if set(catalogs) != set(REQUIRED_CATALOGS):
         raise OnDeviceSetupError(
             "Android server runtime requires exactly these generated catalogs: "
@@ -312,6 +328,7 @@ def write_server_runtime(path: Path, build_id: str, catalogs: dict[str, Path]) -
         "event_catalog": "catalogs/event-catalog.json",
         "character_catalog": "catalogs/character-catalog.json",
         "companion_equipment_catalog": "catalogs/companion-equipment.json",
+        "tuning": TUNING_RUNTIME_FILE,
     }
     path.write_text(json.dumps({"schema_version": 1, "config": config, "build_id": build_id}, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -558,6 +575,21 @@ def prepare_on_device_apk(
     )
     catalogs = catalog_inputs(data_directory)
     public_data = public_data_inputs(data_directory)
+    # Guaranteed here rather than assumed from `prepare_local_tester`, which
+    # also writes it: this function is what bakes the document in, so it owns
+    # having one. `write_default_tuning` never overwrites, so an operator's
+    # edits survive every rebuild. Parsed rather than trusted, because a
+    # document that fails to load would otherwise reach a device as a server
+    # that refuses to start, with no shell to fix it from.
+    tuning_document = data_directory / DEFAULT_TUNING_DOCUMENT
+    write_default_tuning(tuning_document)
+    try:
+        load_tuning(tuning_document)
+    except TuningError as error:
+        raise OnDeviceSetupError(
+            f"the tuning document at {tuning_document} is not valid, so this build would "
+            f"install a server that cannot start: {error}"
+        ) from error
     # The existing plan is the reviewed literal patch path. It guards source
     # bytes before any combined-APK work and keeps both original ABIs intact.
     plan_path = work_directory / "loopback-patch-plan.json"
@@ -577,6 +609,7 @@ def prepare_on_device_apk(
         catalogs,
         public_data,
         host_source,
+        tuning_document,
     )
     server_runtime = work_directory / "server.json"
     write_server_runtime(server_runtime, build_id, catalogs)
@@ -591,7 +624,11 @@ def prepare_on_device_apk(
     _call_assembler(
         _assembly_module(), patched_apk=patched, host_apk=host_apk, output_apk=unsigned,
         patched_sha256=patched_sha256, resource_root=resource_root, catalogs=catalogs,
-        runtime_files={"server.json": server_runtime, **public_data},
+        runtime_files={
+            "server.json": server_runtime,
+            TUNING_RUNTIME_FILE: tuning_document,
+            **public_data,
+        },
         build_id=build_id, seed_state=seed,
     )
     signed = data_directory / "on-device-liminal-gate.apk"

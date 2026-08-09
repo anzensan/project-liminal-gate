@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import StringIO
 from pathlib import Path
 import subprocess
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -28,8 +29,10 @@ class OnDeviceSetupTest(unittest.TestCase):
             source.mkdir(parents=True)
             authored = source / "HostedActivity.java"
             authored.write_text("first", encoding="utf-8")
+            tuning = root / "tuning.toml"
+            tuning.write_text("schema_version = 1\nprovenance = \"user-supplied\"\n", encoding="utf-8")
             first = on_device_setup._build_id(
-                "a" * 64, "b" * 64, manifest, {}, {}, host,
+                "a" * 64, "b" * 64, manifest, {}, {}, host, tuning,
             )
             generated = host / "app/build/generated.bin"
             generated.parent.mkdir(parents=True)
@@ -37,16 +40,51 @@ class OnDeviceSetupTest(unittest.TestCase):
             self.assertEqual(
                 first,
                 on_device_setup._build_id(
-                    "a" * 64, "b" * 64, manifest, {}, {}, host,
+                    "a" * 64, "b" * 64, manifest, {}, {}, host, tuning,
                 ),
             )
             authored.write_text("second", encoding="utf-8")
+            second = on_device_setup._build_id(
+                "a" * 64, "b" * 64, manifest, {}, {}, host, tuning,
+            )
+            self.assertNotEqual(first, second)
+            # The operator's tuning is baked in on this route, so a changed
+            # document has to change the build the device reports.
+            tuning.write_text(
+                'schema_version = 1\nprovenance = "user-supplied"\n\n[exp]\nmultiplier_percent = 150\n',
+                encoding="utf-8",
+            )
             self.assertNotEqual(
-                first,
+                second,
                 on_device_setup._build_id(
-                    "a" * 64, "b" * 64, manifest, {}, {}, host,
+                    "a" * 64, "b" * 64, manifest, {}, {}, host, tuning,
                 ),
             )
+
+    def test_the_packaged_config_names_the_tuning_document(self) -> None:
+        """The combined APK ignored `tuning.toml` entirely until this.
+
+        `prepare_local_tester` writes the document into the operator's data
+        directory, so it sat there inviting edits that could never take effect:
+        the on-device config carried no `tuning` key, and `build_server` falls
+        back to `DEFAULT_TUNING` when it is absent. The key has to be a runtime
+        member name, because `_load_config` resolves every `_PATH_FIELDS` entry
+        against the app-private files dir.
+        """
+        from liminal_gate.server_config import _PATH_FIELDS
+
+        with tempfile.TemporaryDirectory() as temporary:
+            out = Path(temporary) / "server.json"
+            on_device_setup.write_server_runtime(out, "a" * 64, {
+                name: Path(name) for name in on_device_setup.REQUIRED_CATALOGS
+            })
+            config = json.loads(out.read_text(encoding="utf-8"))["config"]
+            self.assertEqual("tuning.toml", config["tuning"])
+            self.assertEqual(on_device_setup.TUNING_RUNTIME_FILE, config["tuning"])
+            # Resolved as a path by the entrypoint rather than passed through.
+            self.assertIn("tuning", _PATH_FIELDS)
+            # Relative, or `_safe_relative` rejects it at launch.
+            self.assertFalse(Path(config["tuning"]).is_absolute())
 
     def test_device_requires_supported_abi_not_both(self) -> None:
         with patch.object(on_device_setup, "device_facts", return_value=(34, ("arm64-v8a",), 5 * 1024**3)):
@@ -119,8 +157,11 @@ class OnDeviceSetupTest(unittest.TestCase):
             derive.assert_called_once()
             self.assertEqual(on_device_setup.LOOPBACK_PORT, derive.call_args.args[3])
             self.assertEqual("a" * 64, assemble.call_args.kwargs["build_id"])
+            # The tuning document rides along as a runtime member: on this
+            # route it is a build-time choice, because the device has no shell
+            # to edit one in and every runtime member is republished on launch.
             self.assertEqual(
-                {"server.json"} | {
+                {"server.json", on_device_setup.TUNING_RUNTIME_FILE} | {
                     f"public_data/banners/{name}_en.png"
                     for name in on_device_setup.PACT_BANNERS
                 } | {
