@@ -94,10 +94,19 @@ class BundledAchievementPolicyTest(unittest.TestCase):
         ids = [row[0] for row in ACHIEVEMENT_ROWS]
         self.assertEqual(sorted(set(ids)), ids)
 
-    def test_both_visibility_flags_are_sent(self) -> None:
-        """Listing them is the other half; a claimable achievement nothing
-        shows is exactly as unreachable as an unclaimable one."""
-        self.assertEqual(("achive-1", "achive-hide"), ACHIEVEMENT_SHOW_FLAGS)
+    def test_only_the_localised_show_flag_is_sent(self) -> None:
+        """`achive-hide` is deliberately withheld, and this pins that.
+
+        It was sent for a while. The records behind it carry an empty `en`
+        string, so an English client rendered about twenty blank rows, and
+        records 74-85 are the only twelve in the master paying a `Title` --
+        which `AchivementPresent.GetName` resolves through
+        `MultiplayData.instance` unguarded, inside the window where
+        `UIAchivementItem.isOpenDialog` is true. A throw there kills the claim
+        button until the app restarts. Both faults are confined to this set.
+        """
+        self.assertEqual(("achive-1",), ACHIEVEMENT_SHOW_FLAGS)
+        self.assertNotIn("achive-hide", achievement_event_flags())
         self.assertTrue(set(ACHIEVEMENT_SHOW_FLAGS) <= set(achievement_event_flags()))
 
     def test_the_menu_gate_is_sent_too(self) -> None:
@@ -112,7 +121,7 @@ class BundledAchievementPolicyTest(unittest.TestCase):
         flags = achievement_event_flags()
         self.assertIn(ACHIEVEMENT_MENU_EVENT_FLAG, flags)
         self.assertIn(ACHIEVEMENT_MENU_EVENT_FLAG, KNOWN_EVENT_FLAGS)
-        self.assertEqual({"achive-1", "achive-hide", "achivements_enable"}, set(flags))
+        self.assertEqual({"achive-1", "achivements_enable"}, set(flags))
         self.assertTrue(all(entry["value"] is True for entry in flags.values()))
         self.assertTrue(all(entry["name"] == name for name, entry in flags.items()))
 

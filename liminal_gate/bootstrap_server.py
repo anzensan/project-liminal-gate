@@ -5197,17 +5197,23 @@ def _synchronize_multiplay_projection(userdata: dict[str, Any]) -> bool:
     `multiplayData` carries no field initializer and stays null until a response
     contains the key.  `AppServerUtil.LoadUserdataFromJson` only loads it when
     the key is present, so a server that never sends it leaves the field null
-    for the whole session.  That was survivable while the achievements screen
-    listed only the 42 `achive-1` records; once `achive-hide` is sent as well,
-    `AchievementUtil.IsUnlocked` reaches the Co-op and VS cases, and each of
-    them dereferences `UserData.instance.multiplayData` behind the il2cpp
-    null-check that raises `NullReferenceException`.  Both `CreateList` and the
-    badge's `GetUnlockedAchivementCount` call it, so the object has to exist.
+    for the whole session.  Anything that lists a Co-op or VS record then walks
+    `AchievementUtil.IsUnlocked` into its cases 11 to 20, and every one of them
+    dereferences `UserData.instance.multiplayData` behind the il2cpp null-check
+    that raises `NullReferenceException` -- from `CreateList` and from the
+    badge's `GetUnlockedAchivementCount` alike.
+
+    Nothing lists those records today: `ACHIEVEMENT_SHOW_FLAGS` withholds
+    `achive-hide` because that set renders blank on an English client and
+    carries the twelve Title presents that wedge the claim dialog.  This stays
+    anyway.  It costs one small object per read, it is the difference between a
+    future change re-listing them and a future change re-listing them *and*
+    hanging the login, and a null that only one withheld flag stands between you
+    and is not a null worth keeping.
 
     It is rebuilt on every read rather than seeded once, exactly as the wallet
     projection above is: it is derived from the recovered conditions, not player
-    state, and an account saved before this existed must not keep a screen that
-    cannot be finished.
+    state.
     """
     projection = multiplay_achievement_projection()
     if userdata.get("multiplayData") == projection:

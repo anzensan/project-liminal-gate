@@ -223,16 +223,32 @@ KNOWN_EVENT_FLAGS: frozenset[str] = CLIENT_CONFIRMED_EVENT_FLAGS | COMMUNITY_ATT
 #: VS, Twitter, Line and survey entries whose conditions the retired service
 #: owned.
 #:
-#: Both are sent. Hiding the second set would be reproducing a live service's
-#: reason rather than an archive's: those entries were hidden because nobody
-#: could still earn them against a running Co-op or VS population, and that is
-#: exactly the situation this project cannot restore. Listing them costs
-#: nothing and completes a screen the player can otherwise never finish; the
-#: bundled policy makes them free to claim for the same reason.
-ACHIEVEMENT_SHOW_FLAGS = ("achive-1", "achive-hide")
+#: Only `achive-1` is sent, and that is a correction rather than the original
+#: caution.  `achive-hide` was sent for a while on the reasoning that hiding
+#: those entries reproduced a live service's judgement rather than an archive's.
+#: A tester's screen settled it: listing them does not cost nothing.
+#:
+#: Two costs, both in the client and neither reachable from here.  Their
+#: `LocalizedString` carries text in `ja` and an empty string in `en` -- the
+#: retired service never localised them -- so on an English client roughly
+#: twenty of them render as blank rows.  And records 74 through 85 are the only
+#: twelve in the whole master whose presents include a `Title`.
+#: `AchivementPresent.GetName` resolves a Title through
+#: `MultiplayData.instance` with no null guard, inside the window where
+#: `UIAchivementItem.isOpenDialog` is true; that static is set once when the
+#: claim dialog opens and cleared once when it closes, and `OnClicked` begins
+#: `if (isOpenDialog) return`.  So anything that throws in that window kills the
+#: claim button for the rest of the process, which is exactly what a tester
+#: reported: one claim per app launch, then nothing.
+#:
+#: Every one of those faults is confined to this set.  All forty-two `achive-1`
+#: records are named in English and not one of them pays a Title.  The bundled
+#: policy still carries all ninety-eight, because what a record costs to *claim*
+#: was never the problem -- what it costs to *show* was.
+ACHIEVEMENT_SHOW_FLAGS = ("achive-1",)
 
-#: The main screen's own gate, and a different thing entirely from the two show
-#: flags above.  Those decide which records `UIAchivements` lists once that
+#: The main screen's own gate, and a different thing entirely from the show
+#: flag above.  That decides which records `UIAchivements` lists once that
 #: screen is open; this one decides whether the player can open it at all.
 #: `UIMain.Setup` ends with
 #: `achievementButton.SetActive(EventManager.GetBoolean("achivements_enable"))`,
