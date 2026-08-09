@@ -134,6 +134,34 @@ guided setup on the APK workstation and copy the matching generated files into
 the dedicated server's `user-data/` directory before updating the server. See
 [What setup generates](generated-files.md).
 
+## What this launcher generates, and what it only consumes
+
+This host derives everything it can from your own APK and resource tree: the
+resource manifest, the tuning document, and both banner families — the Pact
+artwork and the Attack of Coin Creeps cards, neither of which the archive
+retained in the form the client asks for.
+
+Four catalogs it does **not** derive, because they need the IL2CPP toolchain
+this launcher deliberately does not carry:
+
+| Catalog | Without it |
+| --- | --- |
+| `story-outcomes.json` | every story Companion the client rolls is discarded |
+| `companion-equipment.json` | a newly equipped or retargeted Companion is refused |
+| `event-catalog.json` | Archive Special Quests, Tower, and solo Eidolon quests are absent |
+| `character-catalog.json` | Pact class rates and duplicate gains fall back to uniform |
+
+Generate them once with [guided setup](../README.md#5-run-the-setup-command)
+on a machine that has the toolchain, then copy them into this host's data
+directory. Startup names each one it could not find, along with what a player
+loses by its absence, so a host missing one says so on every restart rather
+than quietly serving a smaller game.
+
+This is the division worth knowing: **guided setup is the generator, this
+launcher is the runner.** A dedicated host with an empty data directory starts
+and serves the story, but without those four files it is not the complete local
+game the README describes.
+
 ## Keep the server running with systemd
 
 On a Linux distribution that uses systemd, the included installer renders the
