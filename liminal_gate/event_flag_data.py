@@ -229,15 +229,29 @@ KNOWN_EVENT_FLAGS: frozenset[str] = CLIENT_CONFIRMED_EVENT_FLAGS | COMMUNITY_ATT
 #: exactly the situation this project cannot restore. Listing them costs
 #: nothing and completes a screen the player can otherwise never finish; the
 #: bundled policy makes them free to claim for the same reason.
-ACHIEVEMENT_EVENT_FLAGS = ("achive-1", "achive-hide")
+ACHIEVEMENT_SHOW_FLAGS = ("achive-1", "achive-hide")
+
+#: The main screen's own gate, and a different thing entirely from the two show
+#: flags above.  Those decide which records `UIAchivements` lists once that
+#: screen is open; this one decides whether the player can open it at all.
+#: `UIMain.Setup` ends with
+#: `achievementButton.SetActive(EventManager.GetBoolean("achivements_enable"))`,
+#: with `summon_enable` gating its neighbour the same way, so without this flag
+#: the button is simply never activated and every achievement behind it is
+#: unreachable no matter how complete the list would have been.  Sending the
+#: show flags alone furnished a room with no door.
+ACHIEVEMENT_MENU_EVENT_FLAG = "achivements_enable"
+
+ACHIEVEMENT_EVENT_FLAGS = (*ACHIEVEMENT_SHOW_FLAGS, ACHIEVEMENT_MENU_EVENT_FLAG)
 
 
 def achievement_event_flags() -> dict[str, dict[str, object]]:
-    """Let the client list every achievement it carries.
+    """Open the achievements screen and let it list every record.
 
     Visibility only.  The client holds the whole master -- ids, unlock types,
     thresholds and rewards -- and decides what is unlocked and achieved from
-    its own state; these flags are the half the server owns, and without them
-    `UIAchivements` builds an empty list and the menu entry renders bare.
+    its own state; these flags are the half the server owns.  Without the show
+    flags `UIAchivements` builds an empty list, and without the menu flag
+    `UIMain` never activates the button that reaches it.
     """
     return {flag: {"name": flag, "value": True} for flag in ACHIEVEMENT_EVENT_FLAGS}
