@@ -18,6 +18,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
 from liminal_gate.bootstrap_wire import _drop_trailing_last_update, _json_fields_match, _valid_last_update
+from liminal_gate.plus_type_data import PLUS_COUNT_MAX
 from liminal_gate.companion_equipment_catalog import CompanionEquipmentCatalog
 
 
@@ -177,10 +178,32 @@ def _parse_story_progression_reveal(body: bytes) -> dict[str, int] | None:
 
 
 def _valid_generic_character_record(row: object) -> bool:
+    """Whether a roster row has the shape every settlement check requires.
+
+    ``luck`` and ``plusCount`` are optional because the client adds each one to
+    its own roster model only once the feature behind it is live, and reports
+    the row it holds.  Refusing an unfamiliar-but-bounded member here is not a
+    safe default: this validator gates the clear parser, so one row it will not
+    read refuses *every* clear the account attempts afterwards, which reaches
+    the player as a Network Error with no way out.  `_migrate_granted_character_rows`
+    exists because a grant shape did exactly that once already.
+
+    ``plusCount`` in particular was accepted by `save_validation` and merged by
+    `_preserved_progress` while being refused here, so a roster row this
+    project's own save layer called valid was one its clear path would not
+    take.  Recode is where a count first appears for most accounts, which is
+    why the reports arrive at the chapter that unlocks it.
+    """
     fields = {"id", "buddy", "date", "jobSlots", "jobLevels", "jobID", "flags", "skillBoost"}
-    if not isinstance(row, dict) or set(row) not in (fields, fields | {"luck"}):
+    optional = {"luck", "plusCount"}
+    if not isinstance(row, dict) or not fields <= set(row) or set(row) - fields - optional:
         return False
     if any(type(row[name]) is not int or row[name] < 0 for name in ("id", "buddy", "jobID", "flags", "skillBoost")) or ("luck" in row and (type(row["luck"]) is not int or not 0 <= row["luck"] <= 1000)):
+        return False
+    # Bounded rather than merely typed: the client reads a count above
+    # `ActualMaxCount` as tampering and awards no bonus at all, so a row
+    # carrying one is wrong in a way worth refusing.
+    if "plusCount" in row and (type(row["plusCount"]) is not int or not 0 <= row["plusCount"] <= PLUS_COUNT_MAX):
         return False
     if type(row["date"]) not in {int, float} or not math.isfinite(row["date"]) or row["date"] < 0:
         return False
