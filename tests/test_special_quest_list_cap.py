@@ -33,16 +33,21 @@ def rows(archive: int, standing: int) -> list[str]:
     )
 
 
+def _unlocks(served: "list[str]") -> "dict[str, int]":
+    """Unlock chapter per row, ascending with list position for these fixtures."""
+    return {row: index for index, row in enumerate(served)}
+
+
 class SpecialQuestListCapTest(unittest.TestCase):
     def test_a_list_within_the_limit_is_served_unchanged(self) -> None:
         served = rows(20, 10)
         self.assertEqual(30, len(served))
-        self.assertEqual(served, _bounded_special_quest_list(served, set(), None))
+        self.assertEqual(served, _bounded_special_quest_list(served, _unlocks(served), {}, None))
 
     def test_the_row_that_would_hang_the_client_is_withheld(self) -> None:
         """The regression. One row over is an account that cannot reach play."""
         served = rows(21, 10)
-        bounded = _bounded_special_quest_list(served, set(), None)
+        bounded = _bounded_special_quest_list(served, _unlocks(served), {}, None)
         self.assertEqual(SPECIAL_QUEST_LIST_MAX, len(bounded))
 
     def test_permanent_quests_are_never_the_ones_withheld(self) -> None:
@@ -52,20 +57,51 @@ class SpecialQuestListCapTest(unittest.TestCase):
         an archive event that opened this chapter is not yet.
         """
         served = rows(28, 10)
-        bounded = _bounded_special_quest_list(served, set(), None)
+        bounded = _bounded_special_quest_list(served, _unlocks(served), {}, None)
         self.assertTrue(all(row in bounded for row in served if not _is_archive_row(row)))
         self.assertEqual(SPECIAL_QUEST_LIST_MAX, len(bounded))
 
     def test_archive_rows_are_withheld_newest_first(self) -> None:
         served = rows(21, 10)
-        bounded = _bounded_special_quest_list(served, set(), None)
+        bounded = _bounded_special_quest_list(served, _unlocks(served), {}, None)
         self.assertNotIn("2020-1", bounded)
         self.assertIn("2000-1", bounded)
+
+    def test_newest_means_unlock_order_not_list_order(self) -> None:
+        """The two disagree, and taking the list order inverts the rule.
+
+        Archive chapter numbers do not follow the unlock cadence. 2017 unlocks
+        after Chapter 20 and carries five stages behind one folded card; 2011-1
+        unlocks after Chapter 32 and carries one. Ordering by position in the
+        list withholds the first and keeps the second -- five long-held stages
+        dropped to protect one the player unlocked minutes ago.
+        """
+        served = ["2011-1", "2017"] + [f"9{index:03d}" for index in range(29)]
+        self.assertEqual(31, len(served))
+        bounded = _bounded_special_quest_list(
+            served,
+            {"2017": 20, "2011-1": 32},
+            {"2017": 5, "2011-1": 1},
+            None,
+        )
+        self.assertNotIn("2011-1", bounded)
+        self.assertIn("2017", bounded)
+
+    def test_a_tie_on_unlock_drops_the_row_carrying_fewer_stages(self) -> None:
+        served = ["2016", "2018-1"] + [f"9{index:03d}" for index in range(29)]
+        bounded = _bounded_special_quest_list(
+            served,
+            {"2016": 30, "2018-1": 30},
+            {"2016": 2, "2018-1": 1},
+            None,
+        )
+        self.assertNotIn("2018-1", bounded)
+        self.assertIn("2016", bounded)
 
     def test_display_order_is_not_reshuffled_by_the_cap(self) -> None:
         """Membership is decided here; the menu's order is not."""
         served = rows(25, 10)
-        bounded = _bounded_special_quest_list(served, set(), None)
+        bounded = _bounded_special_quest_list(served, _unlocks(served), {}, None)
         self.assertEqual([row for row in served if row in set(bounded)], bounded)
 
     def test_the_archive_range_is_what_separates_the_two(self) -> None:
@@ -85,7 +121,7 @@ class SpecialQuestListCapTest(unittest.TestCase):
                 recorded.append(details or {})
 
         served = rows(21, 10)
-        _bounded_special_quest_list(served, set(), Recorder())
+        _bounded_special_quest_list(served, _unlocks(served), {}, Recorder())
         self.assertEqual(1, len(recorded))
         capped = recorded[0]["special_quest_list_capped"]
         self.assertEqual(SPECIAL_QUEST_LIST_MAX, capped["served"])
@@ -95,7 +131,7 @@ class SpecialQuestListCapTest(unittest.TestCase):
     def test_nothing_is_withheld_before_the_chapter_20_boundary(self) -> None:
         """20 rows is what an account holds with Chapter 20 still uncleared."""
         served = rows(12, 8)
-        self.assertEqual(served, _bounded_special_quest_list(served, set(), None))
+        self.assertEqual(served, _bounded_special_quest_list(served, _unlocks(served), {}, None))
 
 
 if __name__ == "__main__":
