@@ -36,11 +36,110 @@ class TuningError(ValueError):
 
 
 #: The conventional filename inside a launcher's data directory, matching
-#: `DEFAULT_OUTCOME_CATALOG` and `DEFAULT_COMPANION_EQUIPMENT_CATALOG`.  Unlike
-#: those two, this one is genuinely optional and is never generated, so a
-#: launcher passes it only when the operator has actually written one -- naming
-#: a file that does not exist is an error, and every install would hit it.
+#: `DEFAULT_OUTCOME_CATALOG` and `DEFAULT_COMPANION_EQUIPMENT_CATALOG`.  Setup
+#: writes the template below there, so an operator edits a file that is already
+#: in front of them rather than learning a schema from documentation first.
 DEFAULT_TUNING_DOCUMENT = "tuning.toml"
+
+#: What setup writes when no tuning document exists yet.
+#:
+#: Every override is commented out, and that is the whole design: a commented
+#: line shows the bundled default *and keeps tracking it*, so a later release
+#: that corrects one of these numbers reaches an install that never touched it.
+#: Writing the values out live would freeze them at install time and quietly
+#: turn "the default" into "the default on the day you set this up" -- which is
+#: how this project's one corrected Pact rate and one corrected roster ID would
+#: have failed to reach anybody.
+#:
+#: `test_tuning` uncomments this mechanically and asserts the result loads to
+#: exactly `DEFAULT_TUNING`, so the template cannot drift from the code.
+DEFAULT_TUNING_TEMPLATE = '''# Operator tuning for Project Liminal Gate.
+#
+# Every override below is commented out. A commented line is not "unset" --
+# it shows the bundled default and keeps following it, so a later release that
+# corrects one of these numbers reaches you. Uncomment a line to take it over,
+# and it stays where you put it from then on.
+#
+# What lives here is the half of what this server sends that had to be chosen
+# rather than recovered from your client. Item and monster drop rates are not
+# here and cannot be: the client rolls those from its own tables and never asks
+# the server about them.
+#
+# Full reference: docs/advanced-configuration.md
+
+schema_version = 1
+provenance = "user-supplied"
+
+[pact]
+# How often a pull arrives decorated as a "+" Pact, as a percent of pulls. The
+# one number here no source states -- both records say only "sometimes". Zero
+# turns the "+" Pact off entirely.
+# plus_chance_percent = 22
+# Published gain ranges: 1 to 5 extra levels, and 0.5% to 3.0% Skill Boost (or
+# Luck on a Fate-type pull), in the client's tenths of one percent.
+# plus_levels = [1, 5]
+# plus_tenths = [5, 30]
+# Recovered costs. The Energy price is also what the client displays, so
+# changing it changes the shown price and the charged price together.
+# coin_cost = 3000
+# energy_cost = 5
+# fate_duplicate_luck = 50
+# Pact of Truth class shares, in parts per million of one pull. Name all four
+# classes; they must total exactly 1000000.
+# truth_class_share_ppm = { z = 40000, ss = 100000, s = 150000, a_and_below = 710000 }
+# What a duplicate grants, per class: [levels, skill-boost tenths].
+# duplicate_gains = { z = [6, 120], ss_s = [5, 100], a_and_below = [1, 50] }
+
+[companion]
+# The Rare Companion pool's displayed class rates: Z 3%, SS 8%, S 10%, A 30%,
+# B 49%. Same totalling rule as the Pact shares. The Normal pool stays uniform
+# and is deliberately not tunable, because no comparable record covers it.
+# rare_class_share_ppm = { z = 30000, ss = 80000, s = 100000, a = 300000, b = 490000 }
+# The random strengthen EXP bonus, as [percent, weight] pairs. No production
+# odds for it survive, so these weights are a chosen policy.
+# strengthen_bonus_weights = [[0, 85], [25, 8], [50, 5], [100, 2]]
+
+[hunting]
+# The chapter each Hunting tier and each Metal Zone becomes permanently
+# available after. The retired rotations were never captured, so this schedule
+# is local policy. Give either ladder whole; neither may decrease.
+# tier_unlock_chapters = [3, 9, 18]
+# metal_unlock_chapters = [3, 8, 12, 17, 21, 26, 30]
+# Puppet Show's per-clear item aggregate. Its board refills with no cumulative
+# spawn counter, so no exact cap exists to recover.
+# puppet_show_item_aggregate = 60
+
+[gates]
+# Dragon Road and Machine Road admitting only Dragons and Machines, and
+# Captive Golem's four sections admitting only their declared class band. Both
+# limits are recovered and both are asserted by this server, because the client
+# never walks the party. Enforcing them is still your call.
+# species_limits = true
+# class_bands = true
+
+[exp]
+# Extra battle EXP credited on top of what the client awards, as a percent.
+# The client computes its own EXP, so this credits a further share on the
+# server's roster rather than changing the result screen. It needs
+# --clear-state-catalog for the level curve, and it switches off that catalog's
+# experience audit. Read the EXP section of docs/advanced-configuration.md
+# before raising this.
+# multiplier_percent = 100
+'''
+
+
+def write_default_tuning(path: Path) -> bool:
+    """Write the commented template, and report whether it was written.
+
+    Never overwrites: an operator's edits are the whole point of the file, and
+    a setup rerun is the moment they would be lost.  A missing document is
+    equivalent to an untouched one, so nothing is repaired or migrated here.
+    """
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(DEFAULT_TUNING_TEMPLATE, encoding="utf-8")
+    return True
 
 
 #: The class keys the Pact tables are keyed on.  These are the bands

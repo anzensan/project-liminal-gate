@@ -19,7 +19,7 @@ from liminal_gate.resource_catalog_builder import build_resource_manifest, repor
 from liminal_gate.luck_pool_catalog import DEFAULT_LUCK_POOL_CATALOG
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
-from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT
+from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT, write_default_tuning
 from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES
 
 
@@ -50,6 +50,12 @@ def prepare_server(resource_root: Path, data_directory: Path) -> tuple[Path, Pat
     resolved_resources = resolve_resource_root(resource_root)
     resolved_data = data_directory.resolve()
     resolved_data.mkdir(parents=True, exist_ok=True)
+    # The tuning document is written here rather than documented into
+    # existence: it is a short list of knobs with known defaults, so an
+    # operator should find it already in front of them. Every override in it is
+    # commented out, so a fresh install is byte-for-byte the bundled policy.
+    if write_default_tuning(resolved_data / DEFAULT_TUNING_DOCUMENT):
+        print(f"Wrote {resolved_data / DEFAULT_TUNING_DOCUMENT} -- rates, gates, and EXP, all commented out.")
     manifest = build_resource_manifest(resolved_resources)
     manifest_path = resolved_data / "resources.json"
     # Reported before the write, so the comparison is against the previous

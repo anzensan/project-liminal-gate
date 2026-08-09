@@ -15,10 +15,21 @@ superseded before release and says so where it stands.
   Until now the picked half was module constants, so changing any of it meant
   editing source — fine for whoever wrote it, useless to anyone running a
   release. Those values keep their defaults and gain one strict document.
-  Write `user-data/tuning.toml` and start normally: every launcher looks for it
-  in its data directory, so guided setup and the dedicated server need no extra
-  option, and a systemd host changes a rate by editing that file and restarting
-  rather than reinstalling its unit. Keeping it elsewhere takes an explicit
+
+  Setup writes `user-data/tuning.toml` on its first run, with every option
+  documented and **commented out**, so changing a rate is an edit and a restart
+  rather than a schema learned from documentation. A commented line is not
+  "unset": it shows the bundled default and keeps following it, so a later
+  release that corrects one of these numbers still reaches an install that
+  never touched that line. Writing the values out live would have frozen them
+  at install time, which is how the one corrected Pact rate and the one
+  corrected roster ID in this project's history would have failed to reach
+  anybody. Setup never overwrites an existing file, so a rerun cannot lose your
+  edits, and deleting it means the same thing as leaving every line commented.
+
+  Every launcher reads it from its data directory, so guided setup and the
+  dedicated server need no extra option, and a systemd host changes a rate
+  without reinstalling its unit. Keeping it elsewhere takes an explicit
   `--tuning`, which guided setup, `server_setup`, `bootstrap_server`, the
   systemd installer (`--tuning=PATH`), and the local configuration file all
   accept.

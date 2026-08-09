@@ -1048,14 +1048,22 @@ retired service's schedules, rotations, encounter contents, or reward odds.
 Some of what this server serves is recovered from your client, and some of it
 this project had to choose. The chosen half is collected in one strict document.
 
-**The short version: write `user-data/tuning.toml` and start normally.** Every
-launcher looks for that file in its data directory and passes it when it is
-there, so guided setup and the dedicated server need no extra option:
+**Setup already wrote it.** `user-data/tuning.toml` appears on your first run
+with every option in it, documented and commented out. Edit it and restart:
 
 ```sh
 $EDITOR user-data/tuning.toml
-python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 ```
+
+A commented line is not "unset" — it shows the bundled default and keeps
+following it, so a later release that corrects one of these numbers reaches an
+install that never touched that line. Uncommenting is the act of taking a value
+over, and from then on it stays where you put it. A freshly written file
+therefore behaves exactly like no file at all.
+
+Setup never overwrites an existing one, so rerunning it cannot lose your edits.
+Deleting the file is also fine: it means the same thing as leaving every line
+commented, and the next setup run writes a new copy.
 
 Keeping it elsewhere takes an explicit path, which every launcher accepts:
 
@@ -1068,18 +1076,22 @@ Keeping it elsewhere takes an explicit path, which every launcher accepts:
 | local configuration file | `tuning = "tuning.toml"` |
 | combined APK (on-device) | not offered |
 
-A conventional `tuning.toml` is used only when it exists; an explicit path is
-used as given and fails visibly if it is wrong. The same values are also the
-defaults in `liminal_gate/tuning.py`, so editing that module is the build-time
-path and the document is the run-time one. Either reaches the same numbers, and
-a server started without one behaves exactly as it did before the file existed.
+An explicit path is used as given and fails visibly if it is wrong. The same
+values are also the defaults in `liminal_gate/tuning.py`, so editing that module
+is the build-time path and the document is the run-time one; either reaches the
+same numbers.
 
 **A partial document is the normal case.** Every section and every key is
 optional, and anything you leave out keeps its bundled value — turning off one
 gate does not mean restating every Pact rate. What you *do* write is validated
-exactly: a misspelled key is refused rather than silently keeping its default,
-because a rate that quietly does nothing is indistinguishable from one the
-server ignored.
+exactly: a misspelled key is refused at startup rather than ignored, because a
+rate that quietly does nothing is indistinguishable from one the server never
+read.
+
+The rest of this section is the reference for what each option means. The file
+itself carries the same defaults, so you can work from it instead.
+
+Every option, with the bundled value each one shows:
 
 ```toml
 schema_version = 1

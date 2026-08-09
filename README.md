@@ -34,11 +34,12 @@ see [The stamina meter is off by default](docs/advanced-configuration.md#the-sta
 
 **The rates this project had to choose, you can change.** Some of what the
 server sends is recovered from your client; some of it — Pact and Companion
-draw odds, how early Hunting zones open, the two party gates — was never
-recovered and had to be picked. Those choices live in one optional
-`user-data/tuning.toml`, and setup uses it automatically when it is there. Item
-and monster drop rates are not among them: the client rolls those itself and
-never asks. See [Tuning rates, gates, and
+draw odds, how early Hunting zones open, the two party gates, battle EXP — was
+never recovered and had to be picked. Setup writes those choices to
+`user-data/tuning.toml` with every option documented and commented out, so
+changing one is an edit and a restart. Item and monster drop rates are not
+among them: the client rolls those itself and never asks the server. See
+[Tuning rates, gates, and
 EXP](docs/advanced-configuration.md#tuning-rates-gates-and-exp).
 
 Full detail: [What works right now](docs/scope-and-status.md).

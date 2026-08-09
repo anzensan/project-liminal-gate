@@ -159,27 +159,27 @@ unit is the only place a systemd host passes a launcher option. See
 
 ### Tuning rates and gates on a running host
 
-Rates are the exception to the rule above: they need no reinstall. Drop a
-`tuning.toml` in the data directory and this launcher picks it up on start, so
-changing a Pact rate, a Hunting unlock, or a party gate is an edit and a
-restart:
+Rates are the exception to the rule above: they need no reinstall. Setup wrote
+`user-data/tuning.toml` with every option in it, commented out, and this
+launcher reads it on start — so changing a Pact rate, a Hunting unlock, or a
+party gate is an edit and a restart:
 
 ```sh
 $EDITOR user-data/tuning.toml
 sudo systemctl restart project-liminal-gate.service
 ```
 
-Everything in it is optional — anything you leave out keeps its bundled value:
+Uncomment only what you want to change; every line left commented keeps
+following its bundled default, including through a later update that corrects
+one. For example, to open all Hunting tiers at once and let any party onto the
+two Roads:
 
 ```toml
-schema_version = 1
-provenance = "user-supplied"
-
 [hunting]
-tier_unlock_chapters = [1, 1, 1]   # open every Hunting tier immediately
+tier_unlock_chapters = [1, 1, 1]
 
 [gates]
-species_limits = false             # let any party into Dragon and Machine Road
+species_limits = false
 ```
 
 Keeping the file somewhere else takes `--tuning=PATH` at install time. The full
