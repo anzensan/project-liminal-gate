@@ -80,7 +80,7 @@ from liminal_gate.scenario_encounter_importer import (
 )
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
-from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT
+from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT, write_default_tuning
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
 from liminal_gate.story_outcome_generator import (
     StoryOutcomeGeneratorError,
@@ -1313,6 +1313,12 @@ def prepare_local_tester(
     if not apk.is_file():
         raise TesterSetupError(f"no APK to redirect at {apk}; pass --apk with the path to your own copy")
     data_directory.mkdir(parents=True, exist_ok=True)
+    # Written rather than documented into existence, for the reason
+    # `server_setup` gives: it is a short list of knobs with known defaults, so
+    # it should be in front of the operator. Every override is commented out,
+    # so a fresh install is byte-for-byte the bundled policy.
+    if write_default_tuning(data_directory / DEFAULT_TUNING_DOCUMENT):
+        print(f"Wrote {data_directory / DEFAULT_TUNING_DOCUMENT} -- rates, gates, and EXP, all commented out.")
     # Asked and located here for the same reason as the address above: a missing
     # SDK tool, a missing JDK, or a mistyped password should cost seconds rather
     # than surface after the whole resource tree has been inventoried.

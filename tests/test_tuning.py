@@ -9,8 +9,9 @@ the same thing.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -28,7 +29,19 @@ from liminal_gate.companion_draw_catalog import build_bundled_companion_draw_pol
 from liminal_gate.companion_strengthen_catalog import build_bundled_companion_strengthen_policy
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from liminal_gate.pact_draw_catalog import build_bundled_pact_policy
-from liminal_gate.tuning import DEFAULT_TUNING, DEFAULT_TUNING_DOCUMENT, TuningError, load_tuning
+from liminal_gate.tuning import (
+    DEFAULT_TUNING,
+    DEFAULT_TUNING_DOCUMENT,
+    DEFAULT_TUNING_TEMPLATE,
+    CompanionTuning,
+    ExpTuning,
+    GateTuning,
+    HuntingTuning,
+    PactTuning,
+    TuningError,
+    load_tuning,
+    write_default_tuning,
+)
 
 
 PUBLIC_ROOT = Path(__file__).resolve().parents[1]
@@ -378,6 +391,59 @@ class CreditedRosterOutpacesTheClientTest(unittest.TestCase):
 
         merged = _preserved_roster([self.row(5_000, 6)], [self.row(2_000, 3)])
         self.assertEqual(5_000, int(merged[0]["jobLevels"][0]) >> 12)
+
+
+class TuningTemplateTest(unittest.TestCase):
+    """The file setup writes, and the one property that keeps it honest."""
+
+    def test_the_template_as_written_is_exactly_the_bundled_defaults(self) -> None:
+        """A fresh install must be byte-for-byte the bundled policy."""
+        path, directory = _tuning("", head=DEFAULT_TUNING_TEMPLATE)
+        self.addCleanup(directory.cleanup)
+        self.assertEqual(DEFAULT_TUNING, load_tuning(path))
+
+    def test_uncommenting_every_override_still_yields_the_defaults(self) -> None:
+        """The guard against the template drifting from the code.
+
+        Each commented assignment claims to show its bundled default. Turning
+        all of them on must therefore change nothing -- if someone edits a
+        number here without editing `DEFAULT_TUNING`, or the other way round,
+        this is where it shows up.
+        """
+        lines = [
+            re.sub(r"^# (?=[a-z_]+ = )", "", line)
+            for line in DEFAULT_TUNING_TEMPLATE.splitlines()
+        ]
+        assignments = [
+            line for line in lines
+            if re.match(r"^[a-z_]+ = ", line)
+            and not line.startswith(("schema_version", "provenance"))
+        ]
+        # Every tunable field, so a new knob added to the code without a line
+        # in the template fails here rather than going unmentioned.
+        expected = sum(
+            len(fields(section)) for section in (PactTuning, CompanionTuning, HuntingTuning, GateTuning, ExpTuning)
+        )
+        self.assertEqual(expected, len(assignments))
+        path, directory = _tuning("", head="\n".join(lines))
+        self.addCleanup(directory.cleanup)
+        self.assertEqual(DEFAULT_TUNING, load_tuning(path))
+
+    def test_it_is_written_once_and_never_over_an_operators_edits(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / DEFAULT_TUNING_DOCUMENT
+            self.assertTrue(write_default_tuning(path))
+            path.write_text(
+                path.read_text(encoding="utf-8").replace(
+                    "# species_limits = true", "species_limits = false",
+                ),
+                encoding="utf-8",
+            )
+            # A setup rerun is exactly the moment an edit would be lost.
+            self.assertFalse(write_default_tuning(path))
+            self.assertFalse(load_tuning(path).gates.species_limits)
+            # And overriding one knob leaves every other one tracking its default.
+            self.assertEqual(DEFAULT_TUNING.pact, load_tuning(path).pact)
 
 
 class TuningLaunchTest(unittest.TestCase):
