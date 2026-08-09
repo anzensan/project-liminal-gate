@@ -157,7 +157,11 @@ Every nonzero character `buddy` inventory ID must point to an owned Companion
 whose `chrID` points back to that character, and one Companion cannot be linked
 to multiple characters. A mismatched or one-sided move changes neither half.
 Standalone `buddyInfo`, `lastUpdate` writes may change the recovered
-seen/favorite flags but cannot retarget `chrID`. A newly equipped or retargeted
+seen/favorite flags but cannot retarget `chrID`. Either array may be empty and
+settles as a no-op: the client decides to send `buddyInfo` from `UserData`'s own
+dirty flag but fills it from the Companions whose dirty bit is set, and a
+Companion sale clears the latter while leaving the former pending, so the save
+behind every sale names nobody. A newly equipped or retargeted
 link also requires the generated, APK-hashed Companion equipment catalog. An
 `exclusiveChrID` accepts the direct character or its recovered nonzero
 ancestor; `exclusiveSpeciesID` must match the active job's species. Unknown

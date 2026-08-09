@@ -410,7 +410,10 @@ def _parse_companion_userdata_write(body: bytes) -> list[dict[str, Any]] | None:
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
         return None
     fields = {"bid", "lv", "date", "iid", "exp", "flag", "chrID"}
-    if not isinstance(companions, list) or not companions:
+    # An empty array is a real delta, not a malformed one: see
+    # `_decoded_companions` for why the client sends one, and why refusing it
+    # reached the player as a Network Error.
+    if not isinstance(companions, list):
         return None
     if any(not isinstance(companion, dict) or set(companion) != fields or type(companion["bid"]) is not int or companion["bid"] <= 0 or type(companion["lv"]) is not int or companion["lv"] < 1 or type(companion["date"]) not in {int, float} or companion["date"] < 0 or any(type(companion[name]) is not int or companion[name] < 0 for name in ("iid", "exp", "flag", "chrID")) or companion["iid"] <= 0 for companion in companions):
         return None
@@ -434,7 +437,7 @@ def _project_companion_delta(
     if not isinstance(owned, list):
         return None
     current = {companion.get("iid"): companion for companion in owned if isinstance(companion, dict) and type(companion.get("iid")) is int}
-    if len(current) != len(owned) or not submitted or any(
+    if len(current) != len(owned) or any(
         companion["iid"] not in current
         or any(companion[name] != current[companion["iid"]].get(name) for name in ("bid", "lv", "date", "iid", "exp"))
         or (
@@ -660,13 +663,23 @@ def _decoded_roster(value: str) -> list[dict[str, Any]] | None:
 
 
 def _decoded_companions(value: str) -> list[dict[str, Any]] | None:
-    """Decode and validate a `buddyInfo` payload shared by several write forms."""
+    """Decode and validate a `buddyInfo` payload shared by several write forms.
+
+    An empty array is accepted, the same as the `chrdata` half already is.
+    `SerializeJsonUserData` builds this value from the Companions whose own
+    dirty bit is set, but the flag deciding whether to send it at all is
+    `UserData`'s -- and a sale answers with a whole `buddyInfo`, which
+    `LoadBuddyInfo` applies by rebuilding every `Buddy` from the response.
+    That drops the dirty bits while leaving `UserDataKind.Buddies` pending, so
+    the save that follows a sale serialises `[]`.  Refusing it answered a
+    routine save with a 501 the client reads as a Network Error.
+    """
     try:
         companions = json.loads(value)
     except (ValueError, json.JSONDecodeError):
         return None
     fields = {"bid", "lv", "date", "iid", "exp", "flag", "chrID"}
-    if not isinstance(companions, list) or not companions:
+    if not isinstance(companions, list):
         return None
     if any(
         not isinstance(companion, dict) or set(companion) != fields
