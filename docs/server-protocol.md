@@ -209,9 +209,14 @@ Before any real row unlocks, a closed recovered entry suppresses that fallback,
 which would otherwise leak Chapter 3000 rows into Arena -> Special Quests.
 Advertised non-1000-series entries receive exact section flags rather
 than one broad chapter flag: this includes Crystal Road (3004-1) in
-`huntingHuntingList`. `descentHuntingList` separately folds each progress-unlocked
-Counter Descent family to its tier-1 identity; login supplies only the matching
-chapter flags. Detailed static evidence and local-policy labels live in
+`huntingHuntingList`. `descentHuntingList` separately advertises each
+progress-unlocked Counter Descent family as its bare chapter, because
+`UISpecialSelect.IsFolded` is `!id.Contains("-")` and only a section-less id
+opens as a card; login supplies one `sp_ch_<chapter>-<section>` flag per
+declared tier and deliberately no chapter flag, because `CheckQuestFlag`
+retries an unset section key as its chapter and the client offers five tiers
+for every family whether or not five exist. Detailed
+static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
 
 `statusUpItems` is present only while a status-up policy is loaded, and is that

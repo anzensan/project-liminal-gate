@@ -303,7 +303,7 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         _, _, loaded = self._generate(_battledata(*chapters), ())
         progress_after_chapter_18 = 0x01000000 | (19 << 6) | 1
         self.assertEqual(
-            [f"{chapter}-1" for chapter in chapters],
+            [str(chapter) for chapter in chapters],
             loaded.client_lists(progress_after_chapter_18)[
                 "descentHuntingList"
             ],

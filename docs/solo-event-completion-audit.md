@@ -87,7 +87,7 @@ grants; **unrecovered** for historical schedules and complete reward tables.
 | Family | Implemented boundary | Client proof still required |
 | --- | --- | --- |
 | Money Money Time | Chapter 3003-1, including the observed 1,800-Coin ceiling and successful result-screen retry | no open settlement boundary for the observed result |
-| Strikes Back | 8000--8007 and 8012--8017 through folded Counter Descent cards; 8008--8011 and 8018 remain excluded | one clear/result return, then smoke the added 8012--8017 banners |
+| Strikes Back | 8000--8007 and 8012--8017 through folded Counter Descent cards, advertised as bare chapters and flagged per section; 8008--8011 and 8018 remain excluded | open one card and confirm it expands to its real tiers only, then one clear/result return and the added 8012--8017 banners |
 | Tower | all 12 stages in 9010--9013 as a labeled solo adapter; Donation 9100--9102 excluded | first-stage clear and result return; navigation/entry already observed |
 | Solo Eidolon | the 12 nonzero-battle, banner-backed stages in 4100--4111; 16 empty tier placeholders excluded | confirm every corrected banner, then entry and clear/result; collectible mapping remains capture-gated |
 
