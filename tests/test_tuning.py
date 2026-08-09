@@ -30,6 +30,7 @@ from liminal_gate.companion_strengthen_catalog import build_bundled_companion_st
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from liminal_gate.pact_draw_catalog import build_bundled_pact_policy
 from liminal_gate.tuning import (
+    ClientTuning,
     DEFAULT_TUNING,
     DEFAULT_TUNING_DOCUMENT,
     DEFAULT_TUNING_TEMPLATE,
@@ -422,7 +423,7 @@ class TuningTemplateTest(unittest.TestCase):
         # Every tunable field, so a new knob added to the code without a line
         # in the template fails here rather than going unmentioned.
         expected = sum(
-            len(fields(section)) for section in (PactTuning, CompanionTuning, HuntingTuning, GateTuning, ExpTuning)
+            len(fields(section)) for section in (PactTuning, CompanionTuning, HuntingTuning, GateTuning, ExpTuning, ClientTuning)
         )
         self.assertEqual(expected, len(assignments))
         path, directory = _tuning("", head="\n".join(lines))
@@ -532,6 +533,47 @@ class TuningLaunchTest(unittest.TestCase):
         self.assertIn(
             "an EXP multiplier requires --clear-state-catalog", str(caught.exception),
         )
+
+
+class ClientTuningTest(unittest.TestCase):
+    """The one section applied by patching the APK, not by the server."""
+
+    def _load(self, body: str):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tuning.toml"
+            path.write_text(
+                'schema_version = 1\nprovenance = "user-supplied"\n\n' + body,
+                encoding="utf-8",
+            )
+            return load_tuning(path)
+
+    def test_default_is_the_value_the_client_ships(self) -> None:
+        self.assertEqual(4.0, DEFAULT_TUNING.client.drag_time_seconds)
+        self.assertEqual(4.0, self._load("").client.drag_time_seconds)
+
+    def test_accepts_what_one_instruction_can_carry(self) -> None:
+        for seconds in (1.0, 2.5, 4.25, 6.0, 30.0):
+            with self.subTest(seconds):
+                self.assertEqual(
+                    seconds,
+                    self._load(f"[client]\ndrag_time_seconds = {seconds}\n").client.drag_time_seconds,
+                )
+
+    def test_refuses_a_value_the_patch_cannot_encode(self) -> None:
+        """Refused rather than rounded: a silently different drag time is
+        exactly the change an operator cannot see."""
+        with self.assertRaisesRegex(TuningError, "one instruction"):
+            self._load("[client]\ndrag_time_seconds = 4.2\n")
+
+    def test_refuses_out_of_range_and_non_numbers(self) -> None:
+        for body in ("drag_time_seconds = 0.5", "drag_time_seconds = 31", "drag_time_seconds = true"):
+            with self.subTest(body):
+                with self.assertRaisesRegex(TuningError, "1.0 through 30.0"):
+                    self._load(f"[client]\n{body}\n")
+
+    def test_an_unknown_key_in_the_section_is_refused(self) -> None:
+        with self.assertRaisesRegex(TuningError, r"\[client\]"):
+            self._load("[client]\ndrag_time_secondz = 6.0\n")
 
 
 if __name__ == "__main__":

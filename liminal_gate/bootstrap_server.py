@@ -6299,7 +6299,10 @@ def report_tuning(tuning: Tuning, path: Path | None) -> None:
         print("Tuning: bundled defaults (no tuning document passed)")
         return
     changed: list[str] = []
-    for section in ("pact", "companion", "hunting", "gates", "exp"):
+    # `client` is reported like the rest even though the server does not apply
+    # it: an operator reading this line wants to know what their document says,
+    # and silence about a value they set reads as the value not having taken.
+    for section in ("pact", "companion", "hunting", "gates", "exp", "client"):
         loaded, bundled = getattr(tuning, section), getattr(DEFAULT_TUNING, section)
         changed.extend(
             f"{section}.{field.name}={getattr(loaded, field.name)}"

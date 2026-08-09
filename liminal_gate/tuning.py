@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+import struct
 import tomllib
 
 
@@ -125,6 +126,14 @@ provenance = "user-supplied"
 # experience audit. Read the EXP section of docs/advanced-configuration.md
 # before raising this.
 # multiplier_percent = 100
+
+[client]
+# The one setting here that is not sent by the server. It is applied by
+# patching your own APK when you build it, so it takes effect on the next
+# *rebuild* rather than the next restart, and a running server is unaffected.
+# Seconds to drag a unit before the turn resolves. The client ships 4.0.
+# Whole, half and quarter seconds all work; 1.0 to 30.0.
+# drag_time_seconds = 4.0
 '''
 
 
@@ -271,12 +280,36 @@ class HuntingTuning:
 
 
 @dataclass(frozen=True)
+class ClientTuning:
+    """The one knob here that is not a server policy at all.
+
+    Everything else in this document is something the server *sends*. This is
+    applied by patching the operator's own APK at build time, because the value
+    lives nowhere else: `BattleManager.DraggableTime` is a private static float
+    set once in the class constructor, with no config key, no master-data entry
+    and no field the server could answer with. Nothing at runtime can reach it.
+
+    It is here anyway because an operator tuning their installation should find
+    every knob in one place. What differs is the lifecycle: a change takes
+    effect on the next *rebuild*, not the next restart, and a server already
+    running is unaffected by it.
+
+    The value is limited to what a single instruction can carry, on both ABIs
+    the package ships. See `liminal_gate.legacy_client_apk_plan`.
+    """
+
+    #: Seconds a player may drag a unit before the turn resolves. Stock is 4.0.
+    drag_time_seconds: float = 4.0
+
+
+@dataclass(frozen=True)
 class Tuning:
     pact: PactTuning
     companion: CompanionTuning
     hunting: HuntingTuning
     gates: GateTuning = GateTuning()
     exp: ExpTuning = ExpTuning()
+    client: ClientTuning = ClientTuning()
 
 
 #: The bundled defaults.  Editing these is the build-time path, and every value
@@ -304,7 +337,7 @@ DEFAULT_TUNING = Tuning(
     ),
 )
 
-_SECTIONS = {"pact", "companion", "hunting", "gates", "exp"}
+_SECTIONS = {"pact", "companion", "hunting", "gates", "exp", "client"}
 _REQUIRED = {"schema_version", "provenance"}
 
 
@@ -333,6 +366,7 @@ def load_tuning(path: Path) -> Tuning:
         hunting=_hunting(document.get("hunting", {})),
         gates=_gates(document.get("gates", {})),
         exp=_exp(document.get("exp", {})),
+        client=_client(document.get("client", {})),
     )
 
 
@@ -520,3 +554,28 @@ def _exp(value: object) -> ExpTuning:
     if type(multiplier) is not int or not 100 <= multiplier <= 10_000:
         raise TuningError("multiplier_percent must be an integer from 100 through 10000")
     return ExpTuning(multiplier_percent=multiplier)
+
+
+#: The drag-time patch rewrites one instruction per ABI, and each carries the
+#: float's high 16 bits only -- an AArch64 `MOVZ` with a 16-bit shift, and an
+#: ARM `MOVT` beside a `MOVW #0`. A value whose low 16 bits are not zero would
+#: need a second instruction and a longer patch, so it is refused rather than
+#: silently rounded. Every whole and half second qualifies, and so does every
+#: 1/32 in the range this accepts.
+def _encodable_drag_time(seconds: float) -> bool:
+    return struct.unpack("<I", struct.pack("<f", seconds))[0] & 0xFFFF == 0
+
+
+def _client(value: object) -> ClientTuning:
+    document = _section(value, {"drag_time_seconds"}, "client")
+    if "drag_time_seconds" not in document:
+        return ClientTuning()
+    seconds = document["drag_time_seconds"]
+    if type(seconds) not in (int, float) or type(seconds) is bool or not 1.0 <= float(seconds) <= 30.0:
+        raise TuningError("drag_time_seconds must be a number from 1.0 through 30.0")
+    if not _encodable_drag_time(float(seconds)):
+        raise TuningError(
+            f"drag_time_seconds {seconds} cannot be patched in one instruction; use a value whose "
+            "float32 low half is zero -- every whole and half second qualifies, as does every 0.25"
+        )
+    return ClientTuning(drag_time_seconds=float(seconds))

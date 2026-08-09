@@ -612,6 +612,7 @@ def prepare_on_device_apk(
     plan_path.write_text(json.dumps(
         generate_legacy_client_plan(
             source, f"http://{LOOPBACK_HOST}:{LOOPBACK_PORT}", disable_google_services,
+            drag_time_seconds=tuning.client.drag_time_seconds,
         ),
         sort_keys=True,
     ), encoding="utf-8")

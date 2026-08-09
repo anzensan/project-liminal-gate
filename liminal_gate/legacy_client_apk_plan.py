@@ -389,8 +389,60 @@ def normalize_server_origin(value: str) -> str:
     return origin
 
 
+#: `BattleManager.DraggableTime`, the seconds a player may drag a unit, is a
+#: private static float written once in that class's constructor and reachable
+#: from nowhere else -- no config key, no master-data entry, no server field.
+#: Changing it means changing the instruction that carries the constant, and
+#: both shipped ABIs carry it as the float's *high* half alone:
+#:
+#:     arm64  MOVZ w10, #0x4080, LSL #16   ->  static +0x8
+#:     v7a    MOVW r2, #0     MOVT r2, #0x4080  ->  static +0x4
+#:
+#: So one instruction per ABI changes, and only for a value whose float32 low
+#: half is zero -- which `liminal_gate.tuning` is what enforces. Both offsets
+#: were read from the reviewed build's own Il2CppDumper output, one run per ABI;
+#: the static's offset differs between them (0x8 against 0x4) because the
+#: 32-bit layout puts a 4-byte instance pointer ahead of it.
+DRAG_TIME_SITES = (
+    ("lib/arm64-v8a/libil2cpp.so", 0xCE6B60),
+    ("lib/armeabi-v7a/libil2cpp.so", 0x775AF8),
+)
+STOCK_DRAG_TIME_SECONDS = 4.0
+
+
+def _drag_time_words(seconds: float) -> tuple[int, int]:
+    """Return the (arm64, armeabi-v7a) instruction words carrying `seconds`."""
+    bits = struct.unpack("<I", struct.pack("<f", float(seconds)))[0]
+    if bits & 0xFFFF:
+        raise PlanGenerationError(
+            f"drag time {seconds} needs more than the one instruction each ABI spends on it"
+        )
+    high = bits >> 16
+    arm64 = 0x52800000 | (1 << 21) | (high << 5) | 10
+    v7a = 0xE3400000 | ((high >> 12) << 16) | (2 << 12) | (high & 0xFFF)
+    return arm64, v7a
+
+
+def drag_time_patches(seconds: float) -> list[dict[str, object]]:
+    """Patch both ABIs to `seconds`, or neither when it is already stock."""
+    if float(seconds) == STOCK_DRAG_TIME_SECONDS:
+        return []
+    replacements = _drag_time_words(seconds)
+    stock = _drag_time_words(STOCK_DRAG_TIME_SECONDS)
+    return [
+        {
+            "member": member,
+            "offset": offset,
+            "expected_hex": struct.pack("<I", old_word).hex(),
+            "replacement_hex": struct.pack("<I", new_word).hex(),
+        }
+        for (member, offset), old_word, new_word in zip(DRAG_TIME_SITES, stock, replacements)
+    ]
+
+
 def generate_legacy_client_plan(
     source_apk: Path, server_origin: str, disable_google_services: bool = False,
+    drag_time_seconds: float = STOCK_DRAG_TIME_SECONDS,
 ) -> dict[str, object]:
     """Generate only local routing edits for a selected APK.
 
@@ -430,6 +482,7 @@ def generate_legacy_client_plan(
     if disable_google_services:
         plan["patches"].extend(_disabled_bind_action_patches(source_apk))
         plan["patches"].extend(_disabled_unity_bind_action_patches(source_apk))
+    plan["patches"].extend(drag_time_patches(drag_time_seconds))
     plan["text_asset_json_aliases"] = [COIN_CREEPS_BANNER_ALIASES]
     return plan
 
