@@ -7,8 +7,12 @@ smaller files used by the client and server. An intermediate can be required to
 runs.
 
 You do not need to read this to install anything. It is here so the generated
-output is explainable rather than mysterious, and so a
-[dedicated server](dedicated-server.md) operator knows which files to copy.
+output is explainable rather than mysterious.
+
+The **Needed by the running server?** column below is a description of the
+files, not a packing list. A [dedicated server](dedicated-server.md) derives
+every one of them from the APK beside its own resource tree, so there is
+nothing to copy between the two machines.
 
 Everything below stays under the ignored `user-data/` directory.
 
