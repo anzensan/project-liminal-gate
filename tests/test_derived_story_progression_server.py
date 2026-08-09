@@ -81,7 +81,12 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         bad_clear[6] = ("battle_result", json.dumps({"chapter": 2, "section": 5, "coins": 6, "exp": 0, "items": {}, "buddies": [], "monsters": [], "summons": [], "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0]}))
         status, rejected = self.post(clear_path, bad_clear)
         self.assertEqual(409, status)
-        self.assertEqual("tutorial_state_conflict", rejected["error"])
+        # The refusal names the check that failed rather than the account. A
+        # story clear has six ways to disagree and used to answer all of them
+        # with `tutorial_state_conflict`, which thirteen other call sites also
+        # return, so an operator's log could not tell a miscounted battle coin
+        # from a progress code the client was never going to send.
+        self.assertEqual("story_clear_battle_coins_conflict", rejected["error"])
         status, cleared = self.post(clear_path, clear)
         self.assertEqual(200, status)
         self.assertEqual(7, cleared["coins"])
@@ -163,3 +168,28 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         self.assertTrue(payload["success"])
+
+    def test_a_wrong_progress_code_says_so_by_name(self) -> None:
+        """The refusal that cost two days of diagnosis, now self-describing.
+
+        A stage refused because the client reported a progress code the server
+        did not expect is the single most informative refusal this route makes:
+        it means the server and the client disagree about where the story goes
+        next. Answering it with the same reason as a wallet or phase
+        disagreement left the operator's log saying only that a clear was
+        refused, which is how nine phantom Chapter 20 sections survived.
+        """
+        start = [("stamina", "5"), ("coins", "0"), ("chapter", "2"), ("section", "5"), ("lastUpdate", "1")]
+        self.assertEqual(200, self.post(f"/gd/start_quest?otk={self.token}&requestID=start-progress", start)[0])
+        clear = [
+            # 2-5 ends its chapter, so the accepted code is 3-1 with the
+            # boundary flags. This reports the next section instead.
+            ("progressCode", str(0x01000000 | (2 << 6) | 6)), ("worldMapNo", "0"),
+            ("valuables", json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 7})),
+            ("chrdata", json.dumps([self.character])), ("itemList", "[0]"), ("summonList", "[0]"),
+            ("battle_result", json.dumps({"chapter": 2, "section": 5, "coins": 7, "exp": 0, "items": {}, "buddies": [], "monsters": [], "summons": [], "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0]})),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ]
+        status, rejected = self.post(f"/gd/clear_quest?otk={self.token}&requestID=clear-progress", clear)
+        self.assertEqual(409, status)
+        self.assertEqual("story_clear_progress_conflict", rejected["error"])
