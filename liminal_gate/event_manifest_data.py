@@ -83,8 +83,21 @@ FOLDED_ARCHIVE_CHAPTERS = frozenset({
 # archive manifest. Chapter 2015 sections 4--6 are titled ``空き`` (empty), have
 # zero battles, and have no section banners. Keep those placeholders out while
 # retaining the three actual Final Fantasy XV battles.
+#
+# Chapters 8000--8007 are the same withholding for the same reason, and unlike
+# 2015 their fifth section is not an empty placeholder: it carries a real battle
+# at 15 stamina, which is why reading the tier count off BattleData alone
+# produced it. The retained archive cannot draw it. Every family in the
+# 8000--8018 range ships exactly one Special banner per card it lists -- three
+# for 8012--8017, two for 8008--8011, one for 8018 -- and these eight ship
+# `sp<chapter>-1` through `-4` and no fifth. The client has no name for it
+# either and falls back to the literal placeholder `text`, which is what a
+# tester's selector showed under a black rectangle. What the fifth section was
+# for is unrecovered, so it is withheld rather than dressed in the fourth card's
+# artwork.
 ARCHIVE_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
     2015: (1, 2, 3),
+    **{chapter: (1, 2, 3, 4) for chapter in range(8000, 8008)},
 }
 
 # event_id, flag, chapter, unlock_after_chapter

@@ -133,6 +133,36 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertEqual((), loaded.by_identity()[(2017, 1)].character_ids)
         self.assertTrue({2000, 2007, 2008, 2009} <= FOLDED_ARCHIVE_CHAPTERS)
 
+    def test_the_fifth_strikes_back_section_is_withheld(self) -> None:
+        """BattleData carries it; the retained archive cannot draw it.
+
+        Chapters 8000--8007 each have five sections with real battles, so a
+        generator reading BattleData alone offers all five. The retired service
+        shipped `sp<chapter>-1` through `-4` and no fifth, and the client has no
+        name for one either -- it renders the literal placeholder `text` under a
+        black card, which is what a tester's selector showed. `flags` keys these
+        families per section, so dropping the stage drops the row with it.
+        """
+        battledata = {
+            "schema_version": 1, "provenance": "user-derived",
+            "source": {"profile": "p", "apk_sha256": "0" * 64},
+            "stages": [
+                {"chapter": 8002, "section": section, "stamina": 15,
+                 "coins": 0, "battle_count": 1, "has_battle": True}
+                for section in range(1, 6)
+            ],
+        }
+        _, _, loaded = self._generate(battledata, ())
+        self.assertEqual((1, 2, 3, 4), ARCHIVE_SECTION_ALLOWLIST[8002])
+        self.assertEqual(
+            [1, 2, 3, 4],
+            sorted(stage.section for stage in loaded.stages if stage.chapter == 8002),
+        )
+        self.assertNotIn((8002, 5), loaded.by_identity())
+        # The row is what actually goes: an unbacked section defers to its flag,
+        # and there is no longer a `-5` key to answer for it.
+        self.assertNotIn("sp_ch_8002-5", loaded.flags(None))
+
     def test_a_folded_chapter_never_withholds_one_of_its_own_sections(self) -> None:
         """The property that makes folding safe, and the 2015 trap in one line.
 
