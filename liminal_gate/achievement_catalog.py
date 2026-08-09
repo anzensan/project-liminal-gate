@@ -13,7 +13,7 @@ from liminal_gate.achievement_data import (
     ACHIEVEMENT_ITEM_ID,
     ACHIEVEMENT_ROWS,
 )
-from liminal_gate.save_validation import ITEM_SLOTS, MAX_COINS, MAX_ITEM_STACK
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_COINS, MAX_ENERGY, MAX_ITEM_STACK
 
 
 class AchievementCatalogError(ValueError):
@@ -87,26 +87,22 @@ BUNDLED_MAX_COINS = MAX_COINS
 
 
 def build_bundled_achievement_policy() -> AchievementCatalog:
-    """Return the guided-path local clear-chapter achievement policy.
+    """Return the guided-path local achievement policy: all 98 of them.
 
-    The eight settleable rows and their uniform one-Energy, one-item-50 present
-    list are recovered from the final client's master data; see
-    :mod:`liminal_gate.achievement_data` for why the other 91 records are not
-    included.
+    Every achievement the client carries is claimable. The nine `ClearChapter`
+    rows keep the story condition this server can check; the rest are free,
+    because their conditions turn on state the server never sees and the client
+    already decides what it lists as achieved. See
+    :mod:`liminal_gate.achievement_data` for the reward columns and the twelve
+    `Title` presents that are deliberately dropped.
     """
     achievements = {
-        achievement_id: Achievement(
-            achievement_id,
-            required_chapter,
-            ACHIEVEMENT_FREE_ENERGY,
-            0,
-            {ACHIEVEMENT_ITEM_ID: ACHIEVEMENT_ITEM_COUNT},
-        )
-        for achievement_id, required_chapter in ACHIEVEMENT_ROWS
+        achievement_id: Achievement(achievement_id, required_chapter, energy, coins, dict(items))
+        for achievement_id, required_chapter, energy, coins, items in ACHIEVEMENT_ROWS
     }
     return AchievementCatalog(
         BUNDLED_ITEM_SLOTS,
-        ACHIEVEMENT_FREE_ENERGY,
+        MAX_ENERGY,
         BUNDLED_MAX_COINS,
         BUNDLED_MAX_STACK,
         achievements,

@@ -219,18 +219,25 @@ KNOWN_EVENT_FLAGS: frozenset[str] = CLIENT_CONFIRMED_EVENT_FLAGS | COMMUNITY_ATT
 #: client's own `AchivementSet`: each `AchivementInfo` carries a `showFlag`, and
 #: `AchievementUtil.IsShow` resolves it through `EventManager.GetBoolean`, where
 #: an absent key reads false.  Forty-two of the ninety-nine records name this
-#: one; the rest name `achive-hide`, which the final client uses for the Co-op,
+#: one; the rest name `achive-hide`, which the final client used for the Co-op,
 #: VS, Twitter, Line and survey entries whose conditions the retired service
-#: owned, and which stays unsent for the same reason they are unreachable here.
-ACHIEVEMENT_EVENT_FLAG = "achive-1"
+#: owned.
+#:
+#: Both are sent. Hiding the second set would be reproducing a live service's
+#: reason rather than an archive's: those entries were hidden because nobody
+#: could still earn them against a running Co-op or VS population, and that is
+#: exactly the situation this project cannot restore. Listing them costs
+#: nothing and completes a screen the player can otherwise never finish; the
+#: bundled policy makes them free to claim for the same reason.
+ACHIEVEMENT_EVENT_FLAGS = ("achive-1", "achive-hide")
 
 
 def achievement_event_flags() -> dict[str, dict[str, object]]:
-    """Let the client list the achievements it can evaluate for itself.
+    """Let the client list every achievement it carries.
 
     Visibility only.  The client holds the whole master -- ids, unlock types,
     thresholds and rewards -- and decides what is unlocked and achieved from
-    its own state; this flag is the half the server owns, and without it
+    its own state; these flags are the half the server owns, and without them
     `UIAchivements` builds an empty list and the menu entry renders bare.
     """
-    return {ACHIEVEMENT_EVENT_FLAG: {"name": ACHIEVEMENT_EVENT_FLAG, "value": True}}
+    return {flag: {"name": flag, "value": True} for flag in ACHIEVEMENT_EVENT_FLAGS}
