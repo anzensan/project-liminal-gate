@@ -30,7 +30,12 @@ from liminal_gate.achievement_data import (
     MULTIPLAY_ACHIEVEMENT_CONDITIONS,
     multiplay_achievement_projection,
 )
-from liminal_gate.event_flag_data import ACHIEVEMENT_EVENT_FLAGS, achievement_event_flags
+from liminal_gate.event_flag_data import (
+    ACHIEVEMENT_MENU_EVENT_FLAG,
+    ACHIEVEMENT_SHOW_FLAGS,
+    KNOWN_EVENT_FLAGS,
+    achievement_event_flags,
+)
 
 
 class BundledAchievementPolicyTest(unittest.TestCase):
@@ -92,10 +97,24 @@ class BundledAchievementPolicyTest(unittest.TestCase):
     def test_both_visibility_flags_are_sent(self) -> None:
         """Listing them is the other half; a claimable achievement nothing
         shows is exactly as unreachable as an unclaimable one."""
-        self.assertEqual(("achive-1", "achive-hide"), ACHIEVEMENT_EVENT_FLAGS)
+        self.assertEqual(("achive-1", "achive-hide"), ACHIEVEMENT_SHOW_FLAGS)
+        self.assertTrue(set(ACHIEVEMENT_SHOW_FLAGS) <= set(achievement_event_flags()))
+
+    def test_the_menu_gate_is_sent_too(self) -> None:
+        """`UIMain.Setup` activates the button only for this flag.
+
+        The show flags decide what the achievements screen lists; this one
+        decides whether the player can open it. Sending only the first set left
+        a complete list behind a button that was never activated, which looks
+        from the server side exactly like everything working.
+        """
+        self.assertEqual("achivements_enable", ACHIEVEMENT_MENU_EVENT_FLAG)
         flags = achievement_event_flags()
-        self.assertEqual({"achive-1", "achive-hide"}, set(flags))
+        self.assertIn(ACHIEVEMENT_MENU_EVENT_FLAG, flags)
+        self.assertIn(ACHIEVEMENT_MENU_EVENT_FLAG, KNOWN_EVENT_FLAGS)
+        self.assertEqual({"achive-1", "achive-hide", "achivements_enable"}, set(flags))
         self.assertTrue(all(entry["value"] is True for entry in flags.values()))
+        self.assertTrue(all(entry["name"] == name for name, entry in flags.items()))
 
 
 def _client_reads(projection: dict[str, object], field: str, index: int | None) -> int:
