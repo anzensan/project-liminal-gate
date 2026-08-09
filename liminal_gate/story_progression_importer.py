@@ -9,14 +9,16 @@ from typing import Any
 
 from liminal_gate.reviewed_build import SOURCE_PROFILE
 from liminal_gate.atomic_json import write_json_document
+from liminal_gate.story_progression_catalog import CORE_SECTION_COUNTS
 
 
 SCHEMA_VERSION = 1
 CORE_CHAPTERS = range(2, 43)
-_EXPECTED_SECTIONS = {
-    chapter: (5 if chapter == 2 or chapter == 3 else 3 if chapter == 42 else 10)
-    for chapter in CORE_CHAPTERS
-}
+#: The one table both the derived catalog and the bundled policy answer to, so
+#: an import can never disagree with `build_core_story_policy` about the shape
+#: of the story. This used to be a private copy holding the *slot* counts, which
+#: is how nine empty Chapter 20 sections passed validation and became stages.
+_EXPECTED_SECTIONS = CORE_SECTION_COUNTS
 
 
 class StoryProgressionImportError(ValueError):
@@ -46,7 +48,13 @@ def build_story_progression(document: dict[str, Any]) -> dict[str, object]:
             raise StoryProgressionImportError("BattleData stage metadata has an invalid schema")
         if any(type(row[name]) is not int for name in ("chapter", "section", "stamina", "coins", "battle_count")) or type(row["has_battle"]) is not bool:
             raise StoryProgressionImportError("BattleData stage metadata has invalid field types")
-        if row["chapter"] in CORE_CHAPTERS:
+        # A reserved slot is not a stage. BattleData pads every chapter out to a
+        # fixed run of sections and marks the unused ones with no battles at all;
+        # Chapter 20 ships ten and uses one. Carrying a padded slot forward makes
+        # the client's last stage in a chapter look like a mid-chapter one, and
+        # the successor it implies is a stage the client can never reach or
+        # report -- so the progression graph must be the battles, not the slots.
+        if row["chapter"] in CORE_CHAPTERS and row["has_battle"]:
             stages.append({name: row[name] for name in ("chapter", "section", "stamina", "coins")})
     identities = [(row["chapter"], row["section"]) for row in stages]
     if identities != sorted(identities) or len(identities) != len(set(identities)):
@@ -54,6 +62,13 @@ def build_story_progression(document: dict[str, Any]) -> dict[str, object]:
     counts = {chapter: sum(row["chapter"] == chapter for row in stages) for chapter in CORE_CHAPTERS}
     if counts != _EXPECTED_SECTIONS:
         raise StoryProgressionImportError("BattleData does not match the reviewed core-story section counts")
+    # Dropping padding must never leave a hole. Every chapter's playable sections
+    # are numbered from 1 without a gap, and a chapter that broke that rule would
+    # need a decision rather than a filter, so it fails here instead.
+    for chapter, expected in _EXPECTED_SECTIONS.items():
+        sections = [row["section"] for row in stages if row["chapter"] == chapter]
+        if sections != list(range(1, expected + 1)):
+            raise StoryProgressionImportError("core story chapter sections must run from 1 without a gap")
     output: list[dict[str, int | bool]] = []
     for index, row in enumerate(stages):
         successor = (43, 1) if index + 1 == len(stages) else (stages[index + 1]["chapter"], stages[index + 1]["section"])
