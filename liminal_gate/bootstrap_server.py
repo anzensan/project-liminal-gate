@@ -4510,10 +4510,87 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 constants["specialQuestList"] = list(dict.fromkeys(
                     local_special_events + hunting_lists["specialQuestList"]
                 ))
+        served = constants.get("specialQuestList")
+        if served:
+            constants["specialQuestList"] = _bounded_special_quest_list(
+                served, set(local_special_events), self.server.events,
+            )
         return constants
 
     def log_message(self, format: str, *args: object) -> None:
         return
+
+
+#: The longest `specialQuestList` the final client can take. At 31 rows it
+#: never reaches the title flow: it hangs on the Mistwalker splash and then
+#: raises its transport dialog, **while every request this server answers
+#: returns 200**, so nothing in the log points at it.
+#:
+#: Measured against the reviewed client rather than reasoned about (2026-08-09,
+#: same account, only `progressCode` moved): 20 rows reach the home screen, 31
+#: hang, and 30 reach it again. Dropping any *one* family fixed it -- 2002 and
+#: 2018 were both tried -- which is what rules out a bad row and leaves the
+#: count. Capping the list to 30 while leaving every `sp_ch_` flag in place
+#: fixes it too, which is what rules out the flag block and leaves the list.
+#:
+#: Clearing **Chapter 20** is where an ordinary account crosses this: five
+#: families open at once there and the list goes from 20 to 31 in one step.
+SPECIAL_QUEST_LIST_MAX = 30
+
+
+def _is_archive_row(row: str) -> bool:
+    """Whether a selector row names an archived event rather than a standing one."""
+    chapter = row.split("-", 1)[0]
+    return chapter.isdecimal() and 2000 <= int(chapter) <= 2999
+
+
+def _bounded_special_quest_list(
+    served: list[str], archive_rows: set[str], recorder: EventRecorder | None,
+) -> list[str]:
+    """Hold the served Special Quest list inside what the client can render.
+
+    Withholding a row is a real loss, so which row goes is chosen rather than
+    left to the tail. The standing Special Quests -- Melting Pot and the six
+    permanent rows beside it -- are kept whichever way the list grows, because
+    they are always-available content a player builds a routine around. The
+    archive rows are withheld newest-first instead: an event that opened this
+    chapter is the one no routine depends on yet.
+
+    Display order is untouched. Only membership is decided here, and the
+    surviving rows are re-emitted in the order the client was already given, so
+    the menu does not reshuffle when the cap starts biting.
+
+    This is a client limit, not a policy: nothing here is a claim about what the
+    retired service showed. The list is also inflated relative to the client's
+    own presentation -- it holds `2015` and `2017` as single folded cards where
+    this server sends three and five separate rows -- so matching that would buy
+    the room back without withholding anything. That is a separate change, and
+    it needs its own confirmation against the client before it is made.
+    """
+    if len(served) <= SPECIAL_QUEST_LIST_MAX:
+        return served
+    # Which catalog emitted a row does not separate the two: the event catalog
+    # carries Melting Pot and the six standing rows alongside the archive. The
+    # chapter range does. 2000--2999 are the archived events; 3000 and above are
+    # the permanent Special Quests and Melting Pot.
+    archive = [row for row in served if _is_archive_row(row)]
+    standing = [row for row in served if not _is_archive_row(row)]
+    keep = set(standing) | set(archive[:max(0, SPECIAL_QUEST_LIST_MAX - len(standing))])
+    withheld = [row for row in served if row not in keep]
+    if recorder is not None:
+        # Never a silent cap: the withheld identities are stage names this
+        # server already models, not anything read off a request body.
+        recorder.record(
+            "GET", "/gd/userdata", HTTPStatus.OK,
+            {
+                "special_quest_list_capped": {
+                    "served": len(served) - len(withheld),
+                    "limit": SPECIAL_QUEST_LIST_MAX,
+                    "withheld": withheld,
+                },
+            },
+        )
+    return [row for row in served if row in keep]
 
 
 def _cleared_identity(body: bytes) -> tuple[int, int] | None:
