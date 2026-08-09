@@ -1046,16 +1046,33 @@ retired service's schedules, rotations, encounter contents, or reward odds.
 ## Tuning rates, gates, and EXP
 
 Some of what this server serves is recovered from your client, and some of it
-this project had to choose. The chosen half is collected in one strict document
-you can pass at launch:
+this project had to choose. The chosen half is collected in one strict document.
+
+**The short version: write `user-data/tuning.toml` and start normally.** Every
+launcher looks for that file in its data directory and passes it when it is
+there, so guided setup and the dedicated server need no extra option:
 
 ```sh
-liminal-gate-bootstrap-server ... --tuning /path/to/tuning.toml
+$EDITOR user-data/tuning.toml
+python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 ```
 
-The same values are the defaults in `liminal_gate/tuning.py`, so editing that
-module is the build-time path and `--tuning` is the run-time one. Either
-reaches the same numbers.
+Keeping it elsewhere takes an explicit path, which every launcher accepts:
+
+| Launcher | How to point at a tuning document |
+| --- | --- |
+| guided `tester_setup` | `--tuning /path/to/tuning.toml` |
+| `server_setup` | `--tuning /path/to/tuning.toml` |
+| `bootstrap_server` | `--tuning /path/to/tuning.toml` |
+| `install_systemd_service.sh` | `./scripts/install_systemd_service.sh PORT --tuning=/path/to/tuning.toml` |
+| local configuration file | `tuning = "tuning.toml"` |
+| combined APK (on-device) | not offered |
+
+A conventional `tuning.toml` is used only when it exists; an explicit path is
+used as given and fails visibly if it is wrong. The same values are also the
+defaults in `liminal_gate/tuning.py`, so editing that module is the build-time
+path and the document is the run-time one. Either reaches the same numbers, and
+a server started without one behaves exactly as it did before the file existed.
 
 **A partial document is the normal case.** Every section and every key is
 optional, and anything you leave out keeps its bundled value — turning off one

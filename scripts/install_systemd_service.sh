@@ -17,13 +17,20 @@ for argument in "$@"; do
     --enable-stamina)
       server_flags+=" $argument"
       ;;
+    --tuning=*)
+      # Only needed for a tuning document kept somewhere other than the data
+      # directory: `server_setup` picks up a `tuning.toml` sitting there on its
+      # own, so an ordinary host edits that file and restarts the unit rather
+      # than reinstalling it.
+      server_flags+=" --tuning ${argument#--tuning=}"
+      ;;
     --*)
-      echo "unknown option: $argument (only --enable-stamina is accepted)" >&2
+      echo "unknown option: $argument (only --enable-stamina and --tuning=PATH are accepted)" >&2
       exit 2
       ;;
     *)
       if [[ -n "$service_port" ]]; then
-        echo "usage: $0 [PORT] [--enable-stamina]" >&2
+        echo "usage: $0 [PORT] [--enable-stamina] [--tuning=PATH]" >&2
         exit 2
       fi
       service_port="$argument"

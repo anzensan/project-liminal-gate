@@ -32,6 +32,15 @@ for the meter to refill. The retired service's timer paced a live game, and ther
 is no live game left to pace. The original behavior is one launcher flag away —
 see [The stamina meter is off by default](docs/advanced-configuration.md#the-stamina-meter-is-off-by-default).
 
+**The rates this project had to choose, you can change.** Some of what the
+server sends is recovered from your client; some of it — Pact and Companion
+draw odds, how early Hunting zones open, the two party gates — was never
+recovered and had to be picked. Those choices live in one optional
+`user-data/tuning.toml`, and setup uses it automatically when it is there. Item
+and monster drop rates are not among them: the client rolls those itself and
+never asks. See [Tuning rates, gates, and
+EXP](docs/advanced-configuration.md#tuning-rates-gates-and-exp).
+
 Full detail: [What works right now](docs/scope-and-status.md).
 
 ## Before you start
@@ -269,7 +278,7 @@ resources, captures, account saves, tokens, digests, or keys.
 - [Setup options and manual setup](docs/setup-manual.md) — every option, and the individual commands.
 - [Run only the server on a separate Linux machine](docs/dedicated-server.md) — dedicated server, systemd, remote access.
 - [What setup generates](docs/generated-files.md) — every produced file and why it is kept.
-- [Advanced local configuration](docs/advanced-configuration.md) — optional progression, outcome, inventory, Pact, and Companion catalogs.
+- [Advanced local configuration](docs/advanced-configuration.md) — optional progression, outcome, inventory, Pact, and Companion catalogs, and the [tuning document](docs/advanced-configuration.md#tuning-rates-gates-and-exp) for rates, gates, and EXP.
 - [Save editor](tools/save-editor.html) — a single local page; see [Editing a save](docs/saves.md#editing-a-save).
 
 **Project and protocol**

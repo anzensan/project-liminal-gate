@@ -35,6 +35,14 @@ class TuningError(ValueError):
     """A user-local tuning document is invalid."""
 
 
+#: The conventional filename inside a launcher's data directory, matching
+#: `DEFAULT_OUTCOME_CATALOG` and `DEFAULT_COMPANION_EQUIPMENT_CATALOG`.  Unlike
+#: those two, this one is genuinely optional and is never generated, so a
+#: launcher passes it only when the operator has actually written one -- naming
+#: a file that does not exist is an error, and every install would hit it.
+DEFAULT_TUNING_DOCUMENT = "tuning.toml"
+
+
 #: The class keys the Pact tables are keyed on.  These are the bands
 #: :mod:`liminal_gate.pact_draw_catalog` derives from the recovered ``rarity``
 #: field, not free-form names, so a document naming anything else is refused

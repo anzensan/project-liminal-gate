@@ -157,6 +157,37 @@ Changing your mind means rerunning the installer with or without the flag; the
 unit is the only place a systemd host passes a launcher option. See
 [The stamina meter is off by default](advanced-configuration.md#the-stamina-meter-is-off-by-default).
 
+### Tuning rates and gates on a running host
+
+Rates are the exception to the rule above: they need no reinstall. Drop a
+`tuning.toml` in the data directory and this launcher picks it up on start, so
+changing a Pact rate, a Hunting unlock, or a party gate is an edit and a
+restart:
+
+```sh
+$EDITOR user-data/tuning.toml
+sudo systemctl restart project-liminal-gate.service
+```
+
+Everything in it is optional — anything you leave out keeps its bundled value:
+
+```toml
+schema_version = 1
+provenance = "user-supplied"
+
+[hunting]
+tier_unlock_chapters = [1, 1, 1]   # open every Hunting tier immediately
+
+[gates]
+species_limits = false             # let any party into Dragon and Machine Road
+```
+
+Keeping the file somewhere else takes `--tuning=PATH` at install time. The full
+option list is [Tuning rates, gates, and
+EXP](advanced-configuration.md#tuning-rates-gates-and-exp); a misspelled key is
+refused at startup rather than silently ignored, so check `journalctl` after a
+restart if the server does not come back.
+
 The service runs as the invoking non-root user, restarts after an unexpected
 exit, and starts during normal multi-user boot. Its systemd protections leave
 only this checkout's `user-data/` writable. The invoking user must therefore be

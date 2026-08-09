@@ -80,6 +80,7 @@ from liminal_gate.scenario_encounter_importer import (
 )
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
+from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
 from liminal_gate.story_outcome_generator import (
     StoryOutcomeGeneratorError,
@@ -1387,6 +1388,7 @@ def prepare_local_tester(
 
 def server_arguments(
     resource_root: Path, data_directory: Path, port: int, event_catalog: Path | None = None,
+    tuning: Path | None = None,
 ) -> list[str]:
     arguments = [
         sys.executable, "-m", "liminal_gate.bootstrap_server",
@@ -1413,6 +1415,13 @@ def server_arguments(
         "--event-catalog", str(selected_event_catalog.resolve()),
         "--character-catalog", str((data_directory / "character-catalog.json").resolve()),
     ))
+    # The one optional document nothing generates. An explicit path is passed
+    # as given and fails visibly if it is wrong; the conventional one is passed
+    # only when it exists, because naming a missing file is an error and every
+    # install that never wrote one would hit it.
+    selected_tuning = tuning if tuning is not None else data_directory / DEFAULT_TUNING_DOCUMENT
+    if tuning is not None or selected_tuning.exists():
+        arguments.extend(("--tuning", str(selected_tuning.resolve())))
     return arguments
 
 
@@ -1640,6 +1649,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--event-catalog", type=Path, help="optional user-local event-stage catalog; requires --dummy-dll-dir")
+    parser.add_argument("--tuning", type=Path, help=f"optional operator tuning document for Pact and Companion rates, Hunting availability, the two party gates, and the EXP multiplier; defaults to {DEFAULT_TUNING_DOCUMENT} in the data directory when that file exists")
     parser.add_argument("--dump-cs", type=Path, help="Il2CppDumper dump.cs; defaults to the file beside --dummy-dll-dir")
     parser.add_argument(
         "--no-configure", dest="configure", action="store_false",
@@ -1785,7 +1795,7 @@ def main() -> int:
         if args.configure and sys.stdin.isatty():
             offer_account_switch(args.data_dir)
         print(f"\nInstalled on {device}. Starting the local server; press Control-C when finished.")
-        run_server(server_arguments(resource_root, args.data_dir, args.port, options.event_catalog))
+        run_server(server_arguments(resource_root, args.data_dir, args.port, options.event_catalog, args.tuning))
     except (TesterSetupError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"tester setup failed: {error}") from error
     return 0

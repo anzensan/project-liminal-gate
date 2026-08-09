@@ -19,6 +19,7 @@ from liminal_gate.resource_catalog_builder import build_resource_manifest, repor
 from liminal_gate.luck_pool_catalog import DEFAULT_LUCK_POOL_CATALOG
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
+from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT
 from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES
 
 
@@ -147,6 +148,7 @@ def server_arguments(
     luck_pool_catalog: Path | None = None,
     interpolated_luck_pools: bool = True,
     enable_stamina: bool = False,
+    tuning: Path | None = None,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
@@ -167,6 +169,16 @@ def server_arguments(
             "--companion-equipment-catalog",
             str(companion_equipment_catalog),
         ]
+    )
+    # The one optional document nothing generates, so the conventional path is
+    # passed only when it exists: naming a missing file is an error, and every
+    # host that never wrote one would hit it. An explicit path is passed as
+    # given, and fails visibly if it is wrong.
+    selected_tuning = tuning if tuning is not None else data_directory / DEFAULT_TUNING_DOCUMENT
+    tuning_flags = (
+        ["--tuning", str(selected_tuning.resolve())]
+        if tuning is not None or selected_tuning.exists()
+        else []
     )
     event_flags = (
         []
@@ -206,6 +218,7 @@ def server_arguments(
         *luck_pool_flags,
         *equipment_flags,
         *event_flags,
+        *tuning_flags,
     ]
 
 
@@ -281,6 +294,16 @@ def parse_args() -> argparse.Namespace:
         help=(
             "charge the client's own stamina meter for quest entry; without it "
             "the meter stays pinned full and entry is never gated by a timer"
+        ),
+    )
+    parser.add_argument(
+        "--tuning",
+        type=Path,
+        help=(
+            "operator tuning document for Pact and Companion rates, Hunting "
+            "availability, the two party gates, and the EXP multiplier; "
+            f"defaults to {DEFAULT_TUNING_DOCUMENT} in the data directory when "
+            "that file exists"
         ),
     )
     parser.add_argument(
@@ -385,6 +408,7 @@ def main() -> int:
                 luck_pool_catalog=luck_pool_catalog,
                 interpolated_luck_pools=not args.no_interpolated_luck_pools,
                 enable_stamina=args.enable_stamina,
+                tuning=args.tuning,
             )
         )
     except (OSError, ResourceCatalogError, ServerSetupError, subprocess.CalledProcessError) as error:
