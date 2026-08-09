@@ -189,18 +189,31 @@ MULTIPLAY_ACHIEVEMENT_CONDITIONS: tuple[tuple[int, str, str, int | None, int], .
     (93, "Prize2", "prize", None, 50),
 )
 
-#: Every key `MultiplayUserData.LoadFromJsonNormal` reads, in the order it reads
-#: them.  The object is sent complete rather than trimmed to the counters the
-#: conditions need: `SafeJsonLoader` tolerates a missing key, but a partial
-#: object would leave the next reader of this file guessing which omissions were
-#: deliberate.  `rank` is absent on purpose -- the client derives it from `exp`
-#: rather than loading it.
-_MULTIPLAY_SCALARS: tuple[str, ...] = ("exp", "prize", "vsPlayChapter", "vsPlayMatchType", "vsStaminaRefillStartTime")
+#: Only the keys a condition actually needs are sent, and that restraint is the
+#: whole point rather than laziness.  This object was first sent complete -- every
+#: key `LoadFromJsonNormal` reads, so no reader would have to wonder which
+#: omissions were deliberate -- and two of those keys are not the type their name
+#: suggests.  `showTitles` is read with `GetString`, not as a list, and
+#: `vsStaminaRefillStartTime` with `GetLong`.  LitJson's `JsonData` keeps `Int`
+#: and `Long` as distinct types and its explicit conversions refuse to cross, so
+#: a JSON `0` is an `Int` that `(long)` throws on; the retired service never met
+#: this because it sent a millisecond epoch, which is always past 2^31 and so
+#: always parses as `Long`.  Either wrong key raised inside
+#: `LoadUserdataFromJson`, which killed the login callback and left the client on
+#: "connecting" forever behind a perfectly good HTTP 200.
+#:
+#: Every `SafeJsonLoader` getter is individually guarded and returns a default
+#: for an absent key -- 0 from `GetInt`/`GetLong`, `String.Empty` from
+#: `GetString` -- which is exactly the value an account that never played Co-op
+#: or VS should carry.  So the safe shape and the honest shape are the same one:
+#: send what the conditions force, and let the client default the rest.
+#:
+#: `LoadJsonList` reads each element with `(int)`, so these lists must hold plain
+#: integers, and `prize` is read with `GetInt`.
+_MULTIPLAY_SCALARS: tuple[str, ...] = ("prize",)
 _MULTIPLAY_LISTS: tuple[str, ...] = (
-    "titleList", "showTitles", "friendList",
     "coopFriendPlayNum", "coopFreePlayNum", "coopSimplePlayNum",
     "vsFreePlayNum", "vsFriendPlayNum", "vsFreeWinNum", "vsFriendWinNum",
-    "vsFreeConsectiveWinNum", "vsFriendConsectiveWinNum",
     "vsFreeConsectiveWinMax", "vsFriendConsectiveWinMax",
 )
 
@@ -221,9 +234,12 @@ def multiplay_achievement_projection() -> dict[str, object]:
     reasoning that lists these records at all -- that hiding them reproduces a
     live service's judgement rather than an archive's -- decides that a screen
     the player can otherwise never finish should be finishable.  The cost is
-    that `exp` stays 0 and the title lists stay empty, so the multiplay rank and
-    title surfaces these counters also feed report nothing rather than a rank
-    the account never held.
+    that `exp` and the title lists are not sent at all, so the multiplay rank
+    and title surfaces these counters also feed report nothing rather than a
+    rank the account never held.
+
+    Only the keys a condition forces are sent; see the two module-level tuples
+    above for why sending the object complete is the wrong instinct here.
     """
     indexed: dict[str, dict[int, int]] = {}
     sums: dict[str, int] = {}
