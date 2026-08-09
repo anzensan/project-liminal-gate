@@ -192,7 +192,7 @@ class HuntingRuntimeTest(unittest.TestCase):
     def clear(self, request_id: str, chapter: int, section: int, *, coins: int = 0,
               items: dict | None = None, item_list: list | None = None, exp: int = 0,
               buddies: list | None = None, monsters: list | None = None,
-              summons: list | None = None,
+              summons: list | None = None, summon_list: list | None = None,
               snapshot: dict | None = None) -> tuple[int, dict]:
         # A real retry resends the body it sent the first time.  Rebuilding it
         # from live userdata would instead echo the Energy the first clear
@@ -208,7 +208,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             })),
             ("chrdata", json.dumps([self.character])),
             ("itemList", json.dumps(userdata["itemList"] if item_list is None else item_list)),
-            ("summonList", json.dumps(userdata["summonList"])),
+            ("summonList", json.dumps(userdata["summonList"] if summon_list is None else summon_list)),
             ("battle_result", json.dumps({
                 "chapter": chapter, "section": section, "coins": coins, "exp": exp,
                 "items": items or {}, "buddies": buddies or [], "monsters": monsters or [],
@@ -565,13 +565,30 @@ class HuntingRuntimeTest(unittest.TestCase):
         )
         self.assertEqual((380, "free_roam"), (self.userdata()["coins"], self.phase()))
 
-    def test_default_refuses_a_summon_it_cannot_settle_instead_of_discarding_it(self) -> None:
+    def test_a_reported_summon_is_settled_from_the_client_report(self) -> None:
+        """The client owns what its own battle dropped; refusing only wedged it.
+
+        A refused clear leaves the battle active, so the earlier refusal lost
+        the Summon *and* blocked every other stage until the quest was replayed.
+        """
         self.assertEqual(200, self.start("summon-start", 1001, 1, 3)[0])
-        before = self.userdata()
-        status, refused = self.clear("summon-clear", 1001, 1, summons=[1])
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
-        self.assertEqual(before, self.userdata())
-        self.assertEqual("hunting_active", self.phase())
+        held = self.userdata()["summonList"]
+        gained = [count + 1 if slot == 0 else count for slot, count in enumerate(held)]
+        status, cleared = self.clear(
+            "summon-clear", 1001, 1, summons=[1], summon_list=gained,
+        )
+        self.assertEqual((200, True), (status, cleared["success"]))
+        self.assertEqual(gained, self.userdata()["summonList"])
+        self.assertEqual("free_roam", self.phase())
+
+    def test_a_stale_summon_count_never_deletes_a_held_one(self) -> None:
+        """`_preserved_counts` governs the Summon array as it does `itemList`."""
+        self.assertEqual(200, self.start("stale-summon-start", 1001, 1, 3)[0])
+        held = self.userdata()["summonList"]
+        self.assertEqual(200, self.clear(
+            "stale-summon-clear", 1001, 1, summon_list=[0] * len(held),
+        )[0])
+        self.assertEqual(held, self.userdata()["summonList"])
 
     def test_a_locked_stage_is_refused_and_a_second_battle_releases_the_first(self) -> None:
         status, locked = self.start("locked", *LOCKED_STAGE, 1)

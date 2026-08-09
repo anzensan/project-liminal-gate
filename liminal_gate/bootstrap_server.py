@@ -2499,14 +2499,19 @@ class BootstrapState:
                 clear["progressCode"] != int(userdata.get("progressCode", 0))
                 or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
                 or clear["valuables"].get("coins") not in _settled_wallet_coins(account, expected_coins)
-                or clear["summonList"] != userdata.get("summonList", [])
             ):
                 return "tutorial_state_conflict", None
-            # Hunting has no recovered Summon authoring contract. Accepting a
-            # reported Summon here would acknowledge the clear while silently
-            # discarding its reward, which is neither trust nor compatibility.
-            if result["summons"]:
-                return "invalid_local_hunting_result", None
+            # A reported Summon is settled from the client's own count array,
+            # the way the generic story clear settles one.  This used to refuse,
+            # on the reasoning that Hunting has no recovered Summon authoring
+            # contract and acknowledging a clear while discarding its reward is
+            # neither trust nor compatibility.  Discarding it is what refusing
+            # actually produced: the refusal leaves the battle active, which
+            # blocks every other stage until the same quest is replayed, so the
+            # reward was lost either way and the account was wedged besides.
+            # `summonList` is a fixed-length count-per-slot array the client
+            # reports as its base plus the battle's drops, so preserving it the
+            # way `itemList` is preserved authors nothing this server invented.
             if outcome_strict and not hunting_settlement_within_bounds(stage, result):
                 return "invalid_local_hunting_result", None
             gains = {int(item_id): count for item_id, count in result["items"].items()}
@@ -2526,6 +2531,9 @@ class BootstrapState:
                 "coins": expected_coins,
                 "valuables": {name: expected_coins if name == "coins" else int(userdata.get(name, 0)) for name in wallet_fields},
                 "itemList": projected_items,
+                "summonList": _preserved_counts(
+                    userdata.get("summonList"), clear["summonList"],
+                ),
                 # The roster is merged, never replaced: a stale client must not
                 # delete a grant it had not read back.  See `_preserved_roster`.
                 # An operator's EXP multiplier is credited on top of the merged
@@ -2698,25 +2706,19 @@ class BootstrapState:
                 or account.get("active_world_map_special") != {"chapter": identity[0], "section": identity[1]}
             ):
                 return "tutorial_state_conflict", None
+            result = clear["battle_result"]
+            # The Coin channel is settled like Hunting's: the wallet the client
+            # reports back is its pre-clear balance plus what the battle paid.
+            expected_coins = int(userdata.get("coins", 0)) + result["coins"]
             if (
                 clear["progressCode"] != int(userdata.get("progressCode", 0))
                 or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
-                or clear["valuables"].get("coins") != int(userdata.get("coins", 0))
+                or clear["valuables"].get("coins") not in _settled_wallet_coins(account, expected_coins)
             ):
                 return "tutorial_state_conflict", None
-            if not _bounded_special_result_matches(
-                userdata, clear, WORLD_MAP_SPECIAL_EXP_CEILING,
-            ):
+            if not _bounded_special_result_matches(clear, WORLD_MAP_SPECIAL_EXP_CEILING):
                 return "invalid_local_world_map_special_result", None
-            result = clear["battle_result"]
             if not world_map_special_companions_within_bounds(stage, result["buddies"]):
-                return "invalid_local_world_map_special_result", None
-            # Paying EXP means the roster changes, because levels live in it, so
-            # this can no longer require the roster back unchanged. It does
-            # require the same *characters*: this chapter mints no character,
-            # and accepting an arbitrary roster would let the id list become a
-            # grant channel alongside the bounded Companion box grant below.
-            if not _same_roster_membership(userdata.get("chrdata"), clear["chrdata"]):
                 return "invalid_local_world_map_special_result", None
             companions = None
             if result["buddies"]:
@@ -2728,11 +2730,23 @@ class BootstrapState:
             # The battle really was fought, so the levels it produced are kept
             # the way every other EXP-bearing clear keeps them: as a trusted
             # local client report, merged so a stale client cannot delete a
-            # grant it never read back.
+            # grant it never read back.  The merge is also what carries a
+            # monster this battle recruited: `_preserved_roster` is authoritative
+            # for every character the submission names, which is why the id list
+            # no longer has to come back unchanged.
             userdata["chrdata"] = _exp_credited_roster(
                 _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
                 userdata.get("teamMembers"), result["exp"],
                 self.tuning.exp.multiplier_percent, self.exp_curve,
+            )
+            # Coins, items and Summons settle from the same report, each through
+            # the preserving merge its own array already uses elsewhere.
+            userdata["coins"] = expected_coins
+            userdata["itemList"] = _preserved_counts(
+                userdata.get("itemList"), clear["itemList"],
+            )
+            userdata["summonList"] = _preserved_counts(
+                userdata.get("summonList"), clear["summonList"],
             )
             # After the merge, and once, for the reason the Hunting clear gives.
             active_luck_up = account.get("active_luck_up")
@@ -5387,34 +5401,34 @@ def _parse_message_ids(body: bytes) -> list[str] | None:
     return identifiers if type(identifiers) is list and identifiers and len(identifiers) == len(set(identifiers)) and all(isinstance(identifier, str) and identifier for identifier in identifiers) else None
 
 
-def _bounded_special_result_matches(
-    userdata: dict[str, Any], clear: dict[str, Any], max_exp: int,
-) -> bool:
-    """Require a Chapter 1100 clear to grant nothing unrecovered.
+def _bounded_special_result_matches(clear: dict[str, Any], max_exp: int) -> bool:
+    """Bound a Chapter 1100 clear's experience and its unreported channels.
 
     It is a real level-90 battle, so its own experience is permitted up to
     ``max_exp`` and with it the roster the client reports back, and its
     Companion channel is left to `world_map_special_companions_within_bounds`,
     which accepts it against the stage's own recovered manifest.
 
-    Every other channel is refused rather than trusted, because this chapter's
-    chests are labeled local policy and its remaining rewards were never
-    recovered: accepting a Coin, item, monster, Summon, or Lucky enemy here
-    would author state the record does not carry.  Counter Descent took the
-    same shape until a real clear proved the client reports all of it; that
-    family now settles through `_projected_event_items` instead.
+    The Coin, item, monster and Summon channels are settled from the client's
+    report rather than refused.  They were refused while this chapter's rewards
+    were unrecovered, on the reasoning that accepting them would author state
+    the record does not carry -- but the client is the only party that ever knew
+    what its own battle dropped, and Counter Descent already made that turn once
+    a real clear proved the client reports all of it.  What a refusal authored
+    instead was a wedged account: it leaves the battle active and blocks every
+    other stage until the same quest is replayed.
+
+    ``luckynum`` and ``boostup`` stay bounded to nothing.  They are not drop
+    channels -- they are the Lucky-enemy roll and the party's Skill Boost gain,
+    which reach the roster through `apply_luck_up_table` and the Pact
+    respectively, and letting a clear restate them would give the battle a
+    second, unbounded route into stats this server authors elsewhere.
     """
     result = clear["battle_result"]
     return (
-        result["coins"] == 0
-        and result["exp"] <= max_exp
-        and result["items"] == {}
-        and result["monsters"] == []
-        and result["summons"] == []
+        result["exp"] <= max_exp
         and result["luckynum"] == 0
         and result["boostup"] == [0] * 6
-        and clear["itemList"] == userdata.get("itemList")
-        and clear["summonList"] == userdata.get("summonList")
     )
 
 
@@ -5558,10 +5572,19 @@ def _is_initial_story_character(row: dict[str, Any]) -> bool:
 def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identity: tuple[int, int], catalog: StoryOutcomeCatalog, clear_state_catalog: ClearStateCatalog | None = None, strict: bool = False) -> dict[str, list[dict[str, Any]]] | None:
     """Author local Companion rows, bounded by the stage's recovered ceiling.
 
-    The Companion ceiling is always enforced, and it is the one ceiling that is
-    completely evidenced: every stage carries its own
-    ``BattleData.Section.dropBuddies`` allowlist inside the client.  A roll above
-    it, or naming a Companion the stage does not declare, is refused.
+    The Companion ceiling is enforced wherever the catalog names the stage, and
+    it is the one ceiling that is completely evidenced: every stage carries its
+    own ``BattleData.Section.dropBuddies`` allowlist inside the client.  A roll
+    above it, or naming a Companion the stage does not declare, is refused.
+
+    A stage the catalog does not name is settled unconstrained rather than
+    refused.  A missing rule is a gap in the supplied catalog, not evidence that
+    the stage drops nothing, and the two are not interchangeable: the archived
+    event chapters -- the standing Special Quests among them -- are exactly the
+    ones no encounter map reaches, so refusing them made supplying a catalog at
+    all turn ordinary play into ``invalid_local_outcome``.  An operator who
+    supplies a catalog constrains the stages it covers and leaves the rest
+    exactly as they are when no catalog is supplied.
 
     ``strict`` additionally bounds the reported items, recruited monsters, and
     Summons.  It is off by default because those two ceilings come from joining
@@ -5587,9 +5610,7 @@ def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identit
     result = clear["battle_result"]
     current_rows = userdata.get("chrdata")
     submitted_rows = clear["chrdata"]
-    if rule is None:
-        return None
-    if strict:
+    if strict and rule is not None:
         if not isinstance(current_rows, list) or any(not _valid_generic_character_record(row) or row["id"] not in catalog.character_ids for row in current_rows):
             return None
         current_ids = {row["id"] for row in current_rows}
@@ -5619,7 +5640,7 @@ def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identit
     if len(known_ids) != len(owned):
         return None
     reported_companions = Counter(result["buddies"])
-    if not outcome_allowed(reported_companions, rule.companion_maxima) or any(companion_id not in catalog.companion_masters for companion_id in reported_companions):
+    if (rule is not None and not outcome_allowed(reported_companions, rule.companion_maxima)) or any(companion_id not in catalog.companion_masters for companion_id in reported_companions):
         return None
     next_id = userdata.get("nextCompanionInventoryId", max(known_ids, default=0) + 1)
     if type(next_id) is not int or next_id <= max(known_ids, default=0):
@@ -5651,25 +5672,6 @@ def _retarget_party(userdata: dict[str, Any], removed_id: int, replacement_id: i
         for index, member in enumerate(members):
             if member == removed_id:
                 members[index] = replacement_id
-
-
-def _same_roster_membership(current: object, submitted: object) -> bool:
-    """Whether two rosters name exactly the same characters.
-
-    Used where a clear may advance levels but must not add or lose anyone.
-    """
-    def identities(rows: object) -> set[int] | None:
-        if not isinstance(rows, list):
-            return None
-        found: set[int] = set()
-        for row in rows:
-            if not isinstance(row, dict) or type(row.get("id")) is not int:
-                return None
-            found.add(row["id"])
-        return found
-
-    held, reported = identities(current), identities(submitted)
-    return held is not None and held == reported
 
 
 def _preserved_roster(current: object, submitted: list[dict[str, Any]]) -> list[dict[str, Any]]:
