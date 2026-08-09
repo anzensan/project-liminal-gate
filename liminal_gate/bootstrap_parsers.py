@@ -192,12 +192,31 @@ def _valid_generic_character_record(row: object) -> bool:
     project's own save layer called valid was one its clear path would not
     take.  Recode is where a count first appears for most accounts, which is
     why the reports arrive at the chapter that unlocks it.
+
+    An **unrecognised** member is no longer refused either, and that is the
+    general form of the same defect rather than a third patch of it.  Twice now
+    a member this server did not yet model has cost an account every clear it
+    would ever attempt -- a grant's `isNew`/`levelAdded`, then `plusCount` --
+    and on both occasions the member was decoration the settlement never reads.
+    The required members are still required and every member this server models
+    is still typed, so nothing a settlement depends on is taken on trust; what
+    changed is that an extra key is no longer fatal to a route that cannot
+    recover from it.  Strictness moves to the layer that can afford it:
+    `save_validation` reports an unmodelled member as a finding and keeps the
+    save loadable, and a refused write already records the member names it
+    knows, so an unfamiliar shape stays visible without being unplayable.
     """
     fields = {"id", "buddy", "date", "jobSlots", "jobLevels", "jobID", "flags", "skillBoost"}
-    optional = {"luck", "plusCount"}
-    if not isinstance(row, dict) or not fields <= set(row) or set(row) - fields - optional:
+    if not isinstance(row, dict) or not fields <= set(row):
         return False
-    if any(type(row[name]) is not int or row[name] < 0 for name in ("id", "buddy", "jobID", "flags", "skillBoost")) or ("luck" in row and (type(row["luck"]) is not int or not 0 <= row["luck"] <= 1000)):
+    # `luck` is typed and non-negative but, like `plusCount` below, deliberately
+    # not bounded above. It was capped at the client's own 1000 tenths while
+    # `save_validation` said nothing about the member at all -- the same
+    # disagreement that made the plus count reachable, one field over. A value
+    # past the cap is wrong, but the client clamps it at `luckMax` on its own,
+    # so refusing it here would trade a cosmetic error for an account that can
+    # never clear another stage.
+    if any(type(row[name]) is not int or row[name] < 0 for name in ("id", "buddy", "jobID", "flags", "skillBoost")) or ("luck" in row and (type(row["luck"]) is not int or row["luck"] < 0)):
         return False
     # Typed, deliberately not bounded. A count above `ActualMaxCount` is wrong
     # -- the client reads it as tampering and awards no bonus at all -- but it
@@ -813,3 +832,29 @@ def _parse_free_roam_party_layout_userdata_write(body: bytes) -> dict[str, Any] 
         "teamNo_VS": versus_team_no,
         "summonId": summon_id,
     }
+
+
+def _parse_achievement_read_userdata_write(body: bytes) -> list[int] | None:
+    """Accept the achievements screen's own "I have seen these" save.
+
+    Opening that screen calls `UserData.SetAchivementRead` for each new row and
+    then `AppServerUtil.SendUserData`, which posts exactly these two fields.  It
+    is the narrowest userdata write the client makes: no roster, no party, and
+    nothing an account's progress depends on -- only the bitfield that decides
+    which rows still wear the NEW badge.
+
+    The value is the same 30-bit-per-word packing `achivementFlags` uses, which
+    is why the words are bounded rather than merely non-negative: the client
+    reads each with `1 << (id % 30)`, so a word above that width could only have
+    come from something other than this client.
+    """
+    try:
+        pairs = tuple(parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True))
+        if tuple(name for name, _ in pairs) != ("achivementReadFlags", "lastUpdate") or int(pairs[1][1]) < 0:
+            return None
+        flags = json.loads(pairs[0][1])
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(flags, list) or not all(type(word) is int and 0 <= word < (1 << 30) for word in flags):
+        return None
+    return flags
