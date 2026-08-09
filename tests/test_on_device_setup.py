@@ -125,6 +125,41 @@ class OnDeviceSetupTest(unittest.TestCase):
         self.assertEqual(("sha256", on_device_setup.GRADLE_SHA256), (checksum.algorithm, checksum.hexdigest))
 
 
+    def test_prepare_refuses_an_exp_multiplier_this_route_cannot_serve(self) -> None:
+        """The failure a tester actually hit, moved to where it is fixable.
+
+        `build_server` refuses a raised EXP multiplier without a clear-state
+        catalog, and the on-device package ships none -- nothing in this project
+        derives one. Parsing the document was not enough to catch it, so the
+        build succeeded, installed, and died at `python_start` with
+        `state=error` on a device that offers no way to edit the document back.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); apk = root / "game.apk"; apk.write_bytes(b"source")
+            resources = root / "resources"; resources.mkdir()
+            data = root / "data"; data.mkdir(); host = root / "host"; host.mkdir()
+            for name in on_device_setup.REQUIRED_CATALOGS:
+                (data / name).write_text("{}", encoding="utf-8")
+            (data / "tuning.toml").write_text(
+                'schema_version = 1\nprovenance = "user-supplied"\n\n[exp]\nmultiplier_percent = 200\n',
+                encoding="utf-8",
+            )
+            with patch.object(on_device_setup, "sha256_file", return_value=on_device_setup.REVIEWED_SOURCE_SHA256), \
+                 patch.object(on_device_setup.tester_setup, "resolve_resource_root", return_value=resources), \
+                 patch.object(on_device_setup.tester_setup, "prepare_local_tester"), \
+                 patch.object(on_device_setup.tester_setup, "ensure_keystore"), \
+                 patch.object(on_device_setup.tester_setup, "find_build_tools", return_value=(root / "zipalign", root / "apksigner")), \
+                 patch.object(on_device_setup, "_call_assembler") as assemble:
+                with self.assertRaisesRegex(
+                    on_device_setup.OnDeviceSetupError, "clear-state catalog",
+                ) as caught:
+                    on_device_setup.prepare_on_device_apk(apk, resources, data, host, None, False)
+            # It names the value, the file, and the way out.
+            self.assertIn("200", str(caught.exception))
+            self.assertIn("tuning.toml", str(caught.exception))
+            self.assertIn("rebuild", str(caught.exception))
+            assemble.assert_not_called()
+
     def test_prepare_runs_guided_derivation_then_fixed_loopback_assembly(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); apk = root / "game.apk"; apk.write_bytes(b"source")

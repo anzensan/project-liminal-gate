@@ -453,7 +453,11 @@ def _bonus_weights(value: object) -> tuple[tuple[int, int], ...]:
             or entry[0] < 0
             or entry[1] < 1
         ):
-            raise TuningError("each strengthen_bonus_weights entry must be a nonnegative percent and a positive weight")
+            raise TuningError(
+                "each strengthen_bonus_weights entry must be a nonnegative percent and a positive "
+                "weight; to remove an outcome delete its pair rather than weighting it 0, so the "
+                "table reads as what it selects from"
+            )
         weights.append((entry[0], entry[1]))
     if len({percent for percent, _ in weights}) != len(weights):
         raise TuningError("strengthen_bonus_weights must not repeat a bonus percent")
