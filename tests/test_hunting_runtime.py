@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 import json
 from pathlib import Path
 import tempfile
@@ -11,6 +12,7 @@ from liminal_gate.bootstrap_server import SPECIES_LIMIT_ERROR_CODE, BootstrapSta
 from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy, load_hunting_catalog
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
+from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
 
@@ -977,8 +979,8 @@ class RoadSpeciesLimitTest(unittest.TestCase):
         self.state_path = Path(self.temporary_directory.name) / "state.json"
         self.addCleanup(self.temporary_directory.cleanup)
 
-    def start(self, chapter: int, party: list[int], request_id: str = "road") -> tuple[int, dict]:
-        state = BootstrapState(self.state_path)
+    def start(self, chapter: int, party: list[int], request_id: str = "road", tuning=None) -> tuple[int, dict]:
+        state = BootstrapState(self.state_path, tuning)
         state.create_account("token", "account", {
             "coins": 100, "energy": 100, "freeEnergy": 2, "worldMapNo": 0,
             "progressCode": self.PROGRESS,
@@ -1047,6 +1049,20 @@ class RoadSpeciesLimitTest(unittest.TestCase):
         """The gate restores a declared limit; it does not invent one."""
         status, payload = self.start(1200, [self.DRAGON, self.UNDESCRIBED, 0, 0, 0, 0])
         self.assertEqual((200, True), (status, payload["success"]))
+
+    def test_an_operator_can_decline_the_limit(self) -> None:
+        """Enforcing a recovered limit is still a choice about one's own archive.
+
+        Dragon Road spent a long time serving as this game's general-purpose EXP
+        route on servers that never asserted its species lock, and an operator
+        restoring that deliberately is doing something different from one who
+        never knew the limit existed. Off by request only: the default above
+        refuses the same party.
+        """
+        relaxed = replace(DEFAULT_TUNING, gates=replace(DEFAULT_TUNING.gates, species_limits=False))
+        status, payload = self.start(1200, [self.HUMAN, 0, 0, 0, 0, 0], tuning=relaxed)
+        self.assertEqual((200, True), (status, payload["success"]))
+        self.assertNotIn("cmdError", payload)
 
     def test_every_other_zone_admits_anyone(self) -> None:
         """The Roads are the only stages that declare a species at all."""

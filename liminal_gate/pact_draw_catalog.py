@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import tomllib
 
+from liminal_gate.tuning import DEFAULT_TUNING, PactTuning
+
 
 class PactDrawCatalogError(ValueError):
     """A user-local ordinary-Pact catalog is invalid."""
@@ -34,11 +36,9 @@ _RARITY_SS_S = (6, 7)
 # consistent across both Pact pages, and it is a better archive default than
 # the flat +1 level / +1.0% this bundle previously applied to every class.
 # Skill boost is the client's tenths-of-one-percent wire unit, so 120 is 12.0%.
-_DUPLICATE_GAINS_BY_CLASS = {
-    "z": (6, 120),
-    "ss_s": (5, 100),
-    "a_and_below": (1, 50),
-}
+# The values live in :mod:`liminal_gate.tuning` as `duplicate_gains`, because
+# policy from a secondary source is exactly what an operator is entitled to
+# restate; this module reads whichever table the launch supplied.
 
 # Pact of Truth class shares, in parts per million of one pull.  Same evidence
 # status as the duplicate gains above: community record, no APK table, since
@@ -60,12 +60,8 @@ _DUPLICATE_GAINS_BY_CLASS = {
 # pool, though its uniform spread across the six adventurers supports uniform
 # selection within a class.  Inventing a class table from a 2015 sample would
 # be worse than an honest uniform one.
-_TRUTH_CLASS_SHARE_PPM = {
-    "z": 40_000,
-    "ss": 100_000,
-    "s": 150_000,
-    "a_and_below": 710_000,
-}
+# The shares themselves live in :mod:`liminal_gate.tuning` as
+# `truth_class_share_ppm`, for the reason the duplicate gains give.
 _WEIGHT_SCALE = 1_000_000
 
 # The "+" Pact.  A pull sometimes arrives decorated, granting the recruit extra
@@ -91,12 +87,10 @@ _WEIGHT_SCALE = 1_000_000
 # sends and nothing in that path bounds them.  Uniform is the assumption with
 # the fewest parts, and it is the only other thing here that was chosen rather
 # than read.
-PLUS_PACT_CHANCE_PERCENT = 22
-#: Published: 1 to 5 additional levels.
-PLUS_PACT_LEVELS = (1, 5)
-#: Published: 0.5 to 3.0, in the client's tenths -- Skill Boost on a Truth or
-#: Fellowship pull, Luck on a Fate-type one.
-PLUS_PACT_TENTHS = (5, 30)
+#
+# All three are :mod:`liminal_gate.tuning` fields -- `plus_chance_percent`,
+# `plus_levels` and `plus_tenths`.  The frequency in particular is the value
+# most worth an operator's own judgement, being the one nothing states at all.
 
 
 def _duplicate_class(rarity: int) -> str:
@@ -248,7 +242,7 @@ _TRUTH_IDS = (
 )
 
 
-def _class_weights(character_ids: tuple[int, ...], rarities: Mapping[int, int]) -> dict[int, int]:
+def _class_weights(character_ids: tuple[int, ...], rarities: Mapping[int, int], shares: Mapping[str, int]) -> dict[int, int]:
     """Split each class's share evenly across its own members.
 
     A pool member missing from the local catalog cannot be classified, so it
@@ -262,7 +256,7 @@ def _class_weights(character_ids: tuple[int, ...], rarities: Mapping[int, int]) 
             members.setdefault(_truth_rate_class(rarity), []).append(character_id)
     weights: dict[int, int] = {}
     for name, ids in members.items():
-        share = _TRUTH_CLASS_SHARE_PPM[name] * _WEIGHT_SCALE // len(ids)
+        share = shares[name] * _WEIGHT_SCALE // len(ids)
         for character_id in ids:
             weights[character_id] = max(share, 1)
     unclassified = [character_id for character_id in character_ids if character_id not in weights]
@@ -298,7 +292,10 @@ def validate_bundled_pools(character_rarity: Mapping[int, int]) -> None:
         raise PactDrawCatalogError(f"bundled Pact pools name characters absent from the local character catalog: {listed}")
 
 
-def build_bundled_pact_policy(character_rarity: Mapping[int, int] | None = None) -> BundledPactPolicy:
+def build_bundled_pact_policy(
+    character_rarity: Mapping[int, int] | None = None,
+    tuning: PactTuning = DEFAULT_TUNING.pact,
+) -> BundledPactPolicy:
     """Return the guided-path local Fellowship/Truth Pact policy.
 
     Without ``character_rarity`` every entry keeps a uniform weight and the
@@ -306,6 +303,11 @@ def build_bundled_pact_policy(character_rarity: Mapping[int, int] | None = None)
     master data in hand.  Given the operator's own catalog, duplicate gains
     follow the recovered rarity bands and Truth selection follows the
     documented class shares; both are labeled local policy above.
+
+    ``tuning`` supplies the rates and costs themselves, defaulting to the
+    bundled table.  It does not reach the uniform fallback: a launch with no
+    character catalog cannot classify a pool member, so there is no class for a
+    per-class gain to be read from.
     """
     if character_rarity is None:
         fellowship_draws = tuple(
@@ -313,31 +315,31 @@ def build_bundled_pact_policy(character_rarity: Mapping[int, int] | None = None)
             for character_id in _FELLOWSHIP_IDS
         )
         truth_draws = tuple(PactDraw(character_id, 1, 1, 10) for character_id in _TRUTH_IDS)
-        return _pact_policy(fellowship_draws, truth_draws)
+        return _pact_policy(fellowship_draws, truth_draws, tuning)
 
     def duplicate(character_id: int) -> tuple[int, int]:
         rarity = character_rarity.get(character_id)
         # An unclassifiable member keeps the conservative lowest-class gain.
-        return _DUPLICATE_GAINS_BY_CLASS["a_and_below" if rarity is None else _duplicate_class(rarity)]
+        return tuning.duplicate_gains["a_and_below" if rarity is None else _duplicate_class(rarity)]
 
-    truth_weights = _class_weights(_TRUTH_IDS, character_rarity)
+    truth_weights = _class_weights(_TRUTH_IDS, character_rarity, tuning.truth_class_share_ppm)
     fellowship_draws = tuple(
         PactDraw(character_id, 1, *duplicate(character_id), required_chapter=_FELLOWSHIP_CHAPTER[character_id])
         for character_id in _FELLOWSHIP_IDS
     )
     truth_draws = tuple(PactDraw(character_id, truth_weights[character_id], *duplicate(character_id)) for character_id in _TRUTH_IDS)
-    return _pact_policy(fellowship_draws, truth_draws)
+    return _pact_policy(fellowship_draws, truth_draws, tuning)
 
 
-def _pact_policy(fellowship_draws: tuple[PactDraw, ...], truth_draws: tuple[PactDraw, ...]) -> BundledPactPolicy:
+def _pact_policy(fellowship_draws: tuple[PactDraw, ...], truth_draws: tuple[PactDraw, ...], tuning: PactTuning) -> BundledPactPolicy:
     return BundledPactPolicy(
-        coin_cost=3000,
+        coin_cost=tuning.coin_cost,
         # The service charged 5 Energy for a single Truth pull.  An earlier
         # local observation of 3 came from the client's own embedded fallback:
         # the server had not yet sent `RareSlotEnergy`, so the client displayed
         # a default rather than the real cost.  It is sent now, from this value,
         # so the displayed cost and the charged cost are the same number.
-        energy_cost=5,
+        energy_cost=tuning.energy_cost,
         new_level=10,
         max_level=90,
         max_skill_boost=1000,
@@ -350,7 +352,7 @@ def _pact_policy(fellowship_draws: tuple[PactDraw, ...], truth_draws: tuple[Pact
         # character to its band; the record also ties the +5.0 duplicate
         # increment specifically to the Pact of Fate.
         max_luck=1000,
-        fate_duplicate_luck=50,
+        fate_duplicate_luck=tuning.fate_duplicate_luck,
         fellowship_draws=fellowship_draws,
         truth_draws=truth_draws,
     )

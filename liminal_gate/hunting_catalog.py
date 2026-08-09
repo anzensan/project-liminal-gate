@@ -23,6 +23,7 @@ from typing import Any
 
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from liminal_gate.statusup_character_data import STATUSUP_CHARACTER_ROWS
+from liminal_gate.tuning import DEFAULT_TUNING, HuntingTuning
 
 
 class HuntingCatalogError(ValueError):
@@ -457,8 +458,9 @@ _STEEL_DRAGON_CHARACTER_ID = 1090
 _ROAD_EXP_CEILING = 2_270_000
 
 
-def _tier(section: int) -> tuple[int, int]:
-    return _UNLOCK_AFTER_CHAPTER[section] + 1, 1
+def _tier(section: int, unlocks: tuple[int, ...] | None = None) -> tuple[int, int]:
+    chapters = _UNLOCK_AFTER_CHAPTER if unlocks is None else dict(enumerate(unlocks, start=1))
+    return chapters[section] + 1, 1
 
 
 def _span(first: int, last: int, maximum: int) -> dict[int, int]:
@@ -478,7 +480,7 @@ def _span(first: int, last: int, maximum: int) -> dict[int, int]:
 _CRYSTAL_ROAD_ITEM_MAXIMA = _span(1, 17, 1) | {METAL_TICKET_ITEM_ID: 1} | _span(53, 56, 1)
 
 
-def build_bundled_hunting_policy() -> HuntingCatalog:
+def build_bundled_hunting_policy(tuning: HuntingTuning = DEFAULT_TUNING.hunting) -> HuntingCatalog:
     """Return the guided-path local Hunting policy.
 
     Stage identities, entry stamina, and the population-derived item ceilings
@@ -507,9 +509,10 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
     """
     stamina = {1: 5, 2: 8, 3: 10}
     pudding_items = _span(13, 17, 21) | {46: 21} | _span(26, 29, 20) | {122: 19, 123: 19, 164: 19, 165: 19}
+    puppet_cap = tuning.puppet_show_item_aggregate
     stages: list[HuntingStage] = []
     for section in (1, 2, 3):
-        unlock_chapter, unlock_section = _tier(section)
+        unlock_chapter, unlock_section = _tier(section, tuning.tier_unlock_chapters)
         common = {
             "section": section, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
             "unlock_chapter": unlock_chapter, "unlock_section": unlock_section, "max_exp": 0,
@@ -537,12 +540,17 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
             family="coin_creeps", chapter=3002, stamina={1: 10, 2: 15, 3: 20}[section],
             max_coins={1: 1500, 2: 5000, 3: 11000}[section], max_items_total=0, item_maxima={}, **common,
         ))
-        puppet_items = _span(1, 8, 60) if section < 3 else ({1: 60, 3: 60, 5: 60, 7: 60} | {2: 2, 4: 2, 6: 2, 8: 2})
+        # The third zone's four alternating slots keep their recovered ceiling
+        # of two; only the aggregate and the slots that ride it are tunable.
+        puppet_items = (
+            _span(1, 8, puppet_cap) if section < 3
+            else ({1: puppet_cap, 3: puppet_cap, 5: puppet_cap, 7: puppet_cap} | {2: 2, 4: 2, 6: 2, 8: 2})
+        )
         stages.append(HuntingStage(
             family="puppet_show", chapter=1004, stamina=stamina[section],
-            max_coins=0, max_items_total=60, item_maxima=puppet_items | _span(22, 29, 1), **common,
+            max_coins=0, max_items_total=puppet_cap, item_maxima=puppet_items | _span(22, 29, 1), **common,
         ))
-    stages.extend(_bundled_metal_stages())
+    stages.extend(_bundled_metal_stages(tuning.metal_unlock_chapters))
     stages.extend(_bundled_road_stages())
     stages.append(HuntingStage(
         family="money_money_time", chapter=3003, section=1, stamina=5, coins=0,
@@ -563,7 +571,7 @@ def build_bundled_hunting_policy() -> HuntingCatalog:
     return HuntingCatalog(tuple(stages), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
 
 
-def _bundled_metal_stages() -> list[HuntingStage]:
+def _bundled_metal_stages(unlocks: tuple[int, ...] = _METAL_UNLOCK_AFTER_CHAPTER) -> list[HuntingStage]:
     """Return Chapter 3000's seven zones, each at its two recovered sections."""
     stages: list[HuntingStage] = []
     for section_offset in (0, 10):
@@ -573,7 +581,7 @@ def _bundled_metal_stages() -> list[HuntingStage]:
                 family="metal_zone", chapter=3000, section=section,
                 stamina=_METAL_STAMINA[zone - 1], coins=0,
                 entry_item_id=METAL_TICKET_ITEM_ID, entry_item_count=1, ticket_optional=True,
-                unlock_chapter=_METAL_UNLOCK_AFTER_CHAPTER[zone - 1] + 1, unlock_section=1,
+                unlock_chapter=unlocks[zone - 1] + 1, unlock_section=1,
                 max_coins=0, max_exp=_METAL_EXP_CEILING[zone - 1],
                 # Metal settles EXP and Companions only: no Coins, no items.
                 max_items_total=0, item_maxima={}, selector="metal",

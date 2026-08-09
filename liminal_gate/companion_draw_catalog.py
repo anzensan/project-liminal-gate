@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 from pathlib import Path
 import tomllib
 
 from liminal_gate.save_validation import ITEM_SLOTS
+from liminal_gate.tuning import DEFAULT_TUNING, CompanionTuning
 
 
 class CompanionDrawCatalogError(ValueError):
@@ -205,7 +207,7 @@ class BundledCompanionDrawPolicy:
         return self.ticket_item_id if kind in {1, 21} else None
 
 
-def _rare_weights() -> dict[int, int]:
+def _rare_weights(shares: Mapping[str, int]) -> dict[int, int]:
     """Split each Rare class's displayed share evenly across its own members.
 
     The scale factor keeps the smallest share an integer with room to spare:
@@ -215,13 +217,15 @@ def _rare_weights() -> dict[int, int]:
     """
     weights: dict[int, int] = {}
     for name, companion_ids in _RARE_SLOT_CLASSES.items():
-        share = _RARE_CLASS_SHARE_PPM[name] * _WEIGHT_SCALE // len(companion_ids)
+        share = shares[name] * _WEIGHT_SCALE // len(companion_ids)
         for companion_id in companion_ids:
             weights[companion_id] = max(share, 1)
     return weights
 
 
-def build_bundled_companion_draw_policy() -> BundledCompanionDrawPolicy:
+def build_bundled_companion_draw_policy(
+    tuning: CompanionTuning = DEFAULT_TUNING.companion,
+) -> BundledCompanionDrawPolicy:
     """Return the guided-path local Companion draw policy.
 
     Pool membership, per-Companion rarity, both ticket items, the displayed
@@ -231,7 +235,7 @@ def build_bundled_companion_draw_policy() -> BundledCompanionDrawPolicy:
     Normal pool's uniform selection, are local policy rather than claims about
     retired odds.
     """
-    rare_weights = _rare_weights()
+    rare_weights = _rare_weights(tuning.rare_class_share_ppm)
     return BundledCompanionDrawPolicy(
         BUNDLED_ITEM_SLOTS, BUNDLED_TICKET_ITEM_ID, BUNDLED_NORMAL_TICKET_ITEM_ID,
         BUNDLED_COIN_COST, BUNDLED_ENERGY_COST, BUNDLED_MAX_OWNED,

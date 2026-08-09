@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,14 +13,21 @@ from liminal_gate.bootstrap_server import (
 )
 from liminal_gate.pact_draw_catalog import build_bundled_pact_policy, load_pact_draw_catalog
 from liminal_gate.save_validation import ITEM_SLOTS
+from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
+
+
+#: The bundled tuning with the "+" Pact turned off, which its own rate permits.
+NO_PLUS_PACT = replace(
+    DEFAULT_TUNING, pact=replace(DEFAULT_TUNING.pact, plus_chance_percent=0),
+)
 
 
 # These pin exact result rows, durable packed levels and replayed payloads, so
 # the "+" Pact roll is held off across the class: they are about the draw
 # contract rather than the decoration, and a random gain would make them flap.
 # `PlusPactTest` below exercises the roll at its real rate.
-@patch("liminal_gate.bootstrap_server.PLUS_PACT_CHANCE_PERCENT", 0)
+@patch("liminal_gate.bootstrap_server.DEFAULT_TUNING", NO_PLUS_PACT)
 class PactDrawTest(unittest.TestCase):
     def test_ticket_form_is_strict_and_does_not_admit_campaign_variants(self) -> None:
         prefix = "kind=20&count=1&luckType=false&campaignChrID=0&eventFlag=0"

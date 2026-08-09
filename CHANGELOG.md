@@ -10,6 +10,57 @@ superseded before release and says so where it stands.
 
 ### Added
 
+- **The chosen numbers are now yours to choose.** Some of what this server
+  serves is recovered from the client; some of it this project had to pick.
+  Until now the picked half was module constants, so changing any of it meant
+  editing source — fine for whoever wrote it, useless to anyone running a
+  release. Those values keep their defaults and gain one strict document:
+
+  ```sh
+  liminal-gate-bootstrap-server ... --tuning /path/to/tuning.toml
+  ```
+
+  It reaches the Pact rates (the "+" Pact frequency and both its gain ranges,
+  the Pact of Truth class shares, per-class duplicate gains, and both pull
+  costs); the Rare Companion pool's displayed class rates and the strengthen
+  EXP-bonus weights; Hunting's tier and Metal Zone availability ladders and
+  Puppet Show's item aggregate; the two recovered party gates; and an EXP
+  multiplier. The same values
+  are the defaults in `liminal_gate/tuning.py`, so a build-time edit and a
+  run-time file reach the same numbers. A server launched without `--tuning`
+  behaves exactly as it did.
+
+  A partial document is the normal case: anything omitted keeps its bundled
+  value, so turning off one gate does not mean restating every rate. What is
+  written is validated exactly — a misspelled key is refused rather than
+  silently keeping its default, because a rate that quietly does nothing looks
+  the same from outside as one the server ignored.
+
+  Three boundaries the document keeps. **Recovered values stay recovered**: the
+  only ones it accepts are the two Pact costs, and only so a house-rules
+  install can restate them deliberately. **It does not reach item or monster
+  drop rates** — the client rolls those from its own tables and never asks, so
+  no server setting can move them. And **the EXP multiplier credits, it does
+  not award**: the client computes battle EXP itself, so the multiplier adds a
+  further share on the server's roster, which the client reads back. It needs a
+  level curve to do that, and the only source is your own
+  `--clear-state-catalog`; a launch asking for a multiplier without one is
+  refused rather than quietly serving the ordinary rate. Setting a multiplier
+  also switches off that catalog's *experience* audit, and only that one — a
+  credited roster is by construction ahead of the client's own copy, so the
+  client's honest next report is lower than the sum the audit demands and would
+  be refused, leaving the battle active and every later stage refused with it.
+  Every other clear-state rule still applies, and the durable value is still
+  protected by the merge that keeps the greater of the two.
+
+  The two gates default to enforced, as they are today. They are switchable
+  because enforcing a recovered limit is still a choice about your own archive:
+  Dragon Road spent a long time serving as this game's general-purpose EXP
+  route on servers that never asserted its species lock, and an operator
+  restoring that deliberately is doing something different from one who never
+  knew the limit was there. See
+  [docs/advanced-configuration.md](docs/advanced-configuration.md).
+
 - **"+" Pacts appear again.** Reported after 30+ pulls without one
   ([#53](https://github.com/anzensan/project-liminal-gate/issues/53)), and it
   was not luck: this server never sent the fields a "+" is made of, so the
@@ -91,6 +142,37 @@ superseded before release and says so where it stands.
   100 ratio, and each race's six bosses carry Level, Skill, and Luck Candy at
   3. That is recovered data, not a table this project invented, which is why
   it could be turned on at all.
+
+- **A battle's drops are the client's to report, everywhere.** Three settlement
+  paths still refused rewards the client rolled, and each refusal cost more than
+  it withheld: a refused clear leaves the battle active, which blocks every
+  other stage until that same quest is replayed. All three now settle from the
+  report.
+
+  A stage a supplied `--story-outcome-catalog` does not name was refused
+  outright, with `invalid_local_outcome`, even without `--outcome-strict`. A
+  missing rule is a gap in the catalog, not evidence that the stage drops
+  nothing, and the archived event chapters — the standing Special Quests among
+  them — are exactly the ones no encounter map reaches. Supplying a catalog
+  therefore turned ordinary play on those stages into an error. A catalog now
+  constrains the stages it covers and leaves the rest exactly as they are when
+  no catalog is supplied, which is what its own documentation always said it
+  did. **The Hunt For Blade Falcon, Bone Killer and Ethereal each recruit their
+  namesake this way**, so those three were unobtainable on any server run with a
+  catalog.
+
+  A Hunting clear reporting a Summon was refused, on the reasoning that the
+  server had no authoring contract for one. `summonList` is a fixed-length
+  count-per-slot array the client reports as its base plus the battle's drops,
+  so it settles through the same preserving merge `itemList` already used.
+
+  The Chapter 1100 World Map Specials refused reported Coins, items, monsters
+  and Summons. They now settle, and the roster may gain a member as well as
+  levels — that array is how a recruited monster reaches the account at all.
+  Companions stay bounded by each battle's own recovered `dropBuddies` manifest.
+  Experience keeps its ceiling, and a reported Luck roll or Skill Boost gain is
+  still refused: those are not drop channels, and this server authors them
+  through the Luck table and the Pact.
 
 ### Added
 

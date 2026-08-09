@@ -1,0 +1,411 @@
+"""Operator-tunable rates, gates, and multipliers for a local installation.
+
+Every value here is one this project already had to choose rather than recover,
+or one whose enforcement an operator may legitimately want to decline.  They
+were previously module constants, which meant changing any of them was a source
+edit -- fine for the person who wrote them, useless to someone running a
+release.  This module keeps the constants as the defaults and adds one strict
+document that can restate them at launch, so the same number is reachable both
+ways: edit `DEFAULT_TUNING` for a build, pass `--tuning` for a run.
+
+What belongs here is bounded by one rule.  A **recovered** value -- one read out
+of the client, master data, or a capture -- is not tunable, because changing it
+would make the server disagree with the client that shipped it.  A **local
+policy** value is, because this project chose it and says so.  The Pact rates
+below are policy from a secondary source; the Pact costs are recovered and are
+carried here only so a house-rules installation can restate them deliberately,
+which is why they are the only recovered numbers this document accepts.
+
+The two gates are a third case: both limits are recovered, and enforcing them is
+correct.  They are switchable because enforcement is nonetheless a choice an
+operator can make about their own archive -- Dragon Road spent a long time
+serving as this game's general-purpose EXP route on servers that never asserted
+its species lock, and an operator restoring that deliberately is doing something
+different from one who never knew the limit existed.  Both default to enforced.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from pathlib import Path
+import tomllib
+
+
+class TuningError(ValueError):
+    """A user-local tuning document is invalid."""
+
+
+#: The class keys the Pact tables are keyed on.  These are the bands
+#: :mod:`liminal_gate.pact_draw_catalog` derives from the recovered ``rarity``
+#: field, not free-form names, so a document naming anything else is refused
+#: rather than silently ignored.
+DUPLICATE_CLASSES = ("z", "ss_s", "a_and_below")
+TRUTH_CLASSES = ("z", "ss", "s", "a_and_below")
+
+#: The Rare Companion pool's own classes, which are the displayed ones rather
+#: than the Pact's bands: the record gives this pool a per-class rate for each.
+RARE_CLASSES = ("z", "ss", "s", "a", "b")
+
+#: Hunting has three tiers and Metal Zone seven zones. Both counts are the
+#: client's, so a document restating either must restate all of it.
+HUNTING_TIERS = 3
+METAL_ZONES = 7
+
+#: Class shares are parts per million of one pull and must total exactly this,
+#: whether they are the Pact of Truth's or the Rare Companion pool's.
+TRUTH_SHARE_TOTAL_PPM = 1_000_000
+
+
+@dataclass(frozen=True)
+class PactTuning:
+    """Rates and costs for the bundled Fellowship/Truth Pact policy.
+
+    ``truth_class_share_ppm`` and ``duplicate_gains`` are local policy from the
+    community record of the retired service; the client holds no rate table to
+    contradict them.  ``coin_cost`` and ``energy_cost`` are recovered, and the
+    Energy cost is also sent to the client as ``RareSlotEnergy``, so changing it
+    changes the price the player is shown as well as the price charged.
+    """
+
+    coin_cost: int
+    energy_cost: int
+    fate_duplicate_luck: int
+    #: The "+" Pact frequency, as a percent of pulls.  The one number in the
+    #: bundle no source states -- both records say only "sometimes".
+    plus_chance_percent: int
+    #: Published: 1 to 5 additional levels, inclusive.
+    plus_levels: tuple[int, int]
+    #: Published: 0.5 to 3.0, in the client's tenths of one percent.
+    plus_tenths: tuple[int, int]
+    #: ``class -> ppm share of one Pact of Truth pull``.
+    truth_class_share_ppm: dict[str, int]
+    #: ``class -> (levels, skill-boost tenths)`` a duplicate grants.
+    duplicate_gains: dict[str, tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class GateTuning:
+    """Whether the two recovered party limits are asserted.
+
+    Neither can come from the client: it owns ``StartQuestErrorCode.ClassLimit``
+    and ``SpeciesLimit`` but its only local start gate walks no party, so both
+    were always the server's to assert or decline.
+    """
+
+    #: Dragon Road and Machine Road admitting only Dragons and Machines.
+    species_limits: bool = True
+    #: Captive Golem's four sections admitting only their declared class band.
+    class_bands: bool = True
+
+
+@dataclass(frozen=True)
+class ExpTuning:
+    """How much battle EXP a clear credits, as a percent of the client's own.
+
+    The client computes battle EXP from its own tables and reports the roster it
+    derived; this server validates that roster rather than authoring it.  A
+    multiplier therefore cannot change what the client *awards* -- it credits an
+    additional share on top, on the server's authoritative roster, which the
+    client reads back on its next roster fetch.
+
+    Raising it needs a level curve to turn the extra experience back into a
+    level, and the only source of one is an operator's own clear-state catalog.
+    A launch asking for a multiplier without that catalog is refused rather than
+    quietly serving 100.
+    """
+
+    multiplier_percent: int = 100
+
+
+@dataclass(frozen=True)
+class CompanionTuning:
+    """Selection odds for the two Companion policies that had to choose them.
+
+    ``rare_class_share_ppm`` is the same evidence class as the Pact of Truth
+    shares: the rates the service displayed in-game from 2018-02-28, as the
+    community record transcribes them, with no APK table to cross-validate.
+    Weighting matters more here than it looks, because the pool is lopsided the
+    opposite way from the rates -- half its members are S and only two are B,
+    so a uniform draw inverts the two commonest outcomes.
+
+    ``strengthen_bonus_weights`` are weaker still: no production odds for the
+    random EXP bonus survive and the client's own calculation does not contain
+    them, so the bundled weights are a named local policy that keeps all three
+    documented outcomes reachable while leaving no bonus the common result.
+    """
+
+    #: ``class -> ppm share of one Rare Companion pull``.
+    rare_class_share_ppm: dict[str, int]
+    #: ``(bonus percent, weight)`` pairs for the strengthen EXP bonus.
+    strengthen_bonus_weights: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class HuntingTuning:
+    """Availability and the one ceiling Hunting could not recover.
+
+    Both are preservation policy and say so in their own code. The retired
+    rotations were never captured, so each tier and Metal zone simply becomes
+    permanent once the story has passed the chapter recorded here -- a schedule
+    this project chose, not one it found. Puppet Show's real-time board refills
+    without any cumulative spawn counter, so no exact finite cap exists to
+    recover and its aggregate is conservative anti-inflation policy.
+
+    Stage identities, entry stamina, and every other item ceiling stay
+    recovered and are not reachable from here.
+    """
+
+    #: The chapter each Hunting tier becomes permanently available after.
+    tier_unlock_chapters: tuple[int, ...]
+    #: The same, per Metal Zone.
+    metal_unlock_chapters: tuple[int, ...]
+    #: Puppet Show's per-clear item aggregate, and its per-item ceiling with it.
+    puppet_show_item_aggregate: int
+
+
+@dataclass(frozen=True)
+class Tuning:
+    pact: PactTuning
+    companion: CompanionTuning
+    hunting: HuntingTuning
+    gates: GateTuning = GateTuning()
+    exp: ExpTuning = ExpTuning()
+
+
+#: The bundled defaults.  Editing these is the build-time path, and every value
+#: is the one this project shipped before the document existed, so a server
+#: launched with no ``--tuning`` behaves exactly as it did.
+DEFAULT_TUNING = Tuning(
+    pact=PactTuning(
+        coin_cost=3000,
+        energy_cost=5,
+        fate_duplicate_luck=50,
+        plus_chance_percent=22,
+        plus_levels=(1, 5),
+        plus_tenths=(5, 30),
+        truth_class_share_ppm={"z": 40_000, "ss": 100_000, "s": 150_000, "a_and_below": 710_000},
+        duplicate_gains={"z": (6, 120), "ss_s": (5, 100), "a_and_below": (1, 50)},
+    ),
+    companion=CompanionTuning(
+        rare_class_share_ppm={"z": 30_000, "ss": 80_000, "s": 100_000, "a": 300_000, "b": 490_000},
+        strengthen_bonus_weights=((0, 85), (25, 8), (50, 5), (100, 2)),
+    ),
+    hunting=HuntingTuning(
+        tier_unlock_chapters=(3, 9, 18),
+        metal_unlock_chapters=(3, 8, 12, 17, 21, 26, 30),
+        puppet_show_item_aggregate=60,
+    ),
+)
+
+_SECTIONS = {"pact", "companion", "hunting", "gates", "exp"}
+_REQUIRED = {"schema_version", "provenance"}
+
+
+def load_tuning(path: Path) -> Tuning:
+    """Load a strict operator tuning document, defaulting anything it omits.
+
+    Unlike the catalogs, a partial document is meaningful here: an operator who
+    only wants to turn off a species lock should not have to restate every Pact
+    rate to do it.  Each section and each key inside it is optional, and what is
+    absent keeps its bundled default.  What is *present* is validated exactly --
+    an unknown key is refused rather than ignored, because a misspelled rate
+    that silently keeps its default is the failure this project's strict parsing
+    policy exists to prevent.
+    """
+    try:
+        document = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise TuningError("could not read tuning TOML") from error
+    if not isinstance(document, dict) or not _REQUIRED <= set(document) or set(document) - (_REQUIRED | _SECTIONS):
+        raise TuningError("tuning document has an invalid schema")
+    if document["schema_version"] != 1 or document["provenance"] != "user-supplied":
+        raise TuningError("tuning document requires schema version 1 and user-supplied provenance")
+    return Tuning(
+        pact=_pact(document.get("pact", {})),
+        companion=_companion(document.get("companion", {})),
+        hunting=_hunting(document.get("hunting", {})),
+        gates=_gates(document.get("gates", {})),
+        exp=_exp(document.get("exp", {})),
+    )
+
+
+def _section(value: object, permitted: set[str], name: str) -> dict[str, object]:
+    if not isinstance(value, dict) or set(value) - permitted:
+        raise TuningError(f"[{name}] has an invalid schema")
+    return value
+
+
+def _positive(value: object, name: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise TuningError(f"{name} must be a positive integer")
+    return value
+
+
+def _percent(value: object, name: str, ceiling: int) -> int:
+    if type(value) is not int or not 0 <= value <= ceiling:
+        raise TuningError(f"{name} must be an integer from 0 through {ceiling}")
+    return value
+
+
+def _range(value: object, name: str) -> tuple[int, int]:
+    if (
+        not isinstance(value, list)
+        or len(value) != 2
+        or any(type(item) is not int for item in value)
+        or value[0] < 1
+        or value[1] < value[0]
+    ):
+        raise TuningError(f"{name} must be two ascending positive integers")
+    return (value[0], value[1])
+
+
+def _pact(value: object) -> PactTuning:
+    keys = {
+        "coin_cost", "energy_cost", "fate_duplicate_luck", "plus_chance_percent",
+        "plus_levels", "plus_tenths", "truth_class_share_ppm", "duplicate_gains",
+    }
+    document = _section(value, keys, "pact")
+    default = DEFAULT_TUNING.pact
+    fields: dict[str, object] = {}
+    for name in ("coin_cost", "energy_cost", "fate_duplicate_luck"):
+        if name in document:
+            fields[name] = _positive(document[name], name)
+    if "plus_chance_percent" in document:
+        # Zero is meaningful and supported: it turns the "+" Pact off, which is
+        # the only setting here whose behaviour predates the feature.
+        fields["plus_chance_percent"] = _percent(document["plus_chance_percent"], "plus_chance_percent", 100)
+    for name in ("plus_levels", "plus_tenths"):
+        if name in document:
+            fields[name] = _range(document[name], name)
+    if "truth_class_share_ppm" in document:
+        fields["truth_class_share_ppm"] = _shares(document["truth_class_share_ppm"])
+    if "duplicate_gains" in document:
+        fields["duplicate_gains"] = _duplicate_gains(document["duplicate_gains"])
+    return replace(default, **fields)
+
+
+def _shares(value: object, classes: tuple[str, ...] = TRUTH_CLASSES, name: str = "truth_class_share_ppm") -> dict[str, int]:
+    """A complete class table that adds up.
+
+    Partial is refused for the reason the unlock ladders give, and the total is
+    checked because a table that does not add up is a transcription error
+    rather than a preference -- the shares are read as parts of one pull.
+    """
+    if not isinstance(value, dict) or set(value) != set(classes):
+        listed = ", ".join(classes)
+        raise TuningError(f"{name} must name exactly these classes: {listed}")
+    shares = {entry: _positive(value[entry], f"{name}.{entry}") for entry in classes}
+    if sum(shares.values()) != TRUTH_SHARE_TOTAL_PPM:
+        raise TuningError(f"{name} must total exactly {TRUTH_SHARE_TOTAL_PPM} parts per million")
+    return shares
+
+
+def _duplicate_gains(value: object) -> dict[str, tuple[int, int]]:
+    if not isinstance(value, dict) or set(value) != set(DUPLICATE_CLASSES):
+        listed = ", ".join(DUPLICATE_CLASSES)
+        raise TuningError(f"duplicate_gains must name exactly these classes: {listed}")
+    gains: dict[str, tuple[int, int]] = {}
+    for name in DUPLICATE_CLASSES:
+        entry = value[name]
+        if (
+            not isinstance(entry, list)
+            or len(entry) != 2
+            or any(type(item) is not int or item < 1 for item in entry)
+        ):
+            raise TuningError(f"duplicate_gains.{name} must be a positive level gain and skill-boost gain")
+        gains[name] = (entry[0], entry[1])
+    return gains
+
+
+def _companion(value: object) -> CompanionTuning:
+    document = _section(value, {"rare_class_share_ppm", "strengthen_bonus_weights"}, "companion")
+    fields: dict[str, object] = {}
+    if "rare_class_share_ppm" in document:
+        fields["rare_class_share_ppm"] = _shares(
+            document["rare_class_share_ppm"], RARE_CLASSES, "rare_class_share_ppm",
+        )
+    if "strengthen_bonus_weights" in document:
+        fields["strengthen_bonus_weights"] = _bonus_weights(document["strengthen_bonus_weights"])
+    return replace(DEFAULT_TUNING.companion, **fields)
+
+
+def _bonus_weights(value: object) -> tuple[tuple[int, int], ...]:
+    """Validate ``(bonus percent, weight)`` pairs for the strengthen bonus.
+
+    A zero-weight outcome is refused rather than accepted as a way of removing
+    one: drop the pair instead, so the table reads as what it selects from.
+    """
+    if not isinstance(value, list) or not value:
+        raise TuningError("strengthen_bonus_weights must be a nonempty array of [percent, weight] pairs")
+    weights: list[tuple[int, int]] = []
+    for entry in value:
+        if (
+            not isinstance(entry, list)
+            or len(entry) != 2
+            or any(type(item) is not int for item in entry)
+            or entry[0] < 0
+            or entry[1] < 1
+        ):
+            raise TuningError("each strengthen_bonus_weights entry must be a nonnegative percent and a positive weight")
+        weights.append((entry[0], entry[1]))
+    if len({percent for percent, _ in weights}) != len(weights):
+        raise TuningError("strengthen_bonus_weights must not repeat a bonus percent")
+    return tuple(weights)
+
+
+def _hunting(value: object) -> HuntingTuning:
+    keys = {"tier_unlock_chapters", "metal_unlock_chapters", "puppet_show_item_aggregate"}
+    document = _section(value, keys, "hunting")
+    fields: dict[str, object] = {}
+    for name, count in (("tier_unlock_chapters", HUNTING_TIERS), ("metal_unlock_chapters", METAL_ZONES)):
+        if name in document:
+            fields[name] = _unlock_chapters(document[name], name, count)
+    if "puppet_show_item_aggregate" in document:
+        fields["puppet_show_item_aggregate"] = _positive(
+            document["puppet_show_item_aggregate"], "puppet_show_item_aggregate",
+        )
+    return replace(DEFAULT_TUNING.hunting, **fields)
+
+
+def _unlock_chapters(value: object, name: str, count: int) -> tuple[int, ...]:
+    """A full ladder, ascending.
+
+    Partial is refused because the tiers are one schedule rather than several
+    independent numbers: restating the third without the first would leave a
+    ladder whose rungs an operator never looked at between two they chose.
+    Equal neighbours are allowed -- opening two tiers at once is a coherent
+    thing to want -- but a later tier opening earlier than an earlier one is
+    not, since the client offers them in this order.
+    """
+    if (
+        not isinstance(value, list)
+        or len(value) != count
+        or any(type(item) is not int or item < 0 for item in value)
+    ):
+        raise TuningError(f"{name} must be {count} nonnegative integers")
+    if any(later < earlier for earlier, later in zip(value, value[1:])):
+        raise TuningError(f"{name} must not decrease")
+    return tuple(value)
+
+
+def _gates(value: object) -> GateTuning:
+    document = _section(value, {"species_limits", "class_bands"}, "gates")
+    fields: dict[str, object] = {}
+    for name in ("species_limits", "class_bands"):
+        if name in document:
+            if type(document[name]) is not bool:
+                raise TuningError(f"{name} must be a boolean")
+            fields[name] = document[name]
+    return replace(GateTuning(), **fields)
+
+
+def _exp(value: object) -> ExpTuning:
+    document = _section(value, {"multiplier_percent"}, "exp")
+    if "multiplier_percent" not in document:
+        return ExpTuning()
+    # The ceiling is a guard against a typo turning a clear into an overflowing
+    # roster, not a judgement about how generous an archive should be.
+    multiplier = document["multiplier_percent"]
+    if type(multiplier) is not int or not 100 <= multiplier <= 10_000:
+        raise TuningError("multiplier_percent must be an integer from 100 through 10000")
+    return ExpTuning(multiplier_percent=multiplier)

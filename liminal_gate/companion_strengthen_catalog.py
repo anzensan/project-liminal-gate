@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from liminal_gate.companion_progression_data import COMPANION_PROGRESSION_ROWS
+from liminal_gate.tuning import DEFAULT_TUNING, CompanionTuning
 
 
 class CompanionStrengthenCatalogError(ValueError):
@@ -95,7 +96,9 @@ BUNDLED_BYEBYE_MULTIPLIER_PERCENT = 150
 BUNDLED_BONUS_WEIGHTS: tuple[tuple[int, int], ...] = ((0, 85), (25, 8), (50, 5), (100, 2))
 
 
-def build_bundled_companion_strengthen_policy() -> CompanionStrengthenCatalog:
+def build_bundled_companion_strengthen_policy(
+    tuning: CompanionTuning = DEFAULT_TUNING.companion,
+) -> CompanionStrengthenCatalog:
     """Return the guided-path local Companion strengthen policy.
 
     Per-master progression values, the same-Companion bias, and the ByeBye
@@ -108,5 +111,5 @@ def build_bundled_companion_strengthen_policy() -> CompanionStrengthenCatalog:
     }
     return CompanionStrengthenCatalog(
         masters, BUNDLED_SAME_COMPANION_MULTIPLIER, BUNDLED_BYEBYE_COMPANION_ID,
-        BUNDLED_BYEBYE_MULTIPLIER_PERCENT, BUNDLED_BONUS_WEIGHTS,
+        BUNDLED_BYEBYE_MULTIPLIER_PERCENT, tuning.strengthen_bonus_weights,
     )
