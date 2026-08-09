@@ -187,13 +187,27 @@ class EventCatalog:
         return self.client_lists(None)["specialQuestList"]
 
 
-_FIVE_TIER_COUNTER_DESCENT_STAMINA = (5, 10, 15, 15, 15)
+#: Chapters 8000--8007 carry a fifth section in `BattleData`, with a real
+#: battle and 15 stamina like the two before it, and this policy used to offer
+#: it.  The retired service did not.  Every family in the 8000--8018 range
+#: ships exactly one Special banner per card it lists -- three for 8012--8017,
+#: two for 8008--8011, one for 8018 -- and these eight ship four, not five.
+#: The client has no name for the fifth either: it falls back to the literal
+#: placeholder `text`.  So a tester's selector showed four playable cards and
+#: then a black rectangle labelled `text`, which is what an unlisted stage
+#: looks like when a server lists it anyway.
+#:
+#: The section is left out rather than given a borrowed banner.  What the fifth
+#: was for is not recovered -- unreleased, staff-only, or simply cut -- and
+#: dressing an unknown in the fourth card's artwork would be inventing a stage
+#: the service never showed, which is a worse answer than not showing it.
+_FOUR_TIER_COUNTER_DESCENT_STAMINA = (5, 10, 15, 15)
 _THREE_TIER_COUNTER_DESCENT_STAMINA = (5, 10, 15)
 
 
 def _counter_descent_stamina(chapter: int) -> tuple[int, ...] | None:
     if 8000 <= chapter <= 8007:
-        return _FIVE_TIER_COUNTER_DESCENT_STAMINA
+        return _FOUR_TIER_COUNTER_DESCENT_STAMINA
     if 8012 <= chapter <= 8017:
         return _THREE_TIER_COUNTER_DESCENT_STAMINA
     return None
