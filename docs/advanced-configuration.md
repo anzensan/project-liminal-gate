@@ -617,14 +617,15 @@ earlier build omitted `rebirthList` on the reasoning that it gates Rebirth
 rather than drops -- true, and irrelevant.
 
 Four of them make an explicit **local policy** choice rather than a claim about
-the retired service, and say so in their own code: Companion draw selects
-uniformly across its recovered pool instead of asserting the historical
-per-rarity base rates; Companion strengthen's random EXP-bonus weights keep the
-three documented outcomes reachable without asserting odds the client never
-contained; and Hunting's availability thresholds and Puppet Show item aggregate
-are preservation policy.
+the retired service, and say so in their own code: Companion draw's Rare pool
+follows the class shares the service displayed in-game from 2018, but splits
+each class evenly across its own members, and its Normal pool stays uniform for
+want of any comparable record; Companion strengthen's random EXP-bonus weights
+keep the three documented outcomes reachable without asserting odds the client
+never contained; and Hunting's availability thresholds and Puppet Show item
+aggregate are preservation policy.
 
-`--pacts` is the one that no longer selects uniformly. Pact of Truth is weighted
+`--pacts` selects the same way, and for the same reason. Pact of Truth is weighted
 by class and both pools' duplicate gains are banded by class, keyed on the
 `rarity` field of the character catalog you passed to `--character-catalog`.
 Those two tables come from the community record of the retired service, not from
@@ -1042,6 +1043,146 @@ The bundled catalog and any user-supplied catalog remain local preservation
 policy. Selector visibility and bounded settlement tests do not prove the
 retired service's schedules, rotations, encounter contents, or reward odds.
 
+## Tuning rates, gates, and EXP
+
+Some of what this server serves is recovered from your client, and some of it
+this project had to choose. The chosen half is collected in one strict document
+you can pass at launch:
+
+```sh
+liminal-gate-bootstrap-server ... --tuning /path/to/tuning.toml
+```
+
+The same values are the defaults in `liminal_gate/tuning.py`, so editing that
+module is the build-time path and `--tuning` is the run-time one. Either
+reaches the same numbers.
+
+**A partial document is the normal case.** Every section and every key is
+optional, and anything you leave out keeps its bundled value — turning off one
+gate does not mean restating every Pact rate. What you *do* write is validated
+exactly: a misspelled key is refused rather than silently keeping its default,
+because a rate that quietly does nothing is indistinguishable from one the
+server ignored.
+
+```toml
+schema_version = 1
+provenance = "user-supplied"
+
+[pact]
+# The "+" Pact frequency, as a percent of pulls. The one number in the bundle
+# no source states -- both records say only "sometimes". Zero turns it off.
+plus_chance_percent = 22
+plus_levels = [1, 5]            # published: 1 to 5 additional levels
+plus_tenths = [5, 30]           # published: 0.5% to 3.0%, in the client's tenths
+coin_cost = 3000                # recovered
+energy_cost = 5                 # recovered; also displayed, as RareSlotEnergy
+fate_duplicate_luck = 50
+# Pact of Truth class shares, in parts per million of one pull. Must name all
+# four classes and total exactly 1000000.
+truth_class_share_ppm = { z = 40000, ss = 100000, s = 150000, a_and_below = 710000 }
+# What a duplicate grants, per class: [levels, skill-boost tenths].
+duplicate_gains = { z = [6, 120], ss_s = [5, 100], a_and_below = [1, 50] }
+
+[companion]
+# The Rare Companion pool's displayed class rates: Z 3%, SS 8%, S 10%, A 30%,
+# B 49%. Same four-way total rule as the Pact shares above. The Normal pool
+# stays uniform and is not reachable: no comparable record covers it.
+rare_class_share_ppm = { z = 30000, ss = 80000, s = 100000, a = 300000, b = 490000 }
+# The strengthen EXP bonus, as [percent, weight] pairs. No production odds
+# survive and the client's own calculation does not contain them.
+strengthen_bonus_weights = [[0, 85], [25, 8], [50, 5], [100, 2]]
+
+[hunting]
+# The chapter each tier and each Metal zone becomes permanent after. Both
+# ladders must be given whole and must not decrease.
+tier_unlock_chapters = [3, 9, 18]
+metal_unlock_chapters = [3, 8, 12, 17, 21, 26, 30]
+# Puppet Show's per-clear item aggregate. Its board refills with no cumulative
+# spawn counter, so no exact cap exists to recover.
+puppet_show_item_aggregate = 60
+
+[gates]
+species_limits = true           # Dragon Road and Machine Road
+class_bands = true              # Captive Golem's four sections
+
+[exp]
+multiplier_percent = 100
+```
+
+### What is tunable, and what is not
+
+A **recovered** value is not tunable, because changing it would make this server
+disagree with the client that shipped it. A **local policy** value is, because
+this project chose it and says so. The Pact rates above are policy from a
+secondary source — the client holds no rate table to contradict them, since the
+retired server owned selection entirely. The two Pact *costs* are recovered and
+are accepted here only so a house-rules installation can restate them
+deliberately.
+
+The `[companion]` and `[hunting]` sections are the same story told twice more.
+The Rare Companion pool's class rates are the figures the service displayed
+in-game from 2018, with the even split inside a class being this project's
+reading; the strengthen EXP-bonus weights are weaker still, since no production
+odds survive at all. Hunting's two unlock ladders are a schedule this project
+chose because the retired rotations were never captured, and Puppet Show's
+aggregate bounds a board that has no cumulative spawn counter to recover one
+from. Stage identities, entry stamina, and every other item ceiling stay
+recovered and are not reachable from here.
+
+Note what none of this reaches: the per-enemy item and monster drop rates, and
+the recovered 15-day double-drop rotation. Those live in the client and it rolls
+them itself, as [Drop rates: recovered daily
+doubling](#drop-rates-recovered-daily-doubling) describes. No server setting can
+change a number the client never asks for.
+
+### The two gates
+
+Both limits are recovered and both default to enforced. They are switchable
+because enforcing them is nonetheless a choice about your own archive: Dragon
+Road spent a long time serving as this game's general-purpose EXP route on
+servers that never asserted its species lock, and an operator restoring that
+deliberately is doing something different from one who never knew the limit was
+there. Turning either off relaxes only that limit; entry costs, rewards, and
+unlock rules are unchanged.
+
+### The EXP multiplier
+
+The client computes battle EXP from its own tables and reports the roster it
+derived; this server validates that roster rather than authoring it. A
+multiplier therefore cannot change what the client *awards* on the result
+screen. What it does is credit a further share on the server's authoritative
+roster, which the client reads back on its next roster fetch — so the result
+screen shows the client's own number and the roster shows the credited total.
+
+The share matches what the client did with the same figure: the battle's EXP
+split evenly across the party members whose active job can still take it. It
+never passes a job's own maximum experience — it raises a number the game
+already bounded, it does not unbound it.
+
+Raising it needs a level curve to turn the extra experience back into a level,
+and the only source of one is your own `--clear-state-catalog`. A launch asking
+for a multiplier without that catalog is **refused**, rather than quietly
+serving 100 where you would have no way to tell the difference. Values run from
+100 (the default, which changes nothing) to 10000.
+
+#### A multiplier switches off that catalog's experience audit
+
+The clear-state catalog normally requires a clear's reported experience to equal
+the durable value plus the battle's own share. A credited roster is, by
+construction, ahead of the client's own copy — so the client's honest next
+report is *lower* than that sum, and the audit would refuse it.
+
+That refusal is not a lost reward. It leaves the battle active, so every later
+stage is refused too, and a player reads it as a corrupted installation. So
+setting a multiplier drops the experience equality check, and only that one.
+Party membership, the immutable fields, Skill Boost and its per-battle ceiling,
+and the roster superset rule are all still enforced, and the durable value is
+still protected by the merge that keeps the greater of the two — a stale client
+cannot roll a credited gain back.
+
+If you want the exact experience audit, leave the multiplier at 100. The two
+are genuinely exclusive, and the trade is stated here rather than discovered.
+
 ## Local server configuration file
 
 For a longer-lived setup, keep launcher paths in a TOML file outside the
@@ -1057,6 +1198,7 @@ story_progression_catalog = "derived/core-story-progression.json"
 story_outcome_catalog = "catalogs/story-outcomes.toml"
 companion_equipment_catalog = "catalogs/companion-equipment.json"
 clear_state_catalog = "catalogs/clear-state.toml"
+tuning = "tuning.toml"
 ```
 
 Run it with:

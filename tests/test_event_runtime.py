@@ -1,3 +1,4 @@
+from dataclasses import replace
 import json
 from http.client import HTTPConnection
 from pathlib import Path
@@ -16,6 +17,7 @@ from liminal_gate.event_catalog import (
 from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
+from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, get, request, start_server, stop_server
 from tests.support import post as support_post, request as support_request
 
@@ -1148,9 +1150,9 @@ class CaptiveGolemClassLimitTest(unittest.TestCase):
         )
         return EventCatalog(stages, {self.OVER_CLASS: 8, self.WITHIN_CLASS: 3})
 
-    def start(self, party: list[int], section: int = 1) -> tuple[int, dict]:
+    def start(self, party: list[int], section: int = 1, tuning=None) -> tuple[int, dict]:
         with tempfile.TemporaryDirectory() as directory:
-            state = BootstrapState(Path(directory) / "state.json")
+            state = BootstrapState(Path(directory) / "state.json", tuning)
             state.create_account("token", "account", {
                 "coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777473,
                 "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": [],
@@ -1206,3 +1208,10 @@ class CaptiveGolemClassLimitTest(unittest.TestCase):
         catalog = self.catalog()
         stage = catalog.by_identity()[(2008, 4)]
         self.assertFalse(catalog.over_class_limit(stage, [999999, 0, 0, 0, 0, 0]))
+
+    def test_an_operator_can_decline_the_band(self) -> None:
+        """Off by request only: the default refuses this very party above."""
+        relaxed = replace(DEFAULT_TUNING, gates=replace(DEFAULT_TUNING.gates, class_bands=False))
+        status, payload = self.start([self.OVER_CLASS, 0, 0, 0, 0, 0], tuning=relaxed)
+        self.assertEqual((200, True), (status, payload["success"]))
+        self.assertNotIn("cmdError", payload)

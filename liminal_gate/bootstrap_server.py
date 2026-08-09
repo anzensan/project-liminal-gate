@@ -124,10 +124,11 @@ from liminal_gate.companion_equipment_catalog import (
     load_companion_equipment_catalog,
 )
 from liminal_gate.companion_strengthen_catalog import CompanionStrengthenCatalog, CompanionStrengthenCatalogError, build_bundled_companion_strengthen_policy, load_companion_strengthen_catalog
-from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, load_clear_state_catalog
+from liminal_gate.clear_state_catalog import ClearStateCatalog, ClearStateCatalogError, JobProgression, load_clear_state_catalog
 from liminal_gate.companion_evolution_catalog import CompanionEvolutionCatalog, CompanionEvolutionCatalogError, build_bundled_companion_evolution_policy, load_companion_evolution_catalog
 from liminal_gate.companion_draw_catalog import BundledCompanionDrawPolicy, CompanionDraw, CompanionDrawCatalog, CompanionDrawCatalogError, build_bundled_companion_draw_policy, load_companion_draw_catalog
-from liminal_gate.pact_draw_catalog import PLUS_PACT_CHANCE_PERCENT, PLUS_PACT_LEVELS, PLUS_PACT_TENTHS, BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog, validate_bundled_pools
+from liminal_gate.pact_draw_catalog import BundledPactPolicy, PactDrawCatalog, PactDrawCatalogError, build_bundled_pact_policy, load_character_rarity, load_pact_draw_catalog, validate_bundled_pools
+from liminal_gate.tuning import DEFAULT_TUNING, PactTuning, Tuning, TuningError, load_tuning
 from liminal_gate.achievement_catalog import AchievementCatalog, AchievementCatalogError, build_bundled_achievement_policy, load_achievement_catalog
 from liminal_gate.message_catalog import (
     MessageCatalog,
@@ -652,8 +653,20 @@ def _parse_state_document(document: object) -> tuple[
 class BootstrapState:
     """Atomic local account state for the extracted bootstrap sequence."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, tuning: Tuning | None = None, exp_curve: ClearStateCatalog | None = None) -> None:
         self.path = path
+        # Operator-tunable rates and gates. Defaulted so that every test and
+        # embedded host that builds a state directly keeps the bundled
+        # behaviour without having to know this exists. Resolved here rather
+        # than in the signature so the default stays one patchable name.
+        self.tuning = DEFAULT_TUNING if tuning is None else tuning
+        # The level curve an EXP multiplier needs to turn credited experience
+        # back into a level. It is the clear-state catalog, held here rather
+        # than passed per call because Hunting and the World Map specials
+        # settle EXP too and neither takes that catalog as an argument. A
+        # launch refuses a multiplier without it, so `None` here means the
+        # multiplier is 100 and nothing reads this.
+        self.exp_curve = exp_curve
         self.lock = Lock()
         self.tokens: dict[str, str] = {}
         # The only durable per-client discriminator available: `otk` is a pure
@@ -2072,6 +2085,7 @@ class BootstrapState:
                         _apply_plus_pact(
                             current, result, luck_type, catalog.max_level,
                             catalog.max_luck if luck_type else catalog.max_skill_boost,
+                            self.tuning.pact,
                         )
                         results.append(result)
                     elif (
@@ -2134,6 +2148,7 @@ class BootstrapState:
                         _apply_plus_pact(
                             current, result, luck_type, catalog.max_level,
                             catalog.max_luck if luck_type else catalog.max_skill_boost,
+                            self.tuning.pact,
                         )
                         results.append(result)
                 else:
@@ -2337,7 +2352,7 @@ class BootstrapState:
             # never walks the party. Refused before anything is charged, in the
             # same soft shape the Daily Quest rotation uses, so the player sees
             # the game's own refusal rather than a Network Error.
-            if catalog.over_species_limit(stage, userdata.get("teamMembers")):
+            if self.tuning.gates.species_limits and catalog.over_species_limit(stage, userdata.get("teamMembers")):
                 return "success", _canonical_payload(
                     {"success": False, "errorCode": SPECIES_LIMIT_ERROR_CODE}
                 )
@@ -2513,7 +2528,14 @@ class BootstrapState:
                 "itemList": projected_items,
                 # The roster is merged, never replaced: a stale client must not
                 # delete a grant it had not read back.  See `_preserved_roster`.
-                "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
+                # An operator's EXP multiplier is credited on top of the merged
+                # roster, so it raises what the clear settled rather than what
+                # the client happened to report.
+                "chrdata": _exp_credited_roster(
+                    _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
+                    userdata.get("teamMembers"), result["exp"],
+                    self.tuning.exp.multiplier_percent, self.exp_curve,
+                ),
             })
             # After the merge, so the entry's authored gain lands on the roster
             # the clear settled rather than on the one it replaced, and once,
@@ -2707,7 +2729,11 @@ class BootstrapState:
             # the way every other EXP-bearing clear keeps them: as a trusted
             # local client report, merged so a stale client cannot delete a
             # grant it never read back.
-            userdata["chrdata"] = _preserved_roster(userdata.get("chrdata"), clear["chrdata"])
+            userdata["chrdata"] = _exp_credited_roster(
+                _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
+                userdata.get("teamMembers"), result["exp"],
+                self.tuning.exp.multiplier_percent, self.exp_curve,
+            )
             # After the merge, and once, for the reason the Hunting clear gives.
             active_luck_up = account.get("active_luck_up")
             if isinstance(active_luck_up, list):
@@ -2804,7 +2830,7 @@ class BootstrapState:
             # it never looks at the party. Refused in the client's own soft
             # shape, under that same code, so the player sees the game's
             # refusal rather than a Network Error.
-            if event and catalog.over_class_limit(stage, userdata.get("teamMembers")):
+            if event and self.tuning.gates.class_bands and catalog.over_class_limit(stage, userdata.get("teamMembers")):
                 return "success", _canonical_payload(
                     {"success": False, "errorCode": CLASS_LIMIT_ERROR_CODE}
                 )
@@ -2985,7 +3011,10 @@ class BootstrapState:
                 extra_item_rewards=chest_items(authored_chest),
             ):
                 return "invalid_local_settlement", None
-            if clear_state_catalog is not None and not _clear_state_matches(userdata, clear, clear_state_catalog):
+            if clear_state_catalog is not None and not _clear_state_matches(
+                userdata, clear, clear_state_catalog,
+                self.tuning.exp.multiplier_percent == 100,
+            ):
                 return "invalid_local_clear_state", None
             buddy_info = None if outcome_catalog is None else _outcome_buddy_info(userdata, clear, identity, outcome_catalog, clear_state_catalog, outcome_strict)
             if outcome_catalog is not None and buddy_info is None:
@@ -3003,7 +3032,11 @@ class BootstrapState:
                 "progressCode": expected_progress,
                 "coins": expected_coins,
                 "valuables": canonical_valuables,
-                "chrdata": _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
+                "chrdata": _exp_credited_roster(
+                    _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
+                    userdata.get("teamMembers"), clear["battle_result"]["exp"],
+                    self.tuning.exp.multiplier_percent, self.exp_curve,
+                ),
                 # A projected settlement persists the array the server derived,
                 # not the one the client sent; they are equal by construction,
                 # and taking the server's keeps the durable counts authoritative.
@@ -4840,7 +4873,7 @@ def _granted_hunting_companions(
 
 def _apply_plus_pact(
     current: dict[str, Any], result: dict[str, Any], luck_type: bool,
-    max_level: int, max_gain: int,
+    max_level: int, max_gain: int, tuning: PactTuning,
 ) -> None:
     """Decorate one pull result as a "+" Pact, some of the time.
 
@@ -4854,16 +4887,16 @@ def _apply_plus_pact(
     the client renders what it is told and then reads the roster back.
     """
     random_source = random.SystemRandom()
-    if random_source.randrange(100) >= PLUS_PACT_CHANCE_PERCENT:
+    if random_source.randrange(100) >= tuning.plus_chance_percent:
         return
     packed = int(current["jobLevels"][0])
     old_level = packed & 0xFFF
-    level = min(max_level, old_level + random_source.randint(*PLUS_PACT_LEVELS))
+    level = min(max_level, old_level + random_source.randint(*tuning.plus_levels))
     encoded = (packed & ~0xFFF) | level
     current["jobLevels"][0] = float(encoded) if type(current["jobLevels"][0]) is float else encoded
     result["jobLevels"] = [level]
     result["levelAdded2"] = level - old_level
-    gain = random_source.randint(*PLUS_PACT_TENTHS)
+    gain = random_source.randint(*tuning.plus_tenths)
     field = "luck" if luck_type else "skillBoost"
     held = int(current.get(field, 0))
     raised = min(max_gain, held + gain)
@@ -5437,8 +5470,24 @@ def _settlement_matches(
     return _projected_list(userdata.get("itemList", []), clear["itemList"], item_rewards, catalog.item_slots, catalog.max_stack) and _projected_list(userdata.get("summonList", []), clear["summonList"], rule.summon_rewards, catalog.summon_slots, catalog.max_stack)
 
 
-def _clear_state_matches(userdata: dict[str, Any], clear: dict[str, Any], catalog: ClearStateCatalog) -> bool:
-    """Verify the persisted party's only legal EXP/boost clear projection."""
+def _clear_state_matches(userdata: dict[str, Any], clear: dict[str, Any], catalog: ClearStateCatalog, audit_experience: bool = True) -> bool:
+    """Verify the persisted party's only legal EXP/boost clear projection.
+
+    ``audit_experience`` is false exactly when an operator has set an EXP
+    multiplier, and the two genuinely cannot both hold.  This check requires
+    the submitted experience to equal the durable value plus the battle's own
+    share; a credited roster is, by construction, ahead of the client's own
+    copy, so the client's honest next report is lower than that sum and would
+    be refused.  A refusal here is not a lost reward but a stuck account -- it
+    leaves the battle active, so every later stage is refused too -- which is
+    much worse than the audit it would be enforcing.
+
+    Everything else the catalog checks still applies: party membership, the
+    immutable fields, Skill Boost and its per-battle ceiling, and the roster
+    superset rule.  Only the experience equality is dropped, and the durable
+    value is still protected by `_preserved_progress`, which keeps the greater
+    of the two so a stale client cannot roll a credited gain back.
+    """
     current_rows = userdata.get("chrdata")
     submitted_rows = clear["chrdata"]
     team = userdata.get("teamMembers")
@@ -5483,7 +5532,7 @@ def _clear_state_matches(userdata: dict[str, Any], clear: dict[str, Any], catalo
             return False
         expected_experience = min(progression.maximum_experience, old_experience + (share if character_id in eligible else 0))
         expected_level = max(index + 1 for index, threshold in enumerate(progression.level_thresholds) if threshold <= expected_experience)
-        if candidate["jobLevels"][job_id] != (expected_experience << 12) | expected_level:
+        if audit_experience and candidate["jobLevels"][job_id] != (expected_experience << 12) | expected_level:
             return False
         duplicate_gain = catalog.characters[character_id].duplicate_skill_boost * duplicates.get(character_id, 0)
         expected_boost = min(catalog.max_skill_boost, old["skillBoost"] + boosts.get(character_id, 0) + duplicate_gain)
@@ -5655,6 +5704,75 @@ def _preserved_roster(current: object, submitted: list[dict[str, Any]]) -> list[
         if character_id not in known:
             rows.append(copy.deepcopy(row))
     return rows
+
+
+def _exp_credited_roster(
+    rows: list[dict[str, Any]], team: object, battle_exp: object,
+    multiplier_percent: int, curve: ClearStateCatalog | None,
+) -> list[dict[str, Any]]:
+    """Credit the extra battle EXP an operator's multiplier asks for.
+
+    The client computes battle EXP from its own tables and reports the roster
+    it derived, which is what every settlement path validates.  A multiplier
+    therefore cannot change the award itself; it adds a further share on the
+    server's authoritative roster, which the client reads back.  A player sees
+    the client's own number on the result screen and the credited total on the
+    next roster fetch.
+
+    The share matches what the client did with the same figure -- the battle's
+    EXP split evenly across the party members whose active job can still take
+    it -- so a boosted clear stays proportional to an unboosted one.  Levels
+    are recomputed from the curve's own thresholds because ``jobLevels`` packs
+    experience and level into one integer and a stale level would show the
+    client a character that has not levelled.
+
+    Nothing happens without a curve or above a job's own maximum: this raises a
+    number the game already had a ceiling for, it does not lift the ceiling.
+    """
+    if multiplier_percent <= 100 or curve is None or not isinstance(team, list) or type(battle_exp) is not int or battle_exp <= 0:
+        return rows
+    by_id = {row["id"]: row for row in rows if isinstance(row, dict) and type(row.get("id")) is int}
+    eligible: list[int] = []
+    for character_id in team:
+        # A slot repeating a character it already names is credited once, not
+        # once per slot: the party is six slots holding at most six distinct
+        # members, and only the generic-story path validates that. Hunting does
+        # not, so a repeated id reaching here must not multiply its own share.
+        if character_id in eligible:
+            continue
+        row = by_id.get(character_id) if type(character_id) is int else None
+        progression = _active_job_progression(row, curve)
+        if progression is not None and (int(row["jobLevels"][row["jobID"]]) >> 12) < progression.maximum_experience:
+            eligible.append(character_id)
+    if not eligible:
+        return rows
+    bonus = (battle_exp // len(eligible)) * (multiplier_percent - 100) // 100
+    if bonus <= 0:
+        return rows
+    for character_id in eligible:
+        row = by_id[character_id]
+        job_id = row["jobID"]
+        progression = curve.characters[character_id].jobs[job_id]
+        packed = int(row["jobLevels"][job_id])
+        experience = min(progression.maximum_experience, (packed >> 12) + bonus)
+        level = max(index + 1 for index, threshold in enumerate(progression.level_thresholds) if threshold <= experience)
+        raised = (experience << 12) | level
+        row["jobLevels"][job_id] = float(raised) if type(row["jobLevels"][job_id]) is float else raised
+    return rows
+
+
+def _active_job_progression(row: object, curve: ClearStateCatalog) -> JobProgression | None:
+    """The curve for a roster row's active job, when every part of it reads."""
+    if not isinstance(row, dict) or type(row.get("jobID")) is not int or not 0 <= row["jobID"] < 3:
+        return None
+    character = curve.characters.get(row.get("id"))
+    levels = row.get("jobLevels")
+    if character is None or not isinstance(levels, list) or len(levels) != 3:
+        return None
+    packed = levels[row["jobID"]]
+    if type(packed) not in {int, float} or not math.isfinite(packed) or packed < 0 or int(packed) != packed:
+        return None
+    return character.jobs[row["jobID"]]
 
 
 def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[str, Any]:
@@ -5884,6 +6002,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--achievement-catalog", type=Path, help="user-local clear-chapter achievement thresholds and rewards")
     parser.add_argument("--message-catalog", type=Path, help="user-local inbox messages and bounded local rewards")
     parser.add_argument("--exchange-catalog", type=Path, help="user-local Trading Post offers and bounded settlements")
+    parser.add_argument("--tuning", type=Path, help="user-local Pact rates, party-gate switches, and EXP multiplier; see liminal_gate/tuning.py")
     return parser.parse_args()
 
 
@@ -5894,7 +6013,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_equipment_catalog", "companion_strengthen_catalog",
         "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "event_catalog", "character_catalog", "hunting_catalog",
         "achievement_catalog", "message_catalog", "exchange_catalog",
-        "luck_pool_catalog",
+        "luck_pool_catalog", "tuning",
     )
     flag_fields = (
         "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "no_interpolated_luck_pools", "jobs", "rebirth", "status_items",
@@ -5951,6 +6070,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
         original_mail_shape=getattr(args, 'original_mail_shape', False),
         message_catalog=args.message_catalog,
         exchange_catalog=args.exchange_catalog,
+        tuning=getattr(args, "tuning", None),
     )
 
 
@@ -5968,6 +6088,7 @@ def build_server(
     """
     resources = resource_catalog
     try:
+        tuning = DEFAULT_TUNING if args.tuning is None else load_tuning(args.tuning)
         if (args.resource_root is None) != (args.resource_manifest is None):
             raise ProfileError("--resource-root and --resource-manifest must be supplied together")
         if resources is None and args.resource_root is not None:
@@ -5981,6 +6102,14 @@ def build_server(
         settlements = None if args.settlement_catalog is None else load_settlement_catalog(args.settlement_catalog)
         story_outcomes = None if args.story_outcome_catalog is None else load_story_outcome_catalog(args.story_outcome_catalog)
         clear_states = None if args.clear_state_catalog is None else load_clear_state_catalog(args.clear_state_catalog)
+        if tuning.exp.multiplier_percent != 100 and clear_states is None:
+            # The multiplier needs a level curve to turn credited experience
+            # back into a level, and the clear-state catalog is the only source
+            # of one. Refusing beats serving 100 silently: an operator who set
+            # a multiplier and got the ordinary rate would have no way to tell.
+            raise ProfileError(
+                "an EXP multiplier requires --clear-state-catalog, the only source of the level curve it needs"
+            )
         if args.status_items and args.statusup_catalog is not None:
             raise ProfileError("--status-items cannot be combined with --statusup-catalog")
         statusup = build_bundled_statusup_policy() if args.status_items else (None if args.statusup_catalog is None else load_statusup_catalog(args.statusup_catalog))
@@ -6003,13 +6132,13 @@ def build_server(
         )
         if args.companion_strengthen and args.companion_strengthen_catalog is not None:
             raise ProfileError("--companion-strengthen cannot be combined with --companion-strengthen-catalog")
-        companion_strengthen = build_bundled_companion_strengthen_policy() if args.companion_strengthen else (None if args.companion_strengthen_catalog is None else load_companion_strengthen_catalog(args.companion_strengthen_catalog))
+        companion_strengthen = build_bundled_companion_strengthen_policy(tuning.companion) if args.companion_strengthen else (None if args.companion_strengthen_catalog is None else load_companion_strengthen_catalog(args.companion_strengthen_catalog))
         if args.companion_evolution and args.companion_evolution_catalog is not None:
             raise ProfileError("--companion-evolution cannot be combined with --companion-evolution-catalog")
         companion_evolution = build_bundled_companion_evolution_policy() if args.companion_evolution else (None if args.companion_evolution_catalog is None else load_companion_evolution_catalog(args.companion_evolution_catalog))
         if args.companion_draw and args.companion_draw_catalog is not None:
             raise ProfileError("--companion-draw cannot be combined with --companion-draw-catalog")
-        companion_draw = build_bundled_companion_draw_policy() if args.companion_draw else (None if args.companion_draw_catalog is None else load_companion_draw_catalog(args.companion_draw_catalog))
+        companion_draw = build_bundled_companion_draw_policy(tuning.companion) if args.companion_draw else (None if args.companion_draw_catalog is None else load_companion_draw_catalog(args.companion_draw_catalog))
         if args.pacts and args.pact_draw_catalog is not None:
             raise ProfileError("--pacts cannot be combined with --pact-draw-catalog")
         # Rarity comes from the operator's own catalog when one was supplied,
@@ -6018,13 +6147,13 @@ def build_server(
         pact_rarity = load_character_rarity(args.character_catalog) if args.pacts and args.character_catalog is not None else None
         if pact_rarity is not None:
             validate_bundled_pools(pact_rarity)
-        pact_draw = build_bundled_pact_policy(pact_rarity) if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))
+        pact_draw = build_bundled_pact_policy(pact_rarity, tuning.pact) if args.pacts else (None if args.pact_draw_catalog is None else load_pact_draw_catalog(args.pact_draw_catalog))
         if (args.event_catalog is None) != (args.character_catalog is None):
             raise ProfileError("--event-catalog and --character-catalog must be supplied together")
         events = None if args.event_catalog is None else load_event_catalog(args.event_catalog, args.character_catalog)
         if args.hunting and args.hunting_catalog is not None:
             raise ProfileError("--hunting cannot be combined with --hunting-catalog")
-        hunts = build_bundled_hunting_policy() if args.hunting else (None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog))
+        hunts = build_bundled_hunting_policy(tuning.hunting) if args.hunting else (None if args.hunting_catalog is None else load_hunting_catalog(args.hunting_catalog))
         if args.hunting:
             events = merge_event_catalogs(
                 build_bundled_counter_descent_policy(),
@@ -6084,7 +6213,7 @@ def build_server(
         server = BootstrapServer(
             (args.host, args.port),
             load_profile(args.profile),
-            BootstrapState(args.state_file),
+            BootstrapState(args.state_file, tuning, clear_states),
             args.event_log,
             resources,
             stories,
@@ -6121,7 +6250,7 @@ def build_server(
             daily_drop_bonuses=getattr(args, "core_story", False),
             stamina=getattr(args, "enable_stamina", False),
         )
-    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError) as error:
+    except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError, TuningError) as error:
         if resources is not None:
             resources.close()
         raise ProfileError(f"bootstrap server failed: {error}") from error

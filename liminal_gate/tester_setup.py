@@ -1434,7 +1434,11 @@ def choose_local_server_options(event_catalog: Path | None) -> LocalServerOption
         "Hunting zones, Daily Quests, Orbling Cavern, Cryptid Forest, BreaSoul, the Five Emperors, "
         "Pacts, Companions, Achievements, and the Trading Post are all enabled."
     )
-    print("The recovered 15-day item/monster double-drop rotation is enabled; custom drop-rate controls are not available.")
+    print(
+        "The recovered 15-day item/monster double-drop rotation is enabled. The client rolls those "
+        "drops itself, so their rates stay its own; the Pact rates, the two party gates, and the EXP "
+        "multiplier this server does own are tunable (see docs/advanced-configuration.md)."
+    )
     print(
         "The stamina meter is off: the bar stays full and quest entry never waits on it. "
         "Launch with --enable-stamina (see docs/advanced-configuration.md) to charge it as the retired service did."

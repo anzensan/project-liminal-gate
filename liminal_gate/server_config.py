@@ -74,6 +74,7 @@ _PATH_FIELDS = (
     "message_catalog",
     "exchange_catalog",
     "luck_pool_catalog",
+    "tuning",
 )
 _REQUIRED = {"schema_version", "provenance", "profile", "state_file"}
 _OPTIONAL = set(_PATH_FIELDS[2:]) | {"host", "port", "core_story", "pacts", "hunting", "daily_quests", "secondary_worlds", "cavern_forest", "no_interpolated_luck_pools", "jobs", "rebirth", "status_items", "companion_draw", "companion_sale", "companion_strengthen", "companion_evolution", "trading_post", "drop_eligibility", "achievements", "summon_skills", "outcome_strict", "enable_stamina", "original_mail_shape"}
@@ -132,6 +133,9 @@ class ServerConfig:
     message_catalog: Path | None = None
     exchange_catalog: Path | None = None
     luck_pool_catalog: Path | None = None
+    #: Operator-tunable Pact rates, party gates, and the EXP multiplier. Absent
+    #: means the bundled defaults, which is what every launcher passes today.
+    tuning: Path | None = None
 
 
 def load_server_config(path: Path) -> ServerConfig:
