@@ -4511,9 +4511,23 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                     local_special_events + hunting_lists["specialQuestList"]
                 ))
         served = constants.get("specialQuestList")
-        if served:
+        if served and len(served) > SPECIAL_QUEST_LIST_MAX:
+            # The row identities alone cannot say which opened most recently:
+            # archive chapter numbers do not follow the unlock cadence. Only the
+            # catalog knows, so the ordering is taken from it here.
+            unlock_chapters: dict[str, int] = {}
+            stage_counts: dict[str, int] = {}
+            if self.server.event_catalog is not None:
+                for stage in self.server.event_catalog.stages:
+                    if stage.selector != "special":
+                        continue
+                    row = stage.selector_id or stage.identity_label()
+                    unlock_chapters[row] = max(
+                        unlock_chapters.get(row, 0), stage.unlock_after_chapter or 0,
+                    )
+                    stage_counts[row] = stage_counts.get(row, 0) + 1
             constants["specialQuestList"] = _bounded_special_quest_list(
-                served, set(local_special_events), self.server.events,
+                served, unlock_chapters, stage_counts, self.server.events,
             )
         return constants
 
@@ -4545,7 +4559,10 @@ def _is_archive_row(row: str) -> bool:
 
 
 def _bounded_special_quest_list(
-    served: list[str], archive_rows: set[str], recorder: EventRecorder | None,
+    served: list[str],
+    unlock_chapters: dict[str, int],
+    stage_counts: dict[str, int],
+    recorder: EventRecorder | None,
 ) -> list[str]:
     """Hold the served Special Quest list inside what the client can render.
 
@@ -4556,16 +4573,24 @@ def _bounded_special_quest_list(
     archive rows are withheld newest-first instead: an event that opened this
     chapter is the one no routine depends on yet.
 
+    *Newest* means the chapter the row unlocks after, which is why this needs
+    `unlock_chapters` rather than the list order. The two disagree, and taking
+    the order instead is not a near-miss: archive chapter numbers do not follow
+    the unlock cadence at all. 2017 unlocks after Chapter 20 and carries five
+    stages behind one folded card; 2011-1 unlocks after Chapter 32 and carries
+    one. Ordering by the list would withhold the first and keep the second --
+    dropping five long-held stages to protect one the player unlocked minutes
+    ago, the exact inversion of the rule.
+
+    A row is broken out of a tie by carrying fewer stages, so when two opened
+    in the same chapter the cheaper one goes first.
+
     Display order is untouched. Only membership is decided here, and the
     surviving rows are re-emitted in the order the client was already given, so
     the menu does not reshuffle when the cap starts biting.
 
     This is a client limit, not a policy: nothing here is a claim about what the
-    retired service showed. The list is also inflated relative to the client's
-    own presentation -- it holds `2015` and `2017` as single folded cards where
-    this server sends three and five separate rows -- so matching that would buy
-    the room back without withholding anything. That is a separate change, and
-    it needs its own confirmation against the client before it is made.
+    retired service showed.
     """
     if len(served) <= SPECIAL_QUEST_LIST_MAX:
         return served
@@ -4575,7 +4600,18 @@ def _bounded_special_quest_list(
     # the permanent Special Quests and Melting Pot.
     archive = [row for row in served if _is_archive_row(row)]
     standing = [row for row in served if not _is_archive_row(row)]
-    keep = set(standing) | set(archive[:max(0, SPECIAL_QUEST_LIST_MAX - len(standing))])
+    surplus = len(served) - SPECIAL_QUEST_LIST_MAX
+    # Newest unlock first, then the row carrying fewer stages, then latest in
+    # the list, so the choice is total rather than dependent on iteration order.
+    going = sorted(
+        archive,
+        key=lambda row: (
+            -unlock_chapters.get(row, 0),
+            stage_counts.get(row, 1),
+            -archive.index(row),
+        ),
+    )[:surplus]
+    keep = set(served) - set(going)
     withheld = [row for row in served if row not in keep]
     if recorder is not None:
         # Never a silent cap: the withheld identities are stage names this
