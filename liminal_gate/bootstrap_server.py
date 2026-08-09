@@ -72,6 +72,7 @@ from liminal_gate.bootstrap_parsers import (
     _decoded_roster,
     _identity_chapter,
     _parse_achievement_claim,
+    _parse_achievement_read_userdata_write,
     _parse_add_job,
     _parse_change_uname,
     _parse_companion_draw,
@@ -1033,6 +1034,45 @@ class BootstrapState:
             account["username"] = name
             account["username_changed_at"] = now
             payload = {"success": True, "name": name, "changeUsernameDate": float(621355968000000000 + int(now * 10_000_000))}
+            requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
+            self._persist_locked()
+            return "success", payload
+
+    def update_achievement_read_flags(
+        self, token: str, request_id: str, body: bytes, flags: list[int],
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Record which achievement rows the player has already looked at.
+
+        Opening the achievements screen marks its new rows read and posts the
+        bitfield back.  Refusing it answered 501, which this client renders as a
+        Network Error the player has to dismiss, so the screen this project just
+        made reachable threw an error the moment it was opened.
+
+        No phase gate.  Every other userdata write here is a roster, party or
+        Companion change and belongs to free roam; this one is a badge the
+        player can clear at any point in the story, and the account whose error
+        exposed it was mid-chapter.  Nothing about progress, inventory or the
+        roster is reachable from this route: the parser accepts one field, and
+        the only thing it can change is which rows stop saying NEW.
+        """
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return "unknown_account", None
+            requests = account.setdefault("tutorial_requests", {})
+            digest = hashlib.sha256(body).hexdigest()
+            cached = requests.get(_replay_key(request_id, body))
+            if cached is not None:
+                return ("replay", copy.deepcopy(cached["payload"])) if cached.get("body_sha256") == digest else ("request_collision", None)
+            userdata = account["userdata"]
+            userdata["achivementReadFlags"] = list(flags)
+            # `SendUserData`'s callback reads `lastupdate` and `refillStartTime`
+            # off the reply.  The meter is restated for the reason every other
+            # settlement restates it: silence about it reads as a full one.
+            payload = _canonical_payload({
+                **_API_ENVELOPE_FIELDS,
+                "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
+            })
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -4044,6 +4084,16 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         profile = self.server.profile
         state = self.server.state
         dispatch = MutationDispatch("write", profile.tutorial_writes)
+        # Settled before the roster forms are even parsed: its two fields
+        # overlap none of theirs, it is the one userdata write with no phase of
+        # its own, and leaving it to fall through to them is what answered 501.
+        achievement_read_write = _parse_achievement_read_userdata_write(body)
+        if achievement_read_write is not None:
+            dispatch.result, dispatch.payload = state.update_achievement_read_flags(
+                token, request_id, body, achievement_read_write,
+            )
+            dispatch.kind, dispatch.transitions = "achievement_read_userdata", ()
+            return dispatch
         ordinary_write = state.allows_ordinary_userdata_write(token)
         party_write = _parse_free_roam_party_userdata_write(body)
         party_layout_write = (

@@ -60,3 +60,48 @@ class AchievementClaimTest(unittest.TestCase):
                 self.assertEqual((200, success), post(restarted, "/gd/achived", "one", "id=1&lastUpdate=1"))
             finally:
                 stop_server(restarted, thread)
+
+    def test_marking_rows_read_is_accepted_in_any_phase(self) -> None:
+        """The achievements screen posts this the moment it is opened.
+
+        Every other userdata write is a roster, party or Companion change and
+        belongs to free roam. This one fell through to those parsers, matched
+        none of them, and answered 501 -- which this client renders as a Network
+        Error -- so opening the screen this project had just made reachable
+        threw an error at the player. The account that exposed it was
+        mid-chapter, which is why the phase here is deliberately not free roam.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            profile = bootstrap_profile()
+            state_path = Path(directory) / "state.json"
+            server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state_path))
+            try:
+                server.state.create_account("token", "account", {"progressCode": 6 << 6, "refillStartTime": 12.0})
+                server.state.accounts["account"]["tutorial_phase"] = "generic_story_active"
+                body = "achivementReadFlags=%5B7%2C0%2C1%5D&lastUpdate=1"
+                status, saved = post(server, "/gd/userdata", "read-one", body)
+                self.assertEqual(200, status)
+                # `callAPI` indexes `success` and `lastupdate` off every reply
+                # before the callback runs, and this callback then reads
+                # `refillStartTime`; a reply missing any of them raises there.
+                self.assertEqual({"success", "lastupdate", "refillStartTime", "digest"}, set(saved))
+                self.assertIs(True, saved["success"])
+                self.assertEqual(12.0, saved["refillStartTime"])
+                self.assertEqual([7, 0, 1], server.state.accounts["account"]["userdata"]["achivementReadFlags"])
+                # The flags are what the next userdata read serves back, or the
+                # rows the player just cleared come back wearing NEW again.
+                self.assertEqual([7, 0, 1], server.state.userdata_for("token")["achivementReadFlags"])
+                # Replay is byte-identical. A spent id with a different body is
+                # a different request rather than a tampered retry, exactly as
+                # the claim route treats one, so the later flags win.
+                self.assertEqual((200, saved), post(server, "/gd/userdata", "read-one", body))
+                status, again = post(server, "/gd/userdata", "read-one", "achivementReadFlags=%5B15%5D&lastUpdate=1")
+                self.assertEqual(200, status)
+                self.assertEqual([15], server.state.accounts["account"]["userdata"]["achivementReadFlags"])
+                post(server, "/gd/userdata", "read-restore", body)
+                # A malformed bitfield is still refused rather than stored.
+                status, refused = post(server, "/gd/userdata", "read-two", "achivementReadFlags=%5B-1%5D&lastUpdate=1")
+                self.assertEqual((501, "unsupported_userdata_write"), (status, refused["error"]))
+                self.assertEqual([7, 0, 1], server.state.accounts["account"]["userdata"]["achivementReadFlags"])
+            finally:
+                stop_server(server, thread)
