@@ -2,11 +2,16 @@
 
 The private reference has `scripts/validate_full_story_persistence.py`, which
 drives every Chapter 2--42 stage through its persisted story authority.  The
-public release declared the same 393-stage graph but only ever proved a single
+public release declared the same 384-stage graph but only ever proved a single
 chapter boundary, so "the story is playable" rested on the catalog's shape
 rather than on the server having been asked to play it.
 
-This drives all 393 stages over the real HTTP path with `--core-story`: start,
+Deriving the graph here rather than from the catalog is the point, and it only
+pays when the copy states what the *client* does. It once carried the same wrong
+section run as the catalog -- ten stages for Chapter 20, which ships one -- and
+so certified a story no player could finish past Chapter 20.
+
+This drives all 384 stages over the real HTTP path with `--core-story`: start,
 clear, and the map reveal at each chapter boundary, from the first stage the
 tutorial hands over to the Chapter 43-1 terminal sentinel.  Progress, wallet,
 and roster are checked at every step against expectations derived here rather
@@ -38,11 +43,16 @@ REPLAY_IDENTITIES = {(2, 1), (10, 1), (20, 1), (42, 3)}
 
 
 def core_identities() -> list[tuple[int, int]]:
-    """The ordered core-story graph, derived here rather than from the catalog."""
+    """The ordered core-story graph, derived here rather than from the catalog.
+
+    Chapter 20 is one stage. BattleData reserves ten sections for it and fills
+    only the first, and the client draws the single row it can play, so clearing
+    20-1 finishes the chapter and the next stage is 21-1.
+    """
     return [
         (chapter, section)
         for chapter in range(2, 43)
-        for section in range(1, 6 if chapter in {2, 3} else 4 if chapter == 42 else 11)
+        for section in range(1, 2 if chapter == 20 else 6 if chapter in {2, 3} else 4 if chapter == 42 else 11)
     ]
 
 
@@ -116,7 +126,7 @@ class FullStoryProgressionTest(unittest.TestCase):
 
     def test_every_core_story_stage_starts_clears_and_advances(self) -> None:
         identities = core_identities()
-        self.assertEqual(393, len(identities))
+        self.assertEqual(384, len(identities))
         progress, coins = FIRST_PROGRESS, 0
 
         for index, (chapter, section) in enumerate(identities):
@@ -171,7 +181,7 @@ class FullStoryProgressionTest(unittest.TestCase):
                     self.restart()
 
         # The run ends on the terminal sentinel, with the roster and the wallet
-        # intact across all 393 stages and every restart.
+        # intact across all 384 stages and every restart.
         self.assertEqual(TERMINAL, ((progress & 0xFFFF) >> 6, progress & 0x3F))
         final = self.userdata()
         # 392 generic awards on top of the wallet the scripted stage left.
