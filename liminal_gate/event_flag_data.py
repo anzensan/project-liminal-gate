@@ -213,3 +213,24 @@ COMMUNITY_ATTESTED_EVENT_FLAGS: frozenset[str] = frozenset((
 ))
 
 KNOWN_EVENT_FLAGS: frozenset[str] = CLIENT_CONFIRMED_EVENT_FLAGS | COMMUNITY_ATTESTED_EVENT_FLAGS
+
+
+#: The visibility gate every listed achievement rides.  Recovered from the
+#: client's own `AchivementSet`: each `AchivementInfo` carries a `showFlag`, and
+#: `AchievementUtil.IsShow` resolves it through `EventManager.GetBoolean`, where
+#: an absent key reads false.  Forty-two of the ninety-nine records name this
+#: one; the rest name `achive-hide`, which the final client uses for the Co-op,
+#: VS, Twitter, Line and survey entries whose conditions the retired service
+#: owned, and which stays unsent for the same reason they are unreachable here.
+ACHIEVEMENT_EVENT_FLAG = "achive-1"
+
+
+def achievement_event_flags() -> dict[str, dict[str, object]]:
+    """Let the client list the achievements it can evaluate for itself.
+
+    Visibility only.  The client holds the whole master -- ids, unlock types,
+    thresholds and rewards -- and decides what is unlocked and achieved from
+    its own state; this flag is the half the server owns, and without it
+    `UIAchivements` builds an empty list and the menu entry renders bare.
+    """
+    return {ACHIEVEMENT_EVENT_FLAG: {"name": ACHIEVEMENT_EVENT_FLAG, "value": True}}

@@ -158,7 +158,7 @@ from liminal_gate.event_catalog import (
     merge_event_catalogs,
 )
 from liminal_gate.event_log import EventRecorder, refused_write_shapes, safe_form_diagnostics
-from liminal_gate.event_flag_data import daily_bonus_event_flags, music_event_flags
+from liminal_gate.event_flag_data import achievement_event_flags, daily_bonus_event_flags, music_event_flags
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, HuntingCatalog, HuntingCatalogError, build_bundled_hunting_policy, hunting_settlement_within_bounds, load_hunting_catalog
 from liminal_gate.daily_quest_data import (
     build_bundled_daily_quest_stages,
@@ -3791,6 +3791,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 payload |= daily_quest_login_fields(
                     self.server.state.accounts[resolved], time.time(),
                 )
+            if self.server.achievement_catalog is not None:
+                # The client holds all 99 achievements and evaluates them
+                # itself; this flag is only what makes it list them. Without it
+                # every one reads as not-shown and the menu entry is bare,
+                # which is what a bundled claim policy could never fix on its
+                # own -- it settles a claim, and nothing was listing anything.
+                event_flags |= achievement_event_flags()
             if self.server.daily_drop_bonuses:
                 # This is only the recovered service-owned gate. The final
                 # client computes the 15-day item/monster bonus itself from
