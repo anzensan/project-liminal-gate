@@ -13,6 +13,7 @@ from liminal_gate import tester_setup
 from liminal_gate.companion_equipment_catalog import (
     DEFAULT_COMPANION_EQUIPMENT_CATALOG,
 )
+from liminal_gate.coin_creeps_banner import CoinCreepsBannerError, prepare_coin_creeps_banners
 from liminal_gate.event_catalog import DEFAULT_EVENT_CATALOG
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, report_resource_inventory, write_resource_manifest
@@ -20,7 +21,7 @@ from liminal_gate.luck_pool_catalog import DEFAULT_LUCK_POOL_CATALOG
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
 from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT, write_default_tuning
-from liminal_gate.tester_setup import REQUIRED_RESOURCE_CATEGORIES
+from liminal_gate.tester_setup import DEFAULT_APK, REQUIRED_RESOURCE_CATEGORIES
 
 
 class ServerSetupError(RuntimeError):
@@ -45,11 +46,48 @@ def resolve_resource_root(requested: Path) -> Path:
         raise ServerSetupError(str(error)) from error
 
 
-def prepare_server(resource_root: Path, data_directory: Path) -> tuple[Path, Path, int]:
+def prepare_coin_creeps_cards(apk: Path, resource_root: Path, data_directory: Path) -> None:
+    """Derive the Attack of Coin Creeps card bundles, or say what is missing.
+
+    The client asks for `sp1003-1` and `sp1003-2` for this family whatever
+    chapter the server advertises it under, and the final archive retained
+    neither: they are derived from the retained `sp3003-1` art instead, under
+    the internal names the client looks up. Without them every request 404s and
+    the client retries in a tight loop, which a player sees as the Hunting
+    cards flashing rather than as a missing image.
+
+    Guided setup has always derived them. This launcher had not, so a dedicated
+    server served a Hunting screen it could never draw -- the same shape of gap
+    as a policy no launcher passes. It is best effort rather than fatal: an
+    operator running a server-only host may reasonably have no APK and no
+    master-import extra, and neither is worth refusing to start over. What is
+    not acceptable is failing silently, so every reason names itself and says
+    what a player will see.
+    """
+    try:
+        prepare_coin_creeps_banners(apk, resource_root, data_directory / "public_data")
+    except (CoinCreepsBannerError, OSError, ValueError) as error:
+        print(
+            f"Attack of Coin Creeps cards not derived: {error}\n"
+            "  Those cards will flash in the Hunting selector until this is resolved. "
+            'Install the extra with: pip install ".[master-import]"'
+        )
+
+
+def prepare_server(
+    resource_root: Path, data_directory: Path, apk: Path | None = None,
+) -> tuple[Path, Path, int]:
     """Build the hash-validated resource manifest needed by the server."""
     resolved_resources = resolve_resource_root(resource_root)
     resolved_data = data_directory.resolve()
     resolved_data.mkdir(parents=True, exist_ok=True)
+    if apk is not None and apk.is_file():
+        prepare_coin_creeps_cards(apk, resolved_resources, resolved_data)
+    elif apk is not None:
+        print(
+            f"Attack of Coin Creeps cards not derived: no APK at {apk}\n"
+            "  Those cards will flash in the Hunting selector until this is resolved."
+        )
     # The tuning document is written here rather than documented into
     # existence: it is a short list of knobs with known defaults, so an
     # operator should find it already in front of them. Every override in it is
@@ -249,6 +287,16 @@ def run_server(arguments: Sequence[str]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resource-root", type=Path, default=DEFAULT_RESOURCES)
+    parser.add_argument(
+        "--apk",
+        type=Path,
+        default=DEFAULT_APK,
+        help=(
+            "your own APK, read only to derive the Attack of Coin Creeps card "
+            "bundles the archive never retained; without it those cards flash "
+            "in the Hunting selector"
+        ),
+    )
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8002)
@@ -328,7 +376,7 @@ def main() -> int:
         if not 1 <= args.port <= 65535:
             raise ServerSetupError("--port must be an integer from 1 through 65535")
         resource_root, data_directory, resource_count = prepare_server(
-            args.resource_root, args.data_dir
+            args.resource_root, args.data_dir, args.apk
         )
         print(f"Prepared server resource manifest: {resource_count} mapped entries")
         print(f"Durable account state: {data_directory / 'bootstrap-state.json'}")
