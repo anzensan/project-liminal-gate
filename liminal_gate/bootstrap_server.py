@@ -341,6 +341,19 @@ MUTATION_RESULT_STATUSES = {
     "story_clear_world_map_conflict": HTTPStatus.CONFLICT,
     "story_clear_wallet_conflict": HTTPStatus.CONFLICT,
     "story_clear_battle_coins_conflict": HTTPStatus.CONFLICT,
+    # The Hunting clear's own, for the reason the two families above have
+    # theirs. Every Huntland family settles through one route, so a refusal
+    # that named neither the check nor the array it read left a tester with a
+    # Network Error and nothing to report. See Issue 61.
+    "hunting_clear_stage_conflict": HTTPStatus.CONFLICT,
+    "hunting_clear_phase_conflict": HTTPStatus.CONFLICT,
+    "hunting_clear_active_stage_conflict": HTTPStatus.CONFLICT,
+    "hunting_clear_progress_conflict": HTTPStatus.CONFLICT,
+    "hunting_clear_world_map_conflict": HTTPStatus.CONFLICT,
+    "hunting_clear_wallet_conflict": HTTPStatus.CONFLICT,
+    "invalid_local_hunting_bounds": HTTPStatus.CONFLICT,
+    "invalid_local_hunting_items": HTTPStatus.CONFLICT,
+    "invalid_local_hunting_companions": HTTPStatus.CONFLICT,
     "unsupported_summon": HTTPStatus.NOT_IMPLEMENTED,
     "unsupported_userdata_write": HTTPStatus.NOT_IMPLEMENTED,
     "unsupported_story_progression_reveal": HTTPStatus.NOT_IMPLEMENTED,
@@ -374,7 +387,6 @@ MUTATION_RESULT_STATUSES = {
     "event_stage_locked": HTTPStatus.CONFLICT,
     "invalid_local_event_result": HTTPStatus.CONFLICT,
     "hunting_stage_locked": HTTPStatus.CONFLICT,
-    "invalid_local_hunting_result": HTTPStatus.CONFLICT,
     "world_map_special_locked": HTTPStatus.CONFLICT,
     "invalid_local_world_map_special_result": HTTPStatus.CONFLICT,
     "invalid_local_settlement": HTTPStatus.CONFLICT,
@@ -2680,12 +2692,8 @@ class BootstrapState:
             identity = (result["chapter"], result["section"])
             stage = catalog.by_identity().get(identity)
             userdata = account["userdata"]
-            if (
-                stage is None
-                or account.setdefault("tutorial_phase", "initial") != "hunting_active"
-                or account.get("active_hunt") != {"chapter": identity[0], "section": identity[1]}
-            ):
-                return "tutorial_state_conflict", None
+            if stage is None:
+                return "hunting_clear_stage_conflict", None
             # A Hunting battle settles rewards; it never moves story progress.
             expected_coins = int(userdata.get("coins", 0)) + result["coins"]
             # `progressCode` means whatever the world the clear reports makes it
@@ -2702,12 +2710,28 @@ class BootstrapState:
                 world_progress_matches = is_valid_world_progress(
                     str(reported_world), clear["progressCode"],
                 )
-            if (
-                not world_progress_matches
-                or reported_world != int(userdata.get("worldMapNo", 0))
-                or clear["valuables"].get("coins") not in _settled_wallet_coins(account, expected_coins)
-            ):
-                return "tutorial_state_conflict", None
+            # Named one at a time, for the reason `apply_generic_story_clear`
+            # gives at its own `checks`: five conditions answering a single
+            # `tutorial_state_conflict` -- a name thirteen other call sites also
+            # return -- told a tester's dump only that something about the
+            # account was wrong, and a stale Companion box read exactly like a
+            # wallet disagreement. See Issue 61.
+            checks = (
+                ("phase", account.setdefault("tutorial_phase", "initial") == "hunting_active"),
+                (
+                    "active_stage",
+                    account.get("active_hunt") == {"chapter": identity[0], "section": identity[1]},
+                ),
+                ("progress", world_progress_matches),
+                ("world_map", reported_world == int(userdata.get("worldMapNo", 0))),
+                (
+                    "wallet",
+                    clear["valuables"].get("coins") in _settled_wallet_coins(account, expected_coins),
+                ),
+            )
+            failed = next((name for name, passed in checks if not passed), None)
+            if failed is not None:
+                return f"hunting_clear_{failed}_conflict", None
             # A reported Summon is settled from the client's own count array,
             # the way the generic story clear settles one.  This used to refuse,
             # on the reasoning that Hunting has no recovered Summon authoring
@@ -2720,7 +2744,7 @@ class BootstrapState:
             # reports as its base plus the battle's drops, so preserving it the
             # way `itemList` is preserved authors nothing this server invented.
             if outcome_strict and not hunting_settlement_within_bounds(stage, result):
-                return "invalid_local_hunting_result", None
+                return "invalid_local_hunting_bounds", None
             gains = {int(item_id): count for item_id, count in result["items"].items()}
             projected_items = _projected_hunting_items(
                 userdata.get("itemList"), clear["itemList"], gains, stage,
@@ -2728,10 +2752,25 @@ class BootstrapState:
                 catalog.max_stack,
             )
             if projected_items is None:
-                return "invalid_local_hunting_result", None
-            companions = _granted_hunting_companions(userdata, stage, result, catalog.max_companions)
-            if companions is None:
-                return "invalid_local_hunting_result", None
+                return "invalid_local_hunting_items", None
+            # Only a clear that actually reports a drop is judged against the
+            # Companion box, matching the response contract below and the World
+            # Map Special clear's own guard.  Unconditional, this validated the
+            # box -- every row's `iid`, their uniqueness, and
+            # `nextCompanionInventoryId` -- before looking at a drop list that
+            # was usually empty, so one stale field in a box the battle never
+            # touched refused every Huntland clear at once, including the item
+            # and Coin families that can never drop a Companion at all. The box
+            # must still gate a clear that grants one: a grant it cannot author
+            # is a real refusal, and `_companion_box_room` keeps that contract
+            # wherever a Companion is actually delivered. See Issue 61.
+            companions = None
+            if result["buddies"]:
+                companions = _granted_hunting_companions(
+                    userdata, stage, result, catalog.max_companions,
+                )
+                if companions is None:
+                    return "invalid_local_hunting_companions", None
             wallet_fields = ("energyAppStore", "energy", "energyAndApp", "freeEnergy", "energyGooglePlay", "coins")
             userdata.update({
                 "lastupdate": 1.0,

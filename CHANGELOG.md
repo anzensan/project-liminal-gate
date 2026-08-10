@@ -256,6 +256,46 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **One bad field in the Companion box closed all of Huntland.** Every Hunting
+  clear validated the account's Companion box — each row's inventory id, their
+  uniqueness, and `nextCompanionInventoryId` — before it looked at what the
+  battle had actually dropped. That list is usually empty, and the item and Coin
+  families can never drop a Companion at all, so a box that had drifted out of
+  step refused clears on quests whose battles never touched it. The reward
+  screen then retried a settlement that could never complete, which is the
+  Network Error a player has to force-close.
+
+  It presents as Huntland breaking all at once, permanently, while the main
+  story keeps working: the story clear never consults the box, and the box lives
+  in durable server state, so an app restart, an APK rebuild and a reinstall all
+  leave it exactly as it was.
+
+  The box is now consulted only by a clear that actually delivers a Companion,
+  matching the response contract beside it and the World Map Special clear's own
+  guard. A drop the stage cannot author, or a box with no room for one, is still
+  refused wherever a Companion is really granted.
+
+  If you are stuck on this now, `python3 -m liminal_gate.account_state validate`
+  names the field; see `docs/saves.md`.
+
+  Needs a server restart, or an APK rebuild for the on-device package.
+
+- **A refused Hunting clear said only that something was wrong.** Eight distinct
+  causes answered two error names, and `tutorial_state_conflict` is returned by
+  thirteen other call sites besides. A stale Companion box, a wallet
+  disagreement and a battle fought on the wrong map were indistinguishable in a
+  dump, which is why the entry above took a source reading rather than a log to
+  find.
+
+  Each check now names itself, exactly as the core-story and archive clears
+  already did: `hunting_clear_stage_conflict`, `_phase_`, `_active_stage_`,
+  `_progress_`, `_world_map_` and `_wallet_conflict`, and the settlement half
+  splits into `invalid_local_hunting_bounds`, `invalid_local_hunting_items` and
+  `invalid_local_hunting_companions`. Every status is unchanged; only the name
+  is sharper.
+
+  Needs a server restart, or an APK rebuild for the on-device package.
+
 - **A day-one login bonus could not be opened.** Reported by two testers on
   fresh installs (Issue 54): the inbox lists "Login bonus day 1" and
   "Consecutive login bonus day 1", and opening either answers a Network Error
