@@ -415,7 +415,7 @@ class CavernForestTransactionTest(unittest.TestCase):
             items={str(first): 1}, item_list=submitted,
         )
 
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual((409, "invalid_local_hunting_items"), (status, refused["error"]))
         self.assertEqual(before, self.userdata())
         # A refusal must not strand the battle; the stage stays open to retry.
         self.assertEqual("hunting_active", self.account()["tutorial_phase"])
@@ -460,7 +460,7 @@ class CavernForestStrictAuditTest(CavernForestTransactionTest):
         status, refused = self.clear(
             "f-audit", CRYPTID_FOREST_CHAPTER, 1, items={str(other): 1}, item_list=items,
         )
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual((409, "invalid_local_hunting_bounds"), (status, refused["error"]))
         self.assertEqual("hunting_active", self.account()["tutorial_phase"])
 
     def test_neither_area_is_advertised_in_any_selector(self) -> None:

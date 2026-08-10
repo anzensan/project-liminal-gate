@@ -431,7 +431,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.restart()
         snapshot = copy.deepcopy(self.userdata())
         status, refused = self.clear("special-over", 3003, 1, coins=1801, snapshot=snapshot)
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual((409, "invalid_local_hunting_bounds"), (status, refused["error"]))
         self.assertEqual(snapshot, self.userdata())
         self.assertEqual("hunting_active", self.phase())
 
@@ -504,7 +504,7 @@ class HuntingRuntimeTest(unittest.TestCase):
         for label, claim in (("undeclared", [9003]), ("two-at-once", [9002, 9002])):
             with self.subTest(label):
                 status, refused = self.clear(f"road-{label}", 1200, 1, monsters=claim)
-                self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+                self.assertEqual((409, "invalid_local_hunting_bounds"), (status, refused["error"]))
 
     def test_entry_item_is_consumed_and_a_missing_one_refuses_entry(self) -> None:
         self.assertEqual(2, self.userdata()["itemList"][4])
@@ -538,7 +538,7 @@ class HuntingRuntimeTest(unittest.TestCase):
                 before = self.userdata()
                 status, refused = self.clear(f"clear-{label}", 1001, 1, **kwargs)
                 self.assertEqual(409, status, f"{label}: {refused}")
-                self.assertEqual("invalid_local_hunting_result", refused["error"])
+                self.assertEqual("invalid_local_hunting_bounds", refused["error"])
                 self.assertEqual(before, self.userdata(), f"{label} mutated the save")
                 # The stage stays active, so the player may retry it honestly.
                 self.assertEqual("hunting_active", self.phase())
@@ -656,7 +656,7 @@ class HuntingRuntimeTest(unittest.TestCase):
             "metal-stamina-clear", 3000, 11,
             item_list=[0, 1, 0, 0, 1, 0, 0, 0],
         )
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual((409, "invalid_local_hunting_items"), (status, refused["error"]))
         self.assertEqual(before, self.userdata())
         self.assertEqual(200, self.clear("metal-stamina-settle", 3000, 11)[0])
 
@@ -707,9 +707,10 @@ class HuntingRuntimeTest(unittest.TestCase):
             exp=1000, buddies=[11], item_list=self.userdata()["itemList"],
         )
         # Replay keys include the body. A changed body cannot inherit the
-        # cached success and instead reaches the now-free-roam phase guard.
+        # cached success and instead reaches the now-free-roam phase guard,
+        # which names itself rather than answering the shared conflict.
         self.assertEqual(
-            (409, "tutorial_state_conflict"),
+            (409, "hunting_clear_phase_conflict"),
             (status, collision["error"]),
         )
 
@@ -762,7 +763,7 @@ class HuntingRuntimeTest(unittest.TestCase):
                 before = self.userdata()
                 status, refused = self.clear(f"clear-{label}", 3000, 11, **kwargs)
                 self.assertEqual(409, status, refused)
-                self.assertEqual("invalid_local_hunting_result", refused["error"])
+                self.assertEqual("invalid_local_hunting_bounds", refused["error"])
                 self.assertEqual(before, self.userdata(), f"{label} mutated the save")
                 self.assertEqual(200, self.clear(f"settle-{label}", 3000, 11)[0])
 
@@ -781,6 +782,49 @@ class HuntingRuntimeTest(unittest.TestCase):
         self.server, self.thread = start_server(("127.0.0.1", 0), self.profile, BootstrapState(self.state_path))
         status, refused = self.start("no-catalog", 1001, 1, 3)
         self.assertEqual(501, status, refused)
+
+    def _stale_companion_box(self) -> None:
+        """A box whose `nextCompanionInventoryId` no longer clears its ids."""
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["buddyInfo"] = {"list": [{
+                "bid": 11, "lv": 1, "date": 0.0, "iid": 7, "exp": 0, "flag": 0, "chrID": 0,
+            }], "record": []}
+            userdata["nextCompanionInventoryId"] = 7
+            self.server.state._persist_locked()
+
+    def test_a_stale_companion_box_does_not_refuse_a_clear_that_grants_none(self) -> None:
+        """Issue 61: one bad field must not close every Huntland family.
+
+        `nextCompanionInventoryId` is durable server state, so once it stops
+        clearing the box it stays wrong across an app restart, an APK rebuild
+        and a reinstall. Validated on every clear, it turned that one field into
+        a permanent reward-screen Network Error on quests that can never drop a
+        Companion and whose battles never touched the box.
+        """
+        self._stale_companion_box()
+        self.assertEqual(200, self.start("pudding", 1001, 1, 3)[0])
+        status, cleared = self.clear(
+            "pudding-clear", 1001, 1,
+            items={"2": 1}, item_list=[0, 2, 0, 0, 2, 0, 0, 0],
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual("free_roam", self.phase())
+        self.assertEqual([0, 2, 0, 0, 2, 0, 0, 0], self.userdata()["itemList"])
+        # A settlement that granted none neither read nor rewrote the box.
+        userdata = self.userdata()
+        self.assertEqual(7, userdata["nextCompanionInventoryId"])
+        self.assertEqual([7], [row["iid"] for row in userdata["buddyInfo"]["list"]])
+        self.assertNotIn("buddyInfo", cleared)
+
+    def test_a_stale_companion_box_still_refuses_a_clear_that_grants_one(self) -> None:
+        """The box keeps gating the settlement that actually delivers one."""
+        self._stale_companion_box()
+        self.assertEqual(200, self.start_with_ticket("metal", 3000, 11, 4)[0])
+        status, refused = self.clear("metal-clear", 3000, 11, exp=10, buddies=[11])
+        self.assertEqual(
+            (409, "invalid_local_hunting_companions"), (status, refused["error"]),
+        )
 
 
 class BundledHuntingStackCeilingTest(unittest.TestCase):
@@ -973,7 +1017,7 @@ class BundledMetalZoneFullBoxTest(unittest.TestCase):
         """A full box does not turn an undeclared drop into an accepted one."""
         self.assertEqual(200, self.start("start")[0])
         status, refused = self.clear("clear", [130])
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual((409, "invalid_local_hunting_companions"), (status, refused["error"]))
 
 
 class RoadSpeciesLimitTest(unittest.TestCase):

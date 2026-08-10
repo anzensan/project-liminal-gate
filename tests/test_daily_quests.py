@@ -525,7 +525,7 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
             "unreported-clear", items={"1": 1}, item_list=submitted,
         )
 
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual((409, "invalid_local_hunting_items"), (status, refused["error"]))
         self.assertEqual(before, self.userdata())
         self.assertEqual("hunting_active", self.account()["tutorial_phase"])
 
@@ -534,7 +534,7 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
         self.assertEqual(200, self.start("undeclared-start")[0])
         before = self.userdata()
         status, refused = self.clear("undeclared-clear", buddies=[140])
-        self.assertEqual((409, "invalid_local_hunting_result"), (status, refused["error"]))
+        self.assertEqual((409, "invalid_local_hunting_companions"), (status, refused["error"]))
         self.assertEqual(before, self.userdata(), "a refused clear must not mutate the save")
         # And the honest clear still settles afterwards, which is the recovery
         # path a wedged account takes: replay the same stage and finish it.
@@ -749,7 +749,7 @@ class DailyQuestGameOverContinueTest(unittest.TestCase):
         self.assertEqual(200, self.start("plain-start")[0])
         before = self.userdata()["coins"]
         status, refused = self.clear("plain-clear", coins=before + self.CONTINUE_COINS)
-        self.assertEqual((409, "tutorial_state_conflict"), (status, refused["error"]))
+        self.assertEqual((409, "hunting_clear_wallet_conflict"), (status, refused["error"]))
 
     def test_the_widening_does_not_survive_into_the_next_quest(self) -> None:
         """A new battle starts owing nothing, however the last one ended."""
