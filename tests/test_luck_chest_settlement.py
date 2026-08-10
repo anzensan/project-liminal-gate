@@ -242,3 +242,27 @@ class ChestSettlementTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_re_entering_an_open_battle_returns_the_same_chest(self) -> None:
+        """Backing out and playing a stage again must not strand the account.
+
+        The chest is decided at the first entry and held against the battle, and
+        settlement adds its Coins to the wallet the client is expected to report
+        because the client folds them in itself. A retry that answered without
+        the chest left the client settling a battle it had never been shown one
+        for, while the server still charged the wallet for it -- so the clear
+        came back `story_clear_wallet_conflict` and the battle could not settle
+        at all. Give Up sends this server nothing, so re-entry is the ordinary
+        way back into an open battle, not an edge case.
+        """
+        first = self.start("s1")
+        # The retry rolls nothing: it returns what the first entry authored.
+        status, retried = self.post(f"/gd/start_quest?otk={self.token}&requestID=s2", [
+            ("stamina", "5"), ("coins", "0"), ("chapter", str(CHAPTER)),
+            ("section", str(SECTION)), ("lastUpdate", "1"),
+        ])
+        self.assertEqual(200, status)
+        self.assertEqual(first, retried["luckResult"])
+        self.assertEqual(self.account()["active_luck_up"], retried["luckUpTable"])
+        status, settled = self.clear(retried["luckResult"], "c-after-retry")
+        self.assertEqual(200, status, settled)

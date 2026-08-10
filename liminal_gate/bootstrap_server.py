@@ -235,6 +235,14 @@ SPECIES_LIMIT_ERROR_CODE = 6
 # It is deliberately outside the profile's route table: the client never calls
 # it, and it must not be reachable through the mutation transport.
 LOCAL_STATE_ROUTE = "/local/state"
+# The event log, read back the same way and for the same reason. On the packaged
+# Android server `events.jsonl` sits in app-private storage, and the combined
+# package is not debuggable, so `adb shell run-as` cannot reach it: a tester can
+# report that something was refused but never which check refused it. That is
+# exactly the report this project spent two days on. With this route the log is
+# one `adb forward` away, and on a LAN-bound server it stays unpublished for the
+# same reason the save does.
+LOCAL_EVENTS_ROUTE = "/local/events"
 # Committed states kept beside the save, newest first, so a bad write, a manual
 # edit, or a damaged file is recoverable instead of terminal.
 ACCOUNT_STATE_BACKUP_COUNT = 5
@@ -2911,7 +2919,26 @@ class BootstrapState:
             ):
                 # A fresh request id for the stage already active is a retry,
                 # so it reports the meter without debiting it a second time.
+                #
+                # The chest goes back with it. It was decided at the first entry
+                # and is still held against this battle, and settlement adds its
+                # Coins to the wallet the client is expected to report -- because
+                # the client folds them in itself. Answering a retry without it
+                # told the client about a chest it would never see while the
+                # server still charged the wallet for one, so the clear came back
+                # `story_clear_wallet_conflict` and the battle could not be
+                # settled at all: an account stranded on any stage whose chest
+                # carries Coins, by nothing worse than backing out and playing it
+                # again. Re-sending is not a re-roll; the stored slots are
+                # returned exactly as they were authored.
                 payload = {"success": True, "refillStartTime": float(userdata.get("refillStartTime", 0.0))}
+                open_chest = account.get("active_luck_result")
+                open_luck_up = account.get("active_luck_up")
+                open_chest = open_chest if isinstance(open_chest, list) else []
+                open_luck_up = open_luck_up if isinstance(open_luck_up, list) else []
+                if any(open_chest) or any(open_luck_up):
+                    payload["luckResult"] = list(open_chest)
+                    payload["luckUpTable"] = list(open_luck_up)
                 requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
@@ -3722,7 +3749,17 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         A profile that claimed this path for a game route would keep it: the
         client's transport is the one that cannot be broken from here.
         """
-        if path != LOCAL_STATE_ROUTE or path in set(self.server.profile.routes.values()):
+        return self._serves_local_route(path, LOCAL_STATE_ROUTE)
+
+    def _serves_local_events(self, path: str) -> bool:
+        """Whether this server answers the operator event-log route here.
+
+        Same gate as the save, for the same reason and with the same limits.
+        """
+        return self._serves_local_route(path, LOCAL_EVENTS_ROUTE)
+
+    def _serves_local_route(self, path: str, route: str) -> bool:
+        if path != route or path in set(self.server.profile.routes.values()):
             return False
         address = getattr(self.server, "server_address", None)
         return isinstance(address, tuple) and bool(address) and address[0] in {"127.0.0.1", "::1"}
@@ -3737,6 +3774,17 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return
         if self._serves_local_state(target.path):
             self._json(HTTPStatus.OK, self.server.state.document())
+            return
+        if self._serves_local_events(target.path):
+            log = self.server.events.path if self.server.events is not None else None
+            if log is None or not log.is_file():
+                # Saying which of the two it is matters: a server started without
+                # `--event-log` has nothing to send and never will, while a log
+                # that exists but is empty means the route being asked about was
+                # never reached at all.
+                self._json(HTTPStatus.NOT_FOUND, {"error": "no_local_event_log"})
+                return
+            self._file(HTTPStatus.OK, log, "application/x-ndjson")
             return
         if self._serve_local_content(target.path):
             return
