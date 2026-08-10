@@ -1215,3 +1215,66 @@ class CaptiveGolemClassLimitTest(unittest.TestCase):
         status, payload = self.start([self.OVER_CLASS, 0, 0, 0, 0, 0], tuning=relaxed)
         self.assertEqual((200, True), (status, payload["success"]))
         self.assertNotIn("cmdError", payload)
+
+
+class RaidRangeLoginParamsTest(unittest.TestCase):
+    """A stage in Chapters 9000--9009 needs its raid entry on the login reply.
+
+    The client asks `ChapterInterface.IsRaidQuest` before it asks anything of
+    the server, and an absent `eventQuestParams` decodes to `RaidStatus.Lock`,
+    which refuses the start on the device. Tower of Temptation is served from
+    9000--9003, so this is the whole difference between a playable card and a
+    dead end no server log records.
+    """
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.token, self.account_id = "raid-token", "raid-account"
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def login(self, chapter: int) -> dict:
+        catalog = EventCatalog((
+            EventStage(
+                "tower_of_temptation", f"sp_ch_{chapter}", chapter, 1, 15, 0, 0, (),
+                selector="tower", unlock_after_chapter=3,
+            ),
+        ))
+        state = BootstrapState(self.state_path)
+        state.create_account(
+            self.token, self.account_id,
+            {
+                "coins": 0, "energy": 20, "freeEnergy": 2,
+                "progressCode": 0x01000000 | (4 << 6) | 1, "worldMapNo": 0,
+                "chrdata": [character(3)], "itemList": [], "summonList": [],
+            },
+        )
+        state.accounts[self.account_id]["tutorial_phase"] = "free_roam"
+        state._persist_locked()
+        state.close()
+        server, thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(self.state_path),
+            event_catalog=catalog,
+        )
+        try:
+            status, payload = get(
+                server,
+                f"/gd/login?otk={self.token}&uuid={self.account_id}&requestID=login",
+            )
+            self.assertEqual(200, status)
+            return payload
+        finally:
+            stop_server(server, thread)
+
+    def test_a_raid_range_stage_is_answered_with_an_unlocked_status(self) -> None:
+        payload = self.login(9000)
+        self.assertEqual(
+            {"status": 2, "remainHp": 1.0}, payload["eventQuestParams"]["9000-1"],
+        )
+
+    def test_a_tower_range_stage_needs_no_entry(self) -> None:
+        # 9010--9099 is the client's own Tower of Temptation range and takes the
+        # ordinary start path, so nothing is declared for it.
+        self.assertNotIn("eventQuestParams", self.login(9010))

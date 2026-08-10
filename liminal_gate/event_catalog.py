@@ -30,6 +30,21 @@ def _character_classes(characters: object) -> dict[int, int]:
 
 DEFAULT_EVENT_CATALOG = "event-catalog.json"
 
+#: The chapters this client treats as Raid quests, whatever family a server
+#: advertises there. Recovered as literals from `ChapterInterface..cctor`
+#: (ARM64 `0xD0741C`), which writes `RaidQuestChapter` at static offset 0x54 and
+#: `RaidQuestEndChapter` at 0x58; Tower of Temptation is the *next* range,
+#: 9010--9099, and Melting Pot's Donation range follows at 9100--9199. See
+#: `EventCatalog.raid_quest_params` for what the range costs a server that
+#: advertises inside it.
+RAID_QUEST_CHAPTER = 9000
+RAID_QUEST_END_CHAPTER = 9009
+
+#: `UISpecialItem.RaidStatus.Subjugating`. The enum is `Lock` 1, `Subjugating`
+#: 2, `Overkilling` 3, `Completed` 4; the start path refuses 1 and 4, so this is
+#: the plainest of the two that pass.
+RAID_STATUS_SUBJUGATING = 2
+
 
 class EventCatalogError(ValueError):
     """A user-local event catalog is malformed."""
@@ -140,6 +155,56 @@ class EventCatalog:
             for stage in unlocked
         ]
         return {name: {"name": name, "value": True} for name in names}
+
+    def raid_quest_params(self, progress_code: int | None = None) -> dict[str, dict[str, object]]:
+        """Return the `eventQuestParams` entry every advertised raid-range stage needs.
+
+        Chapters 9000--9009 are **Raid quests** to this client, whatever the
+        family a server advertises there. `ChapterInterface..cctor`
+        (ARM64 `0xD0741C`) writes the ranges as literals:
+        `CounterDescentQuestChapter` 8000--8999, `RaidQuestChapter`
+        9000--**9009**, `TowerOfTemptationChapter` 9010--9099, and
+        `DonationQuestChapter` 9100--9199. Tower of Temptation is served from
+        9000--9003 because those are the copies carrying compiled chapter
+        programs and retained banners -- so every Tower card lands in the raid
+        range, and the range decides the start path rather than the family does.
+
+        `UISpecialSelect2.StartSpecial` (`0xF82590`) asks
+        `ChapterInterface.IsRaidQuest(chapter)` first, and for a raid chapter it
+        reads `EventManager.GetRaidQuestStatus("<chapter>-<section>")`
+        (`0xD96EC0`), which is `GetQuestParam(id)["status"]` over the
+        `eventQuestParams` object the login response carries. With the key
+        unsent the lookup misses and the accessor returns
+        `UISpecialItem.RaidStatus.Lock` (1), which raises
+        "You don't meet the requirements to unlock this quest" and stops the
+        start before any request leaves the device. That is a refusal no server
+        log can show, because the client never asks.
+
+        `Subjugating` (2) is the plainest open state the enum has -- `Lock` (1)
+        and `Completed` (4) are the two the start path refuses, and
+        `Overkilling` (3) claims a boss already past its threshold. It is a
+        local policy rather than a recovered value: what the retired service put
+        here is not in any capture, and the client only needs the field to not
+        say closed.
+
+        `remainHp` is sent beside it because `GetRaidQuestRemainHp`
+        (`0xD96F50`) reads it with LitJson's `double` accessor, which throws on
+        an integer rather than converting -- the same trap `jobLevels` and
+        `questClearDate` carry. A full bar is the honest value for a boss no
+        player has fought on this server.
+
+        No `overkillEndDate` is sent, and its absence is doing real work.
+        `UISpecialSelect2.UpdateItems` (`0xF8AE00`) draws the raid countdown and
+        HP bar only once that date is present, so withholding it keeps the cards
+        rendering as the ordinary quest cards they are, rather than dressing
+        them in a live-service schedule this project never recovered.
+        """
+        return {
+            stage.identity_label(): {"status": RAID_STATUS_SUBJUGATING, "remainHp": 1.0}
+            for stage in self.stages
+            if RAID_QUEST_CHAPTER <= stage.chapter <= RAID_QUEST_END_CHAPTER
+            and stage.unlocked_at(progress_code)
+        }
 
     def client_lists(self, progress_code: int | None) -> dict[str, list[str]]:
         """Project Special, Tower, and folded Strikes Back selector rows."""

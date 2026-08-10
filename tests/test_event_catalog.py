@@ -212,3 +212,58 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         self.assertEqual(5, merged.by_identity()[(8000, 1)].stamina)
         self.assertTrue(merged.by_identity()[(8000, 1)].projected_rewards)
         self.assertIn((2000, 1), merged.by_identity())
+
+
+class RaidRangeQuestParamsTest(unittest.TestCase):
+    """Chapters 9000--9009 are the client's Raid quest range, and it gates them.
+
+    `UISpecialSelect2.StartSpecial` asks `ChapterInterface.IsRaidQuest` before
+    anything else and refuses on `RaidStatus.Lock`, which is what an absent
+    `eventQuestParams` decodes to. Tower of Temptation is served from
+    9000--9003, so every one of its cards needs an entry here or it dead-ends
+    inside the client with no request on the wire.
+    """
+
+    @staticmethod
+    def progress_at(chapter: int) -> int:
+        return ((chapter + 1) << 6) | 1
+
+    def catalog(self, *chapters: int) -> EventCatalog:
+        return EventCatalog(tuple(
+            EventStage(
+                "test", f"sp_ch_{chapter}", chapter, 1, 15, 0, 0, (),
+                selector="tower", unlock_after_chapter=3,
+            )
+            for chapter in chapters
+        ))
+
+    def test_every_advertised_raid_range_stage_is_answered(self) -> None:
+        params = self.catalog(9000, 9003).raid_quest_params(self.progress_at(19))
+        self.assertEqual({"9000-1", "9003-1"}, set(params))
+
+    def test_status_is_one_the_start_path_admits(self) -> None:
+        # `Lock` (1) and `Completed` (4) are the two the client refuses.
+        for entry in self.catalog(9000).raid_quest_params(self.progress_at(19)).values():
+            self.assertNotIn(entry["status"], (1, 4))
+
+    def test_remaining_hp_is_a_double_the_client_can_read(self) -> None:
+        # `GetRaidQuestRemainHp` reads it with LitJson's `double` accessor,
+        # which throws on `JsonType.Int` rather than converting -- the same
+        # trap `jobLevels` and `questClearDate` carry.
+        for entry in self.catalog(9000).raid_quest_params(self.progress_at(19)).values():
+            self.assertIs(float, type(entry["remainHp"]))
+
+    def test_no_overkill_end_date_is_declared(self) -> None:
+        # Its presence is what makes `UpdateItems` draw the raid countdown and
+        # HP bar. This server has no recovered schedule to put there.
+        for entry in self.catalog(9000).raid_quest_params(self.progress_at(19)).values():
+            self.assertEqual({"status", "remainHp"}, set(entry))
+
+    def test_chapters_outside_the_raid_range_are_left_alone(self) -> None:
+        # 8999 is the last Counter Descent chapter and 9010 the first Tower of
+        # Temptation one; neither takes the raid path.
+        catalog = self.catalog(8999, 9010, 9100)
+        self.assertEqual({}, catalog.raid_quest_params(self.progress_at(19)))
+
+    def test_a_stage_the_account_cannot_see_is_not_answered(self) -> None:
+        self.assertEqual({}, self.catalog(9000).raid_quest_params(self.progress_at(1)))
