@@ -256,6 +256,36 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A day-one login bonus could not be opened.** Reported by two testers on
+  fresh installs (Issue 54): the inbox lists "Login bonus day 1" and
+  "Consecutive login bonus day 1", and opening either answers a Network Error
+  the player has to force-close to escape. The dump named
+  `unsupported_message_read` on `/gd/read_messages`, and the mail route turned
+  out to be the wrong place to look.
+
+  The scripted tutorial's five clear callbacks each carry the client's own
+  181-slot inventory. Each one validated that array and then stored none of it:
+  no transition named `itemList` among the fields it kept. A player therefore
+  reached free roam with no inventory recorded at all — and every route that
+  settles a reward into that array checks it before doing anything. The read
+  refused a bonus of pure Coins and Energy over the shape of an inventory it was
+  never going to touch, and said so in the vocabulary of the mail route.
+
+  The tutorial now keeps the two count arrays it was already accepting, merged
+  the way every later clear merges them, so a client reporting a stale base
+  cannot erase a count granted between its read and its clear. A save already
+  stranded past the tutorial gains a zeroed inventory when the server loads it;
+  one that already carries counts is left exactly as it is, whatever its length,
+  because the per-route slot checks own that judgement.
+
+  This is also the answer to the second report, that the problem fixed itself
+  overnight. It was not the server settling in: clearing any Chapter 2 quest
+  wrote the missing array as a side effect, because the ordinary story clear
+  always kept what the tutorial discarded. The waiting bonuses were never lost —
+  inbox presents do not expire — and open normally now.
+
+  Needs a server restart, or an APK rebuild for the on-device package.
+
 - **Tower of Temptation said you did not meet the requirements.** Reported by
   two testers: all four cards list, and tapping any of them answers "You don't
   meet the requirements to unlock this quest. Check the event notice for
