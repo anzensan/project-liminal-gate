@@ -644,3 +644,172 @@ class MessageRewardKindTest(unittest.TestCase):
                     with self.assertRaises(MessageCatalogError) as raised:
                         self._catalog(root, self.MESSAGE + f"{field} = 3\n")
                     self.assertIn("no owner", str(raised.exception))
+
+
+class TutorialGraduateInboxTest(unittest.TestCase):
+    """Issue 54: the bundled profile's own account could not open a login bonus.
+
+    Every other test in this file hand-builds a seed containing `itemList`, which
+    is exactly what hid this: the one seed a real player actually starts from --
+    `profiles/legacy-client-bootstrap.json` -- has never carried the field, and
+    no scripted tutorial transition wrote one either.  These drive the shipped
+    profile rather than a synthetic account, so the gap cannot reopen unseen.
+    """
+
+    def _clear_body(self, transition: dict, **overrides: str) -> str:
+        """Build a clear form matching one profile transition, field order intact."""
+        placeholders = {
+            "valuables": json.dumps({"coins": 30}),
+            "chrdata": json.dumps([]),
+            "itemList": json.dumps([0] * 181),
+            "summonList": json.dumps([0] * 16),
+            "battle_result": json.dumps({"exp": 0, "coins": 30}),
+            "teamMembers": json.dumps([]),
+            "teamMembers_VS": json.dumps([]),
+            "teamBuddies_VS": json.dumps([]),
+        }
+        values = {**placeholders, **transition["fixed_fields"], **overrides}
+        return urlencode([(name, values[name]) for name in transition["field_names"]])
+
+    def test_the_bundled_seed_carries_no_inventory_and_the_tutorial_must_supply_it(self) -> None:
+        profile = bootstrap_profile()
+        self.assertNotIn("itemList", profile.userdata_seed)
+        clears = [item for item in profile.story_clears if "itemList" in item["field_names"]]
+        self.assertTrue(clears, "the tutorial clears should still carry an inventory")
+
+    def test_a_tutorial_clear_persists_the_inventory_it_accepts(self) -> None:
+        profile = bootstrap_profile()
+        transition = next(
+            item for item in profile.story_clears if item["phase"] == "chapter1_1_active"
+        )
+        earned = [0] * 181
+        earned[49] = 3
+        with tempfile.TemporaryDirectory() as directory:
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(Path(directory) / "state.json"),
+                login_bonuses=True,
+            )
+            try:
+                server.state.create_account(
+                    "token", "account", profile.userdata_seed, server.message_catalog,
+                )
+                account = server.state.accounts["account"]
+                account["tutorial_phase"] = "chapter1_1_active"
+                self.assertIsNone(account["userdata"].get("itemList"))
+
+                body = self._clear_body(transition, itemList=json.dumps(earned))
+                status, _ = post(server, "/gd/clear_quest", "clear-1-1", body)
+                self.assertEqual(200, status)
+                self.assertEqual(earned, account["userdata"]["itemList"])
+
+                # A later clear reporting a stale base must not erase the count.
+                stale = [0] * 181
+                account["tutorial_phase"] = "chapter1_1_active"
+                status, _ = post(
+                    server, "/gd/clear_quest", "clear-1-1-again",
+                    self._clear_body(transition, itemList=json.dumps(stale)),
+                )
+                self.assertEqual(200, status)
+                self.assertEqual(3, account["userdata"]["itemList"][49])
+            finally:
+                stop_server(server, thread)
+
+    def test_a_tutorial_graduate_opens_both_login_bonuses(self) -> None:
+        profile = bootstrap_profile()
+        with tempfile.TemporaryDirectory() as directory:
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(Path(directory) / "state.json"),
+                login_bonuses=True,
+            )
+            try:
+                server.state.create_account(
+                    "token", "account", profile.userdata_seed, server.message_catalog,
+                )
+                account = server.state.accounts["account"]
+                account["userdata"]["itemList"] = [0] * 181
+                account["tutorial_phase"] = "free_roam"
+
+                status, login = get(server, "/gd/login?otk=token&uuid=account")
+                self.assertEqual(200, status)
+                offered = [message["id"] for message in login["messageList"]]
+                self.assertEqual(["login:consecutive:1", "login:overall:1"], offered)
+
+                for message_id in offered:
+                    body = urlencode(
+                        {"idlist": json.dumps([message_id]), "lastUpdate": "1"},
+                    )
+                    status, payload = post(
+                        server, "/gd/read_messages", f"read-{message_id}", body,
+                    )
+                    self.assertEqual(200, status, f"{message_id}: {payload}")
+                    self.assertEqual([message_id], payload["result"]["readlist"])
+            finally:
+                stop_server(server, thread)
+
+    def test_a_save_written_before_the_fix_gains_an_inventory_on_load(self) -> None:
+        profile = bootstrap_profile()
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                login_bonuses=True,
+            )
+            try:
+                server.state.create_account(
+                    "token", "account", profile.userdata_seed, server.message_catalog,
+                )
+                server.state.accounts["account"]["tutorial_phase"] = "free_roam"
+                with server.state.lock:
+                    server.state._persist_locked()
+            finally:
+                stop_server(server, thread)
+
+            # The stranded save on disk: a free-roam account with no inventory.
+            document = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertNotIn("itemList", document["accounts"]["account"]["userdata"])
+
+            restarted, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path),
+                login_bonuses=True,
+            )
+            try:
+                userdata = restarted.state.accounts["account"]["userdata"]
+                self.assertEqual([0] * 181, userdata["itemList"])
+
+                get(restarted, "/gd/login?otk=token&uuid=account")
+                body = urlencode(
+                    {"idlist": json.dumps(["login:consecutive:1"]), "lastUpdate": "1"},
+                )
+                status, _ = post(restarted, "/gd/read_messages", "read-after-load", body)
+                self.assertEqual(200, status)
+            finally:
+                stop_server(restarted, thread)
+
+    def test_a_real_inventory_survives_the_load_repair_untouched(self) -> None:
+        """The repair seeds an absent array; it never resizes or zeroes a real one."""
+        profile = bootstrap_profile()
+        held = [7] * 200
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            server, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path), login_bonuses=True,
+            )
+            try:
+                server.state.create_account(
+                    "token", "account", profile.userdata_seed, server.message_catalog,
+                )
+                server.state.accounts["account"]["userdata"]["itemList"] = list(held)
+                with server.state.lock:
+                    server.state._persist_locked()
+            finally:
+                stop_server(server, thread)
+
+            restarted, thread = start_server(
+                ("127.0.0.1", 0), profile, BootstrapState(state_path), login_bonuses=True,
+            )
+            try:
+                self.assertEqual(
+                    held, restarted.state.accounts["account"]["userdata"]["itemList"],
+                )
+            finally:
+                stop_server(restarted, thread)

@@ -551,6 +551,31 @@ def _migrate_companion_record(account: dict[str, Any]) -> None:
         userdata["buddyInfo"] = rebuilt
 
 
+def _migrate_tutorial_inventory(account: dict[str, Any]) -> None:
+    """Give a save the inventory the scripted tutorial used to discard.
+
+    The tutorial's clears accepted `itemList` on the wire and persisted none of
+    it, so every account that graduated before that was fixed carries no
+    inventory array at all.  That is not a dormant gap: the inbox, the Trading
+    Post, the achievement claim and every crafting route check the array before
+    the operation and answer `unsupported_*` -- a 501 -- leaving a save that is
+    otherwise sound unable to open a login bonus.  Fixing the clear repairs new
+    accounts, so this repairs the ones already past it.  See Issue 54.
+
+    Only an absent array is seeded, and only with zeroes: the tutorial's item
+    rewards were never recorded anywhere, so there is no honest count to restore
+    and inventing one would grant items this project made up.  A save that
+    already carries an array is left exactly as it is, including one whose
+    length this server does not recognise -- the per-route slot checks own that
+    judgement, and silently resizing a real inventory here would destroy counts
+    a player earned.  `summonList` is deliberately not seeded: no route requires
+    a fixed length from it, so an absent one refuses nothing.
+    """
+    userdata = account.get("userdata")
+    if isinstance(userdata, dict) and not isinstance(userdata.get("itemList"), list):
+        userdata["itemList"] = [0] * BUNDLED_ITEM_SLOTS
+
+
 def _migrate_wallet_projection(account: dict[str, Any]) -> None:
     """Re-project a nested wallet that a mutation left behind.
 
@@ -627,6 +652,7 @@ def _parse_state_document(document: object) -> tuple[
     for account in accounts.values():
         _migrate_replay_keys(account)
         _migrate_granted_character_rows(account)
+        _migrate_tutorial_inventory(account)
         _migrate_wallet_projection(account)
         _migrate_companion_record(account)
     # Absent in saves written before per-client routing; an empty map simply
@@ -1719,6 +1745,27 @@ class BootstrapState:
                 userdata.update(copy.deepcopy(transition["userdata_update"]))
             if kind in {"clear", "structural"}:
                 userdata.update(copy.deepcopy(transition["userdata_update"]))
+                if kind == "clear":
+                    # The scripted clear form carries the client's own inventory
+                    # and Summon counts, and `json_fields` has already accepted
+                    # both as arrays -- but no transition's `userdata_update`
+                    # named them, so the tutorial validated the two arrays five
+                    # times and stored neither.  A graduate therefore reached
+                    # free roam with no `itemList` at all, and every route that
+                    # settles into it checks the array before the operation and
+                    # answers `unsupported_*`: the inbox refused a login bonus
+                    # with a 501 that named the mail route rather than the
+                    # missing inventory.  See Issue 54.
+                    #
+                    # Merged the way the catalog-driven clear merges them, not
+                    # assigned, so a client reporting a stale base cannot erase a
+                    # count granted between its read and this clear.
+                    for name in ("itemList", "summonList"):
+                        submitted = _submitted_counts(values.get(name))
+                        if submitted is not None:
+                            userdata[name] = _preserved_counts(
+                                userdata.get(name), submitted,
+                            )
                 _synchronize_wallet_projection(userdata)
             if kind == "clear" and "chrdata" in payload:
                 userdata["chrdata"] = copy.deepcopy(payload["chrdata"])
@@ -6451,6 +6498,28 @@ def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[
             if type(reported_plus) is int else held["plusCount"]
         )
     return merged
+
+
+def _submitted_counts(raw: object) -> list[int] | None:
+    """Return the count-per-slot array a scripted clear submitted, if it is one.
+
+    `_json_fields_match` accepted the field as *some* JSON array before the
+    transition was selected, which is all the form match needs.  Persisting it
+    is a stronger claim, so the element type is checked here: these arrays are
+    read back as counts by every settlement route, and one carrying a float or a
+    negative would be stored as durable state that those routes then refuse.
+    """
+    if not isinstance(raw, str):
+        return None
+    try:
+        values = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(values, list) or any(
+        type(value) is not int or value < 0 for value in values
+    ):
+        return None
+    return values
 
 
 def _preserved_counts(current: object, submitted: list[int]) -> list[int]:
