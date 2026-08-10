@@ -2641,9 +2641,23 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             # A Hunting battle settles rewards; it never moves story progress.
             expected_coins = int(userdata.get("coins", 0)) + result["coins"]
+            # `progressCode` means whatever the world the clear reports makes it
+            # mean. A battle fought on a secondary map carries that map's cursor
+            # -- `GetWorldProgressCode` again -- so comparing it against the
+            # story code refused every side-world clear ever posted, left the
+            # battle active, and blocked the account from starting anything
+            # else. Bounded rather than pinned: the cursor names a section that
+            # world declares, and the frontier stays this server's to move.
+            reported_world = clear["worldMapNo"]
+            if reported_world == MAIN_WORLD:
+                world_progress_matches = clear["progressCode"] == int(userdata.get("progressCode", 0))
+            else:
+                world_progress_matches = is_valid_world_progress(
+                    str(reported_world), clear["progressCode"],
+                )
             if (
-                clear["progressCode"] != int(userdata.get("progressCode", 0))
-                or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
+                not world_progress_matches
+                or reported_world != int(userdata.get("worldMapNo", 0))
                 or clear["valuables"].get("coins") not in _settled_wallet_coins(account, expected_coins)
             ):
                 return "tutorial_state_conflict", None
@@ -3333,11 +3347,20 @@ class BootstrapState:
         pending reveal -- the reveal always repeats the cursor the account
         already holds, so nothing else can be changing it.
 
-        A body that leaves the world alone belongs to the other two. The reveal
-        route takes it wherever that route exists. Where it does not, this one
-        takes it only when it changes nothing at all, which answers a client
-        merely restating the world it is on without a handler that would refuse
-        it. The tutorial's map write moves `progressCode`, so it is excluded by
+        A body that leaves the world alone belongs to the other two, *unless*
+        the account is standing on a secondary map. There `progressCode` is
+        that world's cursor rather than the story's -- see
+        `_served_world_cursor` -- so a Progress flush from a secondary map
+        cannot be the reveal or the tutorial write at all, both of which are
+        world 0's. The client sends one after every side-world clear, when
+        `UnlockNextSection` moves its own cursor and marks the record dirty, so
+        leaving those to fall through is what answers 501 to an ordinary
+        battle.
+
+        On world 0 the old test still decides it: this route takes the body
+        only when it changes nothing at all, which answers a client merely
+        restating the world it is on without a handler that would refuse it.
+        The tutorial's map write moves `progressCode`, so it is excluded by
         that same test and still reaches the transition that owns it -- a
         distinction worth stating plainly, because getting it wrong once here
         left the tutorial unfinishable on every server carrying this flag.
@@ -3350,7 +3373,10 @@ class BootstrapState:
                 return False
             userdata = account["userdata"]
             stored = userdata.get("worldMapNo", 0)
-            if write["worldMapNo"] != (stored if type(stored) is int else 0):
+            stored = stored if type(stored) is int else 0
+            if write["worldMapNo"] != stored:
+                return True
+            if stored != MAIN_WORLD:
                 return True
             return not reveal_route and write["progressCode"] == userdata.get("progressCode")
 
@@ -3362,19 +3388,27 @@ class BootstrapState:
         `UIMap.SetWorld` writes `UserData.worldNo` and marks the record dirty,
         and that field is this wire's `worldMapNo` -- `LoadUserdataFromJson`
         stores the parsed key straight into it. So entering either secondary
-        world posts this three-field write with a new world and an unchanged
-        `progressCode`, and every clear afterwards carries the new value.
+        world posts this three-field write with a new world, and every clear
+        afterwards carries the new value.
 
         Nothing here wrote it, only compared it, so the stored zero refused the
         write and then refused every clear the player attempted on the map they
-        had just walked onto. That is the whole change: the cursor is the
-        client's to move and the server's to remember.
+        had just walked onto. Which map the player stands on is theirs to
+        choose and this server's to remember; how far into it they have got is
+        not, and the two travel in the same body.
 
         Story progress may not move through this route. A world swap is a
         camera, not a clear, and the same three fields carry the post-chapter
         map reveal -- which has its own handler, its own expected value, and its
-        own one-shot flag. Requiring `progressCode` to be unchanged keeps the
-        two apart by shape rather than by ordering.
+        own one-shot flag. Requiring world 0's `progressCode` to be unchanged
+        keeps the two apart by shape rather than by ordering.
+
+        Which value that is depends on the world being entered, and getting it
+        wrong is what made both maps unusable after the menu opened. The client
+        sends `GetWorldProgressCode()`, so a swap *onto* a secondary map already
+        carries that map's cursor rather than the story code, and requiring the
+        story code refused the one body the client actually sends. The write is
+        answered against the world it names, not the world the account left.
         """
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
@@ -3389,7 +3423,6 @@ class BootstrapState:
                 return "replay", copy.deepcopy(cached["payload"])
             write = _parse_story_progression_reveal(body)
             userdata = account["userdata"]
-            current = userdata.get("progressCode")
             if (
                 write is None
                 # Past the tutorial, rather than idle. An open battle is no
@@ -3400,12 +3433,34 @@ class BootstrapState:
                 # to finish a battle.
                 or account.setdefault("tutorial_phase", "initial")
                 not in {"free_roam"} | ACTIVE_BATTLE_PHASES
-                or type(current) is not int
-                or write["progressCode"] != current
                 or write["worldMapNo"] >= WORLD_COUNT
             ):
                 return "tutorial_state_conflict", None
-            userdata["worldMapNo"] = write["worldMapNo"]
+            target = write["worldMapNo"]
+            held = _served_world_cursor(account, target)
+            if held is None:
+                return "tutorial_state_conflict", None
+            if target == MAIN_WORLD:
+                if write["progressCode"] != held:
+                    return "tutorial_state_conflict", None
+            elif not is_valid_world_progress(str(target), write["progressCode"]):
+                # Bounded by the sections that world declares rather than by
+                # equality with the cursor this server holds. The two agree
+                # whenever they should -- the client's `UnlockNextSection`
+                # advances by the same table the clear already advanced -- and
+                # the shape that must never be accepted is a cursor naming a
+                # section no world has, because it would be sent straight back
+                # and the client reads it as an `Int32`.
+                return "tutorial_state_conflict", None
+            # The frontier is not moved here, in either direction. Clearing a
+            # section is what opens the next one, and `_advance_world_progress`
+            # has already done it by the time this flush arrives; this write is
+            # the client echoing a cursor it was given. Taking the echo as
+            # authoritative would let a client that never played a section
+            # declare it open, and taking one that lags would retire the
+            # sections between. Accepting the body without following it is what
+            # keeps the player moving while the frontier stays earned.
+            userdata["worldMapNo"] = target
             userdata["lastupdate"] = float(write["lastUpdate"])
             payload = _canonical_payload({"success": True, "lastupdate": float(write["lastUpdate"])})
             requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
@@ -5446,9 +5501,11 @@ def _advance_world_progress(account: dict[str, Any], stage: HuntingStage) -> Non
     repeat without bound and have no frontier to move. The side scenarios are
     the only Hunting-settled family that is a sequence.
 
-    The client cannot do this itself. `worldProgressCode` is server-to-client
-    only -- no handler in the build serializes it back -- so an advance the
-    server does not record is one the next map open forgets.
+    The frontier is this server's to move even though the client keeps its own
+    copy. `UnlockNextSection` advances the client's cursor and flushes it back
+    inside `progressCode`, but that flush is an echo taken on trust or not at
+    all -- see `apply_world_cursor_write` -- so an advance recorded here is the
+    only one the next map open remembers.
     """
     world = WORLD_FOR_FAMILY.get(stage.family)
     if world is None:
@@ -5463,6 +5520,36 @@ def _advance_world_progress(account: dict[str, Any], stage: HuntingStage) -> Non
     advanced = advanced_world_progress(packed, stage.chapter, stage.section)
     if advanced is not None:
         stored[str(world)] = advanced
+
+
+def _served_world_cursor(account: dict[str, Any], world: int) -> int | None:
+    """Return the `progressCode` the client reports while standing on ``world``.
+
+    `AppServerUtil.SerializeJsonUserData` does not send `UserData.progressCode`
+    for the Progress kind. It sends `UserData.GetWorldProgressCode()`
+    (`0x19D9394`), which branches on `worldNo`: zero rebuilds the story code
+    from `chapterNo`/`sectionNo` and the two banner bytes, and anything else
+    returns `worldProgressCode[worldNo]` -- the *secondary world's* cursor,
+    bounds-checked against the same three-element array.
+
+    So `progressCode` is not one value with one meaning. Standing on a
+    secondary map renames the field: it carries that world's cursor on the
+    swap that arrives there, on every Progress flush that follows, and on the
+    clear each side-world battle posts. Every comparison this server made
+    against the stored story code was therefore guaranteed to fail the moment a
+    player left world 0, which is why the swap was refused and the cursor never
+    moved off zero.
+
+    ``None`` where the account holds no cursor for that world, which is a save
+    that predates the migration rather than anything a client can produce.
+    """
+    userdata = account.get("userdata", {})
+    if world == MAIN_WORLD:
+        stored = userdata.get("progressCode")
+        return stored if type(stored) is int and stored >= 0 else None
+    held = account.get("world_progress")
+    held = held.get(str(world)) if isinstance(held, dict) else None
+    return held if type(held) is int else None
 
 
 def _world_progress_projection(account: dict[str, Any]) -> dict[str, int]:

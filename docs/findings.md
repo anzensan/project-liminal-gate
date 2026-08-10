@@ -1653,10 +1653,62 @@ on an emulator; all three are readable in the handlers themselves.
   `lastUpdate` write with a new world, and every clear afterwards carries it.
   This server compared that value against a stored zero in four places and wrote
   it in none, so the swap was refused and then so was everything after it.
-- **Confirmed -- the client never sends its world progress back.** A whole-`.text`
-  scan for the `worldProgressCode` literal finds exactly one site,
-  `LoadUserdataFromJson`. It is server-to-client only, so an advance the server
-  does not record is one the next map open forgets.
+- **Withdrawn -- "the client never sends its world progress back."** A
+  whole-`.text` scan for the `worldProgressCode` literal does find exactly one
+  site, `LoadUserdataFromJson`, and that reading was wrong: the value comes back
+  under a different name. See the correction below, which is what made both maps
+  unusable after the menu opened.
+
+**Correction: `progressCode` is two fields wearing one name.**
+
+Reported after the menu fix shipped: the Ultimate Five row appears and opening
+it answers a Network Error. The tester's save named the half that was still
+broken -- `worldMapNo` was still `0`, so the swap had never been accepted --
+while the server refused nothing when driven with the body this project
+*believed* the client sent.
+
+`AppServerUtil.SerializeJsonUserData` (`0xDB4674`) does not send
+`UserData.progressCode` for `UserDataKind.Progress`. At `0xDB47C4` it sends
+`UserData.GetWorldProgressCode()` (`0x19D9394`), which reads `worldNo` at
+`+0x80` and branches:
+
+- **`worldNo == 0`** rebuilds the story code from `chapterNo` (`+0x88`),
+  `sectionNo` (`+0x8C`) and the two banner bytes at `+0x90`, which is the value
+  this server always expected.
+- **`worldNo != 0`** returns `worldProgressCode[worldNo]` after a bounds check
+  against the same three-element array.
+
+So the field carries the *world's* cursor on the swap that arrives at a map, on
+every Progress flush after it, and on the clear each side-world battle posts.
+Three separate comparisons against the stored story code -- the cursor write,
+the reveal fallthrough, and the Hunting clear -- were therefore guaranteed to
+fail for any player who left world 0. The menu opened onto a refusal, and had
+the swap succeeded, every battle behind it would have been refused too.
+
+- **Confirmed -- `ChapterInterface.GetWorldNoByChapter` (`0xD062E4`) has no
+  world 2.** It is four instructions, `(unsigned)(ch - 100) < 10`, so chapters
+  100--109 answer 1 and everything else answers 0 -- including 110--119, which
+  `InitData` itself seeds as world 2. The Five Emperors shipped behind a later
+  version gate (5.19 against Matsuno's 4.89) and this function was never
+  extended. Its five callers are all cosmetic for this purpose: a shader pick,
+  a level label, `UISectionSelect.CheckWorldChange` (which tests only for world
+  1), and `IsSectionUnlocked` / `IsSectionCleared`, neither of which the map
+  points or the stage-entry path consult. Nothing server-side may copy the gap,
+  because `world_for_chapter` decides which world a clear advances.
+- **Confirmed -- the two menu predicates are version gates on served
+  constants.** `IsMatsunoQuestEnabled` (`0x19D69A8`) and
+  `IsFiveEmperorsQuestEnabled` (`0x19D6A58`) each require *both*
+  `UserData.currentVersioniOS` (`+0x0`) and `currentVersionAndroid` (`+0x4`) to
+  exceed a rodata float: `4.89` at `0x21DAB40` and `5.19` at `0x21DAB44`. Those
+  two statics are the `currentVersion_iOS` / `currentVersion_Android` keys this
+  server sends, so `FINAL_CLIENT_VERSION` is load-bearing for both maps --
+  5.57 clears both, and any value below 5.19 would make both rows vanish with
+  no other symptom.
+- **Confirmed -- static methods in this build take their first declared
+  argument in `w1`.** `x0` is passed zero and the `MethodInfo*` goes in `x2`.
+  Read off the `GetWorldNoByChapter` call site inside `IsSectionUnlocked`
+  (`0x19D76E4`) and confirmed against `IsExpQuest`. Reading `w0` as the first
+  argument inverts every one of these predicates.
 
 **What changed.** `worldMaxChapter` is served with the worlds; `worldProgressCode`
 is projected onto every userdata read, with world 0 derived from `progressCode`

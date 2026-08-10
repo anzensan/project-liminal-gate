@@ -256,6 +256,30 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **The "To another world" menu opened onto a Network Error.** The previous
+  entry made both rows appear. Choosing one still failed, and so would every
+  battle behind it — reported by a tester the same day, on a save that showed
+  the server had never recorded the step onto the map.
+
+  The client sends the map you are standing on and the progress you have made
+  *on that map* in the same field it uses for your main story position. On the
+  main map that field is your story progress; the moment you step onto a side
+  map it becomes that scenario's own progress instead. This server read it as
+  the story position either way, so it refused the step onto the map, refused
+  the flush the client sends after each side-scenario battle, and would have
+  refused the battles themselves.
+
+  All three are now answered against the map they name. Stepping onto BreaSoul
+  or the Five Emperors works, their battles settle, and clearing a section opens
+  the next one. What the client reports about its own position is still not
+  taken on its word: a scenario cursor naming a section that scenario does not
+  have is refused, and progress you have not played is not credited from it.
+
+  Your main story position remains untouched by any of it. Needs only a server
+  restart — on-device testers pick it up by rebuilding, as they do for any
+  server change. Still unplayed: this was read out of the client, not watched
+  on the wire.
+
 - **The two side scenarios could not be entered, and the menu that reaches them
   could not appear.** BreaSoul and the Five Emperors — the "To another world"
   scenarios, thirty stages between them — were served but unreachable. Two
