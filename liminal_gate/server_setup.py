@@ -41,6 +41,7 @@ from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, report_resource_inventory, write_resource_manifest
 from liminal_gate.luck_pool_catalog import DEFAULT_LUCK_POOL_CATALOG
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
+from liminal_gate.drop_compendium import DEFAULT_DROP_COMPENDIUM
 from liminal_gate.story_outcome_catalog import DEFAULT_OUTCOME_CATALOG
 from liminal_gate.tuning import DEFAULT_TUNING_DOCUMENT, write_default_tuning
 from liminal_gate.tester_setup import DEFAULT_APK, REQUIRED_RESOURCE_CATEGORIES
@@ -437,6 +438,27 @@ def resolve_story_outcome_catalog(requested: Path | None, data_directory: Path) 
     return candidate if candidate.is_file() else None
 
 
+def resolve_drop_compendium(requested: Path | None, data_directory: Path) -> Path | None:
+    """Choose the generated drop reference to serve, if there is one.
+
+    Default rather than opt-in, and for a parity reason rather than a
+    convenience one: the on-device package bakes the page in and serves it
+    without being asked, so a dedicated server that needed a flag would be the
+    same build answering `/local/compendium` on one deployment and 404 on the
+    other. Setup writes the page for both, so both serve it.
+
+    Its absence is not an error -- a host set up before the page existed, or one
+    whose derivation was skipped, simply has no reference to serve.
+    """
+    if requested is not None:
+        resolved = requested.resolve()
+        if not resolved.is_file():
+            raise ServerSetupError(f"drop compendium does not exist: {requested}")
+        return resolved
+    candidate = (data_directory / DEFAULT_DROP_COMPENDIUM).resolve()
+    return candidate if candidate.is_file() else None
+
+
 def resolve_companion_equipment_catalog(
     requested: Path | None, data_directory: Path,
 ) -> Path | None:
@@ -510,6 +532,7 @@ def server_arguments(
     interpolated_luck_pools: bool = True,
     enable_stamina: bool = False,
     tuning: Path | None = None,
+    drop_compendium: Path | None = None,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
@@ -540,6 +563,9 @@ def server_arguments(
         ["--tuning", str(selected_tuning.resolve())]
         if tuning is not None or selected_tuning.exists()
         else []
+    )
+    compendium_flags = (
+        [] if drop_compendium is None else ["--drop-compendium", str(drop_compendium)]
     )
     event_flags = (
         []
@@ -579,6 +605,7 @@ def server_arguments(
         *luck_pool_flags,
         *equipment_flags,
         *event_flags,
+        *compendium_flags,
         *tuning_flags,
     ]
 
@@ -724,6 +751,7 @@ def main() -> int:
         outcome_catalog = resolve_story_outcome_catalog(
             args.story_outcome_catalog, data_directory
         )
+        drop_compendium = resolve_drop_compendium(None, data_directory)
         if outcome_catalog is None:
             print(
                 "Story Companion drops: OFF (no story-outcome catalog; the client "
@@ -837,6 +865,7 @@ def main() -> int:
                 interpolated_luck_pools=not args.no_interpolated_luck_pools,
                 enable_stamina=args.enable_stamina,
                 tuning=args.tuning,
+                drop_compendium=drop_compendium,
             )
         )
     except (OSError, ResourceCatalogError, ServerSetupError, subprocess.CalledProcessError) as error:

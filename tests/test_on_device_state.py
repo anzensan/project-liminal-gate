@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from liminal_gate import on_device_state, tester_setup, toolchain
 from liminal_gate.bootstrap_server import (
+    LOCAL_COMPENDIUM_ROUTE,
     LOCAL_EVENTS_ROUTE,
     LOCAL_STATE_ROUTE,
     BootstrapServer,
@@ -476,3 +477,48 @@ class LocalEventsRouteTest(_StateRouteHarness):
         status, _, body = self.raw(LOCAL_EVENTS_ROUTE)
         self.assertEqual(404, status)
         self.assertEqual({"error": "no_local_event_log"}, json.loads(body))
+
+
+class LocalCompendiumRouteTest(_StateRouteHarness):
+    """The drop reference, served to the device that is running the server.
+
+    This route exists for the all-in-one package specifically. There the server
+    listens on `127.0.0.1:8002` on the phone itself, so the phone's own browser
+    is a loopback client and can read the page with no cable, no workstation,
+    and no second copy of the file. The same code on a LAN-bound dedicated
+    server refuses it, which is the existing rule for the save and the event log
+    rather than a new one.
+    """
+
+    def raw(self, path: str) -> tuple[int, str, str]:
+        connection = HTTPConnection(*self.server.server_address[:2])
+        connection.request("GET", path)
+        response = connection.getresponse()
+        body = response.read().decode("utf-8")
+        content_type = response.headers.get("Content-Type", "")
+        connection.close()
+        return response.status, content_type, body
+
+    def test_the_page_comes_back_as_html(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            page = Path(directory) / "drop-compendium.html"
+            page.write_text("<!doctype html><title>Drop Compendium</title>", encoding="utf-8")
+            self.server.drop_compendium = page
+            status, content_type, body = self.raw(LOCAL_COMPENDIUM_ROUTE)
+        self.assertEqual(200, status)
+        self.assertEqual("text/html; charset=utf-8", content_type)
+        self.assertIn("Drop Compendium", body)
+
+    def test_a_server_launched_without_the_page_says_so(self) -> None:
+        self.server.drop_compendium = None
+        status, _, body = self.raw(LOCAL_COMPENDIUM_ROUTE)
+        self.assertEqual(404, status)
+        self.assertEqual({"error": "no_local_drop_compendium"}, json.loads(body))
+
+    def test_a_build_that_should_carry_the_page_but_does_not_says_so(self) -> None:
+        # Distinct from the case above only in cause, but that is the whole
+        # value: this one means the build dropped a file it declared.
+        self.server.drop_compendium = Path("/nonexistent/drop-compendium.html")
+        status, _, body = self.raw(LOCAL_COMPENDIUM_ROUTE)
+        self.assertEqual(404, status)
+        self.assertEqual({"error": "no_local_drop_compendium"}, json.loads(body))

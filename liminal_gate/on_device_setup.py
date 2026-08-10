@@ -29,6 +29,7 @@ from liminal_gate.apk_patcher import apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import sign_apk
 from liminal_gate.legacy_client_apk_plan import generate_legacy_client_plan
 from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASES, hashed_resource_name
+from liminal_gate.drop_compendium import DEFAULT_DROP_COMPENDIUM
 from liminal_gate.pact_banner_importer import PACT_BANNERS
 from liminal_gate.server_config import standard_policy_fields
 from liminal_gate.file_digests import sha256_file
@@ -301,7 +302,9 @@ def _update_source_tree_digest(
         digest.update(sha256_file(path).encode())
 
 
-def write_server_runtime(path: Path, build_id: str, catalogs: dict[str, Path]) -> None:
+def write_server_runtime(
+    path: Path, build_id: str, catalogs: dict[str, Path], drop_compendium: str | None = None,
+) -> None:
     """Render the Android entrypoint's strict, app-private server config.
 
     `tuning` names a runtime file rather than an operator path. On this route
@@ -330,6 +333,13 @@ def write_server_runtime(path: Path, build_id: str, catalogs: dict[str, Path]) -
         "companion_equipment_catalog": "catalogs/companion-equipment.json",
         "tuning": TUNING_RUNTIME_FILE,
     }
+    if drop_compendium is not None:
+        # The one deployment where the drop reference has somewhere to be read
+        # from: this server listens on loopback *on the phone*, so the device's
+        # own browser can open /local/compendium with no cable and no second
+        # copy of the file. Omitted rather than defaulted, so a build made
+        # before the page existed keeps working and simply answers 404.
+        config["drop_compendium"] = drop_compendium
     path.write_text(json.dumps({"schema_version": 1, "config": config, "build_id": build_id}, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -629,7 +639,9 @@ def prepare_on_device_apk(
         tuning_document,
     )
     server_runtime = work_directory / "server.json"
-    write_server_runtime(server_runtime, build_id, catalogs)
+    compendium_source = data_directory / DEFAULT_DROP_COMPENDIUM
+    compendium_member = DEFAULT_DROP_COMPENDIUM if compendium_source.is_file() else None
+    write_server_runtime(server_runtime, build_id, catalogs, compendium_member)
     host_apk = build_host_apk(
         host_source.resolve(), data_directory / "work", build_id,
         android_sdk=zipalign.parent.parent.parent,
@@ -644,6 +656,7 @@ def prepare_on_device_apk(
         runtime_files={
             "server.json": server_runtime,
             TUNING_RUNTIME_FILE: tuning_document,
+            **({DEFAULT_DROP_COMPENDIUM: compendium_source} if compendium_member else {}),
             **public_data,
         },
         build_id=build_id, seed_state=seed,
