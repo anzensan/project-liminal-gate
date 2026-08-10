@@ -20,6 +20,7 @@ from liminal_gate.server_setup import (
     ServerSetupError,
     catalogs_match_apk,
     derive_local_catalogs,
+    ensure_drop_compendium,
     main,
     prepare_server,
     resolve_companion_equipment_catalog,
@@ -299,6 +300,64 @@ class ServerOnlySetupTest(unittest.TestCase):
         ) as checked:
             derive_local_catalogs(apk, data_directory, force=True)
         checked.assert_called_once()
+
+    def _current_host_with_the_compendium_inputs(self, data_directory: Path) -> Path:
+        """A host that derived its catalogs before the drop page existed."""
+        apk = self.root / "client.apk"
+        apk.write_bytes(b"not really an APK")
+        self.write_derived_catalogs(data_directory, hashlib.sha256(apk.read_bytes()).hexdigest())
+        derived = data_directory / "derived"
+        derived.mkdir(parents=True, exist_ok=True)
+        for name in ("native-encounters.json", "scenario-encounters.json"):
+            (derived / name).write_text(json.dumps({"stages": []}), encoding="utf-8")
+        return apk
+
+    def test_a_current_host_still_gets_the_page_its_catalogs_predate(self) -> None:
+        """The case the APK digest cannot see: same APK, newer generator.
+
+        Every dedicated host set up before the drop reference existed reports
+        its catalogs current and takes the short circuit, so without this it
+        would answer `/local/compendium` with a permanent 404.
+        """
+        data_directory = self.root / "state"
+        apk = self._current_host_with_the_compendium_inputs(data_directory)
+        with patch(
+            "liminal_gate.server_setup.tester_setup.reusable_il2cpp_dump",
+            return_value=(data_directory / "il2cpp" / "DummyDll", data_directory / "il2cpp" / "dump.cs"),
+        ), patch("liminal_gate.server_setup.load_master_trees", return_value={}), patch(
+            "liminal_gate.server_setup.tester_setup.write_drop_compendium"
+        ) as written, patch(
+            "liminal_gate.server_setup.tester_setup.check_derivation_prerequisites"
+        ) as rederived:
+            derive_local_catalogs(apk, data_directory)
+        # The expensive pass stays skipped; only the page is recovered.
+        rederived.assert_not_called()
+        written.assert_called_once()
+
+    def test_a_host_that_already_has_the_page_does_not_rebuild_it(self) -> None:
+        data_directory = self.root / "state"
+        apk = self._current_host_with_the_compendium_inputs(data_directory)
+        (data_directory / "drop-compendium.html").write_text("<html></html>", encoding="utf-8")
+        with patch(
+            "liminal_gate.server_setup.tester_setup.write_drop_compendium"
+        ) as written:
+            ensure_drop_compendium(apk, data_directory)
+        written.assert_not_called()
+
+    def test_a_host_missing_the_inputs_names_the_pass_that_rebuilds_them(self) -> None:
+        """Best effort: it costs a reference page, and it says how to get it."""
+        data_directory = self.root / "state"
+        data_directory.mkdir(parents=True, exist_ok=True)
+        apk = self.root / "client.apk"
+        apk.write_bytes(b"not really an APK")
+        with patch("builtins.print") as printed, patch(
+            "liminal_gate.server_setup.tester_setup.write_drop_compendium"
+        ) as written:
+            ensure_drop_compendium(apk, data_directory)
+        written.assert_not_called()
+        reported = " ".join(str(call.args[0]) for call in printed.call_args_list)
+        self.assertIn("/local/compendium", reported)
+        self.assertIn("--rederive-catalogs", reported)
 
     def test_derivation_is_skipped_when_the_operator_manages_the_catalogs(self) -> None:
         apk = self.root / "client.apk"

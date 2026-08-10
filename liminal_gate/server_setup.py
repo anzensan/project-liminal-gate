@@ -290,6 +290,63 @@ def catalogs_match_apk(data_directory: Path, apk_sha256: str) -> bool:
     ) == sha256_file(data_directory / DEFAULT_CHARACTER_CATALOG)
 
 
+def ensure_drop_compendium(apk: Path, data_directory: Path) -> None:
+    """Write the drop reference on a host whose catalogs are already current.
+
+    The page is newer than the catalogs it describes, so a host that derived
+    those from this same APK before the page existed takes the short circuit in
+    `derive_local_catalogs` and would never write one. That is exactly the case
+    the digest cannot see and says so: it answers "same APK", and here the APK
+    did not change -- only the generator did. Left unhandled it means every
+    dedicated host set up before this release serves the drop route a permanent
+    404 while truthfully reporting its catalogs current, which is the silent
+    shortfall this module exists to refuse.
+
+    Deriving all four again to recover a reference page would cost minutes of
+    disassembly for something no deployment consumes. The encounter documents
+    that pass already published are still on disk, so this reuses them and pays
+    only for the type-tree load.
+
+    Best effort, like the derivation it stands in for: a host that cannot build
+    the page keeps its catalogs, loses a reference, and is told which and how to
+    get it back.
+    """
+    page = data_directory / DEFAULT_DROP_COMPENDIUM
+    if page.is_file():
+        return
+    derived = data_directory / "derived"
+    native_path = derived / "native-encounters.json"
+    scenario_path = derived / "scenario-encounters.json"
+    outcome_path = data_directory / DEFAULT_OUTCOME_CATALOG
+    absent = [path for path in (native_path, scenario_path, outcome_path) if not path.is_file()]
+    reusable = None if absent else tester_setup.reusable_il2cpp_dump(None, data_directory)
+    if absent or reusable is None:
+        # Naming the full pass rather than quietly running it: the inputs this
+        # shortcut needs are the ones that are gone, and only that pass can
+        # replace them.
+        print(
+            "Drop compendium: not built, so this host answers /local/compendium with 404.\n"
+            "  Build it with: --rederive-catalogs"
+        )
+        return
+    dummy_dll_dir, _dump_cs = reusable
+    try:
+        trees = load_master_trees(apk, dummy_dll_dir, ("BattleData", "EnemyData", "ChrDatabase"))
+        native = json.loads(native_path.read_text(encoding="utf-8"))
+        scenario = json.loads(scenario_path.read_text(encoding="utf-8"))
+        outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
+    except (CharacterCatalogImportError, OSError, ValueError) as error:
+        print(
+            f"Drop compendium: not built ({error}), so this host answers "
+            "/local/compendium with 404.\n"
+            "  Build it with: --rederive-catalogs"
+        )
+        return
+    tester_setup.write_drop_compendium(
+        page, apk, data_directory, trees, native, scenario, outcome,
+    )
+
+
 def derive_local_catalogs(
     apk: Path,
     data_directory: Path,
@@ -318,6 +375,7 @@ def derive_local_catalogs(
     # operator following its changelog entry needs a way to say so.
     if not force and catalogs_match_apk(data_directory, apk_sha256):
         print(f"Generated catalogs: current for {apk}")
+        ensure_drop_compendium(apk, data_directory)
         return
     try:
         tester_setup.check_derivation_prerequisites(None, data_directory)
