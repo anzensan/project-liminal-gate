@@ -46,13 +46,28 @@ secondary map sends a *non-zero* `worldMapNo` on every write and clear, and a
 server that only ever compares it against a stored zero refuses everything the
 player does there.
 
-Progress inside a world is separate from `progressCode` and travels in
-`worldProgressCode`, which is server-to-client only: no client handler ever
-serializes it back. Its values use the same packing as `progressCode`
+Progress inside a world is separate from `progressCode` and reaches the client
+in `worldProgressCode`. Its values use the same packing as `progressCode`
 (`section | chapter << 6 | newStage << 24 | showProgress << 25`), which is
 `UserData.SetWorldNewChapter`'s own arithmetic, and `GetWorldChapterNo` /
 `GetWorldSectionNo` read the two halves back out with `(v >> 6) & 0x3FF` and
 `v & 0x3F`.
+
+**It comes back under another name, and missing that is what kept both maps
+broken after the menu opened.** `worldProgressCode` is written by exactly one
+handler, so a scan for the literal reads as server-to-client only -- but the
+value returns in the `progressCode` field. `SerializeJsonUserData` does not
+send `UserData.progressCode` for the Progress kind; it sends
+`UserData.GetWorldProgressCode()` (`0x19D9394`), which returns
+`worldProgressCode[worldNo]` for any non-zero world and rebuilds the story code
+from `chapterNo`/`sectionNo` only for world 0.
+
+So `progressCode` means the story on world 0 and *that world's cursor*
+everywhere else. It carries the cursor on the swap that arrives at a map, on
+every Progress flush after it -- `UnlockNextSection` marks the record dirty
+after each clear -- and on the clear each side-world battle posts. A server
+comparing the field against the stored story code refuses all three, which is
+one Network Error at the menu and a second on every battle behind it.
 
 All of this is confirmed from the reviewed client's `libil2cpp.so`, and it
 settles three questions this project had previously left open:
@@ -229,7 +244,18 @@ def unpack_world_progress(packed: int) -> tuple[int, int]:
 
 
 def world_for_chapter(chapter: int) -> int:
-    """Return the world a chapter belongs to, as `GetWorldNoByChapter` does."""
+    """Return the world whose map a chapter is drawn on.
+
+    Deliberately *not* `ChapterInterface.GetWorldNoByChapter` (`0xD062E4`),
+    which is `(unsigned)(ch - 100) < 10` and so answers 1 for chapters 100--109
+    and 0 for everything else -- including the Five Emperors' 110--119, even
+    though the client's own `InitData` seeds world 2 at chapter 110. That
+    function was never extended past the world it shipped with, and its five
+    callers are all cosmetic here: two display labels, a shader pick, and
+    `IsSectionUnlocked` / `IsSectionCleared`, which the map points and the
+    stage-entry path never consult. Nothing this server owns may inherit the
+    gap, because it is what decides which world a clear advances.
+    """
     for world, sections in _WORLD_SECTIONS.items():
         if any(chapter == declared for declared, _section in sections):
             return world

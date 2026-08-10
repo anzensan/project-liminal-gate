@@ -20,6 +20,7 @@ from liminal_gate.secondary_world_data import (
     FIVE_EMPERORS_EVENT_FLAGS,
     FIVE_EMPERORS_UNLOCK,
     FIVE_EMPERORS_WORLD,
+    MAIN_WORLD,
     WORLD_COUNT,
     advanced_world_progress,
     build_bundled_breasoul_stages,
@@ -321,9 +322,24 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
         self.assertEqual(200, status)
         return payload
 
+    def world_cursor(self, world: int) -> int:
+        """The `progressCode` the client reports while standing on ``world``.
+
+        Not the story code unless the world *is* the story.
+        `SerializeJsonUserData` sends `UserData.GetWorldProgressCode()`, which
+        returns `worldProgressCode[worldNo]` for any non-zero world, so every
+        body below carries the cursor of the map the client is on. Sending the
+        story code here instead is what every one of these tests used to do,
+        and it tested a request the client never makes.
+        """
+        if world == MAIN_WORLD:
+            return self.userdata()["progressCode"]
+        held = self.account().get("world_progress", {})
+        return held.get(str(world), self.userdata()["progressCode"])
+
     def enter_world(self, request_id: str, world: int) -> tuple:
         return self.post("/gd/userdata", request_id, [
-            ("progressCode", str(self.userdata()["progressCode"])),
+            ("progressCode", str(self.world_cursor(world))),
             ("worldMapNo", str(world)), ("lastUpdate", "1"),
         ])
 
@@ -336,7 +352,7 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
     def clear(self, request_id: str, chapter: int, section: int, *, world: int) -> tuple:
         userdata = self.userdata()
         return self.post("/gd/clear_quest", request_id, [
-            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", str(world)),
+            ("progressCode", str(self.world_cursor(world))), ("worldMapNo", str(world)),
             ("valuables", json.dumps({
                 "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
                 "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
@@ -396,6 +412,74 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
         ])
         self.assertEqual(409, status)
         self.assertEqual((1 << 24) | progress(30, 1), self.userdata()["progressCode"])
+
+    def test_the_swap_carries_the_world_cursor_and_not_the_story_code(self) -> None:
+        """`GetWorldProgressCode` renames the field the moment `worldNo` is set.
+
+        The reviewed `0x19D9394` returns `worldProgressCode[worldNo]` for any
+        non-zero world and rebuilds the story code only for zero, so this is the
+        one body a player entering either map can produce. Requiring the story
+        code refused it, which is why the menu opened onto a Network Error and
+        `worldMapNo` never left zero on a tester's save.
+        """
+        status, payload = self.post("/gd/userdata", "swap", [
+            ("progressCode", str(initial_world_progress()[str(FIVE_EMPERORS_WORLD)])),
+            ("worldMapNo", str(FIVE_EMPERORS_WORLD)), ("lastUpdate", "1"),
+        ])
+        self.assertEqual((200, True), (status, payload["success"]))
+        self.assertEqual(FIVE_EMPERORS_WORLD, self.userdata()["worldMapNo"])
+
+    def test_the_story_code_is_refused_as_a_secondary_world_cursor(self) -> None:
+        """The body the old contract expected names no section either world has."""
+        status, _payload = self.post("/gd/userdata", "story-code", [
+            ("progressCode", str(self.userdata()["progressCode"])),
+            ("worldMapNo", str(FIVE_EMPERORS_WORLD)), ("lastUpdate", "1"),
+        ])
+        self.assertEqual(409, status)
+        self.assertEqual(MAIN_WORLD, self.userdata()["worldMapNo"])
+
+    def test_a_cursor_naming_no_declared_section_is_refused(self) -> None:
+        """Accepted values are sent back, and the client reads them as `Int32`."""
+        status, _payload = self.post("/gd/userdata", "phantom", [
+            ("progressCode", str(pack_world_progress(110, 9))),
+            ("worldMapNo", str(FIVE_EMPERORS_WORLD)), ("lastUpdate", "1"),
+        ])
+        self.assertEqual(409, status)
+
+    def test_the_flush_after_a_clear_is_answered_rather_than_refused(self) -> None:
+        """`UnlockNextSection` marks Progress dirty and posts the new cursor.
+
+        Same world, moved cursor: the shape that reached none of the free-roam
+        parsers and answered 501 to an ordinary side-world battle.
+        """
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        self.assertEqual(200, self.start("start-110", 110, 1)[0])
+        self.assertEqual(200, self.clear("clear-110", 110, 1, world=FIVE_EMPERORS_WORLD)[0])
+        advanced = self.account()["world_progress"][str(FIVE_EMPERORS_WORLD)]
+        self.assertEqual((111, 1), unpack_world_progress(advanced))
+        status, payload = self.post("/gd/userdata", "flush", [
+            ("progressCode", str(advanced)),
+            ("worldMapNo", str(FIVE_EMPERORS_WORLD)), ("lastUpdate", "1"),
+        ])
+        self.assertEqual((200, True), (status, payload["success"]))
+
+    def test_a_flush_ahead_of_the_frontier_is_answered_without_moving_it(self) -> None:
+        """The cursor draws the map; it gates no start and no clear.
+
+        Refusing an over-eager echo would strand the player on the map they are
+        standing on, and following it would let a client declare sections open
+        that it never played. Answered, and the frontier stays earned.
+        """
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        status, payload = self.post("/gd/userdata", "ahead", [
+            ("progressCode", str(pack_world_progress(119, 1))),
+            ("worldMapNo", str(FIVE_EMPERORS_WORLD)), ("lastUpdate", "1"),
+        ])
+        self.assertEqual((200, True), (status, payload["success"]))
+        self.assertEqual(
+            (110, 1),
+            unpack_world_progress(self.account()["world_progress"][str(FIVE_EMPERORS_WORLD)]),
+        )
 
     def test_a_repeated_swap_replays_rather_than_settling_twice(self) -> None:
         first = self.enter_world("swap", BREASOUL_WORLD)
