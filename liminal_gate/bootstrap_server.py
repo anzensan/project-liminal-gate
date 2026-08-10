@@ -250,6 +250,15 @@ LOCAL_STATE_ROUTE = "/local/state"
 # one `adb forward` away, and on a LAN-bound server it stays unpublished for the
 # same reason the save does.
 LOCAL_EVENTS_ROUTE = "/local/events"
+# The generated drop reference, served to the device that is running the server.
+# On the all-in-one package the server *is* the phone -- it listens on
+# `127.0.0.1:8002` -- so the phone's own browser satisfies the same loopback gate
+# the save and the event log already use, and a tester can read what drops where
+# without a workstation, a cable, or a second copy of the file. A LAN-bound
+# dedicated server refuses it by the same rule, and its operator has the file on
+# disk anyway; publishing decoded game text to every device on a network is not a
+# trade this route is worth.
+LOCAL_COMPENDIUM_ROUTE = "/local/compendium"
 # Committed states kept beside the save, newest first, so a bad write, a manual
 # edit, or a damaged file is recoverable instead of terminal.
 ACCOUNT_STATE_BACKUP_COUNT = 5
@@ -3891,10 +3900,12 @@ class BootstrapServer(ThreadingHTTPServer):
         build_id: str = "development",
         daily_drop_bonuses: bool = False,
         stamina: bool = False,
+        drop_compendium: Path | None = None,
     ) -> None:
         self.profile = profile
         self.state = state
         self.events = EventRecorder(event_log)
+        self.drop_compendium = drop_compendium
         self.resource_catalog = resource_catalog
         if not isinstance(build_id, str) or not build_id:
             raise ProfileError("build_id must be a nonempty string")
@@ -4085,6 +4096,17 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         """
         return self._serves_local_route(path, LOCAL_EVENTS_ROUTE)
 
+    def _serves_local_compendium(self, path: str) -> bool:
+        """Whether this server answers the drop-reference route here.
+
+        Same gate as the save and the event log. It reads as a stricter rule
+        than the page deserves -- nothing here is secret, and the operator built
+        it from their own APK -- but the page carries decoded game text, and the
+        deployment that actually needs the route is the one where loopback and
+        "this device" are the same thing.
+        """
+        return self._serves_local_route(path, LOCAL_COMPENDIUM_ROUTE)
+
     def _serves_local_route(self, path: str, route: str) -> bool:
         if path != route or path in set(self.server.profile.routes.values()):
             return False
@@ -4112,6 +4134,16 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.NOT_FOUND, {"error": "no_local_event_log"})
                 return
             self._file(HTTPStatus.OK, log, "application/x-ndjson")
+            return
+        if self._serves_local_compendium(target.path):
+            page = self.server.drop_compendium
+            if page is None or not page.is_file():
+                # The same distinction the event log draws: a server launched
+                # without the reference has none and never will, while a missing
+                # file means the build that was supposed to carry it did not.
+                self._json(HTTPStatus.NOT_FOUND, {"error": "no_local_drop_compendium"})
+                return
+            self._file(HTTPStatus.OK, page, "text/html; charset=utf-8")
             return
         if self._serve_local_content(target.path):
             return
@@ -6701,6 +6733,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="optional local JSONL diagnostics containing only method, path, status, and timestamp",
     )
+    parser.add_argument(
+        "--drop-compendium",
+        type=Path,
+        help="optional generated drop reference, served on loopback at /local/compendium",
+    )
     parser.add_argument("--resource-root", type=Path, help="user-local root containing manifest-mapped files")
     parser.add_argument("--resource-manifest", type=Path, help="user-local explicit resource mapping manifest")
     parser.add_argument("--public-data-root", type=Path, help="user-local derived UI and resource payloads")
@@ -6753,7 +6790,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     value_fields = (
-        "profile", "state_file", "host", "port", "event_log", "resource_root", "resource_manifest", "public_data_root",
+        "profile", "state_file", "host", "port", "event_log", "drop_compendium", "resource_root", "resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_equipment_catalog", "companion_strengthen_catalog",
         "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "event_catalog", "character_catalog", "hunting_catalog",
@@ -6783,7 +6820,7 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     return ServerConfig(
         profile=args.profile, state_file=args.state_file,
         host="127.0.0.1" if args.host is None else args.host, port=8080 if args.port is None else args.port,
-        event_log=args.event_log, resource_root=args.resource_root, resource_manifest=args.resource_manifest, public_data_root=getattr(args, "public_data_root", None),
+        event_log=args.event_log, drop_compendium=getattr(args, "drop_compendium", None), resource_root=args.resource_root, resource_manifest=args.resource_manifest, public_data_root=getattr(args, "public_data_root", None),
         story_catalog=args.story_catalog, core_story=getattr(args, "core_story", False), settlement_catalog=args.settlement_catalog,
         story_progression_catalog=args.story_progression_catalog,
         story_outcome_catalog=args.story_outcome_catalog, outcome_strict=getattr(args, "outcome_strict", False),
@@ -7030,6 +7067,7 @@ def build_server(
             build_id=build_id,
             daily_drop_bonuses=getattr(args, "core_story", False),
             stamina=getattr(args, "enable_stamina", False),
+            drop_compendium=getattr(args, "drop_compendium", None),
         )
     except (OSError, ProfileError, ServerConfigError, ResourceCatalogError, StoryCatalogError, StoryProgressionCatalogError, SettlementCatalogError, StoryOutcomeCatalogError, ClearStateCatalogError, StatusupCatalogError, JobCatalogError, RebirthCatalogError, SummonSkillCatalogError, CompanionCatalogError, CompanionEquipmentCatalogError, CompanionStrengthenCatalogError, CompanionEvolutionCatalogError, CompanionDrawCatalogError, PactDrawCatalogError, EventCatalogError, HuntingCatalogError, AchievementCatalogError, MessageCatalogError, ExchangeCatalogError, TuningError) as error:
         if resources is not None:

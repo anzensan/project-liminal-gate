@@ -38,6 +38,10 @@ from liminal_gate.il2cpp_plan_generator import PlanGenerationError
 from liminal_gate.legacy_client_apk_plan import METADATA_MEMBER, generate_legacy_client_plan, normalize_server_origin
 from liminal_gate.master_strings import (
     MasterStringError, build_character_names, build_companion_names, build_item_names, build_name_file,
+)
+from liminal_gate.drop_compendium import (
+    DEFAULT_DROP_COMPENDIUM, DropCompendiumError,
+    build_from_apk as build_drop_compendium, write_compendium,
     load_inverse_table,
 )
 from liminal_gate.resource_catalog import ResourceCatalogError
@@ -1278,6 +1282,10 @@ def derive_story_outcome_catalog(
     )
     for note in notes:
         print(f"  note: {note}")
+    write_drop_compendium(
+        data_directory / DEFAULT_DROP_COMPENDIUM, apk, data_directory, trees,
+        native_document, scenario_document, catalog,
+    )
     archive_events = len({
         row["event_id"] for row in archive_catalog["stages"]
     })
@@ -1289,6 +1297,42 @@ def derive_story_outcome_catalog(
     for note in archive_notes:
         print(f"  note: {note}")
     return catalog_path
+
+
+def write_drop_compendium(
+    path: Path, apk: Path, data_directory: Path, trees: dict[str, dict[str, object]],
+    native: dict, scenario: dict, outcome_catalog: dict,
+) -> bool:
+    """Render the local drop reference beside the catalogs it describes.
+
+    Nothing loads this and no deployment consumes it, so a failure here is
+    reported and skipped rather than raised -- exactly as name decoding is.  It
+    is written during setup because this is the one moment the host has every
+    input at once, and because a reference nobody has to remember to generate is
+    the only kind that stays current.
+
+    The type trees are handed over rather than reloaded: building them is the
+    slow half of this whole step.
+    """
+    try:
+        names_path = data_directory / "names.json"
+        html, notes, payload = build_drop_compendium(
+            apk, apk.parent, native, scenario,
+            _read_json(names_path) if names_path.is_file() else None,
+            outcome_catalog, trees=trees,
+        )
+        write_compendium(path, html)
+    except (DropCompendiumError, OSError, ValueError) as error:
+        print(f"Drop compendium skipped, which costs a reference page and nothing else: {error}")
+        return False
+    coverage = payload["coverage"]
+    print(
+        f"Drop compendium: {len(payload['drops'])} drop(s) across {coverage['stages']} stage(s), "
+        f"{coverage['joined']} with resolved encounters -> {path}"
+    )
+    for note in notes[:5]:
+        print(f"  disagrees with the generated catalog: {note}")
+    return True
 
 
 def _read_json(path: Path) -> dict:
