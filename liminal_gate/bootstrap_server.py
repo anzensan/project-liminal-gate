@@ -144,7 +144,7 @@ from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError,
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
 from liminal_gate.rebirth_recipe_data import MATERIAL_SKILL_BOOST_SHARE_PERCENT, OWNED_DESTINATION_LUCK_BONUS
-from liminal_gate.luck_data import LUCK_TENTHS_MAX
+from liminal_gate.luck_data import LUCK_TENTHS_MAX, character_luck_cap
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
 from liminal_gate.settlement_catalog import SettlementCatalog, SettlementCatalogError, load_settlement_catalog
 from liminal_gate.statusup_catalog import StatusupCatalog, StatusupCatalogError, build_bundled_statusup_policy, client_status_up_items, load_statusup_catalog
@@ -1539,7 +1539,7 @@ class BootstrapState:
                         # being overwritten by it, which is the same record's
                         # rule and why its level is not reset either.
                         destination["skillBoost"] = min(LUCK_TENTHS_MAX, held_boost + carried_boost)
-                        destination["luck"] = min(LUCK_TENTHS_MAX, held_luck + carried_luck)
+                        destination["luck"] = min(character_luck_cap(destination.get("id")), held_luck + carried_luck)
                         if held_destination is not None:
                             # Recoding into a character the account already owns
                             # must not destroy the copy it owns. The rebirthed
@@ -2098,12 +2098,19 @@ class BootstrapState:
                         for row in by_id.values()
                     ):
                         return "unsupported_ordinary_pact", None
+                    # "Once a character has reached max Luck it can no longer be
+                    # recruited from the Pact of Fate" -- against its own class
+                    # ceiling, not the absolute one, or an A-class unit stays in
+                    # the pool for thirty Luck it can never be given.
                     eligible = [
                         draw
                         for draw in draws
                         if not isinstance(by_id.get(draw.character_id), dict)
                         or by_id[draw.character_id].get(eligibility_field, 0)
-                        < eligibility_cap
+                        < (
+                            character_luck_cap(draw.character_id)
+                            if luck_type else eligibility_cap
+                        )
                     ]
                     if not eligible:
                         payload = {"success": False, "errorCode": 3, **wallet}
@@ -2143,7 +2150,7 @@ class BootstrapState:
                             result["luck"] = 0
                         _apply_plus_pact(
                             current, result, luck_type, catalog.max_level,
-                            catalog.max_luck if luck_type else catalog.max_skill_boost,
+                            character_luck_cap(current.get("id")) if luck_type else catalog.max_skill_boost,
                             self.tuning.pact,
                         )
                         results.append(result)
@@ -2186,7 +2193,7 @@ class BootstrapState:
                         if luck_type:
                             old_luck = current.get("luck", 0)
                             luck = min(
-                                catalog.max_luck,
+                                character_luck_cap(current.get("id")),
                                 old_luck + catalog.fate_duplicate_luck,
                             )
                             current["luck"] = luck
@@ -2206,7 +2213,7 @@ class BootstrapState:
                             }
                         _apply_plus_pact(
                             current, result, luck_type, catalog.max_level,
-                            catalog.max_luck if luck_type else catalog.max_skill_boost,
+                            character_luck_cap(current.get("id")) if luck_type else catalog.max_skill_boost,
                             self.tuning.pact,
                         )
                         results.append(result)
@@ -4970,7 +4977,8 @@ def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> dic
             )
         if stage.duplicate_grant_luck:
             current["luck"] = min(
-                int(current.get("luck", 0)) + stage.duplicate_grant_luck, 1000,
+                int(current.get("luck", 0)) + stage.duplicate_grant_luck,
+                character_luck_cap(current.get("id")),
             )
     return granted
 
@@ -6070,9 +6078,15 @@ def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[
         merged["skillBoost"] = max(held["skillBoost"], merged["skillBoost"])
     if type(held.get("luck")) is int:
         reported_luck = merged.get("luck")
-        merged["luck"] = (
+        # Clamped rather than merely accumulated, and this is the one place a
+        # value already over the ceiling comes back down. Luck only ever rises,
+        # so a character carried past its class cap while nothing enforced one
+        # would otherwise keep the excess for the life of the save -- and Luck
+        # is not cosmetic, it decides which chest tiers a battle can pay out.
+        merged["luck"] = min(
+            character_luck_cap(merged.get("id", held.get("id"))),
             max(held["luck"], reported_luck)
-            if type(reported_luck) is int else held["luck"]
+            if type(reported_luck) is int else held["luck"],
         )
     # A plus count is server-owned in one direction only: `Character.LoadFromJson`
     # reads it and `Character.ToHashTable` never writes it back, so the client

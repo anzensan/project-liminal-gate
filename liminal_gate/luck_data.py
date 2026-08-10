@@ -37,6 +37,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from liminal_gate.statusup_character_data import STATUSUP_CHARACTER_ROWS
+
 #: The client's absolute ceiling, in the tenths it stores. Both a character's
 #: own Luck and the team average stop here.
 LUCK_TENTHS_MAX = 1000
@@ -46,6 +48,34 @@ LUCK_TENTHS_MAX = 1000
 LUCK_CAP_A_AND_BELOW = 700
 LUCK_CAP_S_AND_SS = 800
 LUCK_CAP_Z_AND_LAMBDA = 1000
+
+#: The recovered per-character ceiling, keyed by character ID.
+#:
+#: The three constants above are the rule; this is the rule already applied to
+#: every character the client ships, derived in
+#: :mod:`liminal_gate.statusup_character_data` from `Character.get_luckMax` --
+#: rarity, with a Lambda always at the maximum. It was recovered for the
+#: status-up items and used by nothing else, so every other way an account gains
+#: Luck stopped at the absolute ceiling instead: a C-class unit could be carried
+#: to 83.3 by ordinary battle-end gains against a real cap of 70.0, which is
+#: what a tester reported.
+#:
+#: A character absent from the recovered rows keeps the absolute ceiling. That
+#: is the behaviour this server had for every character until now, so an
+#: unrecognised ID is no worse off than before, and inventing a class for it
+#: would be a guess about a character the client does not carry.
+LUCK_CAP_BY_CHARACTER: dict[int, int] = {
+    character_id: luck_cap
+    for character_id, _species, luck_cap in STATUSUP_CHARACTER_ROWS
+}
+
+
+def character_luck_cap(character_id: object) -> int:
+    """The ceiling one character's Luck may reach, in the tenths it is stored in."""
+    if type(character_id) is not int:
+        return LUCK_TENTHS_MAX
+    return LUCK_CAP_BY_CHARACTER.get(character_id, LUCK_TENTHS_MAX)
+
 
 #: **Confirmed, primary.** A quest costing less than this never raises Luck.
 #: The one rule a preservation server is most tempted to drop, because it makes

@@ -30,6 +30,7 @@ import random
 from liminal_gate.luck_data import (
     ALLOW_LUCKY_CHAPTERS,
     CHEST_TIERS,
+    character_luck_cap,
     LUCK_GAIN_TENTHS,
     LUCK_TENTHS_MAX,
     LUCKY_ENEMIES_PER_BATTLE,
@@ -208,13 +209,16 @@ def roll_luck_up_table(
         if not member:
             table.append(0)
             continue
-        headroom = max(0, LUCK_TENTHS_MAX - current.get(member, 0))
+        # Headroom against the character's own class ceiling. Rolling against
+        # the absolute one told the client a capped unit had gained, and the
+        # results screen shows what this table says.
+        headroom = max(0, character_luck_cap(member) - current.get(member, 0))
         table.append(min((gain if rolled else 0) + lucky, headroom))
     return table
 
 
 def apply_luck_up_table(userdata: dict, table: list[int]) -> None:
-    """Commit a rolled Luck gain to the roster, capped at the client's ceiling."""
+    """Commit a rolled Luck gain to the roster, capped at each character's ceiling."""
     roster = userdata.get("chrdata")
     party = userdata.get("teamMembers")
     if not isinstance(roster, list) or not isinstance(party, list):
@@ -227,7 +231,8 @@ def apply_luck_up_table(userdata: dict, table: list[int]) -> None:
     for row in roster:
         if isinstance(row, dict) and row.get("id") in gains:
             row["luck"] = min(
-                LUCK_TENTHS_MAX, int(row.get("luck", 0)) + gains[row["id"]],
+                character_luck_cap(row.get("id")),
+                int(row.get("luck", 0)) + gains[row["id"]],
             )
 
 

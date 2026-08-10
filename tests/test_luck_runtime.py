@@ -4,10 +4,12 @@ import unittest
 
 from liminal_gate.luck_data import (
     ALLOW_LUCKY_CHAPTERS,
+    LUCK_CAP_BY_CHARACTER,
     LUCK_TENTHS_MAX,
     LUCKY_ORBLING_GAIN_TENTHS,
     LUCKY_RUNNER_CHAPTERS,
     LUCKY_RUNNER_GAIN_TENTHS,
+    character_luck_cap,
 )
 from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, has_documented_pool
 from liminal_gate.luck_runtime import (
@@ -138,11 +140,34 @@ class LuckGrowthTest(unittest.TestCase):
             )
             self.assertEqual(0, table[0], f"gained past the ceiling on attempt {attempt}")
 
-    def test_applying_a_gain_stops_at_the_ceiling(self) -> None:
-        save = userdata({1: 999, 2: 100})
+    def test_applying_a_gain_stops_at_the_characters_own_ceiling(self) -> None:
+        """The ceiling is per character, not the absolute one.
+
+        Characters 1 and 2 are an A-and-below and an S/SS unit in the recovered
+        caps, so the same table stops them in different places. Applying the
+        absolute 100.0 to everyone is what let a tester's C-class Dark Tortoise
+        reach 83.3 against a real cap of 70.0.
+        """
+        self.assertEqual((700, 800), (character_luck_cap(1), character_luck_cap(2)))
+        save = userdata({1: 699, 2: 100})
         apply_luck_up_table(save, [3, 2, 0, 0, 0, 0])
-        self.assertEqual(LUCK_TENTHS_MAX, save["chrdata"][0]["luck"])
+        self.assertEqual(700, save["chrdata"][0]["luck"])
         self.assertEqual(102, save["chrdata"][1]["luck"])
+
+    def test_a_character_already_at_its_cap_gains_nothing(self) -> None:
+        save = userdata({1: 700})
+        apply_luck_up_table(save, [3, 0, 0, 0, 0, 0])
+        self.assertEqual(700, save["chrdata"][0]["luck"])
+
+    def test_only_the_top_band_reaches_the_absolute_ceiling(self) -> None:
+        top = next(
+            character_id
+            for character_id, cap in LUCK_CAP_BY_CHARACTER.items()
+            if cap == LUCK_TENTHS_MAX
+        )
+        save = userdata({top: 999})
+        apply_luck_up_table(save, [3, 0, 0, 0, 0, 0])
+        self.assertEqual(LUCK_TENTHS_MAX, save["chrdata"][0]["luck"])
 
     def test_applying_an_empty_table_changes_nothing(self) -> None:
         save = userdata({1: 500})
