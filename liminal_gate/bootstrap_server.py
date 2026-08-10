@@ -4131,13 +4131,29 @@ class BootstrapHandler(BaseHTTPRequestHandler):
     def _serves_local_compendium(self, path: str) -> bool:
         """Whether this server answers the drop-reference route here.
 
-        Same gate as the save and the event log. It reads as a stricter rule
-        than the page deserves -- nothing here is secret, and the operator built
-        it from their own APK -- but the page carries decoded game text, and the
-        deployment that actually needs the route is the one where loopback and
-        "this device" are the same thing.
+        Deliberately *not* the loopback rule the save and the event log keep.
+        This started under it, on the reasoning that the page carries decoded
+        game text -- but this server already serves the client on that same
+        network every resource and every catalog-backed answer the game asks
+        for, and the page is derived from the very APK those clients are
+        running. Publishing the game while withholding a reference to it drew
+        the line somewhere nothing rests on, and it cost the route the readers
+        it exists for: on the dedicated deployment nobody reads this at the
+        operator's console.
+
+        So the trade is stated plainly instead. This is a private-network setup
+        that is never to be port-forwarded, the route is read-only, and it can
+        reach nothing the same network cannot already ask this server for.
+
+        The save and the event log keep the loopback rule and are not touched by
+        this: one of them is writable, and both describe a person rather than
+        the game.
+
+        The all-in-one package is unaffected in practice -- it binds loopback,
+        so there is no network there to reach it from. That is the same rule
+        producing a different reach, not a second rule.
         """
-        return self._serves_local_route(path, LOCAL_COMPENDIUM_ROUTE)
+        return path == LOCAL_COMPENDIUM_ROUTE and path not in set(self.server.profile.routes.values())
 
     def _serves_local_route(self, path: str, route: str) -> bool:
         if path != route or path in set(self.server.profile.routes.values()):

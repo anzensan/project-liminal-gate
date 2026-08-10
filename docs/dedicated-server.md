@@ -179,6 +179,42 @@ Install whatever is missing with:
 python3 -m liminal_gate.doctor --install-missing
 ```
 
+### Reading the drop reference this host generates
+
+Alongside the four catalogs it writes `user-data/drop-compendium.html`: which
+stages yield a given item or Companion, at the rates the recovered tables state.
+It is self-contained, so opening that file is always the simplest route.
+
+The server also serves it, to anyone it already serves the game to — so a
+tester reads it on the same phone they play on, at the same address the client
+is pointed at:
+
+```
+http://SERVER_LAN_ADDRESS:PORT/local/compendium
+```
+
+From this host itself, `http://127.0.0.1:PORT/local/compendium`. Two things
+behave the way they do on purpose:
+
+- **It is as reachable as the game is, and no more.** The page is derived from
+  the same APK those clients are running, and this host already answers them
+  every resource and catalog-backed request the game makes; withholding a
+  reference to a game while serving the game would draw the line where nothing
+  rests. The route is read-only. It is still a private-network setup, so the
+  standing rule holds: do not port-forward this server.
+- **`https://` fails misleadingly.** There is no certificate here, so a browser
+  negotiating TLS reports *"This site can't provide a secure connection"* rather
+  than anything about the route. Type the scheme instead of letting the address
+  bar guess it.
+
+The save (`/local/state`) and the event log (`/local/events`) are not like this
+and stay loopback-only: they describe a person, and one of them is writable.
+
+A host set up before this page existed reports its catalogs current and has no
+page to serve, since the APK never changed — only the generator did. Starting it
+once more writes the page from documents it already holds. If it instead prints
+that it could not build one, `--rederive-catalogs` runs the full pass.
+
 ### If this host cannot derive its own catalogs
 
 It still starts and still serves the story. What it cannot do is the rest of the

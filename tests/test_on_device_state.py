@@ -14,6 +14,7 @@ from liminal_gate.bootstrap_server import (
     LOCAL_COMPENDIUM_ROUTE,
     LOCAL_EVENTS_ROUTE,
     LOCAL_STATE_ROUTE,
+    BootstrapHandler,
     BootstrapServer,
     BootstrapState,
     _is_loopback_peer,
@@ -198,6 +199,22 @@ class LanBoundStateRouteTest(_StateRouteHarness):
         self.assertEqual(200, status)
         self.assertEqual("imported", result["status"])
         self.assertEqual(210, self.server.state.accounts["local-account"]["userdata"]["coins"])
+
+    def test_the_drop_reference_reaches_the_network_the_game_already_reaches(self) -> None:
+        """The one local route that is not held to loopback, and why.
+
+        A tester's phone is where this page is read on the dedicated
+        deployment, and that phone is already being served the whole game by
+        this same server. The save and the event log are checked here too,
+        because the difference between them is the entire point: they describe
+        a person, and one of them is writable.
+        """
+        handler = BootstrapHandler.__new__(BootstrapHandler)
+        handler.server = self.server
+        handler.client_address = ("192.168.1.50", 51000)
+        self.assertTrue(handler._serves_local_compendium(LOCAL_COMPENDIUM_ROUTE))
+        self.assertFalse(handler._serves_local_state(LOCAL_STATE_ROUTE))
+        self.assertFalse(handler._serves_local_events(LOCAL_EVENTS_ROUTE))
 
     def test_a_peer_from_the_network_is_refused_however_the_server_is_bound(self) -> None:
         """The decision itself, since binding a real LAN address here would not travel.
