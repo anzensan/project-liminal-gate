@@ -28,8 +28,18 @@ filter. The world indices are the client's own: `UserData.InitData` seeds world
 
 - **"No stages exist in Chapters 100--199."** They had existed since
   `d9cb79b`, behind `--secondary-worlds`, as a BreaSoul and Five Emperors
-  extension of the Hunting catalog. The reported `unsupported_start_quest` was
-  a server run without that flag, not a missing catalog.
+  extension of the Hunting catalog. The flag is standard rather than opt-in --
+  it is in `server_config.STANDARD_POLICY_FLAGS`, and all three launchers pass
+  it, including the systemd `ExecStart` -- so any tester on a supported route
+  had the stages. Only a bare `python -m liminal_gate.bootstrap_server`
+  invocation, or a build older than `d9cb79b`, lacks them.
+
+  Which leaves the reported `unsupported_start_quest` unexplained rather than
+  explained, and it is worth saying so plainly instead of assuming the report
+  was precise. On a current server the start route *accepts* 110-1; what no
+  account could do was reach the menu that starts it. The likeliest reading is
+  that the error code was reconstructed from the outside rather than read off
+  the wire, and that what a tester actually saw was the entry missing or inert.
 - **"One `progressCode` serves every world," inflating the stamina cap.** It
   cannot arise here. These settle through the Hunting path, which requires
   `progressCode` to be *unchanged* and never moves it. The per-world cursor
