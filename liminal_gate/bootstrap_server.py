@@ -173,9 +173,16 @@ from liminal_gate.cavern_forest_data import (
     cavern_forest_event_flags,
 )
 from liminal_gate.secondary_world_data import (
+    MAIN_WORLD,
+    WORLD_COUNT,
+    WORLD_FOR_FAMILY,
+    advanced_world_progress,
     build_bundled_breasoul_stages,
     build_bundled_five_emperors_stages,
+    initial_world_progress,
+    is_valid_world_progress,
     secondary_world_event_flags,
+    unpack_world_progress,
 )
 from liminal_gate.luck_runtime import (
     EMPTY_SLOT,
@@ -438,6 +445,43 @@ def _migrate_replay_keys(account: dict[str, Any]) -> None:
             cache[f"{prefix}{key}.{digest}"] = entry
 
 
+def _migrate_world_progress(account: dict[str, Any]) -> None:
+    """Seed the per-world cursors on a save written before the side worlds.
+
+    Explicit rather than defaulted at use, because this is a durable addition to
+    an implicit schema and the values are not zero: the client's own `InitData`
+    starts each secondary world at its first section, so an account that has
+    never entered one must still be told those sections are open or its map
+    draws nothing. World 0 is deliberately absent -- it is `progressCode`, and
+    the served projection derives it there rather than storing a second copy
+    that could drift out of step with the story.
+
+    Malformed entries are replaced rather than refused. This is a cursor into a
+    thirty-section side scenario, not roster or wallet state; refusing the save
+    over one would strand an account that can be put back on its feet by
+    re-opening the map. What it must not do is *keep* one: the value is sent to
+    the client, which reads it as an `Int32`, so a hand-edited cursor outside
+    that range would reach a tester as a freeze inside the userdata load rather
+    than as an error. `is_valid_world_progress` is the gate, and it also refuses
+    a cursor naming a section the world does not declare.
+    """
+    stored = account.get("world_progress")
+    stored = stored if isinstance(stored, dict) else {}
+    migrated = {}
+    for world, seeded in initial_world_progress().items():
+        held = stored.get(world)
+        # Compared unpacked, never as the packed integer: the two banner bits
+        # sit above both halves, so the seed -- which carries both -- outranks
+        # every later cursor within the same chapter as a plain number.
+        migrated[world] = (
+            held
+            if is_valid_world_progress(world, held)
+            and unpack_world_progress(held) >= unpack_world_progress(seeded)
+            else seeded
+        )
+    account["world_progress"] = migrated
+
+
 def _migrate_granted_character_rows(account: dict[str, Any]) -> None:
     """Repair roster rows a grant wrote in the result-screen shape.
 
@@ -620,6 +664,7 @@ def _parse_state_document(document: object) -> tuple[
         account.setdefault("login_bonus_consecutive_days", 0)
         account.setdefault("login_bonus_total_days", 0)
         account.setdefault("message_requests", {})
+        _migrate_world_progress(account)
         if (
             not isinstance(account["tutorial_phase"], str)
             or not isinstance(account["tutorial_requests"], dict)
@@ -788,6 +833,10 @@ class BootstrapState:
                     "login_bonus_consecutive_days": 0,
                     "login_bonus_total_days": 0,
                     "message_requests": {},
+                    # Seeded rather than left to the migration, so a document
+                    # this server writes and a document it repairs on load
+                    # carry the same keys.
+                    "world_progress": initial_world_progress(),
                     "exchange_remaining": _initial_exchange_remaining(exchange_catalog),
                     "exchange_total": 0,
                     "exchange_requests": {},
@@ -983,7 +1032,9 @@ class BootstrapState:
                 "free_roam", "generic_story_active", "hunting_active",
             }
 
-    def userdata_for(self, token: str, *, stamina: bool = False) -> dict[str, Any] | None:
+    def userdata_for(
+        self, token: str, *, stamina: bool = False, secondary_worlds: bool = False,
+    ) -> dict[str, Any] | None:
         with self.lock:
             account_id = self.tokens.get(token)
             account = self.accounts.get(account_id)
@@ -1025,7 +1076,10 @@ class BootstrapState:
                 changed = True
             if changed:
                 self._persist_locked()
-            return copy.deepcopy(userdata)
+            served = copy.deepcopy(userdata)
+            if secondary_worlds:
+                served["worldProgressCode"] = _world_progress_projection(account)
+            return served
 
     def change_uname(self, token: str, request_id: str, body: bytes) -> tuple[str, dict[str, Any] | None]:
         with self.lock:
@@ -2656,6 +2710,13 @@ class BootstrapState:
             account["active_hunt"] = None
             account["active_hunt_ticket_spent"] = None
             account["active_battle_continue_coins"] = 0
+            # A secondary world advances its own cursor and nothing else. The
+            # main story's `progressCode` is checked unchanged above and stays
+            # that way, which is exactly the separation the client keeps: the
+            # side scenarios are indexed by world in `worldProgressCode`, and
+            # sharing one cursor would move the story map and the stamina cap
+            # with them.
+            _advance_world_progress(account, stage)
             # Hunting, Metal Zone, the special quest and the Daily Quests pay no
             # preservation Energy: they repeat without bound, and the income is
             # reserved for story progress that cannot. See `archive_economy`.
@@ -3255,6 +3316,98 @@ class BootstrapState:
             account["active_luck_result"] = []
             account["active_luck_up"] = []
             payload = _canonical_payload(payload)
+            requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
+            self._persist_locked()
+            return "success", payload
+
+    def claims_world_cursor_write(
+        self, token: str, write: dict[str, int], *, reveal_route: bool,
+    ) -> bool:
+        """Whether this three-field write is the world swap and not a map write.
+
+        Three different things share `progressCode`, `worldMapNo`, `lastUpdate`:
+        the world swap, the derived post-chapter map reveal, and the tutorial's
+        own final map write. They are told apart by what each one *changes*.
+
+        A body that changes the world is the swap, and it wins even over a
+        pending reveal -- the reveal always repeats the cursor the account
+        already holds, so nothing else can be changing it.
+
+        A body that leaves the world alone belongs to the other two. The reveal
+        route takes it wherever that route exists. Where it does not, this one
+        takes it only when it changes nothing at all, which answers a client
+        merely restating the world it is on without a handler that would refuse
+        it. The tutorial's map write moves `progressCode`, so it is excluded by
+        that same test and still reaches the transition that owns it -- a
+        distinction worth stating plainly, because getting it wrong once here
+        left the tutorial unfinishable on every server carrying this flag.
+        """
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                # Not this route's refusal to give. Whatever answered an
+                # unknown token before still answers it.
+                return False
+            userdata = account["userdata"]
+            stored = userdata.get("worldMapNo", 0)
+            if write["worldMapNo"] != (stored if type(stored) is int else 0):
+                return True
+            return not reveal_route and write["progressCode"] == userdata.get("progressCode")
+
+    def apply_world_cursor_write(
+        self, token: str, request_id: str, body: bytes,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Record which world map the client has moved to.
+
+        `UIMap.SetWorld` writes `UserData.worldNo` and marks the record dirty,
+        and that field is this wire's `worldMapNo` -- `LoadUserdataFromJson`
+        stores the parsed key straight into it. So entering either secondary
+        world posts this three-field write with a new world and an unchanged
+        `progressCode`, and every clear afterwards carries the new value.
+
+        Nothing here wrote it, only compared it, so the stored zero refused the
+        write and then refused every clear the player attempted on the map they
+        had just walked onto. That is the whole change: the cursor is the
+        client's to move and the server's to remember.
+
+        Story progress may not move through this route. A world swap is a
+        camera, not a clear, and the same three fields carry the post-chapter
+        map reveal -- which has its own handler, its own expected value, and its
+        own one-shot flag. Requiring `progressCode` to be unchanged keeps the
+        two apart by shape rather than by ordering.
+        """
+        with self.lock:
+            account = self.accounts.get(self.tokens.get(token))
+            if account is None:
+                return "unknown_account", None
+            requests = account.setdefault("tutorial_requests", {})
+            body_hash = hashlib.sha256(body).hexdigest()
+            cached = requests.get(_replay_key(request_id, body))
+            if cached is not None:
+                if cached.get("body_sha256") != body_hash:
+                    return "request_collision", None
+                return "replay", copy.deepcopy(cached["payload"])
+            write = _parse_story_progression_reveal(body)
+            userdata = account["userdata"]
+            current = userdata.get("progressCode")
+            if (
+                write is None
+                # Past the tutorial, rather than idle. An open battle is no
+                # reason to refuse a camera move, and refusing one is not a
+                # refusal the player can get out of: a force-close leaves the
+                # phase active, every later start leaves it active again, and
+                # the world menu would answer Network Error until they happened
+                # to finish a battle.
+                or account.setdefault("tutorial_phase", "initial")
+                not in {"free_roam"} | ACTIVE_BATTLE_PHASES
+                or type(current) is not int
+                or write["progressCode"] != current
+                or write["worldMapNo"] >= WORLD_COUNT
+            ):
+                return "tutorial_state_conflict", None
+            userdata["worldMapNo"] = write["worldMapNo"]
+            userdata["lastupdate"] = float(write["lastUpdate"])
+            payload = _canonical_payload({"success": True, "lastupdate": float(write["lastUpdate"])})
             requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -3960,7 +4113,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # Bind before reading so an older emulator token cannot select an
             # abandoned local account after the active save has been resumed.
             userdata = (
-                self.server.state.userdata_for(token, stamina=self.server.stamina)
+                self.server.state.userdata_for(
+                    token, stamina=self.server.stamina,
+                    secondary_worlds=self.server.secondary_worlds,
+                )
                 if token and self.server.state.bind_rotated_token(token, self._client_host())
                 else None
             )
@@ -4284,12 +4440,21 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             if dispatch.result is None:
                 raise RuntimeError(f"resolved mutation {kind!r} has no result")
             return dispatch.result, dispatch.payload
-        if (
-            kind == "write"
+        # Three things share these three fields: the world swap, the derived map
+        # reveal, and the tutorial's final map write. `claims_world_cursor_write`
+        # owns the whole distinction; see it for how each is told apart.
+        world_write = _parse_story_progression_reveal(body) if kind == "write" else None
+        reveal_route = (
+            world_write is not None
             and self.server.story_progression_catalog is not None
             and state.allows_story_progression(token)
-            and _parse_story_progression_reveal(body) is not None
+        )
+        if (
+            world_write is not None and self.server.secondary_worlds
+            and state.claims_world_cursor_write(token, world_write, reveal_route=reveal_route)
         ):
+            return state.apply_world_cursor_write(token, request_id, body)
+        if reveal_route:
             return state.apply_story_progression_reveal(
                 token, request_id, body, self.server.story_progression_catalog,
             )
@@ -4566,6 +4731,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         constants = build_server_constants(
             normal_slot_coins=None if coins is None else coins[1],
             rare_slot_energy=None if energy is None else energy[1],
+            secondary_worlds=self.server.secondary_worlds,
         )
         constants |= {
             "metalHuntingList": [],
@@ -5270,6 +5436,67 @@ def _ordered_refill_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def _canonical_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Stabilize nested signed callback order through sorted JSON persistence."""
     return json.loads(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+
+
+def _advance_world_progress(account: dict[str, Any], stage: HuntingStage) -> None:
+    """Move a secondary world's cursor to the section a clear just opened.
+
+    A no-op for every other Hunting family, which is most of them: Huntland,
+    the Metal Zone, the Daily Quests, the Roads, and the two hidden areas all
+    repeat without bound and have no frontier to move. The side scenarios are
+    the only Hunting-settled family that is a sequence.
+
+    The client cannot do this itself. `worldProgressCode` is server-to-client
+    only -- no handler in the build serializes it back -- so an advance the
+    server does not record is one the next map open forgets.
+    """
+    world = WORLD_FOR_FAMILY.get(stage.family)
+    if world is None:
+        return
+    stored = account.get("world_progress")
+    if not isinstance(stored, dict):
+        stored = initial_world_progress()
+        account["world_progress"] = stored
+    packed = stored.get(str(world))
+    if type(packed) is not int:
+        return
+    advanced = advanced_world_progress(packed, stage.chapter, stage.section)
+    if advanced is not None:
+        stored[str(world)] = advanced
+
+
+def _world_progress_projection(account: dict[str, Any]) -> dict[str, int]:
+    """Return the `worldProgressCode` object the client reads on every load.
+
+    Projected on read rather than stored whole, for the reason the nested
+    wallet is: world 0's entry *is* `progressCode`, and a second durable copy
+    would be one more thing every story clear has to remember to move. The
+    worlds this server actually tracks are the other two.
+
+    An object with decimal-string keys, not the array the client's `int[]`
+    declaration suggests. `LoadUserdataFromJson` enumerates `.Keys`, parses each
+    with `Int32.Parse`, and reads the value back with the string `get_Item`;
+    LitJson's `Keys` throws on a JSON array, so sending one is a boot failure
+    rather than a mis-parse. Keys outside the client's own three-element array
+    are dropped here rather than sent, because the client bounds-checks each
+    index and an out-of-range key is an exception inside its load. So is a
+    stored world 0: it is derived here and never held, and a save carrying one
+    anyway must not be able to tell the client a story position the story does
+    not agree with -- that entry gates both "To another world" menu rows.
+    """
+    stored = account.get("world_progress")
+    stored = stored if isinstance(stored, dict) else initial_world_progress()
+    userdata = account.get("userdata", {})
+    progress = userdata.get("progressCode", 0)
+    projection = {str(MAIN_WORLD): progress if type(progress) is int and progress >= 0 else 0}
+    for world, packed in stored.items():
+        if (
+            isinstance(world, str) and world.isdigit()
+            and MAIN_WORLD < int(world) < WORLD_COUNT
+            and is_valid_world_progress(world, packed)
+        ):
+            projection[world] = packed
+    return projection
 
 
 def _synchronize_wallet_projection(userdata: dict[str, Any]) -> bool:

@@ -256,6 +256,31 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **The two side scenarios could not be entered, and the menu that reaches them
+  could not appear.** BreaSoul and the Five Emperors — the "To another world"
+  scenarios, thirty stages between them — were served but unreachable. Two
+  separate things were missing, and either one alone was enough.
+
+  The menu is drawn behind the client's own check that you have reached
+  Chapter 26 (BreaSoul) or Chapter 20 (the Five Emperors), and it reads that
+  progress out of a per-world field this server had never sent. Absent, the
+  field reads as zero, so both entries stayed hidden no matter how far you had
+  played. And once you did stand on one of those maps, the client tells the
+  server which world you are on — a value this server compared against on every
+  clear and never wrote. Walking onto a side map therefore failed twice: the
+  step onto it was refused, and every battle behind it was refused after that.
+
+  Both are now sent and accepted, and a side-scenario clear opens the next
+  section of its own world. Your main story position is untouched by all of it,
+  which is deliberate: the two scenarios keep their own progress, so playing
+  them cannot move your world map or your stamina ceiling.
+
+  Enabled with the same `--secondary-worlds` the scenarios already used, and it
+  needs only a server restart — on-device testers pick it up by rebuilding,
+  as they do for any server change. None of this has been played yet: the
+  thirty stages have never run against this server, and the client contracts
+  behind them were read out of the client rather than watched on the wire.
+
 - **Strikes Back only ever offered its first stage.** Every family you had
   unlocked showed one card, and the card was one battle. It read like the
   higher tiers were waiting on later progress. They were not: they were

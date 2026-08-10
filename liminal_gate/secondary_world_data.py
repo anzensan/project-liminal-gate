@@ -16,11 +16,12 @@ sections, one per chapter across 110--119, zero Coins throughout, 15 stamina for
 the five normal descents and 20 for the five marked hard, each declaring one or
 two candidate Companions.
 
-**Local policy, labeled as such.** Three things.
+The story thresholds are recovered too, and were previously labeled local
+policy here: section 26-1 for BreaSoul and 20-1 for the Five Emperors are the
+literal `IsSectionUnlocked` arguments inside the client's own two map
+predicates. What this server owns is only whether to send the flag beside them.
 
-The story thresholds -- section 26-1 for BreaSoul and 20-1 for the Five Emperors
--- are the halves of the client's map predicates this server owns. They are not
-recovered from a table; the client's own version predicate is the part that is.
+**Local policy, labeled as such.** Two things.
 
 Experience is paid, under a ceiling, on the same reasoning the two Roads already
 use here: EXP is the battle's own product rather than a reward the retired
@@ -35,6 +36,48 @@ are empty, so it settles no Companion at all, on the game's own authority.
 
 Coins and items are refused for both. No section declares a Coin reward and no
 item manifest survives, so there is nothing to bound them against.
+
+**The world cursor and per-world progress.** Opening either map is only half of
+what the client needs, and this module owns the other half. `UIMap.SetWorld`
+writes `UserData.worldNo` and marks the record dirty, and `worldNo` is the wire
+field this server already knows as `worldMapNo` -- `LoadUserdataFromJson` stores
+the parsed `worldMapNo` straight into that field. So a player standing on a
+secondary map sends a *non-zero* `worldMapNo` on every write and clear, and a
+server that only ever compares it against a stored zero refuses everything the
+player does there.
+
+Progress inside a world is separate from `progressCode` and travels in
+`worldProgressCode`, which is server-to-client only: no client handler ever
+serializes it back. Its values use the same packing as `progressCode`
+(`section | chapter << 6 | newStage << 24 | showProgress << 25`), which is
+`UserData.SetWorldNewChapter`'s own arithmetic, and `GetWorldChapterNo` /
+`GetWorldSectionNo` read the two halves back out with `(v >> 6) & 0x3FF` and
+`v & 0x3F`.
+
+All of this is confirmed from the reviewed client's `libil2cpp.so`, and it
+settles three questions this project had previously left open:
+
+- `worldProgressCode` is read as a JSON **object keyed by the world index in
+  decimal string form**, not as the array its `int[]` declaration implies:
+  `LoadUserdataFromJson` walks `.Keys`, calls `Int32.Parse` on each key, and
+  indexes the value with `get_Item(string)`. LitJson's `Keys` throws on a JSON
+  array, which is the boot failure another reimplementation reported.
+- `worldMaxChapter` is a JSON **array of internal chapter numbers indexed by
+  world**, not per-world display indices: `get_worldChapterNo` clamps the
+  world's chapter against `worldMaxChapter[worldNo]`. Index 0 is never read --
+  both consumers return early when `worldNo` is zero -- so this server declares
+  no ceiling for the main story.
+- `WORLD_NUM` is **not a served constant at all**. No such string literal exists
+  in the build; `UserData..cctor` assigns the literal 3, and `InitData`
+  allocates `worldProgressCode` at that length.
+
+The two unlock thresholds are confirmed with them, so they are no longer local
+policy: `IsWorld1ChangeEnable` calls `IsSectionUnlocked(26, 1)` and
+`IsWorld2ChangeEnable` calls `IsSectionUnlocked(20, 1)`, each alongside its
+version predicate and its map flag. `IsSectionUnlocked` resolves the chapter to
+its world through `ChapterInterface.GetWorldNoByChapter` and then reads
+`worldProgressCode` for *that* world -- so both menu entries are gated on world
+0's entry, which is why sending the flags alone never opened either map.
 """
 
 from __future__ import annotations
@@ -47,9 +90,30 @@ from liminal_gate.hunting_catalog import HuntingStage
 BREASOUL_EVENT_FLAG = "sp_matsuno"
 FIVE_EMPERORS_EVENT_FLAGS = ("sp_five_emperors", "sp_five_emperors2")
 
-#: **Local policy.** The story sections at which each map becomes reachable.
+#: **Confirmed.** The story sections at which each map becomes reachable, read
+#: out of the client's own `IsWorld1ChangeEnable` / `IsWorld2ChangeEnable` as
+#: the literal arguments to `IsSectionUnlocked`.
 BREASOUL_UNLOCK = (26, 1)
 FIVE_EMPERORS_UNLOCK = (20, 1)
+
+#: **Confirmed.** `UserData.WORLD_NUM`, the literal `UserData..cctor` assigns
+#: and the length `InitData` allocates `worldProgressCode` at. Not a served
+#: constant: the build carries no `WORLD_NUM` string literal.
+WORLD_COUNT = 3
+
+#: **Confirmed.** Which world index each map is, from `InitData`'s own seeding
+#: (`SetWorldNewChapter(1, 100, 1)` and `SetWorldNewChapter(2, 110, 1)`).
+BREASOUL_WORLD = 1
+FIVE_EMPERORS_WORLD = 2
+MAIN_WORLD = 0
+
+#: The packing `SetWorldNewChapter` writes and `GetWorldChapterNo` /
+#: `GetWorldSectionNo` read back, shared with the main-story `progressCode`.
+_SECTION_MASK = 0x3F
+_CHAPTER_SHIFT = 6
+_CHAPTER_MASK = 0x3FF
+_NEW_STAGE_BIT = 1 << 24
+_SHOW_PROGRESS_BIT = 1 << 25
 
 #: **Local policy.** An EXP ceiling per entry, taken from the Metal Zone tier
 #: whose stamina these stages match, exactly as the two Roads take theirs.
@@ -126,6 +190,135 @@ def build_bundled_five_emperors_stages() -> tuple[HuntingStage, ...]:
         )
         for chapter, stamina, candidates in _FIVE_EMPERORS_ROWS
     )
+
+
+#: Each secondary world's sections in play order, keyed by world index. This is
+#: the successor graph a clear advances along, and it is the same `BattleData`
+#: reading the two stage builders above use rather than a second transcription.
+_WORLD_SECTIONS: dict[int, tuple[tuple[int, int], ...]] = {
+    BREASOUL_WORLD: tuple(
+        (chapter, section)
+        for chapter, sections in _BREASOUL_SECTIONS
+        for section in range(1, sections + 1)
+    ),
+    FIVE_EMPERORS_WORLD: tuple((chapter, 1) for chapter, _stamina, _drops in _FIVE_EMPERORS_ROWS),
+}
+
+#: Which stage family belongs to which world, so a Hunting settlement can find
+#: the world it should advance without re-deriving it from the chapter.
+WORLD_FOR_FAMILY: dict[str, int] = {
+    "breasoul": BREASOUL_WORLD,
+    "five_emperors": FIVE_EMPERORS_WORLD,
+}
+
+
+def pack_world_progress(chapter: int, section: int, *, chapter_boundary: bool = False) -> int:
+    """Pack one world cursor the way `SetWorldNewChapter` packs it.
+
+    ``chapter_boundary`` sets `showProgress` alongside `newStage`, matching both
+    the client's own seeding and the main story's codes, where a section
+    advance carries bit 24 and a chapter advance carries bits 24 and 25.
+    """
+    packed = (section & _SECTION_MASK) | ((chapter & _CHAPTER_MASK) << _CHAPTER_SHIFT) | _NEW_STAGE_BIT
+    return packed | _SHOW_PROGRESS_BIT if chapter_boundary else packed
+
+
+def unpack_world_progress(packed: int) -> tuple[int, int]:
+    """Return the chapter and section a packed world cursor names."""
+    return (packed >> _CHAPTER_SHIFT) & _CHAPTER_MASK, packed & _SECTION_MASK
+
+
+def world_for_chapter(chapter: int) -> int:
+    """Return the world a chapter belongs to, as `GetWorldNoByChapter` does."""
+    for world, sections in _WORLD_SECTIONS.items():
+        if any(chapter == declared for declared, _section in sections):
+            return world
+    return MAIN_WORLD
+
+
+def initial_world_progress() -> dict[str, int]:
+    """Return the per-world cursors an untouched account starts from.
+
+    These are the client's own defaults rather than a choice here: `InitData`
+    seeds world 1 at 100-1 and world 2 at 110-1, with both banner bits set.
+    World 0 is absent because it is `progressCode` and is projected from it.
+    """
+    return {
+        str(world): pack_world_progress(*sections[0], chapter_boundary=True)
+        for world, sections in _WORLD_SECTIONS.items()
+    }
+
+
+def advanced_world_progress(packed: int, chapter: int, section: int) -> int | None:
+    """Return the world cursor a clear of ``chapter``-``section`` leaves behind.
+
+    ``None`` when the stage names no modelled secondary-world section. The
+    cursor records the furthest section the world has *unlocked*, which is what
+    `IsSectionUnlocked` compares against, so a clear moves it to the cleared
+    section's successor and the last section of a world leaves it where it is.
+    A clear behind the frontier never moves it backwards.
+    """
+    world = world_for_chapter(chapter)
+    sections = _WORLD_SECTIONS.get(world)
+    if sections is None or (chapter, section) not in sections:
+        return None
+    # Compared as a chapter/section pair, never as the packed integer: the two
+    # banner bits outrank both halves, so a stored cursor that still carries
+    # `showProgress` would win an integer comparison against the section after
+    # it and the world would never advance.
+    frontier = unpack_world_progress(packed)
+    if (chapter, section) > frontier:
+        # A clear of a section this world has not opened yet. The client draws
+        # its own map from this cursor and would not offer one, so this is a
+        # body it does not produce -- and honouring it would advance the cursor
+        # *past* every section in between, silently retiring content the player
+        # never saw. The clear still settles; only the frontier holds.
+        return packed
+    index = sections.index((chapter, section))
+    last = index + 1 == len(sections)
+    reached = (chapter, section) if last else sections[index + 1]
+    if frontier >= reached:
+        return packed
+    return pack_world_progress(
+        *reached, chapter_boundary=not last and reached[0] != chapter,
+    )
+
+
+def is_valid_world_progress(world: str, packed: object) -> bool:
+    """Whether a stored cursor is one this world could actually hold.
+
+    Checked because the value is sent to the client, and the client reads it
+    with LitJson's `Int32` accessor: a number past that range raises
+    `InvalidCastException` inside the userdata load, which reaches a tester as
+    a freeze rather than an error. A hand-edited save is a supported way to
+    reach this server -- `tools/save-editor.html` exists -- so the save layer,
+    not the wire, is where an impossible cursor has to stop.
+    """
+    if type(packed) is not int or packed < 0 or packed > _NEW_STAGE_BIT | _SHOW_PROGRESS_BIT | 0xFFFF:
+        return False
+    # `isascii` as well as `isdigit`, because the key is sent as written and the
+    # client resolves it with `Int32.Parse`. Python calls an Arabic-Indic digit
+    # a digit and converts it; whether that client's parse agrees is exactly the
+    # kind of thing this project does not put on the wire to find out.
+    if not (type(world) is str and world.isascii() and world.isdigit()):
+        return False
+    sections = _WORLD_SECTIONS.get(int(world))
+    return sections is not None and unpack_world_progress(packed) in sections
+
+
+def world_max_chapters() -> list[int]:
+    """Return the `worldMaxChapter` constant, indexed by world.
+
+    Index 0 is a placeholder rather than a ceiling for the main story: both
+    client consumers -- `get_worldChapterNo` and `NeedShowProgress` -- return
+    before reading it when `worldNo` is zero, so declaring a number there would
+    be inventing one this server has no basis for and the client never uses.
+    The other two are the last chapter each secondary world declares.
+    """
+    ceilings = [0] * WORLD_COUNT
+    for world, sections in _WORLD_SECTIONS.items():
+        ceilings[world] = max(chapter for chapter, _section in sections)
+    return ceilings
 
 
 def secondary_world_event_flags(progress_chapter: int, progress_section: int) -> dict[str, dict[str, object]]:

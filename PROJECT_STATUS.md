@@ -78,6 +78,50 @@ machine-readable/current capability boundary.
 
 ## Completed hardening
 
+- 2026-08-09 the two secondary worlds became reachable, having been served and
+  unreachable since 2026-08-02. A tester reported entering a Five Emperors
+  descent and being refused, which read like a missing stage catalog; the
+  stages were already there. Two other things were not, and either alone was
+  fatal. The client's own "To another world" predicates call
+  `IsSectionUnlocked` against `worldProgressCode` — for **world 0**, because
+  both thresholds are main-story sections — and that key had never been sent,
+  so the menu could not appear no matter which map flags were on. And
+  `UIMap.SetWorld` writes `UserData.worldNo`, which is the wire's
+  `worldMapNo`, so a player who had swapped maps sent a world this server
+  compared against a stored zero in four places and wrote in none: the swap
+  itself was refused, and then so was every clear behind it.
+  `worldProgressCode` is now projected onto every userdata read as the object
+  keyed by world index that `LoadUserdataFromJson` actually parses — an array
+  throws inside LitJson, which is the boot hang another reimplementation
+  reported and this project had never reproduced — with world 0 derived from
+  `progressCode` and worlds 1 and 2 durable behind an explicit migration.
+  `worldMaxChapter` is sent as the int array of internal chapter numbers
+  `get_worldChapterNo` clamps against. The three-field cursor write is accepted
+  when it moves only the world, and refused when it would also move story
+  progress, which is the map-reveal route's business. A secondary-world clear
+  advances that world's cursor and nothing else, so the per-world stamina-cap
+  inflation another reimplementation recorded cannot arise here. All of it
+  behind the existing `--secondary-worlds`. Three contracts this project had
+  declined to guess at are now recovered rather than guessed — the
+  `worldProgressCode` shape, what `worldMaxChapter` is compared against, and
+  the fact that `WORLD_NUM` is not a served key at all — and so are both unlock
+  thresholds, which were labeled local policy and are literal immediates in the
+  client's predicates. See `docs/findings.md`, 2026-08-09.
+
+  An adversarial pass over the change caught four defects the 1,372-test suite
+  did not, and the worst is the one worth carrying forward: the three-field
+  userdata form carries the tutorial's own final map write as well as the swap
+  and the map reveal, and a dispatch rule separating only the latter two left
+  the tutorial unfinishable — on *every* guided server, because
+  `--secondary-worlds` is in `STANDARD_POLICY_FLAGS`. No test covered the
+  tutorial with the flag on. Running the whole suite a second time with the flag
+  forced on is now the cheap check for that whole class, and it is what proved
+  the fix. The other three: a `free_roam` gate that a force-closed battle could
+  never clear, a clear past a world's frontier advancing the cursor past every
+  section in between, and a hand-edited cursor reaching the client outside the
+  `Int32` it is read with. Server restart, and an APK rebuild for on-device
+  testers. Unplayed: the thirty stages have still never run against a client.
+
 - 2026-08-06 Attack of Coin Creeps cards stop blanking at random. Two reports
   described the same defect from different sides: one card blank after an
   unrelated Crystal Road run, another missing and later back on its own. The

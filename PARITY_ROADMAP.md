@@ -39,7 +39,9 @@ Three categories are used below and they are not interchangeable:
   Guided core story supplies only the recovered boolean gate; the client owns
   the date, chapter selection, badge, and multiplier.
 - The two secondary world maps: BreaSoul's twenty sections and the ten Five
-  Emperors descents, each behind the client's own map predicate.
+  Emperors descents, each behind the client's own map predicate, with the
+  world cursor the client moves when it swaps maps and the per-world
+  `worldProgressCode` its menu predicate and its own map both read.
 - Orbling Cavern and Cryptid Forest, the two standing World 1 areas, four
   stages between them. Each Cavern card awards the one Companion its own
   `dropBuddies` manifest names; each Forest card farms one of Dracorin's two
