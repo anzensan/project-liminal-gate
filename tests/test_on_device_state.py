@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from liminal_gate import on_device_state, tester_setup, toolchain
 from liminal_gate.bootstrap_server import (
+    LOCAL_EVENTS_ROUTE,
     LOCAL_STATE_ROUTE,
     BootstrapServer,
     BootstrapState,
@@ -432,3 +433,46 @@ class RecordedToolchainTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalEventsRouteTest(_StateRouteHarness):
+    """The loopback event-log route, for the same reason the save has one.
+
+    On the packaged Android build `events.jsonl` lives in app-private storage
+    and the combined package is not debuggable, so `adb shell run-as` cannot
+    reach it. A tester could report that a clear was refused but never which
+    check refused it, which is the whole diagnosis.
+    """
+
+    def raw(self, path: str) -> tuple[int, str, str]:
+        connection = HTTPConnection(*self.server.server_address[:2])
+        connection.request("GET", path)
+        response = connection.getresponse()
+        body = response.read().decode("utf-8")
+        content_type = response.headers.get("Content-Type", "")
+        connection.close()
+        return response.status, content_type, body
+
+    def test_the_log_comes_back_line_delimited(self) -> None:
+        self.sign_up()
+        status, content_type, body = self.raw(LOCAL_EVENTS_ROUTE)
+        self.assertEqual(200, status)
+        self.assertEqual("application/x-ndjson", content_type)
+        events = [json.loads(line) for line in body.splitlines() if line]
+        self.assertTrue(events)
+        self.assertEqual({"/gd/signup"}, {event["path"] for event in events})
+
+    def test_a_refusal_names_its_check_in_the_log(self) -> None:
+        """The reason this route exists: the log has to answer 'refused why'."""
+        self.sign_up()
+        self.request("GET", "/gd/get_server_status")
+        status, _, body = self.raw(LOCAL_EVENTS_ROUTE)
+        self.assertEqual(200, status)
+        for line in body.splitlines():
+            self.assertIn("status", json.loads(line))
+
+    def test_a_server_started_without_a_log_says_so(self) -> None:
+        self.server.events.path = None
+        status, _, body = self.raw(LOCAL_EVENTS_ROUTE)
+        self.assertEqual(404, status)
+        self.assertEqual({"error": "no_local_event_log"}, json.loads(body))
