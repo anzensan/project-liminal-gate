@@ -209,6 +209,44 @@ class ServerOnlySetupTest(unittest.TestCase):
         run_server.assert_not_called()
         self.assertTrue((data_directory / "resources.json").is_file())
 
+    def test_the_launcher_replays_recorded_tool_locations_before_resolving_any(self) -> None:
+        """`doctor` reads that record and this launcher did not, so they disagreed.
+
+        A dedicated host derives its own catalogs now, which needs Il2CppDumper
+        and an AArch64 disassembler. Without the replay this launcher saw only
+        `PATH`, so `doctor --install-missing` could report both ready while a
+        start in the same directory reported neither installed -- and nothing
+        in either output told the operator which one to believe.
+
+        The replay has to happen before anything resolves a tool, so this pins
+        the order rather than just the call.
+        """
+        data_directory = self.root / "state"
+        events = Mock()
+        # Stopped here so the test is about the ordering and never reaches a
+        # resource tree, an APK, or a listening socket.
+        events.prepare.side_effect = ServerSetupError("stop before the server starts")
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "server_setup",
+                "--resource-root", str(self.resources),
+                "--data-dir", str(data_directory),
+                "--apk", str(self.root / "absent.apk"),
+                "--prepare-only",
+            ],
+        ), patch(
+            "liminal_gate.server_setup.toolchain.load_and_apply", events.replay,
+        ), patch(
+            "liminal_gate.server_setup.prepare_server", events.prepare,
+        ), self.assertRaises(SystemExit):
+            main()
+        called = [recorded[0] for recorded in events.mock_calls]
+        self.assertEqual("replay", called[0], called)
+        self.assertIn("prepare", called)
+        events.replay.assert_called_once_with(data_directory)
+
     def write_derived_catalogs(self, data_directory: Path, apk_sha256: str) -> None:
         """Publish the four catalogs a derivation from this APK would leave."""
         data_directory.mkdir(parents=True, exist_ok=True)

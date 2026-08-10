@@ -20,7 +20,7 @@ import sys
 import textwrap
 from typing import Sequence
 
-from liminal_gate import tester_setup
+from liminal_gate import tester_setup, toolchain
 from liminal_gate.character_catalog_importer import (
     CharacterCatalogImportError,
     build_character_catalog,
@@ -790,6 +790,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    # Every entry point that resolves an external tool replays the recorded
+    # locations first, and this one had been left out. It did not need them
+    # while a dedicated host received its catalogs by hand; it needs them now
+    # that it derives them itself, and the omission was invisible in exactly
+    # the way that matters -- `doctor` replays the record, reports Il2CppDumper
+    # and the disassembler ready, and this launcher then failed to find either,
+    # because it was looking only at PATH. An operator reading those two
+    # outputs side by side has no way to tell which is lying.
+    toolchain.load_and_apply(args.data_dir)
     try:
         if not args.host or any(character.isspace() for character in args.host):
             raise ServerSetupError("--host must be a non-empty address with no spaces")
