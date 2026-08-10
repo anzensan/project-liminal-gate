@@ -2171,19 +2171,45 @@ class BootstrapState:
                     ):
                         return "unsupported_ordinary_pact", None
                     else:
-                        packed_level = int(current["jobLevels"][0])
-                        old_level = packed_level & 0xFFF
+                        # Every *unlocked* job gains, not just the first slot.
+                        # A duplicate raises the character, and the character is
+                        # all of its jobs -- which is why players unlocked a
+                        # character's jobs before pulling more of it, rather than
+                        # levelling each one by hand afterwards. Granting slot 0
+                        # alone also mismatched what this reply says: it reported
+                        # the *active* `jobID` beside slot 0's level, so a
+                        # character whose active job was its second told the
+                        # client that job had become a level it had not.
+                        #
+                        # A slot at level zero is a job the character has not
+                        # unlocked and stays untouched, which is the same test
+                        # the client's own screens use to tell the two apart.
                         old_boost = current.get("skillBoost", 0)
-                        level = min(catalog.max_level, old_level + selected.duplicate_level_added)
-                        encoded_level = (packed_level & ~0xFFF) | level
-                        current["jobLevels"][0] = (
-                            float(encoded_level)
-                            if type(current["jobLevels"][0]) is float
-                            else encoded_level
-                        )
+                        active = int(current.get("jobID", 0))
+                        if not 0 <= active < len(current["jobLevels"]):
+                            active = 0
+                        old_level = int(current["jobLevels"][active]) & 0xFFF
+                        level = old_level
+                        for slot, packed_value in enumerate(current["jobLevels"]):
+                            packed_level = int(packed_value)
+                            slot_level = packed_level & 0xFFF
+                            if slot_level <= 0:
+                                continue
+                            raised = min(
+                                catalog.max_level,
+                                slot_level + selected.duplicate_level_added,
+                            )
+                            encoded_level = (packed_level & ~0xFFF) | raised
+                            current["jobLevels"][slot] = (
+                                float(encoded_level)
+                                if type(packed_value) is float
+                                else encoded_level
+                            )
+                            if slot == active:
+                                level = raised
                         result = {
                             "id": selected.character_id,
-                            "jobID": int(current.get("jobID", 0)),
+                            "jobID": active,
                             "jobLevels": [level],
                             "jobSlots": [],
                             "isNew": False,
