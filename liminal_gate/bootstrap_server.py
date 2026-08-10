@@ -12,6 +12,7 @@ from collections import Counter
 import copy
 from dataclasses import dataclass, fields, replace
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -3980,6 +3981,37 @@ class BootstrapServer(ThreadingHTTPServer):
                 self.state.close()
 
 
+def _is_loopback_peer(host: object) -> bool:
+    """Whether a request came from the machine running the server.
+
+    These routes ask "is this the operator's own device?", and this used to be
+    answered by looking at where the server was *bound*. That answers the same
+    question only on the all-in-one package, where the listener is always
+    `127.0.0.1:8002` and bind and peer are the same thing. A dedicated host
+    binds `0.0.0.0` so a phone on the LAN can reach the game at all, and the
+    bind test then refused these routes to *everyone* -- including a browser on
+    the host's own console, which is precisely who they exist for. Asking about
+    the peer states the intent directly, and it is the stronger test rather than
+    the looser one: a LAN client is refused whatever the server is bound to,
+    which the bind test could not say.
+
+    A remote peer cannot claim a loopback address over TCP -- the handshake has
+    to complete -- so this is a fact about the connection, not a header anyone
+    can assert. `adb forward` already reaches these routes as a loopback peer,
+    so that path is unchanged.
+
+    The whole 127/8 block counts, as does an IPv6 connection carrying a
+    v4-mapped loopback address, which is how a dual-stack listener reports one.
+    """
+    if not isinstance(host, str):
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (getattr(address, "ipv4_mapped", None) or address).is_loopback
+
+
 class BootstrapHandler(BaseHTTPRequestHandler):
     server: BootstrapServer
 
@@ -4110,8 +4142,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
     def _serves_local_route(self, path: str, route: str) -> bool:
         if path != route or path in set(self.server.profile.routes.values()):
             return False
-        address = getattr(self.server, "server_address", None)
-        return isinstance(address, tuple) and bool(address) and address[0] in {"127.0.0.1", "::1"}
+        peer = getattr(self, "client_address", None)
+        return isinstance(peer, tuple) and bool(peer) and _is_loopback_peer(peer[0])
 
     def do_GET(self) -> None:
         target = urlsplit(self.path)

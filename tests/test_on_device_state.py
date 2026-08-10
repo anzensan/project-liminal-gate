@@ -16,6 +16,7 @@ from liminal_gate.bootstrap_server import (
     LOCAL_STATE_ROUTE,
     BootstrapServer,
     BootstrapState,
+    _is_loopback_peer,
     load_profile,
 )
 
@@ -154,11 +155,23 @@ class LocalStateRouteTest(_StateRouteHarness):
 
 
 class LanBoundStateRouteTest(_StateRouteHarness):
-    """A LAN-bound server must not publish or accept a save over the network.
+    """A LAN-bound server still answers its own operator, and only its operator.
 
-    Deliberately not a subclass of `LocalStateRouteTest`: the loopback
-    behaviours have no LAN-bound counterpart, and inheriting them only to skip
-    them would hide a new loopback test instead of forcing a decision here.
+    The rule these routes carry is "this device, not the network". That used to
+    be asked of the server's *bind* address, which answers it correctly only on
+    the all-in-one package, where the listener is always loopback. A dedicated
+    host has to bind `0.0.0.0` for a phone to reach the game at all, so the bind
+    test refused the operator their own save, their own event log, and their own
+    drop reference -- the three things these routes exist to hand them.
+
+    The peer is what the rule was always about, so it is asked directly now. A
+    LAN client is still refused, and refused whatever the server is bound to,
+    which is a stronger guarantee than the bind test could make rather than a
+    weaker one.
+
+    Deliberately not a subclass of `LocalStateRouteTest`: the two now agree on
+    the save's behaviour, but inheriting the whole suite would silently adopt
+    future loopback-only cases instead of forcing a decision here.
     """
 
     host = "0.0.0.0"
@@ -171,19 +184,31 @@ class LanBoundStateRouteTest(_StateRouteHarness):
         connection.close()
         return response.status, payload
 
-    def test_export_returns_exactly_what_the_save_holds(self) -> None:
+    def test_the_operators_own_console_reads_the_save(self) -> None:
         self.sign_up()
-        status, result = self.request("GET", LOCAL_STATE_ROUTE)
-        self.assertEqual(501, status)
-        self.assertEqual("route_not_implemented", result["error"])
+        status, document = self.request("GET", LOCAL_STATE_ROUTE)
+        self.assertEqual(200, status)
+        self.assertEqual(json.loads(self.state_path.read_text(encoding="utf-8")), document)
 
-    def test_import_replaces_the_save_in_memory_and_on_disk(self) -> None:
+    def test_the_operators_own_console_writes_the_save(self) -> None:
         self.sign_up()
-        before = self.state_path.read_text(encoding="utf-8")
-        status, result = self.request("POST", LOCAL_STATE_ROUTE, json.dumps({"accounts": {}, "tokens": {}}).encode())
-        self.assertEqual(501, status)
-        self.assertEqual("route_not_implemented", result["error"])
-        self.assertEqual(before, self.state_path.read_text(encoding="utf-8"))
+        replacement = json.loads(self.state_path.read_text(encoding="utf-8"))
+        replacement["accounts"]["local-account"]["userdata"]["coins"] = 210
+        status, result = self.request("POST", LOCAL_STATE_ROUTE, json.dumps(replacement).encode())
+        self.assertEqual(200, status)
+        self.assertEqual("imported", result["status"])
+        self.assertEqual(210, self.server.state.accounts["local-account"]["userdata"]["coins"])
+
+    def test_a_peer_from_the_network_is_refused_however_the_server_is_bound(self) -> None:
+        """The decision itself, since binding a real LAN address here would not travel.
+
+        `_serves_local_route` consults exactly this for every one of the three
+        routes, so pinning it pins the refusal for all of them.
+        """
+        for peer in ("192.168.1.50", "10.0.2.2", "::ffff:192.168.1.50", "fe80::1", "8.8.8.8"):
+            self.assertFalse(_is_loopback_peer(peer), peer)
+        for peer in ("127.0.0.1", "127.0.0.53", "::1", "::ffff:127.0.0.1"):
+            self.assertTrue(_is_loopback_peer(peer), peer)
 
 
 class UpdateCommandTest(unittest.TestCase):
