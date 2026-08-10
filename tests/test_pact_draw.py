@@ -690,3 +690,63 @@ class PactRefusalWalletTest(unittest.TestCase):
     def test_a_refusal_spends_nothing(self) -> None:
         payload = self.refuse(coins=100, energy=2, kind=1)
         self.assertEqual(2, payload["energy"], "a refused pull must not charge")
+
+
+class DuplicateJobLevelTest(unittest.TestCase):
+    """A duplicate raises every job the character has unlocked.
+
+    Granting only the first slot is what a tester reported: pulling a duplicate
+    levelled J1 alone, so the reason to unlock a character's jobs *before*
+    pulling more of it -- levelling them all at once instead of by hand -- was
+    gone. The first slot is also not necessarily the active job, so the reply
+    named the active `jobID` beside a level belonging to a different one.
+    """
+
+    def test_every_unlocked_job_gains_and_the_locked_one_does_not(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            policy = build_bundled_pact_policy()
+            selected = policy.fellowship_draws[0]
+            # Two jobs unlocked at different levels, the third never unlocked,
+            # and the *second* is active. Job experience rides in the high bits.
+            roster = [
+                {
+                    "id": draw.character_id, "buddy": 0, "date": 0.0,
+                    "jobSlots": [0.0, 0.0, 0.0],
+                    "jobLevels": [float((5 << 12) | 10), float((7 << 12) | 20), 0.0],
+                    "jobID": 1, "flags": 0, "skillBoost": 17,
+                    "luck": 0 if draw.character_id == selected.character_id else policy.max_luck,
+                }
+                for draw in policy.fellowship_draws
+            ]
+            items = [0] * 181
+            items[80] = 1
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(),
+                BootstrapState(Path(directory) / "state.json"),
+                pact_draw_catalog=policy,
+            )
+            try:
+                server.state.create_account("token", "account", {
+                    "coins": policy.coin_cost, "energy": 0, "freeEnergy": 0,
+                    "itemList": items, "chrdata": roster,
+                })
+                status, payload = post(
+                    server, "/gd/do_slot", "fate-ticket-jobs",
+                    "kind=20&count=1&luckType=true&campaignChrID=0&eventFlag=0&lastUpdate=1",
+                )
+                self.assertEqual((200, True), (status, payload["success"]))
+                stored = next(
+                    row for row in server.state.userdata_for("token")["chrdata"]
+                    if row["id"] == selected.character_id
+                )
+                added = selected.duplicate_level_added
+                levels = [int(value) & 0xFFF for value in stored["jobLevels"]]
+                self.assertEqual([10 + added, 20 + added, 0], levels)
+                # Job experience is untouched by a level grant.
+                self.assertEqual([5, 7, 0], [int(value) >> 12 for value in stored["jobLevels"]])
+                # The reply describes the active job, which is the second.
+                self.assertEqual(1, payload["chrdata"][0]["jobID"])
+                self.assertEqual([20 + added], payload["chrdata"][0]["jobLevels"])
+                self.assertEqual(added, payload["chrdata"][0]["levelAdded"])
+            finally:
+                stop_server(server, thread)
