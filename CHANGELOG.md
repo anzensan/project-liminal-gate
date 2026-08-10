@@ -256,6 +256,29 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Tower of Temptation said you did not meet the requirements.** Reported by
+  two testers: all four cards list, and tapping any of them answers "You don't
+  meet the requirements to unlock this quest. Check the event notice for
+  details." Nothing appears in the server log, because nothing was ever asked of
+  the server — the client refuses on the device.
+
+  The client sorts quests by chapter number, and the ranges are fixed in the
+  app. Chapters 9000–9009 are its **Raid** quests; Tower of Temptation is
+  9010–9099. This server serves Tower of Temptation from 9000–9003, because
+  those are the copies that carry the artwork and the compiled battles, so every
+  Tower card takes the raid path — and a raid quest asks for a status block the
+  server had never sent. Missing, that block reads as "locked", which is the
+  message word for word.
+
+  The login reply now carries that block for any advertised quest in the raid
+  range, marking it open with a full boss health bar. No end date is sent with
+  it: that is what would draw a countdown, and the schedules the original
+  service ran were never recovered. The cards look exactly as they did; they
+  open now.
+
+  Verified on the reviewed client: Tower of Temptation Alika opens its team
+  screen at 15 stamina. Its clear has not been played.
+
 - **The "To another world" menu opened onto a Network Error.** The previous
   entry made both rows appear. Choosing one still failed, and so would every
   battle behind it — reported by a tester the same day, on a save that showed

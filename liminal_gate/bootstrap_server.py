@@ -4153,6 +4153,18 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 event_flags |= daily_bonus_event_flags()
             if event_flags:
                 payload["eventFlags"] = event_flags
+            if self.server.event_catalog is not None:
+                # Chapters 9000--9009 are the client's Raid quest range, and
+                # Tower of Temptation is served inside it. A raid chapter's
+                # start is gated on this block before any request leaves the
+                # device, so an unsent key reads as a locked quest and no
+                # server log can show the refusal. See
+                # `EventCatalog.raid_quest_params`.
+                raid_params = self.server.event_catalog.raid_quest_params(
+                    progress if type(progress) is int and progress >= 0 else None
+                )
+                if raid_params:
+                    payload["eventQuestParams"] = raid_params
             if self.server.drop_eligibility:
                 # Without this the client marks every character and Companion
                 # `canDrop = false` and silently discards each drop it rolls.

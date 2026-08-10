@@ -1735,3 +1735,61 @@ stamina-cap inflation another reimplementation recorded cannot arise here.
 **Still unvalidated.** Nothing above has been played. The contracts are read from
 the client's own handlers rather than from a capture, and the thirty stages have
 never run against this server.
+
+## Tower of Temptation sits in the client's Raid quest chapter range
+
+**Reported symptom.** "Tower of Temptation quests are locked now. Says I don't
+meet the requirements to play them," from two testers. Jade Dragon and the rest
+of Arena were fine when checked.
+
+- **Reproduced on the reviewed client, and the server never hears about it.**
+  Arena -> Tower of Temptation -> any of the four cards raises
+  "You don't meet the requirements to unlock this quest. Check the event notice
+  for details." The event log records the banner fetches for the list and then
+  nothing: the refusal happens on the device, before any start request. In the
+  same session Eidolon quests, standing Special Quests, and the archive folded
+  cards all opened their team popup normally, which is what rules out the
+  Special category and leaves the chapter numbers.
+- **Confirmed -- the chapter ranges are literals in `ChapterInterface..cctor`
+  (`0xD0741C`).** `CounterDescentQuestChapter` 8000--8999,
+  **`RaidQuestChapter` 9000--9009**, `TowerOfTemptationChapter` 9010--9099,
+  `DonationQuestChapter` 9100--9199. This server serves Tower of Temptation from
+  9000--9003, so its cards are Raid quests to the client no matter what
+  `towerQuestList` calls them. The range decides the start path; the family does
+  not.
+- **Confirmed -- the raid gate and what an unsent key decodes to.**
+  `UISpecialSelect2.StartSpecial` (`0xF82590`) calls
+  `ChapterInterface.IsRaidQuest` (`0xD0602C`, a bounds test against those two
+  statics) and then `EventManager.GetRaidQuestStatus` (`0xD96EC0`), which is
+  `GetQuestParam(id)["status"]` over the `eventQuestParams` object
+  `AppServerUtil.<Login>` installs via `EventManager.SetQuestParams`
+  (`0xFB79B0` names the key). `GetQuestParam` returns null when the object is
+  absent, and the status accessor answers `UISpecialItem.RaidStatus.Lock` (1) on
+  null. `Lock` (1) and `Completed` (4) are the two values the start path
+  refuses; `Subjugating` (2) and `Overkilling` (3) pass.
+  `UISpecialItem.OnClickedBtn` (`0xF81D2C`) asks `IsFolded` about the *chapter*
+  rather than the row, so a `9000-1` row reaches this same path -- serving the
+  family folded moves the refusal one level in rather than avoiding it, which a
+  live test confirmed.
+- **Confirmed -- the field types are strict, as everywhere else here.** `status`
+  is read with LitJson's `int` accessor and `remainHp` (`0xD96F50`) with the
+  `double` one, which throws on `JsonType.Int` rather than converting -- the
+  same trap `jobLevels` and `questClearDate` carry.
+- **Local policy.** `status` is sent as `Subjugating` and `remainHp` as a full
+  `1.0`. Neither is recovered: what the retired service put here was live
+  state. `Subjugating` is chosen because it is the plainer of the two values
+  that pass, and a full bar is the honest reading for a boss nobody has fought
+  on this server.
+- **Deliberately unsent: `overkillEndDate`.** `UISpecialSelect2.UpdateItems`
+  (`0xF8AE00`) draws the raid countdown and HP bar only once that date is
+  present. Withholding it keeps the cards rendering as ordinary quest cards
+  instead of dressing them in an availability window this project never
+  recovered, and a live test confirms the cards are unchanged.
+
+**What changed.** The login reply carries `eventQuestParams` for every advertised
+stage whose chapter falls in 9000--9009, derived from the event catalog so a
+later family added in that range cannot miss it.
+
+**Validated against the reviewed client.** Tower of Temptation Alika now opens
+its team popup at 15 stamina, difficulty 35, one battle. The clear was not
+played.
