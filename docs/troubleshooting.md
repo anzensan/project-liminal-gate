@@ -200,6 +200,20 @@ you have a patched build.
 | `local account state is already in use by another server` | Another server already has that save open. Stop it, or start this one with its own `--data-dir`. See [Look after your save](saves.md). |
 | `account state is in use; stop the local server before changing it` | `restore` and `adopt` will not change a save a running server owns. Stop the server and run the command again. |
 
+## The drop compendium
+
+The generated drop reference is `user-data/drop-compendium.html`. It is
+self-contained, so opening that file is always an option and needs no server at
+all. The server also serves it at `/local/compendium` — the addresses are in
+[what setup generates](generated-files.md#reading-the-drop-compendium-in-a-browser).
+
+| What you see | What to do |
+| --- | --- |
+| `This site can't provide a secure connection` | The address was opened as `https://`. This server has no certificate and speaks plain HTTP, so a browser negotiating TLS fails before the route is ever consulted — the error says nothing about the compendium. Type `http://` explicitly rather than letting the address bar choose. |
+| `{"error": "no_local_drop_compendium"}` | The address is right and the page is genuinely absent. On a dedicated server, start it once more and read what it prints about the compendium: a host whose catalogs were already current did not generate one, and it will now write it from documents it already holds, or tell you to pass `--rederive-catalogs`. On the all-in-one package, the build predates the page — rebuild the APK. |
+| Nothing answers from another device on the network | Expected on the **all-in-one package**: that server listens on loopback on the phone, so only that phone can reach it. Read it on the phone itself, or serve it from a [dedicated server](dedicated-server.md), which answers every device it serves the game to. |
+| The page loads but a stage reads `unknown` | Not a fault. Its encounters did not resolve, and the page says so rather than showing an empty list as though nothing drops there. |
+
 ## Windows and PowerShell
 
 | What you see | What to do |

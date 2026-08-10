@@ -229,6 +229,29 @@ That last restart is important: reopening the app starts a new embedded service
 with the existing app-private state. A successful build or health screen alone
 does not prove gameplay or persistence.
 
+## Look up where a drop comes from
+
+The package carries a generated reference to what each stage can yield, at the
+rates the recovered tables state. Open it in the phone's own browser:
+
+```
+http://127.0.0.1:8002/local/compendium
+```
+
+Type `http://`. The server has no certificate, so a browser that upgrades the
+address to `https://` reports *"This site can't provide a secure connection"* —
+which says nothing about the route, and is the one wrong turn worth naming here.
+
+This works with no cable and no computer because the server *is* this phone: it
+listens on loopback, and the browser beside it is a loopback client. That also
+means nothing else on your network can reach this copy — a consequence of the
+binding rather than a rule about the page. (A [dedicated
+server](dedicated-server.md) serves the same route to the devices it serves the
+game to.)
+
+A JSON `no_local_drop_compendium` reply means the build predates the page.
+Rebuild the APK to get it.
+
 ## Protect the on-device save
 
 The combined APK keeps its server state and replay records in the app's private

@@ -4,9 +4,52 @@
 
 Every entry below needs only a server restart, except Melting Pot and the six
 standing Special Quests, which are derived from your own APK's BattleData and
-need the event catalog regenerated first — each says so in its own text. The
+need the event catalog regenerated first, and the drop-reference fix, which
+additionally needs an APK rebuild for on-device testers — each says so in its
+own text. The
 earlier Attack of Coin Creeps card fix no longer needs an APK rebuild; it was
 superseded before release and says so where it stands.
+
+### Fixed
+
+- **The drop reference can actually be read now, on both deployments.** Two
+  testers reported the same thing from opposite directions: the page was
+  unreachable on a dedicated server, and one of them never had a page at all.
+  Three separate causes, none of which named itself.
+
+  The route was gated on where the server was *bound*. That answers "is this
+  the operator's own device?" only inside the all-in-one package, where the
+  listener is always `127.0.0.1:8002`. A dedicated host binds `0.0.0.0` — it
+  has to, or no phone reaches the game — so the gate refused `/local/state`,
+  `/local/events` and `/local/compendium` to everyone, the operator's own
+  console included. It asks who connected now, which is what the rule was
+  always about and is the stronger test: a network peer is refused whatever the
+  server is bound to.
+
+  The drop reference itself is deliberately no longer held to that rule. This
+  server already serves the client on that network every resource and
+  catalog-backed answer the game asks for, and the page is derived from the
+  very APK those clients are running, so a tester now reads it on the phone
+  they play on, at the address the client already points at. The save and the
+  event log keep the loopback rule: they describe a person, and one is
+  writable.
+
+  Separately, a host whose catalogs were already current never generated the
+  page. Nothing about the APK changed when the reference was added — only the
+  generator did — so `catalogs_match_apk` reported them current and the
+  derivation was skipped entirely. Such a host now writes the page from the
+  encounter documents it already holds, without repeating minutes of
+  disassembly; if those inputs are gone it says so and names
+  `--rederive-catalogs` rather than silently serving a 404 forever.
+
+  Open it with `http://`, never `https://` — this server has no certificate,
+  and a browser told to negotiate TLS reports "This site can't provide a secure
+  connection", which says nothing about the route. The addresses are written
+  down in [what setup generates](docs/generated-files.md#reading-the-drop-compendium-in-a-browser).
+
+  A dedicated server needs a restart. On-device testers need an APK rebuild to
+  carry the gate change, though the package binds loopback and behaves the same
+  either way.
 
 ### Added
 
