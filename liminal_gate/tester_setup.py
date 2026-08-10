@@ -38,11 +38,11 @@ from liminal_gate.il2cpp_plan_generator import PlanGenerationError
 from liminal_gate.legacy_client_apk_plan import METADATA_MEMBER, generate_legacy_client_plan, normalize_server_origin
 from liminal_gate.master_strings import (
     MasterStringError, build_character_names, build_companion_names, build_item_names, build_name_file,
+    load_inverse_table,
 )
 from liminal_gate.drop_compendium import (
     DEFAULT_DROP_COMPENDIUM, DropCompendiumError,
     build_from_apk as build_drop_compendium, write_compendium,
-    load_inverse_table,
 )
 from liminal_gate.resource_catalog import ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, report_resource_inventory, write_resource_manifest
