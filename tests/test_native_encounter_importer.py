@@ -114,6 +114,30 @@ class ResolveSymbolTest(unittest.TestCase):
         # `CH15_CELL1` and resolve to nothing.
         self.assertEqual((191, False), resolve_symbol("CH15_CELL_MA1", self.enemies))
 
+    def test_the_variant_forms_the_widened_chapter_range_introduced(self) -> None:
+        # Each of these stood between a real spawn and a real member in the
+        # census of what the event, side-world and Eidolon programs could not
+        # resolve. All are variants of their base and none may read as exact.
+        enemies = {
+            "MS_IceA": 1, "SP103_LIZARD": 2, "SP_BASHE1": 3,
+            "SP114_BODY": 4, "SP1_Zanna_B": 5, "SP101_DOLL_B": 6,
+        }
+        for symbol, expected in (
+            ("MS_IceA_Up", 1), ("MS_IceA_Down", 1),
+            ("SP103_LIZARD_last", 2), ("SP101_DOLL_B_first", 6),
+            ("SP_BASHE1_A", 3), ("SP_BASHE1_B", 3),
+            ("SP114_BODY_BOSS", 4), ("SP1_Zanna_B_DANGER", 5),
+        ):
+            with self.subTest(symbol=symbol):
+                self.assertEqual((expected, False), resolve_symbol(symbol, enemies))
+
+    def test_a_widened_suffix_never_overrides_a_real_member(self) -> None:
+        # `_A` and `_B` are common enough as endings that peeling them must stay
+        # subordinate to exact membership, or a real enemy would be read as a
+        # variant of something else.
+        enemies = {"SP_BASHE1": 3, "SP_BASHE1_A": 9}
+        self.assertEqual((9, True), resolve_symbol("SP_BASHE1_A", enemies))
+
     def test_an_unknown_symbol_resolves_to_nothing(self) -> None:
         self.assertEqual((None, False), resolve_symbol("CH21_WHITE1", self.enemies))
 
@@ -189,8 +213,23 @@ class StageIdentityTest(unittest.TestCase):
         self.assertEqual((20, 2), stage_identity("Chapter20.$Battle1_3$1$"))
         self.assertEqual((20, 10), stage_identity("Chapter20.$Battle1_20$1$"))
 
-    def test_rejects_types_outside_the_supported_range(self) -> None:
-        for name in ("Chapter7.$Battle1_1$1$", "Chapter43.$Battle1_1$1$", "Chapter8", "BattleManager", "MyChapter8.$Battle1_1$1$"):
+    def test_reads_every_chapter_the_binary_compiles_not_a_fixed_range(self) -> None:
+        # The core-story range was a scope decision, not a property of the data.
+        # Event, side-world, Descent and Tower chapters compile the same
+        # generator types and must read identically.
+        for name, identity in (
+            ("Chapter110.$Battle1_1$1$", (110, 1)),
+            ("Chapter2000.$Battle3_1$1$", (2000, 3)),
+            ("Chapter8000.$Battle1_1$1$", (8000, 1)),
+            ("Chapter9102.$Battle2_1$1$", (9102, 2)),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(identity, stage_identity(name))
+
+    def test_rejects_types_that_are_not_a_chapter_generator(self) -> None:
+        # A chapter with no battle, a non-chapter type, and a type whose name
+        # merely ends in a chapter name must all stay unread.
+        for name in ("Chapter8", "BattleManager", "MyChapter8.$Battle1_1$1$"):
             with self.subTest(name=name):
                 self.assertIsNone(stage_identity(name))
 
@@ -239,7 +278,7 @@ class BuildDocumentTest(unittest.TestCase):
         self.assertEqual([{"symbol": "CreateEnemy", "enemy_id": None, "exact": False, "count": 1}], stage["spawns"])
 
     def test_rejects_an_empty_extraction(self) -> None:
-        with self.assertRaisesRegex(NativeEncounterImportError, "no Chapter 8-42 generator"):
+        with self.assertRaisesRegex(NativeEncounterImportError, "no chapter generator"):
             build_document({}, self.enemies, self.source)
 
 

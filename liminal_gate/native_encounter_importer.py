@@ -2,7 +2,7 @@
 
 Every other importer in this repository reads *serialized data*: a Unity object
 inside ``resources.assets`` whose field layout the ``DummyDll`` type trees
-recover.  The Chapter 8--42 encounter map is not serialized data.  The final
+recover.  The encounter map is not serialized data.  The final
 client compiles each chapter's battle script into IL2CPP generator classes, and
 a stage's spawn list only exists as a sequence of virtual calls inside
 ``libil2cpp.so``.  Reading it therefore needs a disassembler, which is why this
@@ -106,8 +106,16 @@ _CALIBRATION = (
     ("Chapter8", "Init_CH8_BMAKER", 0x1A3358C, 0x1A33620, "1a335f0:", "#0x570]"),
 )
 
-CHAPTERS = range(8, 43)
-_CHAPTER_TYPE_RE = re.compile(r"^Chapter(8|9|[1-3][0-9]|4[0-2])(?:\.|$)")
+#: Every chapter whose battle program the binary compiles, not a fixed range.
+#:
+#: This read the core story alone until it was widened, and the narrower range
+#: was a scope decision rather than a limit in the data: the client compiles the
+#: same ``$BattleN_M$`` generator types for the event, side-world, Descent,
+#: Tower, Eidolon and Melting Pot chapters, and they were simply never asked
+#: for.  The set is derived from the chapters that actually appear in the local
+#: ``dump.cs`` so that a build carrying a different roster reads correctly
+#: instead of silently returning the chapters this one happened to ship.
+_CHAPTER_TYPE_RE = re.compile(r"^Chapter(\d+)(?:\.|$)")
 _BATTLE_TYPE_RE = re.compile(r"Battle(\d+)_(\d+)")
 _TYPE_RE = re.compile(
     r"^(?:public|private|internal|protected)?\s*"
@@ -139,12 +147,32 @@ _INSTRUCTION_RE = re.compile(r"^\s*([0-9a-f]+):\s+[0-9a-f]+\s+([.\w]+)\s*(.*?)\s
 #: both ways (``CH33_KING2`` beside ``CH21_PLUS3``).  It is tried only after a
 #: full-symbol membership check, so a numbered enemy that *is* its own member --
 #: ``CH2_BAKUROU2`` -- still resolves to itself, exactly.
+#: Every one of these was added because a census of the symbols this importer
+#: could *not* resolve showed it standing between a real spawn and a real
+#: ``Enemies`` member -- never because it looked plausible.  The second block is
+#: what the widened chapter range turned up once it reached the event, side-world
+#: and Eidolon programs:
+#:
+#: * ``_Up``/``_Down`` are placement variants of one enemy (``MS_IceA_Up`` beside
+#:   ``MS_IceA``), and account for more of the gap than everything else together.
+#: * ``_first``/``_last`` mark position in a wave (``SP103_LIZARD_last``); the
+#:   table already carried the upper-case ``_FIRST`` and simply never saw these.
+#: * ``_A``/``_B`` are the side-world pair markers (``SP_BASHE1_A``).
+#: * ``_BOSS`` and ``_DANGER`` are state markers on an otherwise ordinary record
+#:   (``SP114_BODY_BOSS``, ``SP1_Zanna_B_DANGER``).
+#:
+#: Peeling one of these is a claim only that the variant *drops what its base
+#: drops*, and every such resolution is still marked inexact.  The direction is
+#: also the safe one: a ceiling permits rather than refuses, so reading a variant
+#: through its base can admit a clear the client legitimately rolled, while
+#: leaving it unresolved refuses one.
 _SUFFIX_RE = re.compile(
     r"(_TANM|_TWNM|_2NM|_NM|_WB|_FNM"
     r"|_APPEAR|_ATTACK|_MOVE|_FIRST"
     r"|_MA1|_MA2|_MA|_AS|_CS|_SL"
     r"|_WITH_PARENT|_PARENT|_CLONE"
-    r"|_S|_L|_R|_H|_V"
+    r"|_DANGER|_BOSS|_Down|_first|_last|_Up"
+    r"|_S|_L|_R|_H|_V|_A|_B"
     r"|_2|_3|_4|_5|_6"
     r"|\d)$"
 )
@@ -312,7 +340,7 @@ def build_document(
 ) -> dict[str, object]:
     """Project raw per-stage callee names into the local encounter document."""
     if not spawns_by_stage:
-        raise NativeEncounterImportError("no Chapter 8-42 generator produced a spawn call")
+        raise NativeEncounterImportError("no chapter generator produced a spawn call")
     stages: list[dict[str, object]] = []
     unresolved_symbols: dict[str, int] = {}
     for (chapter, section), symbols in sorted(spawns_by_stage.items()):
@@ -403,7 +431,7 @@ def collect_spawns(
     methods: list[Method], objdump: str, library: Path,
     progress: Callable[[int, int], None] | None = None,
 ) -> dict[tuple[int, int], list[str]]:
-    """Disassemble every Chapter 8-42 generator and gather its spawn callees.
+    """Disassemble every chapter generator and gather its spawn callees.
 
     `progress` is called with (done, total) after each generator. There are
     thousands of them and each is a separate disassembler invocation, so a
@@ -413,14 +441,6 @@ def collect_spawns(
     boundaries = sorted({method.rva for method in methods})
     successor = dict(zip(boundaries, boundaries[1:]))
     inherited = {method.slot: method for method in methods if method.type_name == "ChapterBase" and method.slot is not None}
-    slot_maps = {
-        chapter: inherited | {
-            method.slot: method
-            for method in methods
-            if method.type_name == f"Chapter{chapter}" and method.slot is not None
-        }
-        for chapter in CHAPTERS
-    }
     generators = [
         (method, identity)
         for method in methods
@@ -428,6 +448,19 @@ def collect_spawns(
         for identity in (stage_identity(method.type_name),)
         if identity is not None
     ]
+    # Built only for the chapters that actually carry a generator, so a chapter
+    # class with no battle program costs nothing and a generator can never index
+    # a slot map that was never built.
+    own: dict[int, dict[int, Method]] = {}
+    for method in methods:
+        chapter_match = _CHAPTER_TYPE_RE.match(method.type_name)
+        if chapter_match is None or method.slot is None or "." in method.type_name:
+            continue
+        own.setdefault(int(chapter_match.group(1)), {})[method.slot] = method
+    slot_maps = {
+        chapter: inherited | own.get(chapter, {})
+        for chapter in {identity[0] for _method, identity in generators}
+    }
     spawns: dict[tuple[int, int], list[str]] = {}
     for done, (method, identity) in enumerate(generators, start=1):
         stop = min(successor.get(method.rva, method.rva + _MAX_BODY_BYTES), method.rva + _MAX_BODY_BYTES)
