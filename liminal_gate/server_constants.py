@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import Any
 
 from liminal_gate.save_validation import MAX_ITEM_STACK
+from liminal_gate.secondary_world_data import world_max_chapters
 
 
 # The final archive client is 5.5.7, so the final-major state is advertised
@@ -52,6 +53,7 @@ CLOSED_SPECIAL_QUEST_SENTINEL = "3003-1"
 
 def build_server_constants(
     normal_slot_coins: int | None = None, rare_slot_energy: int | None = None,
+    *, secondary_worlds: bool = False,
 ) -> dict[str, Any]:
     """Return the client-facing constants block, without the Huntland lists.
 
@@ -76,26 +78,18 @@ def build_server_constants(
         "specialQuestList": [CLOSED_SPECIAL_QUEST_SENTINEL],
         "minStamina": 1,
         "maxStamina": 100,
-        # `WORLD_NUM` and `worldMaxChapter` belong beside this one and are
-        # deliberately absent. `UserData` declares both as server constants
-        # (`public static int WORLD_NUM` at 0x200, `public static int[]
-        # worldMaxChapter` at 0x1F8) alongside keys this block does send, and
-        # they pair with the `int[] worldProgressCode` (0x98) that feeds
-        # `GetWorldChapterNo`, `GetWorldSectionNo` and `IsSectionUnlocked` --
-        # the "To another world" scenarios, which the record says open after
-        # Chapter 19 (Ultimate Five) and Chapter 25 (The Death of Shay and
-        # Arionne).
+        # `worldMaxChapter` is the sibling of this key and is added below, but
+        # only while the secondary worlds are served. It is a ceiling per world
+        # and `UserData.get_worldChapterNo` clamps against it, so sending it
+        # with no world to enter would declare a shape the player cannot reach.
         #
-        # What is missing is not the plumbing but the contract. No capture or
-        # dump recovers how many worlds the retired service declared, what
-        # per-world ceilings it sent, or -- for `worldProgressCode`, which is a
-        # userdata key rather than one of these -- whether the client reads a
-        # JSON array matching its `int[]` or an object keyed by world index. A
-        # second reimplementation reports that an array hangs its client, which
-        # is a claim this project has not reproduced. Inventing any of the three
-        # would put a guessed contract on the wire, so they stay unsent until a
-        # client is asked directly, and the side worlds stay unreachable rather
-        # than half-declared.
+        # `WORLD_NUM` is *not* sent, and its absence is not an omission. It
+        # reads like a server constant -- `public static int WORLD_NUM` sits at
+        # 0x200 beside `worldMaxChapter` at 0x1F8 -- but the build carries no
+        # such string literal and `SetServerConstants` never looks for one.
+        # `UserData..cctor` assigns it the literal 3, which is the length
+        # `InitData` then allocates `worldProgressCode` at. There is nothing
+        # here for a server to declare.
         "maxChapter": 40,
         "maxCoins": 99999999,
         "maxEnergy": 9999,
@@ -169,6 +163,18 @@ def build_server_constants(
         constants["NormalSlotCoins"] = normal_slot_coins
     if rare_slot_energy is not None:
         constants["RareSlotEnergy"] = rare_slot_energy
+    if secondary_worlds:
+        # An array indexed by world, carrying internal chapter numbers, which
+        # `get_worldChapterNo` clamps a world's own chapter against. Sent as a
+        # JSON array because that is what `SetServerConstants` reads: it walks
+        # `0..Count` with the integer `get_Item`, unlike `worldProgressCode`,
+        # whose keys it parses as strings.
+        #
+        # The client rewrites index 2 to 114 itself unless `sp_five_emperors2`
+        # is set, which is how the five hard descents stay shut behind their own
+        # flag. Nothing here needs to reproduce that; sending the full ceiling
+        # and the flag together is what opens them.
+        constants["worldMaxChapter"] = world_max_chapters()
     return constants
 
 

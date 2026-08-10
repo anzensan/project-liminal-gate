@@ -86,6 +86,21 @@ over its whole inventory. Starts without a power-up return no `itemList` at
 all. Chapter-1100 world-map specials refuse the field outright, matching the
 client's own `InWMSpecial` gate.
 
+With `--secondary-worlds`, a userdata read also carries `worldProgressCode`:
+an object keyed by world index in decimal string form, whose values pack a
+chapter and section exactly as `progressCode` does. It is an object rather than
+the array the client's `int[]` declares, because `LoadUserdataFromJson`
+enumerates its keys and parses each one — a JSON array throws inside LitJson
+before the load finishes. Entry `"0"` is the story's own `progressCode`, and
+the client's "To another world" menu is gated on it. The client never sends
+this key back; the server owns every advance.
+
+The same flag makes `worldMapNo` writable rather than only comparable. It is
+`UserData.worldNo`, which the client changes when it swaps world maps, and it
+arrives through the ordinary `progressCode`/`worldMapNo`/`lastUpdate` write with
+story progress unchanged. A write that would move both is refused: chapter
+reveals are a different route.
+
 The tutorial uses phase-bound structural `userdata` writes, not ordinary
 free-roam roster authority. After Chapter 1-1, a restarted final client can
 send the established ordered party-save structure while it resumes

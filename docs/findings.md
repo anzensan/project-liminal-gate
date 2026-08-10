@@ -1584,3 +1584,102 @@ fail the gate that a chapter key would have passed for them.
 
 No unlock schedule changed -- the families still open on their existing Chapter
 5--18 gates, and all of their tiers were already accepted by `start_quest`.
+
+## 2026-08-09: the side worlds were open and unreachable, and three contracts settle it
+
+**Reported symptom.** Entering an Ultimate Five quest refuses and the client
+shows its transport dialog. The stages had been served since 2026-08-02 behind
+`--secondary-worlds`, so the report read like a stage-catalog gap. It was not.
+The menu that reaches them could never have appeared, and had it appeared, every
+clear behind it would have been refused.
+
+The three questions this project had left open -- and had declined to guess at,
+in the note beside `maxChapter` in `server_constants.py` -- are all answered
+below from the reviewed 5.5.7-170 `libil2cpp.so`. None of them needed a client
+on an emulator; all three are readable in the handlers themselves.
+
+- **Confirmed -- the menu predicate reads a userdata key the server never
+  sent.** `UIMap.IsWorld1ChangeEnable` (`0xE67EB8`) is
+  `IsMatsunoQuestEnabled() && UserData.instance.IsSectionUnlocked(26, 1) &&
+  EventManager.GetBoolean("sp_matsuno")`, and `IsWorld2ChangeEnable`
+  (`0xE67FA8`) is the same shape with `IsFiveEmperorsQuestEnabled()`,
+  `IsSectionUnlocked(20, 1)`, and `"sp_five_emperors"`. Both thresholds are
+  literal `mov w1` immediates, so the two unlock gates are recovered rather than
+  the community claim they were labeled as. `IsSectionUnlocked` (`0x19D7684`)
+  resolves the chapter to a world through
+  `ChapterInterface.GetWorldNoByChapter` and compares against
+  `GetWorldChapterNo` / `GetWorldSectionNo`, which read `worldProgressCode`
+  (field `0x98`) and nothing else. `InitData` allocates that array zeroed, so
+  with the key unsent both predicates were false for every account and the flags
+  alone opened nothing.
+- **Confirmed -- `worldProgressCode` is an object keyed by world index, not the
+  array its `int[]` declaration implies.**
+  `AppServerUtil.LoadUserdataFromJson` (`0xDB6010`) tests the key, then walks
+  the value's `Keys`, calls `System.Int32.Parse` on each key
+  (`0xDB6604`), reads the element with the *string* `get_Item`, and stores it at
+  the parsed index after a length check (`0xDB6658`). LitJson's `Keys` throws on
+  a JSON array, which is the boot hang another reimplementation reported and
+  which this project could not previously reproduce in either direction.
+- **Confirmed -- the value packing is the client's own, and it is the story
+  packing.** `UserData.SetWorldNewChapter` (`0x19D8680`) writes
+  `(section & 0x3F) | (chapter << 6) | 0x3000000` and `GetWorldChapterNo` /
+  `GetWorldSectionNo` read the halves back with `(v >> 6) & 0x3FF` and
+  `v & 0x3F`. Bits 24 and 25 are `newStage` and `showProgress`, exactly as in
+  `progressCode`. `InitData` seeds world 1 at 100-1 and world 2 at 110-1.
+- **Confirmed -- `worldMaxChapter` is an int array indexed by world, in internal
+  chapter numbers.** `UserData.SetServerConstants` (`0x19D5EF4`) reads it with
+  the integer `get_Item` over `0..Count` into a `List<int>` and calls
+  `ToArray`, so this one *is* a JSON array. `get_worldChapterNo` (`0x19D7938`)
+  clamps the world's chapter against `worldMaxChapter[worldNo]`, which settles
+  the other open question: internal chapter numbers, not per-world display
+  indices. Index 0 is never read -- both consumers, `get_worldChapterNo` and
+  `NeedShowProgress` (`0x19D8EB0`), branch away when `worldNo` is zero.
+  `SetServerConstants` then force-writes index 2 to `114` unless
+  `EventManager.GetBoolean("sp_five_emperors2")` holds (`0x19D6080`--`0x19D6140`),
+  which is what the second Five Emperors flag actually buys: the five hard
+  descents, 115--119.
+- **Confirmed -- `WORLD_NUM` is not a server constant.** It reads like one:
+  `public static int WORLD_NUM` sits at `0x200` beside `worldMaxChapter` at
+  `0x1F8`. But the build carries no `WORLD_NUM` string literal at all, and
+  `UserData..cctor` assigns the literal `3` at `0x19DE500`. There was never
+  anything to send.
+- **Confirmed -- the world cursor is `worldMapNo`, and moving it is a write the
+  server was refusing.** `UIMap.SetWorld` (`0xE65890`) compares
+  `UserData.instance.worldNo` against the requested world and, when they differ,
+  writes it (`0xE65984`) and calls `SetDirty(8)`.
+  `LoadUserdataFromJson` stores the parsed `worldMapNo` into that same field
+  `0x80` (`0xDB6314`), and `SerializeJsonUserData` (`0xDB54D8`) writes it back
+  out. So a swap posts the three-field `progressCode` / `worldMapNo` /
+  `lastUpdate` write with a new world, and every clear afterwards carries it.
+  This server compared that value against a stored zero in four places and wrote
+  it in none, so the swap was refused and then so was everything after it.
+- **Confirmed -- the client never sends its world progress back.** A whole-`.text`
+  scan for the `worldProgressCode` literal finds exactly one site,
+  `LoadUserdataFromJson`. It is server-to-client only, so an advance the server
+  does not record is one the next map open forgets.
+
+**What changed.** `worldMaxChapter` is served with the worlds; `worldProgressCode`
+is projected onto every userdata read, with world 0 derived from `progressCode`
+and worlds 1 and 2 held in a new `world_progress` account key behind an explicit
+migration; the three-field write is accepted when it moves only the cursor; and a
+secondary-world clear advances that world's cursor and nothing else.
+
+Three of those needed a second pass, and the review that found them is worth
+recording with them. The three-field form carries a *third* thing besides the
+swap and the map reveal -- the tutorial's own final map write -- and a dispatch
+rule that separated only the first two swallowed it, leaving every account
+stranded at `chapter1_5_cleared` on any server carrying this flag, which is every
+guided one. All three are told apart by what each changes: the swap changes the
+world, the reveal and the tutorial write change `progressCode`. The cursor write
+also gates on the tutorial rather than on idleness, because a force-close leaves
+a battle phase open and every later start renews it, so a `free_roam` gate
+answered Network Error until the player happened to finish a battle. And a clear
+past a world's frontier now settles without moving the cursor, rather than
+advancing it to the cleared section's successor and silently retiring everything
+in between. The main
+story's `progressCode` is untouched by all of it, which is why the per-world
+stamina-cap inflation another reimplementation recorded cannot arise here.
+
+**Still unvalidated.** Nothing above has been played. The contracts are read from
+the client's own handlers rather than from a capture, and the thirty stages have
+never run against this server.
