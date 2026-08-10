@@ -12,6 +12,24 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **The dedicated server reads the recorded tool locations, like every other
+  command.** `doctor` records where Java, Il2CppDumper, and the AArch64
+  disassembler live so nothing has to be put on `PATH`, and every launcher
+  replays that record before resolving a tool — except this one, which was
+  never updated when a dedicated host gained the ability to derive its own
+  catalogs.
+
+  The symptom was two commands in the same directory contradicting each other.
+  `python3 -m liminal_gate.doctor --install-missing` reported Il2CppDumper and
+  the disassembler ready, both resolved from the record; a start in that same
+  directory reported the master-data layout missing and told the operator to
+  install Il2CppDumper, because it was looking only at `PATH`. Nothing in
+  either output said which to believe, and the advice the launcher gave could
+  not have helped — the tool it asked for was already installed.
+
+  A host that keeps its tools on `PATH` was never affected, which is why this
+  survived: it only appears where `doctor` did the installing.
+
 - **The drop reference can actually be read now, on both deployments.** Two
   testers reported the same thing from opposite directions: the page was
   unreachable on a dedicated server, and one of them never had a page at all.
