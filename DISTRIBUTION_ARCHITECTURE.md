@@ -34,6 +34,31 @@ The server is intended only for a trusted local network. It binds broadly so a
 device can connect, but unknown hosts cannot inherit an active account merely
 by presenting a new token. Operators must not expose the port to the Internet.
 
+## Two deployments, one feature set
+
+There are two ways to run this server and they must always stay at feature
+parity:
+
+- the **dedicated server**, which a tester reaches over the local network and an
+  operator configures with flags and paths;
+- the **all-in-one package**, which embeds the same Python server in the client's
+  own APK and serves it over loopback.
+
+They are the same server, so a change that reaches one has to reach the other.
+Nothing enforces that automatically, and the two take their configuration from
+different places: the dedicated route reads an operator's command line, while
+the on-device route bakes its configuration into `write_server_runtime` and its
+catalogs into the APK at build time. That asymmetry is where they drift. A
+policy flag added to one launcher and not the other, or a catalog regenerated
+for one and not rebuilt into the other, produces a defect only some testers can
+reproduce -- and the on-device tester cannot fix it by restarting anything.
+
+Two habits keep it honest. Every change states which deployment it needs -- a
+server restart, an APK rebuild, or both -- because "server restart only" is
+false for on-device testers whenever server code changes. And any new server
+policy is added to `standard_policy_fields` rather than to a single launcher, so
+both routes pick it up from one place.
+
 ## Publication proof
 
 The publication gate is:

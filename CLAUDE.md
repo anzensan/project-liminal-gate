@@ -23,6 +23,14 @@ python3 -m liminal_gate.release_audit
 - `tests/test_launch_config.py` reads `bootstrap_server.py` source text and
   cross-checks server flags across three modules — check it after touching
   `load_launch_config`, `main`, `server_arguments`, or policy flags.
+- **The two deployments must always stay at feature parity.** The dedicated
+  server and the all-in-one on-device package are the same server, and a change
+  that reaches one must reach the other. They diverge silently because their
+  inputs differ: the dedicated route takes operator flags and paths, while the
+  on-device route bakes its configuration into `write_server_runtime` and its
+  catalogs into the APK. A policy added to one launcher and not the other, or a
+  catalog regenerated for one, is a bug that only some testers can see. Say
+  which deployment every change needs — server restart, APK rebuild, or both.
 - No TODO/FIXME markers; explain rationale in prose comments instead.
 - Version pins in `tool_install.py` are load-bearing; read adjacent comments
   before bumping.
