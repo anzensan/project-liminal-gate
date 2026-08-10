@@ -389,6 +389,7 @@ def native_stage_maxima(
     enemy_items: dict[int, dict[int, int]],
     enemy_characters: dict[int, int],
     exact_only: bool,
+    aligned_chapters: set[int] | None = None,
 ) -> tuple[dict[tuple[int, int], dict[str, dict[int, int]]], dict[str, Any]]:
     """Join the native encounter map to the per-enemy Companion, item, and character drops."""
     if (
@@ -399,7 +400,7 @@ def native_stage_maxima(
     ):
         raise StoryOutcomeGeneratorError("input must be a user-derived ARM64 native encounter map")
     _native_source(encounters.get("source"))
-    return _stage_maxima(encounters["stages"], enemy_drops, enemy_items, enemy_characters, exact_only)
+    return _stage_maxima(encounters["stages"], enemy_drops, enemy_items, enemy_characters, exact_only, aligned_chapters)
 
 
 def scenario_stage_maxima(
@@ -408,6 +409,7 @@ def scenario_stage_maxima(
     enemy_items: dict[int, dict[int, int]],
     enemy_characters: dict[int, int],
     exact_only: bool,
+    aligned_chapters: set[int] | None = None,
 ) -> tuple[dict[tuple[int, int], dict[str, dict[int, int]]], dict[str, Any]]:
     """Join the MoonSharp scenario encounter map to the same per-enemy drops.
 
@@ -430,7 +432,65 @@ def scenario_stage_maxima(
     ):
         raise StoryOutcomeGeneratorError("input must be a user-derived MoonSharp scenario encounter map")
     _scenario_source(encounters.get("source"))
-    return _stage_maxima(encounters["stages"], enemy_drops, enemy_items, enemy_characters, exact_only)
+    return _stage_maxima(encounters["stages"], enemy_drops, enemy_items, enemy_characters, exact_only, aligned_chapters)
+
+
+def chapters_whose_sections_align(
+    battledata: dict[str, Any], stages_input: list[Any],
+) -> tuple[set[int], dict[int, str]]:
+    """Return the chapters whose generator numbering *is* their section numbering.
+
+    A chapter's compiled battle program numbers its generators independently of
+    ``BattleData``, and outside the core story the two do not always agree.
+    Chapter 2000 is the plainest case: four sections, and generators numbered 1,
+    3, 5 and 7.  Reading those numbers as section numbers would file section 2's
+    spawns under section 3 and leave sections 2 and 4 empty -- a *wrong* ceiling
+    rather than a missing one, which is the one outcome worse than no data,
+    because a ceiling is what decides whether a legitimate clear is refused.
+
+    Nothing recovered states the mapping for such a chapter, so this does not
+    guess one.  What it tests for is the *evidence* of skew rather than a proxy
+    for it: a generator section number that names no declared slot.  Chapter
+    2000's 5 and 7 against four slots, and chapters 110--114's section 2 against
+    a single slot, are that evidence and are refused.
+
+    Compiling fewer generators than a chapter declares is deliberately **not**
+    refused.  It means the program covers part of the chapter, which costs the
+    uncovered sections their ceiling and misplaces nothing -- Chapter 8000
+    compiles four generators for five slots.  An earlier form of this check
+    demanded an exact match and so threw away partial chapters for a reason that
+    was never evidence of anything, which is what
+    `test_a_generated_ceiling_mints_the_rolled_companion_and_caps_it` caught: a
+    two-slot chapter carrying one compiled section is ordinary, not skewed.
+
+    Chapter 20 passes on its own terms -- its ten generator sections are ten
+    declared slots, nine of which carry no battle.  A refused chapter falls back
+    to its section allowlist and is reported.
+    """
+    slots: dict[int, set[int]] = {}
+    for chapter in battledata.get("chapters", []):
+        if not isinstance(chapter, dict) or type(chapter.get("chapterNo")) is not int or not isinstance(chapter.get("sections"), list):
+            raise StoryOutcomeGeneratorError("BattleData chapter is invalid")
+        slots[chapter["chapterNo"]] = set(range(1, len(chapter["sections"]) + 1))
+    seen: dict[int, set[int]] = {}
+    for stage in stages_input:
+        if not isinstance(stage, dict) or type(stage.get("chapter")) is not int or type(stage.get("section")) is not int:
+            raise StoryOutcomeGeneratorError("native encounter map has an invalid stage")
+        seen.setdefault(stage["chapter"], set()).add(stage["section"])
+    aligned: set[int] = set()
+    refused: dict[int, str] = {}
+    for chapter, sections in seen.items():
+        declared = slots.get(chapter)
+        if declared is None:
+            refused[chapter] = "no BattleData chapter"
+        elif sections <= declared:
+            aligned.add(chapter)
+        else:
+            refused[chapter] = (
+                f"generator section(s) {sorted(sections - declared)} name no declared slot "
+                f"(chapter declares {len(declared)})"
+            )
+    return aligned, refused
 
 
 def _stage_maxima(
@@ -439,6 +499,7 @@ def _stage_maxima(
     enemy_items: dict[int, dict[int, int]],
     enemy_characters: dict[int, int],
     exact_only: bool,
+    aligned_chapters: set[int] | None = None,
 ) -> tuple[dict[tuple[int, int], dict[str, dict[int, int]]], dict[str, Any]]:
     """Join one encounter map's stages to the per-enemy drop records.
 
@@ -460,11 +521,17 @@ def _stage_maxima(
     unresolved_symbols: dict[str, int] = {}
     unresolved_stages: set[tuple[int, int]] = set()
     missing_record_chapters: set[int] = set()
+    skewed_stages: set[tuple[int, int]] = set()
     for stage in encounters["stages"]:
         required = {"chapter", "section", "resolved", "exact", "spawns"}
         if not isinstance(stage, dict) or not required <= set(stage) or type(stage["chapter"]) is not int or type(stage["section"]) is not int:
             raise StoryOutcomeGeneratorError("native encounter map has an invalid stage")
         identity = (stage["chapter"], stage["section"])
+        if aligned_chapters is not None and stage["chapter"] not in aligned_chapters:
+            # The chapter's generator numbering is not its section numbering, so
+            # this stage's spawns cannot be filed against a section at all.
+            skewed_stages.add(identity)
+            continue
         counts: dict[int, int] = {}
         item_counts: dict[int, int] = {}
         character_counts: dict[int, int] = {}
@@ -517,6 +584,8 @@ def _stage_maxima(
         "unrecognised_symbols": len(unresolved_symbols),
         "spawns_from_unrecognised_symbols": sum(unresolved_symbols.values()),
         "chapters_unjoinable": sorted({chapter for chapter, _ in unresolved_stages}),
+        "stages_withheld_for_section_skew": len(skewed_stages),
+        "chapters_withheld_for_section_skew": sorted({chapter for chapter, _ in skewed_stages}),
     }
     return maxima, report
 
@@ -545,15 +614,20 @@ def build_catalog(
     companion_drops = companion_drops_by_enemy(enemy_data)
     item_drops = item_drops_by_enemy(enemy_data)
     character_drops = character_drops_by_enemy(enemy_data, chr_database)
+    aligned, refused = chapters_whose_sections_align(battledata, encounters.get("stages", []))
     native_maxima, report = native_stage_maxima(
-        encounters, companion_drops, item_drops, character_drops, exact_only,
+        encounters, companion_drops, item_drops, character_drops, exact_only, aligned,
     )
+    report["section_skew_reasons"] = {str(chapter): reason for chapter, reason in sorted(refused.items())}
     if scenario is None:
         report["scenario_stages_joined"] = 0
         report["scenario_chapters"] = []
     else:
+        scenario_aligned, _scenario_refused = chapters_whose_sections_align(
+            battledata, scenario.get("stages", []),
+        )
         scenario_maxima, scenario_report = scenario_stage_maxima(
-            scenario, companion_drops, item_drops, character_drops, exact_only,
+            scenario, companion_drops, item_drops, character_drops, exact_only, scenario_aligned,
         )
         # The scenario map covers chapters the native map does not reach at all,
         # so the two never disagree about a stage in practice.  Merge by the
