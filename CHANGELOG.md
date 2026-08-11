@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-08-10
 
 Every entry below needs only a server restart, except Melting Pot and the six
 standing Special Quests, which are derived from your own APK's BattleData and
