@@ -23,6 +23,14 @@ from liminal_gate.bootstrap_server import (
     _stamp_daily_quest_clear,
     daily_quest_login_fields,
 )
+from liminal_gate.archive_economy import (
+    DAILY_QUEST_FREE_ENERGY,
+    ENERGY_BEARING_KINDS,
+    MAX_FREE_ENERGY,
+    award_daily_quest_energy,
+    award_stage_energy,
+)
+from liminal_gate.server_constants import build_server_constants
 from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.hunting_catalog import HuntingCatalog, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, hunting_settlement_within_bounds
 from tests.support import bootstrap_profile, get, post, start_server, stop_server
@@ -248,6 +256,88 @@ class DailyQuestGrantTest(unittest.TestCase):
         now = 1_754_000_000.0
         _stamp_daily_quest_clear(account, stages["the_hunt_for_joker"], now)
         self.assertFalse(_daily_quest_played_today(account, stages["sweet_temptation"], now))
+
+
+class DailyQuestEnergyTest(unittest.TestCase):
+    """The reward the client draws and the server has to back with a balance.
+
+    `DailyQuestManager.EnergyGetChapter` is 6006 and the result screen takes
+    its amount from `EnergyBonusByDailyQuest`. Nothing in the client mints it,
+    so a server that grants none shows an Energy line with no amount and moves
+    no wallet -- the reported symptom.
+    """
+
+    def account(self, free_energy: int = 0) -> dict:
+        return {"userdata": {"freeEnergy": free_energy}}
+
+    def test_the_advertised_constant_and_the_grant_are_one_number(self) -> None:
+        """A screen that promises what the wallet does not pay is the bug."""
+        self.assertEqual(
+            DAILY_QUEST_FREE_ENERGY,
+            build_server_constants()["EnergyBonusByDailyQuest"],
+        )
+
+    def test_a_clear_pays_the_advertised_energy(self) -> None:
+        account = self.account(4)
+        self.assertEqual(
+            DAILY_QUEST_FREE_ENERGY,
+            award_daily_quest_energy(account, "6006-1", 20_000),
+        )
+        self.assertEqual(4 + DAILY_QUEST_FREE_ENERGY, account["userdata"]["freeEnergy"])
+
+    def test_every_daily_quest_pays_not_only_the_energy_one(self) -> None:
+        """Local policy, wider than the client's own rule. 6006 is the only
+        chapter the client designates; the operator asked for all fourteen."""
+        account = self.account()
+        for stage in build_bundled_daily_quest_stages():
+            with self.subTest(stage=stage.identity_label()):
+                self.assertEqual(
+                    DAILY_QUEST_FREE_ENERGY,
+                    award_daily_quest_energy(account, stage.identity_label(), 20_000),
+                )
+
+    def test_a_second_clear_the_same_day_pays_nothing(self) -> None:
+        """Keyed by quest and day, not by request id, so a replay cannot farm."""
+        account = self.account()
+        award_daily_quest_energy(account, "6006-1", 20_000)
+        self.assertEqual(0, award_daily_quest_energy(account, "6006-1", 20_000))
+        self.assertEqual(DAILY_QUEST_FREE_ENERGY, account["userdata"]["freeEnergy"])
+
+    def test_the_next_utc_day_pays_again(self) -> None:
+        account = self.account()
+        award_daily_quest_energy(account, "6006-1", 20_000)
+        self.assertEqual(
+            DAILY_QUEST_FREE_ENERGY,
+            award_daily_quest_energy(account, "6006-1", 20_001),
+        )
+
+    def test_a_full_wallet_mints_nothing_rather_than_overflowing(self) -> None:
+        account = self.account(MAX_FREE_ENERGY)
+        self.assertEqual(0, award_daily_quest_energy(account, "6006-1", 20_000))
+        self.assertEqual(MAX_FREE_ENERGY, account["userdata"]["freeEnergy"])
+
+    def test_a_save_written_before_this_existed_still_grants(self) -> None:
+        """The account document gains a key; it never required one."""
+        account = self.account()
+        self.assertNotIn("daily_quest_energy_granted", account)
+        self.assertEqual(
+            DAILY_QUEST_FREE_ENERGY,
+            award_daily_quest_energy(account, "6010-1", 20_000),
+        )
+        self.assertEqual({"6010-1": 20_000}, account["daily_quest_energy_granted"])
+
+    def test_the_replayable_zones_still_pay_nothing(self) -> None:
+        """Daily Quests are the exception; Metal Zone and Hunting are not.
+
+        What bounds a Daily Quest is the calendar, not the stage. Hunting
+        repeats without limit, so the anti-farm rule it was written for stands.
+        """
+        self.assertEqual(frozenset({"story", "event"}), ENERGY_BEARING_KINDS)
+        for kind in ("hunting", "metal", "special"):
+            with self.subTest(kind=kind):
+                account = self.account()
+                self.assertEqual(0, award_stage_energy(account, kind, 1001, 1))
+                self.assertEqual(0, account["userdata"]["freeEnergy"])
 
 
 class DailyQuestRotationTest(unittest.TestCase):
@@ -528,6 +618,50 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
         self.assertEqual((409, "invalid_local_hunting_items"), (status, refused["error"]))
         self.assertEqual(before, self.userdata())
         self.assertEqual("hunting_active", self.account()["tutorial_phase"])
+
+    def test_a_clear_pays_the_energy_the_result_screen_promises(self) -> None:
+        """The reported bug, over real HTTP: the reward line had nothing behind it.
+
+        The balance has to arrive in three places at once, because the client
+        reads two of them and the durable save is the third. The nested
+        `valuables` copy is the one that was easy to miss: it is built before
+        the grant, and left stale it shows the player the balance they had
+        before the reward they just watched drop.
+        """
+        before = self.userdata()["freeEnergy"]
+        self.assertEqual(200, self.start("energy-start")[0])
+        status, cleared = self.clear("energy-clear")
+        self.assertEqual(200, status, cleared)
+
+        expected = before + DAILY_QUEST_FREE_ENERGY
+        self.assertEqual(expected, self.userdata()["freeEnergy"])
+        self.assertEqual(expected, cleared["freeEnergy"])
+        self.assertEqual(expected, self.userdata()["valuables"]["freeEnergy"])
+        # Paid Energy is never written by this server, so a local grant can
+        # never be mistaken for a purchase the account did not make.
+        self.assertEqual(
+            self.userdata()["energy"], self.userdata()["valuables"]["energy"],
+        )
+
+    def test_the_day_gate_is_what_stops_a_second_payment(self) -> None:
+        """There is no second clear to farm: the day is spent at start.
+
+        The account is released to `free_roam` by the first clear, so a repeat
+        clear has no active battle to settle, and a repeat *start* is refused by
+        the once-per-UTC-day gate with the client's own soft refusal rather than
+        an error. The day key inside the grant is a second lock on the same
+        door; `DailyQuestEnergyTest` exercises it directly.
+        """
+        self.assertEqual(200, self.start("gate-start")[0])
+        self.assertEqual(200, self.clear("gate-clear")[0])
+        paid_once = self.userdata()["freeEnergy"]
+
+        # The refusal reaches the client on `cmdError`, so it draws its own
+        # "already played today" rather than a Network Error.
+        status, refused = self.start("gate-start-again")
+        self.assertEqual(200, status)
+        self.assertEqual(1, refused["cmdError"])
+        self.assertEqual(paid_once, self.userdata()["freeEnergy"])
 
     def test_a_companion_the_manifest_does_not_name_is_still_refused(self) -> None:
         """Unknown Companion ids still cannot be authored without level data."""

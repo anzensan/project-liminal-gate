@@ -195,10 +195,15 @@ separate-server and self-hosted routes, because both install the same client.
   policy, not recovered service behavior**. The retired service sold Energy and
   gifted it through campaigns and operator mail, none of which this archive can
   reproduce, and nothing in the client mints it. Without a replacement an
-  account can only ever lose Energy. Only story and event stage clears pay: the
-  optional areas — Hunting, Metal Zone, the special quest, Daily Quests and the
-  Chapter 1100 Roads — repeat without bound, so paying them would price every
-  Energy cost in the client in Metal Zone runs instead. See
+  account can only ever lose Energy. Story and event stage clears pay per
+  stage: the freely repeatable areas — Hunting, Metal Zone, the special quest
+  and the Chapter 1100 Roads — repeat without bound, so paying them would price
+  every Energy cost in the client in Metal Zone runs instead. Daily Quests pay
+  too, and are bounded by the calendar rather than by the stage: one entry per
+  quest per UTC day, and only from the two the day's rotation names. Their
+  award is the same value the constants block advertises as
+  `EnergyBonusByDailyQuest`, because the client draws that reward on its own
+  result screen and this server is what has to back it with a balance. See
   `liminal_gate/archive_economy.py` for the rates and the replay-safety
   argument.
 - The status-up route's field order, item effects, caps, error enum, and
