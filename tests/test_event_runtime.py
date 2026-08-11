@@ -3,7 +3,6 @@ import json
 from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from urllib.parse import urlencode
 
@@ -21,6 +20,7 @@ from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, get, request, start_server, stop_server
 from tests.support import post as support_post, request as support_request
+from tests.support import serve
 
 
 def character(character_id: int) -> dict[str, object]:
@@ -40,7 +40,7 @@ class EventRuntimeTest(unittest.TestCase):
             ))
             profile = bootstrap_profile()
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
-            thread = threading.Thread(target=server.serve_forever); thread.start()
+            thread = serve(server)
             try:
                 connection = HTTPConnection(*server.server_address)
                 connection.request("GET", f"/gd/get_server_status?otk={token}&requestID=folded-status")
@@ -83,7 +83,7 @@ class EventRuntimeTest(unittest.TestCase):
                 hunting_catalog=build_bundled_hunting_policy(),
                 stamina=True,
             )
-            thread = threading.Thread(target=server.serve_forever); thread.start()
+            thread = serve(server)
             try:
                 connection = HTTPConnection(*server.server_address)
                 connection.request("GET", f"/gd/get_server_status?otk={token}")
@@ -149,7 +149,7 @@ class EventRuntimeTest(unittest.TestCase):
                     server = BootstrapServer(
                         ("127.0.0.1", 0), bootstrap_profile(), state, event_catalog=catalog,
                     )
-                    thread = threading.Thread(target=server.serve_forever); thread.start()
+                    thread = serve(server)
                     start = f"stamina=5&coins=0&chapter={chapter}&section=1&lastUpdate=1".encode()
                     clear = urlencode({
                         "progressCode": 16777346, "worldMapNo": 0,
@@ -199,7 +199,7 @@ class EventRuntimeTest(unittest.TestCase):
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
             profile = bootstrap_profile()
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
-            thread = threading.Thread(target=server.serve_forever); thread.start()
+            thread = serve(server)
             start = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
             clear = urlencode({"progressCode": 16777346, "worldMapNo": 0, "valuables": json.dumps({"energyAppStore": 0, "energy": 0, "energyAndApp": 0, "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0}), "chrdata": json.dumps([character(3)]), "itemList": "[]", "summonList": "[]", "battle_result": json.dumps({"coins": 0, "buddies": [], "items": {}, "exp": 0, "section": 1, "monsters": [], "summons": [], "luckynum": 0, "chapter": 2000, "unableluckdrop": False, "boostup": [0] * 6}), "itmp0": 0, "itmp1": 0, "lastUpdate": 1}).encode()
             try:
@@ -232,7 +232,7 @@ class EventRuntimeTest(unittest.TestCase):
             catalog = EventCatalog((EventStage("test", "sp_test", 2000, 1, 15, 0, 0, (25,)),))
             profile = bootstrap_profile()
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_catalog=catalog)
-            thread = threading.Thread(target=server.serve_forever); thread.start()
+            thread = serve(server)
             start = b"stamina=15&coins=0&chapter=2000&section=1&lastUpdate=1"
             party = urlencode({
                 "chrdata": json.dumps([character(3)]), "teamMembers": json.dumps([3, 0, 0, 0, 0, 0]),

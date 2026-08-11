@@ -19,7 +19,7 @@ the confirmed protocol against durable per-account state.
 | Path | Contents |
 |---|---|
 | `liminal_gate/` | The entire Python package, flat — no subpackages |
-| `tests/` | `unittest` suite (97 files; feature-named, not module-named) |
+| `tests/` | `unittest` suite (109 files; feature-named, not module-named) |
 | `docs/` | Tester and developer documentation (see index below) |
 | `profiles/` | Bundled bootstrap profile JSON used by tests and the guided path |
 | `protocol/` | Preserved wire-shape reference material |
@@ -123,14 +123,18 @@ keystore management, and resolver functions. Other members:
 ## Running tests and checks
 
 ```sh
-.venv/bin/python -m unittest discover -s tests        # NOT pytest; ~160s, ~980 tests
+.venv/bin/python -m unittest discover -s tests        # NOT pytest; ~21s, ~1450 tests
 python3 -m liminal_gate.release_preflight             # prohibited-material check
 python3 -m liminal_gate.release_audit                 # releasability check
 ```
 
 Shared test scaffolding (server lifecycle, HTTP helpers, the bundled-profile
 loader, `write_json`) lives in `tests/support.py`; new tests should use it
-rather than hand-rolling a server thread.
+rather than hand-rolling a server thread. `serve` is not a convenience: a
+server threaded by hand takes `serve_forever`'s default half-second poll
+interval, and `shutdown` waits for it, so each hand-rolled lifecycle costs
+500ms of doing nothing. That was most of a 261s run before the helpers took it
+over.
 
 The unit suite fakes the IL2CPP dump, master-data import, catalog
 derivations, and signing. After changing any of those, run

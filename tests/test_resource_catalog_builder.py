@@ -4,7 +4,6 @@ from http.client import HTTPConnection
 import json
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
@@ -16,6 +15,7 @@ from liminal_gate.resource_catalog_builder import (
     shrunken_resource_categories,
     write_resource_manifest,
 )
+from tests.support import serve
 
 
 class ResourceCatalogBuilderTest(unittest.TestCase):
@@ -44,8 +44,7 @@ class ResourceCatalogBuilderTest(unittest.TestCase):
             ("127.0.0.1", 0), load_profile(profile_path), BootstrapState(self.root / "state.json"),
             resource_catalog=load_resource_catalog(manifest_path, self.resources),
         )
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
+        thread = serve(server)
         try:
             connection = HTTPConnection(*server.server_address)
             connection.request("GET", "/resources/data_u2017/nested/entry.bin")

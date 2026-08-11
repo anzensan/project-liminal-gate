@@ -5,7 +5,6 @@ from contextlib import ExitStack
 from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from unittest.mock import patch
 
@@ -20,6 +19,7 @@ from liminal_gate.bootstrap_server import (
     _is_loopback_peer,
     load_profile,
 )
+from tests.support import serve
 
 
 def _write_profile(path: Path) -> Path:
@@ -65,8 +65,7 @@ class _StateRouteHarness(unittest.TestCase):
             BootstrapState(self.state_path),
             root / "events.jsonl",
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.thread = serve(self.server)
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.thread.join)
         self.addCleanup(self.server.shutdown)

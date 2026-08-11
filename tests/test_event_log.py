@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
-import threading
 import unittest
 from http.client import HTTPConnection
 from pathlib import Path
@@ -11,6 +10,7 @@ from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, load_profile
 from liminal_gate.event_log import refused_write_shapes, safe_form_diagnostics
+from tests.support import serve
 
 
 ROSTER = [{"id": 1, "lv": 30, "exp": 4096}, {"id": 2, "lv": 12, "exp": 64}]
@@ -130,8 +130,7 @@ class RefusedWriteEventTest(unittest.TestCase):
             state = BootstrapState(Path(directory) / "state.json")
             state.create_account("token", "account", {"coins": 0, "chrdata": []})
             server = BootstrapServer(("127.0.0.1", 0), profile, state, event_log=log)
-            thread = threading.Thread(target=server.serve_forever)
-            thread.start()
+            thread = serve(server)
             try:
                 connection = HTTPConnection(*server.server_address)
                 connection.request("POST", "/gd/userdata?otk=token&requestID=refused", body=urlencode({

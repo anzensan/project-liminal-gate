@@ -6,7 +6,7 @@ internals, the setup/tooling half, conventions, and refactoring gotchas.
 ## Commands
 
 ```sh
-.venv/bin/python -m unittest discover -s tests   # test suite (unittest, NOT pytest; ~160s)
+.venv/bin/python -m unittest discover -s tests   # test suite (unittest, NOT pytest; ~21s)
 python3 -m liminal_gate.release_preflight        # before publishing changes
 python3 -m liminal_gate.release_audit
 ```
