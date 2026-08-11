@@ -31,7 +31,8 @@ it never attempts a one-field partial projection.
 | --- | --- | --- |
 | Hunting | User-local, solo Metal/Hunting stages selected and settled through the normal quest lifecycle. | Recreating retired rotations, paid-entry systems, or unbounded client-authoritative rewards. |
 | Huntland -> Strikes Back | Packaged non-collaboration Counter Descent families, progress-gated and settled through the bounded normal quest lifecycle. | Claiming recovered historical dates, rotations, or rewards. |
-| Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated 42-stage curated Archive and any explicit reviewed override, using structurally validated Hunting/event settlement; Hunting reward maxima are optional strict-audit data. | Treating Special Quests as PvP or a live event schedule. |
+| Arena -> Special Quests | Bundled Chapter 3003-1 plus the generated curated Archive, the bundled Battle Champs and 8-Bit Rush cards, and any explicit reviewed override, using structurally validated Hunting/event settlement; Hunting reward maxima are optional strict-audit data. | Treating Special Quests as PvP or a live event schedule. |
+| Arena -> Descent Quests | The seven Third Descent, Dragon King and Royal Rings rows the final client drew in this menu, on the mode 3 `descentQuestList` rather than the Special Quest list. | Inventing a Descent schedule, shared boss state, or a reward table for stages already served. |
 | Tower | All 12 shipped battles, permanently available after a local Chapter 3 gate as a solo adapter. | Shared HP, staged achievements, rankings, historical rotations, or invented fixed rewards. |
 | Eidolon Quests | The 12 converted solo battles with matching banners and zero fabricated collectible reward. | Empty tier placeholders, retired Co-op, in-battle summoning, enhancement, or server-side rerolling. |
 | Arena VS / ranking | Remain visibly unavailable. | Photon rooms, friends, matchmaking, rankings, co-op, raids, or a simulated service presented as the original Arena. |
@@ -78,8 +79,10 @@ Strikes Back reuses the same lifecycle through the event catalog. The bundled
 Counter Descent policy declares Chapters 8000--8007 with five tiers each and
 Chapters 8012--8017 with three tiers each, folds every unlocked family to one
 selector row, and settles a clear from the drops the client reports against a
-server-projected inventory. Little Noah 8008--8011 and Hime Rush 8018 remain
-excluded because their distinct progression/reward contracts are unrecovered.
+server-projected inventory. Chapters 8008--8011 and 8018 take the same
+lifecycle but are advertised in Arena -> Special Quests, where the final client
+listed them: they are Battle Champs and 8-Bit Rush, and the contract that once
+kept them out is their `dropBuddies` manifest, which now bounds their clears.
 Original-client selector navigation and Chapter 8000-1 entry are confirmed, and
 issue 46 observed a clear callback for the first time: it reported the battle's
 own experience, Coins, and drops, refuting the zero-base clear this originally

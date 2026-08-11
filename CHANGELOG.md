@@ -71,6 +71,50 @@ superseded before release and says so where it stands.
 
 ### Added
 
+- **The Arena menus are the ones the game shipped with, and two families come
+  back with them.** A tester recorded the whole 5.5.7 menu tree as it stood at
+  shutdown, and comparing it against what this server draws found two gaps that
+  had nothing to do with each other.
+
+  The first is a menu that was never served. The client has ten quest selectors
+  and this server fed six of them; the missing one is Arena → Descent Quests,
+  which is a different screen from Huntland → Strikes Back and reads a list of
+  its own. Bahamut's, Leviathan's and Odin's Third Descents, the three Dragon
+  King chapters and the Royal Rings were being advertised beside the Special
+  Quests instead — playable, but in the wrong place. They are drawn in their own
+  menu now. Nothing about how they start or settle changes: the menu a card
+  appears in is decided by the list the server advertises it on, and by nothing
+  else, and every save keeps working across the move.
+
+  That also buys room where room was short. Arena → Special Quests cannot
+  render more than thirty cards — a thirty-first hangs the client on the splash
+  screen — and a finished account was already over it, so two cards were being
+  withheld to keep the game launchable. Moving seven rows out leaves nothing
+  withheld.
+
+  The second gap is Battle Champs and 8-Bit Rush, nine stages that were in the
+  archive all along under the wrong names. They were catalogued from their
+  Japanese internal titles, which call them something else entirely, and held
+  back as unrecoverable collaborations. The banner artwork the English client
+  actually drew names them — Void Venom, Tempest, Dire Fang, Brushfyr, and
+  8-Bit Rush — and the thing that made them "distinct and unrecovered", a
+  Companion drop list no Strikes Back stage has, turned out to be sitting in
+  your own APK. All five are Special Quest cards now, opening between Chapters
+  19 and 23, and their tier II battles are the only place in the archive the
+  Companions Samatha, Yukken, Maverick, Spike, Holy Breath, Axion Breath and
+  The Ancient Key drop. A clear that claims a Companion its own stage never
+  declared is refused rather than settled.
+
+  Both need a server restart, and an APK rebuild for on-device testers, because
+  the on-device package carries the same server. Neither needs a regenerated
+  event catalog: an event catalog you generated before this release lands its
+  Descent rows in the new menu on its own.
+
+  What is not fixed: the *order* the Special Quest cards appear in. The record
+  shows an order that is not chapter order, and this server still lists them by
+  chapter. Every card the record names is now present; where each sits in the
+  list is the remaining difference.
+
 - **A dedicated server is one command again, with nothing to copy.** Setting up
   a separate always-on host used to mean running guided setup on the machine
   that builds the APK and then hand-copying four generated catalogs onto the

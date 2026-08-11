@@ -82,10 +82,11 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             (144, 148, 151, 673),
         )
         progress_after_chapter_4 = 0x01000000 | (5 << 6) | 1
-        self.assertEqual(
-            ["2000", "2004-1", "2004-2"],
-            loaded.client_lists(progress_after_chapter_4)["specialQuestList"],
-        )
+        lists = loaded.client_lists(progress_after_chapter_4)
+        self.assertEqual(["2004-1", "2004-2"], lists["specialQuestList"])
+        # 2000 is a Third Descent and rides the Arena -> Descent Quests menu,
+        # not Special Quests; the cadence it unlocks on is the same either way.
+        self.assertEqual(["2000"], lists["descentQuestList"])
 
     def test_curated_archive_uses_folded_and_explicit_selector_rows(self) -> None:
         chapters = (2000, 2003, 2005, 2007, 2008, 2009, 2010, 2011, 2014, 2015, 2016, 2017, 2018)
@@ -100,20 +101,28 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             (148, 596, 597, 736, 805, 1080, 1288),
         )
         after_story = 0x01000000 | (43 << 6) | 1
+        lists = loaded.client_lists(after_story)
         self.assertEqual(
             [
-                "2000", "2003-1", "2003-2", "2005-1", "2005-2",
-                "2007", "2008", "2009", "2010-1", "2010-2",
-                "2011-1", "2011-2", "2014-1", "2014-2",
+                "2003-1", "2003-2", "2005-1", "2005-2",
+                "2007", "2008", "2014-1", "2014-2",
                 # 2015 stays per-section although the client folds it: the
                 # placeholders below are what a folded card would advertise.
                 "2015-1", "2015-2",
-                # 2016 and 2017 fold, which is how the client names them and
-                # what keeps `specialQuestList` inside the length it can draw.
-                "2016", "2017",
+                # 2017 folds, which is how the client names it and what keeps
+                # `specialQuestList` inside the length it can draw.
+                "2017",
                 "2018-1", "2018-2",
             ],
-            loaded.client_lists(after_story)["specialQuestList"],
+            lists["specialQuestList"],
+        )
+        # The Third Descents, the Dragon King and the Royal Rings are drawn by
+        # a different Arena menu, and each keeps the folded or per-section
+        # identity it had while it was miscarried on the Special list: 2000,
+        # 2009 and 2016 fold, 2010 and 2011 do not.
+        self.assertEqual(
+            ["2000", "2009", "2010-1", "2010-2", "2011-1", "2011-2", "2016"],
+            lists["descentQuestList"],
         )
         # The client names 2015 bare too, and that literal is deliberately not
         # honoured: a folded card offers a tier per section its flag answers

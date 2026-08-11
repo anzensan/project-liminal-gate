@@ -18,6 +18,21 @@ service computed each and the client only rendered it.
 Next phase: extending original-client verification beyond Chapter 9, and
 backing more of it with preserved traces rather than playthrough alone.
 
+Issue 62 supplied the 5.5.7 menu tree as it stood at shutdown and corrected the
+Arena menus against it. Arena -> Descent Quests is a selector of its own that
+this server had never fed, so the Third Descents, the Dragon King and the Royal
+Rings were being advertised beside the Special Quests; they are drawn in their
+own menu now, which also returns seven rows to a Special Quest list that was
+over the client's thirty-row ceiling and withholding cards to stay launchable.
+The same record placed Battle Champs (8008--8011) and 8-Bit Rush (8018), the
+five families held back as unrecoverable collaborations under the Japanese
+titles Little Noah and Hime Rush; the English banner artwork names them, and
+the contract that differed is their `dropBuddies` manifest, which now bounds
+their clears. Both need a server restart and, for on-device testers, an APK
+rebuild. Display order within Arena -> Special Quests still does not match the
+record and is tracked in `PARITY_ROADMAP.md`. Original-client acceptance of
+either menu is pending.
+
 Issue 33 corrected the chapter-ticket boundary. A Pixel 7 Pro rendered the
 Chapter 7 milestone row with an empty reward area and retained its unread badge,
 disproving the prior server-only inbox acceptance. Guided core story now grants

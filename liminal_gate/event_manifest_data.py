@@ -100,6 +100,96 @@ ARCHIVE_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
     **{chapter: (1, 2, 3, 4) for chapter in range(8000, 8008)},
 }
 
+#: The archived families the final client listed under Arena -> Descent Quests
+#: rather than Arena -> Special Quests.
+#:
+#: `UISpecialSelect.Mode` declares ten selectors, and `DescentQuest` (3) is a
+#: different menu from `DescentHunting` (8), which is Huntland -> Strikes Back.
+#: Mode 3 reads `ServerConstants.descentQuestList`, a key this server did not
+#: send at all until the shutdown menu record named the five families it held:
+#: the three Third Descents, the Dragon King, and the Royal Rings. Everything
+#: here was previously advertised as an ordinary Special Quest card, which is
+#: not where the retired service put it.
+#:
+#: Nothing about the start or the clear changes with the move.
+#: `ChapterInterface` declares no Descent range at all -- the ranges it does
+#: declare (Counter Descent 8000--8999, Raid 9000--9009, Tower 9010--9099,
+#: Donation 9100--9199) are what pick a start path, and no 2000-series chapter
+#: is in any of them. The menu follows the list a row is advertised on and
+#: nothing else, so these rows keep the folded/unfolded identity, the flags and
+#: the settlement they already had.
+#:
+#: The move also returns seven rows to `specialQuestList`, which matters because
+#: that list is capped: at full progress it served 32 rows against a client that
+#: hangs above 30, so two were already being withheld before anything was added.
+DESCENT_QUEST_CHAPTERS = frozenset({2000, 2001, 2002, 2009, 2010, 2011, 2016})
+
+# event_id, chapter, unlock_after_chapter, section stamina
+#
+# Battle Champs and 8-Bit Rush: the two families inside the Counter Descent
+# chapter range that the final client listed under Arena -> Special Quests
+# instead of Huntland -> Strikes Back. Both were excluded from this archive
+# until the shutdown menu record placed them, and the reason recorded for
+# excluding them -- that their progression and reward contracts were distinct
+# and unrecovered -- is now answered rather than inherited: the distinction is
+# `dropBuddies`, and it is in the tester's own BattleData. See
+# `SECTION_COMPANION_MANIFESTS` below.
+#
+# Both were named `Little Noah` and `Hime Rush` here for as long as they were
+# excluded, which is what BattleData calls them: `リトルノア：ケツァルコアトル`
+# and `ヒメラッシュ`. Those are the Japanese internal names. The banner artwork
+# the English client actually drew reads TEMPEST, DIRE FANG, VOID VENOM and
+# BRUSHFYR over `sp8008-1`--`sp8011-2`, and `8-Bit Rush` over `sp8018-1`, which
+# is what the final menus called them, so the identities below follow the client
+# rather than the table behind it.
+#
+# Section economics are recovered: 8008--8011 carry two sections of three
+# battles at 5 and 15 stamina, 8018 one section of six battles at 15. Every one
+# of them declares an empty `parentQuest`, so nothing here is chained. The
+# unlock chapters continue the same permanent local cadence the fourteen
+# Strikes Back families carry through Chapter 18; they are archive policy, not
+# a recovered schedule.
+COLLAB_SPECIAL_MANIFEST_ROWS: tuple[tuple[str, int, int, tuple[int, ...]], ...] = (
+    ("battle_champs_stormy_serpent", 8008, 19, (5, 15)),
+    ("battle_champs_fearsome_fiends", 8009, 20, (5, 15)),
+    ("battle_champs_creature_from_the_void", 8010, 21, (5, 15)),
+    ("battle_champs_dragon_awakens", 8011, 22, (5, 15)),
+    ("eight_bit_rush", 8018, 23, (15,)),
+)
+
+#: Sections whose Companion drops are declared by the client's own
+#: `BattleData.Section.dropBuddies`, as ``(chapter, section) -> ((companion_id,
+#: cap), ...)``.
+#:
+#: Recovered, not chosen. The packed `code` is the same shape the story
+#: outcomes and the Chapter-1100 manifests use -- `code >> 8` is the Companion
+#: and the low byte its per-clear cap -- and these five sections are the only
+#: members of the 8000--8018 range that carry a manifest at all. Every Strikes
+#: Back section declares an empty one, which is exactly the difference that kept
+#: these families out of the archive.
+#:
+#: An empty tuple is a declaration, not an absence: tier I of each Battle Champs
+#: family declares no Companion, so a clear that claims one is refused. That is
+#: the same reading `_outcome_buddy_info` already applies to a story rule whose
+#: recovered maxima are empty. A stage absent from this table is unconstrained,
+#: because no manifest was read for it -- the two are not the same and are not
+#: collapsed.
+#:
+#: The Companions themselves resolve through the operator's own names catalog:
+#: 367 Samatha, 368 Yukken, 369 Maverick, 370 Spike, and 422--424 the three
+#: 8-Bit Rush drops.
+SECTION_COMPANION_MANIFESTS: dict[tuple[int, int], tuple[tuple[int, int], ...]] = {
+    (8008, 1): (),
+    (8008, 2): ((367, 1), (369, 1)),
+    (8009, 1): (),
+    (8009, 2): ((368, 1), (369, 1)),
+    (8010, 1): (),
+    (8010, 2): ((368, 1), (370, 1)),
+    (8011, 1): (),
+    (8011, 2): ((367, 1), (370, 1)),
+    (8018, 1): ((422, 1), (423, 1), (424, 1)),
+}
+
 # event_id, flag, chapter, unlock_after_chapter
 #
 # Tower of Temptation is served from Chapters 9000--9003, not the 9010--9013

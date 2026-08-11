@@ -4,6 +4,7 @@ from liminal_gate.event_catalog import (
     EventCatalog,
     EventCatalogError,
     EventStage,
+    build_bundled_collab_special_policy,
     build_bundled_counter_descent_policy,
     load_event_catalog,
     merge_event_catalogs,
@@ -34,7 +35,7 @@ class EventCatalogTest(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'folded','flag':'sp_ch_2000','chapter':2000,'section':section,'stamina':15,'coins':0,'clear_coins':0,'character_ids':[],'selector_id':'2000'} for section in (1,2)]}))
    loaded=load_event_catalog(e,c)
-   self.assertEqual(['2000'],loaded.client_lists(None)['specialQuestList'])
+   self.assertEqual(['2000'],loaded.client_lists(None)['descentQuestList'])
 
  def test_unrelated_selector_identity_is_refused(self):
   with tempfile.TemporaryDirectory() as d:
@@ -212,6 +213,137 @@ class BundledCounterDescentPolicyTest(unittest.TestCase):
         self.assertEqual(5, merged.by_identity()[(8000, 1)].stamina)
         self.assertTrue(merged.by_identity()[(8000, 1)].projected_rewards)
         self.assertIn((2000, 1), merged.by_identity())
+
+
+class BundledCollabSpecialPolicyTest(unittest.TestCase):
+    """Battle Champs and 8-Bit Rush: the same range, a different menu.
+
+    Both sit in the Counter Descent chapter range, so the client starts and
+    settles them exactly as it does Strikes Back. The shutdown menu record
+    lists them under Arena -> Special Quests instead, with no Strikes Back
+    entry, which is the only thing that differs.
+    """
+
+    def setUp(self) -> None:
+        self.catalog = build_bundled_collab_special_policy()
+
+    @staticmethod
+    def progress_at(chapter: int) -> int:
+        return 0x01000000 | (chapter << 6) | 1
+
+    def test_declares_the_recovered_sections_and_nothing_else(self) -> None:
+        self.assertEqual(
+            [
+                (8008, 1), (8008, 2), (8009, 1), (8009, 2),
+                (8010, 1), (8010, 2), (8011, 1), (8011, 2),
+                (8018, 1),
+            ],
+            sorted(self.catalog.by_identity()),
+        )
+        for chapter in range(8008, 8012):
+            self.assertEqual(
+                [5, 15],
+                [
+                    self.catalog.by_identity()[(chapter, section)].stamina
+                    for section in (1, 2)
+                ],
+            )
+            # A third tier is what a `GetSectionCount` fold would offer and
+            # what BattleData does not have.
+            self.assertNotIn((chapter, 3), self.catalog.by_identity())
+        self.assertEqual(15, self.catalog.by_identity()[(8018, 1)].stamina)
+        self.assertTrue(
+            all(stage.projected_rewards for stage in self.catalog.stages)
+        )
+        self.assertTrue(all(stage.selector == "special" for stage in self.catalog.stages))
+
+    def test_battle_champs_folds_and_eight_bit_rush_does_not(self) -> None:
+        """Four cards, not eight rows, and the fifth family is a lone section.
+
+        Folding is what holds `specialQuestList` at the 30 rows the client can
+        draw. 8018 has one section and no folded banner, so it is advertised as
+        the section row its own artwork was drawn for.
+        """
+        lists = self.catalog.client_lists(self.progress_at(24))
+        self.assertEqual(
+            ["8008", "8009", "8010", "8011", "8018-1"],
+            lists["specialQuestList"],
+        )
+        self.assertEqual([], lists["descentHuntingList"])
+        self.assertEqual([], lists["descentQuestList"])
+
+    def test_a_folded_card_flags_only_the_two_tiers_it_has(self) -> None:
+        """The same rule the three-tier Strikes Back families rely on.
+
+        `GetSectionCount` returns the hard-coded five for every chapter in this
+        range, so a card offers `8008-3` through `8008-5` as well. None is
+        backed by a section, and a chapter flag would answer `CheckQuestFlag`
+        true for all three, so the flags stay per section.
+        """
+        self.assertEqual(
+            ["sp_ch_8008-1", "sp_ch_8008-2"],
+            sorted(self.catalog.flags(self.progress_at(20))),
+        )
+
+    def test_the_release_cadence_opens_one_family_at_a_time(self) -> None:
+        self.assertEqual(
+            [], self.catalog.client_lists(self.progress_at(19))["specialQuestList"],
+        )
+        self.assertEqual(
+            ["8008"], self.catalog.client_lists(self.progress_at(20))["specialQuestList"],
+        )
+
+    def test_the_recovered_drop_manifests_bound_a_reported_claim(self) -> None:
+        """The one thing these five carry that the rest of the range does not.
+
+        Every Strikes Back section declares an empty `dropBuddies`; these are
+        the only members of 8000--8018 that name a Companion. Tier I declares
+        none, and declaring none is not the same as declaring nothing.
+        """
+        stages = self.catalog.by_identity()
+        self.assertEqual((), stages[(8008, 1)].companion_manifest)
+        self.assertFalse(stages[(8008, 1)].companions_within_manifest([367]))
+        self.assertTrue(stages[(8008, 1)].companions_within_manifest([]))
+        self.assertEqual(((367, 1), (369, 1)), stages[(8008, 2)].companion_manifest)
+        self.assertTrue(stages[(8008, 2)].companions_within_manifest([367, 369]))
+        # Its own packed cap is one apiece, so a second copy is over it.
+        self.assertFalse(stages[(8008, 2)].companions_within_manifest([367, 367]))
+        # A Companion another family drops is still not this one's.
+        self.assertFalse(stages[(8008, 2)].companions_within_manifest([368]))
+        self.assertEqual(
+            ((422, 1), (423, 1), (424, 1)), stages[(8018, 1)].companion_manifest,
+        )
+
+    def test_a_stage_with_no_recovered_manifest_stays_unconstrained(self) -> None:
+        """A gap in what was read is not evidence that a stage drops nothing."""
+        unread = EventStage("archive", "sp_ch_2003-1", 2003, 1, 15, 0, 0, ())
+        self.assertIsNone(unread.companion_manifest)
+        self.assertTrue(unread.companions_within_manifest([1, 2, 3]))
+
+
+class DescentQuestMenuTest(unittest.TestCase):
+    """Arena -> Descent Quests is `UISpecialSelect` mode 3, not mode 0 or 8."""
+
+    def catalog(self) -> EventCatalog:
+        return EventCatalog((
+            EventStage("bahamut", "sp_ch_2000", 2000, 1, 15, 0, 0, (), selector="descent_quest", selector_id="2000"),
+            EventStage("dragon_king", "sp_ch_2010-1", 2010, 1, 15, 0, 0, (), selector="descent_quest"),
+            EventStage("archive", "sp_ch_2003-1", 2003, 1, 15, 0, 0, ()),
+        ))
+
+    def test_descent_rows_leave_the_special_list_for_their_own(self) -> None:
+        lists = self.catalog().client_lists(None)
+        self.assertEqual(["2000", "2010-1"], lists["descentQuestList"])
+        self.assertEqual(["2003-1"], lists["specialQuestList"])
+        # Strikes Back is a different menu again, and stays empty here.
+        self.assertEqual([], lists["descentHuntingList"])
+
+    def test_the_move_does_not_disturb_the_flags_a_row_carries(self) -> None:
+        """The list a row is on picks the menu. It picks nothing else."""
+        self.assertEqual(
+            ["sp_ch_2000", "sp_ch_2003-1", "sp_ch_2010-1"],
+            sorted(self.catalog().flags(None)),
+        )
 
 
 class RaidRangeQuestParamsTest(unittest.TestCase):

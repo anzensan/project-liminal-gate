@@ -106,6 +106,7 @@ until your account has finished the chapter each row waits for.
 | Lucia archive | Chapter 13 |
 | Odin Descent | Chapter 20 |
 | Strikes Back families | Chapters 5 through 18, one family per chapter |
+| Battle Champs (8008 to 8011) and 8-Bit Rush (8018) | Chapters 19 through 23, one family per chapter |
 | Tower of Temptation 9010-1 | Chapter 3 |
 | Melting Pot: Lizardfolk, Beastfolk, Human (9100 to 9102) | Chapter 3 |
 | Cryptid Forest (world map) | Chapter 5 |
@@ -188,9 +189,15 @@ rotation or rewards.
 
 Guided setup also derives the five recovered archive families from your own
 BattleData and character catalog, and enables the fourteen packaged Strikes Back
-families. Their permanent progress gates, zero-Coin clears, and first-section
+families plus the five packaged Battle Champs and 8-Bit Rush cards. Their
+permanent progress gates, zero-Coin clears, and first-section
 associated-character grants are local archive policy rather than recovered
 schedules, probabilities, or complete historical reward tables.
+
+The Third Descents, the Dragon King and the Royal Rings are drawn in Arena →
+Descent Quests, the menu the final client listed them in, rather than beside
+the Special Quests. Nothing about how they start or settle changes with that;
+the menu a row appears in is chosen by the list the server advertises it on.
 
 Tower of Temptation is a separate bounded compatibility slice: guided setup
 derives the twelve Chapter 9010–9013 floors from your BattleData and advertises

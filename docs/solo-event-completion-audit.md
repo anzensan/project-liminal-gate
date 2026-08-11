@@ -87,7 +87,9 @@ grants; **unrecovered** for historical schedules and complete reward tables.
 | Family | Implemented boundary | Client proof still required |
 | --- | --- | --- |
 | Money Money Time | Chapter 3003-1, including the observed 1,800-Coin ceiling and successful result-screen retry | no open settlement boundary for the observed result |
-| Strikes Back | 8000--8007 and 8012--8017 through folded Counter Descent cards, advertised as bare chapters and flagged per section; 8008--8011 and 8018 remain excluded | open one card and confirm it expands to its real tiers only, then one clear/result return and the added 8012--8017 banners |
+| Strikes Back | 8000--8007 and 8012--8017 through folded Counter Descent cards, advertised as bare chapters and flagged per section | open one card and confirm it expands to its real tiers only, then one clear/result return and the added 8012--8017 banners |
+| Battle Champs / 8-Bit Rush | 8008--8011 as folded two-tier cards and 8018-1 as a section row, advertised in Arena -> Special Quests, with each clear bounded by its own `dropBuddies` manifest | confirm the four cards expand to two tiers each in the Special Quest menu, then one tier II clear that reports a declared Companion and one result return |
+| Descent Quests | the seven Third Descent, Dragon King and Royal Rings rows moved onto the mode 3 `descentQuestList` | confirm the Arena menu draws all seven and that Special Quests no longer lists them, then one clear from the new menu |
 | Tower | all 12 stages in 9010--9013 as a labeled solo adapter; Donation 9100--9102 excluded | first-stage clear and result return; navigation/entry already observed |
 | Solo Eidolon | the 12 nonzero-battle, banner-backed stages in 4100--4111; 16 empty tier placeholders excluded | confirm every corrected banner, then entry and clear/result; collectible mapping remains capture-gated |
 

@@ -620,9 +620,11 @@ Private inputs, captures, account state, and original assets remain excluded.
   reward table was recovered, and issue 46 observed that the client reports a
   won battle's own experience, Coins, and drops, so clear settles those from the
   client's report against a server-projected inventory rather than requiring the
-  zero-base result it originally accepted. Chapters 8008--8011 and 8018 remain
-  unavailable because their distinct progression/reward contracts are not
-  recovered.
+  zero-base result it originally accepted. The reading that Chapters 8008--8011
+  and 8018 must stay unavailable because their progression and reward contracts
+  are unrecovered is **withdrawn**: they are Battle Champs and 8-Bit Rush, the
+  contract that differs is their `dropBuddies` manifest, and it is in the
+  tester's own BattleData. See the 2026-08-10 entry below.
 
 ## Public-release boundary
 
@@ -1793,3 +1795,83 @@ later family added in that range cannot miss it.
 **Validated against the reviewed client.** Tower of Temptation Alika now opens
 its team popup at 15 stamina, difficulty 35, one battle. The clear was not
 played.
+
+## 2026-08-10: two menus the server never filled, and five families named after the wrong table
+
+**Reported symptom.** Issue 62 recorded the final 5.5.7 menu tree as it stood at
+shutdown, and it did not match what this server draws in two ways: the Third
+Descents, the Dragon King and the Royal Rings were listed under Arena -> Descent
+Quests rather than beside the Special Quests, and Arena -> Special Quests held a
+Battle Champs family and an 8-Bit Rush card this archive did not serve at all.
+
+- **Confirmed by the client's own selector enum.** `UISpecialSelect.Mode`
+  declares ten modes, and `DescentQuest` (3) is not `DescentHunting` (8). Mode 8
+  is Huntland -> Strikes Back, which this server already fed. Mode 3 reads
+  `ServerConstants.descentQuestList`, a field at static offset `0x198` beside the
+  six lists already served, whose string literal is present in the metadata --
+  so `SetServerConstants` reads it, and this server had simply never sent it.
+- **Confirmed: the move is presentation only.** `ChapterInterface` declares no
+  Descent range. The ranges it does declare -- Counter Descent 8000--8999, Raid
+  9000--9009, Tower 9010--9099, Donation 9100--9199 -- are what pick a start
+  path, and no 2000-series chapter is in any of them. Which menu draws a row is
+  decided by the list it is advertised on and by nothing else, so the seven rows
+  keep their folded or per-section identity, their flags, and their settlement.
+- **Measured, and the reason this is not cosmetic.** At full progress
+  `specialQuestList` was 32 rows against a client that hangs above 30, so two
+  were already being withheld by the cap. Moving the seven Descent rows to their
+  own list leaves 25 and withholds nothing.
+- **Confirmed by banner artwork: 8008--8011 are Battle Champs and 8018 is
+  8-Bit Rush.** Both were excluded from this archive under the names their
+  BattleData titles carry -- `リトルノア：ケツァルコアトル` and `ヒメラッシュ`,
+  read here as Little Noah and Hime Rush. Those are the Japanese internal names.
+  The English client drew its own banners over them, and decrypting the retained
+  ENCA bundles gives TEMPEST I/II (8008), DIRE FANG I/II (8009), VOID VENOM I/II
+  (8010), BRUSHFYR I/II (8011) and `8-Bit Rush` (8018-1) -- which are the
+  shutdown menu's Strike of the Stormy Serpent, Fearsome Fiends!, The Creature
+  From the Void, The Dragon Awakens, and 8-Bit Rush. A family named off its
+  BattleData title alone can be named after the wrong game entirely.
+- **Confirmed: the contract that differed is `dropBuddies`, and it is recovered.**
+  The five were held back because "their distinct progression/reward contracts
+  are unrecovered." The distinction is that every Strikes Back section declares
+  an empty `dropBuddies` while these are the only members of 8000--8018 whose
+  manifest names anything. Decoded with the same packed rule the story outcomes
+  and the Chapter-1100 manifests use (`code >> 8` is the Companion, the low byte
+  its cap): 8008-2 Samatha and Maverick, 8009-2 Yukken and Maverick, 8010-2
+  Yukken and Spike, 8011-2 Samatha and Spike, 8018-1 Holy Breath, Axion Breath
+  and The Ancient Key, one copy each. Tier I of all four families declares none.
+- **Confirmed section economics.** 8008--8011 carry two sections of three
+  battles at 5 and 15 stamina; 8018 one section of six battles at 15. Every one
+  declares an empty `parentQuest`, so none is chained.
+- **Also settled by the same sweep, so it is not looked for again.** Chapter
+  2005 already serves Mobius Final Fantasy, Recode and Strike as three unfolded
+  cards -- `sp2005-1`, `-2` and `-3` are three distinct banners, which is what
+  the menu's three Mobius entries are. Chapters 1300--1302 are escort quests
+  (`パルパル護衛`, `復讐護衛`, `お兄チャン護衛`), one battle at 10 stamina each,
+  and carry no `sp` banner at all, so they never had a selector card. Chapters
+  4000--4011 and 5000--5007 carry `mp`-prefixed banners: they are the retired
+  Co-op and VS content and stay outside solo parity.
+
+**Local policy.** Each Battle Champs family is advertised as one folded card
+rather than two section rows. Both are drawable -- the retained bundles include
+a folded `sp8008` and both section banners -- and folding is what holds
+`specialQuestList` at exactly the 30 rows the client can render with these five
+added. The tiers a fold would otherwise offer past the two that exist stay shut
+by the mechanism the three-tier Strikes Back families already rely on: per
+section flags and no chapter flag. 8-Bit Rush has one section and no folded
+banner, so it is advertised as `8018-1`. The Chapter 19--23 unlock cadence
+continues the same permanent local gate the fourteen Strikes Back families
+carry, and is not a recovered schedule.
+
+**What changed.** `descentQuestList` is served and carries the seven Descent
+rows; Battle Champs and 8-Bit Rush are served on `specialQuestList` through a
+bundled policy beside the Counter Descent one, under the same `--hunting`
+switch, so neither deployment can advertise a menu the other does not. A clear
+of any of the five is refused unless the Companions it reports are the ones its
+own section declares, at that section's cap; a section declaring none accepts
+none. Sections whose manifest was never read stay unconstrained, which is every
+other event stage.
+
+**Not validated against the reviewed client.** Both menus are covered by
+real-HTTP tests only. What is still open is what the shutdown record shows and
+this server does not: display *order* within Arena -> Special Quests, which
+remains chapter-ordered here and was not in the final client.

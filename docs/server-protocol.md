@@ -238,6 +238,17 @@ for every family whether or not five exist. Detailed
 static evidence and local-policy labels live in
 `../liminal_gate/server_constants.py` and `findings.md`.
 
+`descentQuestList` is the Arena -> Descent Quests menu, `UISpecialSelect` mode
+3, and a different selector from the mode 8 Strikes Back list above it. It
+carries the seven rows the final client drew there: the Bahamut, Leviathan and
+Odin Third Descents, the three Dragon King chapters, and the Royal Rings. They
+were previously advertised on `specialQuestList`, which is not where the
+retired service listed them. The move changes the menu and nothing else --
+`ChapterInterface` declares no Descent range, so no start path is range-picked
+here, and each row keeps its folded or per-section identity, its flags and its
+settlement. It also returns seven rows to `specialQuestList`, which at full
+progress was serving 32 against a 30-row ceiling and withholding the excess.
+
 `statusUpItems` is present only while a status-up policy is loaded, and is that
 policy projected into the client's own shape: one `"<itemID>"` key per item
 holding `[levels, skillBoostPercent, luckPercent, species]`, species zero
@@ -279,9 +290,8 @@ banner-backed solo result. Exact accepted replays remain stable after restart.
 
 Counter Descent starts use the ordinary `start_quest` route. The bundled policy
 accepts Chapters 8000--8007, sections 1--5, at 5/10/15/15/15 stamina and
-Chapters 8012--8017, sections 1--3, at 5/10/15 stamina. It explicitly excludes
-Little Noah 8008--8011 and Hime Rush 8018 because their distinct contracts are
-unrecovered. A successful entry commits the debit and active stage together;
+Chapters 8012--8017, sections 1--3, at 5/10/15 stamina. A successful entry
+commits the debit and active stage together;
 retry or restart cannot debit it again. `clear_quest` requires unchanged progress
 and Summons, and because no server-authored reward table was recovered it settles
 the rewards the client itself reports: the submitted inventory must be the
@@ -290,6 +300,22 @@ client's stack ceiling, and the experience, Coins, Skill Boost, monsters, and
 Lucky enemies it reports are kept through the same merge every other event clear
 uses. A reported Summon is refused. This is preservation policy, not a claim
 about historical event schedules or rewards.
+
+Battle Champs (8008--8011) and 8-Bit Rush (8018) are in that range and take
+that same start and settlement, but the final client listed them in Arena ->
+Special Quests, so they are advertised on `specialQuestList` and appear in no
+Strikes Back list. Each Battle Champs family is one folded card over two
+recovered sections at 5 and 15 stamina; 8-Bit Rush is a single 15-stamina
+section and, having no folded banner, is advertised as `8018-1`. The five were
+excluded from earlier releases as "Little Noah" and "Hime Rush" -- the names
+their BattleData titles carry -- on the grounds that their progression and
+reward contracts were unrecovered. The English banners the client drew name
+them as above, and the contract that differed is `dropBuddies`: these are the
+only sections in 8000--8018 whose manifest names a Companion. A clear is
+therefore held to what its own section declares, at the packed per-clear cap,
+and a section that declares none accepts none. Authoring the granted rows is
+still the story-outcome catalog's job, as it is for every archived family;
+without one the client rolls the Companion and the server discards it.
 
 Guided setup also composes 42 curated Archive Special Quests across Chapters
 2000--2011 and 2014--2018 from the tester's own BattleData and character

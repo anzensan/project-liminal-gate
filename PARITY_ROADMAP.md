@@ -50,7 +50,11 @@ Three categories are used below and they are not interchangeable:
   battle start for the thirty story stages the record documents.
 - Chapter-1100 World Map Special routes, with the client's own native gate.
 - Archive Special Quests, the Tower solo adapter, solo Eidolon quests, and all
-  eight bundled Strikes Back families.
+  fourteen bundled Strikes Back families.
+- The Arena menu tree the final client shipped: the Third Descents, the Dragon
+  King and the Royal Rings are drawn in Descent Quests rather than beside the
+  Special Quests, and Battle Champs and 8-Bit Rush are served as Special Quest
+  cards, each clear bounded by its own recovered Companion manifest.
 - Trading Post **weekly rotation**: eight weeks, 126 offers, item and Companion
   targets, turning over every Friday at 00:00 UTC.
 - Inbox lifecycle with coin, Energy, item, **character, and Companion** rewards,
@@ -90,6 +94,10 @@ not exist anywhere in the APK, the resources, or any surviving capture.
   outcomes are refused rather than guessed.
 - armeabi-v7a native encounter import; ARM64 is implemented.
 - Differential certification against excluded private reference evidence.
+- **Special Quest display order.** The shutdown menu record lists the Arena
+  cards in an order that is not chapter order, and this server advertises them
+  in chapter order. Membership now matches; sequence does not, and reproducing
+  it needs an explicit ordering table rather than an inferred one.
 
 ## Deliberately outside local single-player parity
 
