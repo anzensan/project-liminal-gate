@@ -1875,3 +1875,54 @@ other event stage.
 real-HTTP tests only. What is still open is what the shutdown record shows and
 this server does not: display *order* within Arena -> Special Quests, which
 remains chapter-ordered here and was not in the final client.
+
+## 2026-08-10: the Daily Quest Energy reward had a label and nothing behind it
+
+**Reported symptom.** A tester cleared Sweet Temptation and the result screen
+showed an Energy reward with no amount beside it. No Energy arrived, and no
+item did either.
+
+- **Confirmed by the client's own constants.** `DailyQuestManager` declares
+  `EnergyGetChapter = 6006` and `EnergyItemId = 80` as literals, and Item 80
+  resolves to *Energy* through the operator's own names catalog. Chapter 6006
+  is the Daily Quest the client itself designates as the Energy source, which
+  `daily_quest_data` already recorded and already bounded at one per clear.
+- **Confirmed: the client mints nothing.** `ServerConstants` carries
+  `EnergyBonusByDailyQuest` at static offset `0x4C`, beside
+  `ChapterClearEnergyBonus`, and this server has always advertised it as 1.
+  Both are display values whose balance the server's own response was expected
+  to supply -- `archive_economy` states exactly that in its module docstring.
+  It then excluded Daily Quests from `ENERGY_BEARING_KINDS` regardless, so the
+  client drew the reward and no wallet moved.
+- **Confirmed against the live save.** The reporting account showed `energy` 0,
+  `freeEnergy` 4, and item slot 80 at zero. The drop landed in neither wallet
+  nor inventory: the client treats Item 80 as currency and never writes it to
+  `itemList`, and the server was never going to mint it.
+- **The stated reason for the exclusion does not hold for this family.** The
+  rule exists because Hunting, Metal Zone, the special quest and the Roads
+  repeat without bound, and a stage that both repeats forever and mints Energy
+  makes every Energy price a matter of how long a run is repeated. A Daily
+  Quest is entered at most once per UTC day, and only from the two quests the
+  day's rotation names. Sweet Temptation appears four times in the recovered
+  41-day rotation. The bound is the calendar, not the stage.
+
+**Local policy.** Every Daily Quest pays on an accepted clear, not only the
+chapter the client designates -- deliberately wider than the client's own rule,
+at the operator's decision. The amount is `DAILY_QUEST_FREE_ENERGY`, which is
+the same number `EnergyBonusByDailyQuest` advertises: one constant, so the
+screen and the wallet cannot disagree. It is minted into `freeEnergy` under the
+existing `maxFreeEnergy` ceiling, never into the paid families, so a local grant
+can never be read as a purchase.
+
+**What changed.** `award_daily_quest_energy` grants on the Daily Quest clear
+path, keyed by quest identity and UTC day rather than by request identity, so a
+clear replayed under a fresh request id cannot pay twice. The wallet projection
+is resynchronised after the grant: the nested `valuables` copy the client reads
+its balance from is built earlier in the same settlement, and left alone it
+reports the pre-reward balance on the screen announcing the reward. Nothing is
+reconstructed for clears settled before this.
+
+**Not validated against the reviewed client.** Covered by real-HTTP tests only:
+the grant, the balance in all three places, and the day gate refusing a second
+entry. What the result screen draws once an amount is actually behind it has not
+been seen on hardware.

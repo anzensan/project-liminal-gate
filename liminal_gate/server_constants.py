@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from liminal_gate.archive_economy import DAILY_QUEST_FREE_ENERGY
 from liminal_gate.save_validation import MAX_ITEM_STACK
 from liminal_gate.secondary_world_data import world_max_chapters
 
@@ -126,7 +127,10 @@ def build_server_constants(
         "supportEmail_jp": "",
         "supportEmail_en": "",
         "ChapterClearEnergyBonus": 1,
-        "EnergyBonusByDailyQuest": 1,
+        # The client draws the Daily Quest result screen's Energy reward from
+        # this key and takes the balance from the clear response, so the two
+        # come from one number; see `archive_economy.DAILY_QUEST_FREE_ENERGY`.
+        "EnergyBonusByDailyQuest": DAILY_QUEST_FREE_ENERGY,
         # The pre-battle Power-Up Item slot is gated on this one flag and
         # nothing else the account owns.  `UITeamPopup.<Setup>` caches
         # `IsHelpItemEnabled()` (ARM64 `0xD65A08`), which returns false unless

@@ -12,6 +12,35 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Daily Quests pay the Energy their result screen promises.** A tester
+  cleared Sweet Temptation, watched an Energy reward appear with no amount
+  beside it, and received nothing. Both halves of that were the same absence.
+
+  The client designates chapter 6006 its Energy quest — `EnergyGetChapter` is
+  that literal in its own code — and draws the reward from a constant this
+  server already advertises. But nothing in the client mints Energy; the
+  retired service was expected to back that display with a real balance, and
+  this server granted none. Its economy module said so in its own docstring
+  and then excluded Daily Quests anyway, alongside Metal Zone and the Hunting
+  zones, on the grounds that they repeat without bound.
+
+  That reasoning does not survive contact with this one family. A Daily Quest
+  can be entered once per UTC day, and only from the two the day's rotation
+  names. What bounds it is the calendar, not the stage, so it is not the farm
+  the rule was written to prevent.
+
+  Every Daily Quest now pays on an accepted clear, not only the one the client
+  designates — a wider policy than the client's own rule, chosen deliberately.
+  The amount is the same number the constants block advertises, so the screen
+  and the wallet cannot disagree. The grant is keyed by quest and UTC day
+  rather than by request id, so a replayed clear cannot repeat it, and the
+  balance is written to the nested wallet copy the client actually reads as
+  well as to the durable one — leaving that copy stale would have shown the
+  pre-reward balance on the very screen announcing the reward.
+
+  Nothing is owed retroactively: clears settled before this landed are not
+  reconstructed. Server restart, and an APK rebuild for on-device testers.
+
 - **The dedicated server reads the recorded tool locations, like every other
   command.** `doctor` records where Java, Il2CppDumper, and the AArch64
   disassembler live so nothing has to be put on `PATH`, and every launcher

@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover - exercised on Windows only
     msvcrt = None
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from liminal_gate.archive_economy import award_chapter_energy, award_stage_energy
+from liminal_gate.archive_economy import award_chapter_energy, award_daily_quest_energy, award_stage_energy
 from liminal_gate.bootstrap_profile import (
     BODY_TRANSITION_FIELDS,
     MUTATION_ROUTE_NAMES,
@@ -2815,6 +2815,16 @@ class BootstrapState:
                 announced |= _apply_monster_recruits(userdata, result["monsters"])
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
+                if award_daily_quest_energy(
+                    account, stage.identity_label(), _utc_day(now),
+                ):
+                    # The wallet projection a few lines above was built before
+                    # this grant, and the client reads its own balance out of
+                    # that nested copy. Leaving it stale is the documented trap
+                    # in `_synchronize_wallet_projection`: the flat value moves,
+                    # the copy does not, and the player is shown the balance
+                    # they had before the reward.
+                    _synchronize_wallet_projection(userdata)
             cleared_quests = _record_quest_clear(userdata, identity, now)
             account["tutorial_phase"] = "free_roam"
             account["active_luck_up"] = []
@@ -2828,11 +2838,12 @@ class BootstrapState:
             # sharing one cursor would move the story map and the stamina cap
             # with them.
             _advance_world_progress(account, stage)
-            # Hunting, Metal Zone, the special quest and the Daily Quests pay no
-            # preservation Energy: they repeat without bound, and the income is
-            # reserved for story progress that cannot. See `archive_economy`.
-            # The wallet projection written above therefore already carries the
-            # balance this response reports.
+            # Hunting, Metal Zone and the special quest pay no preservation
+            # Energy: they repeat without bound, and that income is reserved for
+            # story progress that cannot. See `archive_economy`. A Daily Quest
+            # does pay, and is the exception that proves the rule -- what bounds
+            # it is the once-per-UTC-day gate rather than the stage -- so the
+            # projection is resynchronised above when it grants.
             payload = _canonical_payload({
                 "success": True, "lastupdate": 1.0, "sentMessage": False,
                 "coins": expected_coins, "freeEnergy": int(userdata.get("freeEnergy", 0)),

@@ -49,15 +49,27 @@ FIRST_CLEAR_FREE_ENERGY = 2
 REPEAT_CLEAR_FREE_ENERGY = 1
 #: Local policy: the one-time award for completing a chapter.
 CHAPTER_CLEAR_FREE_ENERGY = 50
-#: Local policy: the stage families whose clears pay at all.  Story and event
-#: chapters are played through once, so what they can ever mint is bounded by
-#: the content itself.  The optional areas -- Hunting, Metal Zone, the special
-#: quest, Daily Quests, and the Chapter 1100 Roads -- are replayable without
+#: The Energy one accepted Daily Quest clear pays, and the value the constants
+#: block advertises as ``EnergyBonusByDailyQuest``. One number rather than two:
+#: the client draws the reward from the constant and the balance from this
+#: server's response, so a disagreement between them is a screen that promises
+#: what the wallet does not deliver -- which is exactly the report that added
+#: this. See ``award_daily_quest_energy``.
+DAILY_QUEST_FREE_ENERGY = 1
+#: Local policy: the stage families whose *per-stage* clears pay at all.  Story
+#: and event chapters are played through once, so what they can ever mint is
+#: bounded by the content itself.  The optional areas -- Hunting, Metal Zone,
+#: the special quest, and the Chapter 1100 Roads -- are replayable without
 #: bound, and a stage that both repeats forever and mints Energy is a farm
 #: rather than income: it makes every Energy price in the client, from Pacts to
 #: stamina refills, a matter of how long a Metal Zone run is repeated.  They
-#: therefore pay nothing, on the first clear as on the hundredth, and the
-#: wallet's only local income stays the story an account is actually advancing.
+#: therefore pay nothing, on the first clear as on the hundredth.
+#:
+#: Daily Quests are the one member of that replayable set that pays anyway, and
+#: they pay through ``award_daily_quest_energy`` rather than through this set,
+#: because what bounds them is not the stage.  A Daily Quest can be entered once
+#: per UTC day and only from the two the day's rotation names, so the ceiling is
+#: the calendar: at most one clear a day per quest, however long anyone grinds.
 ENERGY_BEARING_KINDS = frozenset({"story", "event"})
 
 
@@ -86,6 +98,35 @@ def award_stage_energy(
         history.append(key)
     requested = FIRST_CLEAR_FREE_ENERGY if first_clear else REPEAT_CLEAR_FREE_ENERGY
     return _mint(account["userdata"], requested)
+
+
+def award_daily_quest_energy(
+    account: dict[str, Any], quest_id: str, utc_day: int,
+) -> int:
+    """Grant one Daily Quest clear's Energy, returning the amount minted.
+
+    The final client designates chapter 6006 its Energy quest --
+    ``DailyQuestManager.EnergyGetChapter`` is that literal -- and draws an
+    Energy reward on the result screen from the ``EnergyBonusByDailyQuest``
+    constant this server already advertises.  Nothing in the client mints it:
+    the retired service was expected to back that display with a balance, and a
+    server that grants none shows a reward line with no amount behind it and
+    moves no wallet.  That is what a tester reported, and it is what this
+    answers.  Every Daily Quest pays, not only 6006, which is local policy
+    rather than the client's rule.
+
+    The grant is keyed by quest and UTC day rather than by request identity, for
+    the same reason the first-clear award is keyed by stage: a replay under a
+    fresh request id must not be able to farm it.  The day gate at start already
+    admits one entry per quest per day, so this is a second lock on the same
+    door, and deliberately so -- it is the lock that survives a clear arriving
+    by some path the start gate did not author.
+    """
+    granted = account.setdefault("daily_quest_energy_granted", {})
+    if not isinstance(granted, dict) or granted.get(quest_id) == utc_day:
+        return 0
+    granted[quest_id] = utc_day
+    return _mint(account["userdata"], DAILY_QUEST_FREE_ENERGY)
 
 
 def award_chapter_energy(account: dict[str, Any], chapter: int) -> int:
