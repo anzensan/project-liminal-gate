@@ -343,6 +343,48 @@ def write_server_runtime(
     path.write_text(json.dumps({"schema_version": 1, "config": config, "build_id": build_id}, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def clear_staged_host_copy(staged: Path) -> None:
+    """Remove the staged host copy an earlier build left behind.
+
+    Only a second attempt reaches this, which is what made it look like a
+    problem with re-running setup rather than with deleting: the first build
+    leaves the Android plugin's intermediates inside the staged tree, and one of
+    them is
+
+        app/build/intermediates/desugar_graph/debug/dexBuilderDebug/out/
+        currentProject/jar_<64 hex characters>_bucket_0
+
+    which spends 183 characters before the tester's checkout contributes any, so
+    the files under it go past Win32's 260-character limit.  `shutil.rmtree`
+    then walks a directory whose children it cannot address, deletes nothing,
+    and the parent it *can* address refuses to go with `WinError 145`, "the
+    directory is not empty" -- an accurate report of a cause it cannot see.
+    `long_path` opts each call out of the limit, as every unpack in
+    `tool_install` already does.
+
+    A failure here is reported against this one tree and no other.  A tester who
+    reads "the directory is not empty" reasonably concludes that the whole data
+    directory is dirty and should be cleared, and clearing it destroys the
+    signing keystore -- after which Android refuses to update the installed
+    build at all, and the save on the device can only be recovered by
+    uninstalling.  The cheap correct action is named here so the expensive
+    wrong one does not have to be guessed at.
+    """
+    try:
+        shutil.rmtree(tool_install.long_path(staged))
+    except OSError as error:
+        removal = (
+            f'rd /s /q "\\\\?\\{staged.resolve()}"' if os.name == "nt"
+            else f"rm -rf {staged}"
+        )
+        raise OnDeviceSetupError(
+            f"could not clear the host copy staged by an earlier build at {staged}: {error}. "
+            "That tree is rebuilt from scratch every run and holds nothing of yours -- deleting "
+            "it is safe, and it is all this needs. Nothing else in the data directory is "
+            f"involved, least of all your keystore or saves. Delete it with: {removal}"
+        ) from error
+
+
 def build_host_apk(
     host_source: Path,
     work_directory: Path,
@@ -353,7 +395,7 @@ def build_host_apk(
     gradle = ensure_gradle(work_directory, download=True)
     staged = work_directory / "host-source"
     if staged.exists():
-        shutil.rmtree(staged)
+        clear_staged_host_copy(staged)
     shutil.copytree(
         host_source, staged,
         ignore=shutil.ignore_patterns(".gradle", "build", "*.pyc", "__pycache__"),

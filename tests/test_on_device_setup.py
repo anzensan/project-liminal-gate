@@ -216,3 +216,47 @@ class OnDeviceSetupTest(unittest.TestCase):
             f"{on_device_setup.tester_setup.PACKAGE_NAME}/{on_device_setup.HOST_ACTIVITY}",
             command,
         )
+
+
+class StagedHostCopyTest(unittest.TestCase):
+    """Clearing the previous build's staged tree, on the platform that cannot.
+
+    The tree only exists on a second attempt, so every failure here reaches a
+    tester who has already had one successful-looking run.
+    """
+
+    def test_a_populated_tree_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            staged = Path(directory) / "host-source"
+            deep = staged / "app/build/intermediates/desugar_graph/debug/dexBuilderDebug/out/currentProject"
+            deep.mkdir(parents=True)
+            (deep / f"jar_{'a' * 64}_bucket_0").write_text("x", encoding="utf-8")
+            on_device_setup.clear_staged_host_copy(staged)
+            self.assertFalse(staged.exists())
+
+    def test_removal_goes_through_the_windows_long_path_form(self) -> None:
+        # The whole point of the helper: `shutil.rmtree` on a bare path cannot
+        # address children past 260 characters, and reports the parent it can
+        # address as merely non-empty.
+        with tempfile.TemporaryDirectory() as directory:
+            staged = Path(directory) / "host-source"
+            staged.mkdir()
+            with patch.object(on_device_setup.tool_install, "long_path", side_effect=lambda path: path) as long_path:
+                on_device_setup.clear_staged_host_copy(staged)
+            long_path.assert_called_once_with(staged)
+
+    def test_a_failure_names_the_one_tree_to_delete_and_defends_the_rest(self) -> None:
+        # A tester who reads "the directory is not empty" clears the whole data
+        # directory, and with it the keystore that lets the installed build be
+        # updated at all. The message has to refuse that reading.
+        with tempfile.TemporaryDirectory() as directory:
+            staged = Path(directory) / "host-source"
+            staged.mkdir()
+            failure = OSError(145, "The directory is not empty")
+            with patch.object(on_device_setup.shutil, "rmtree", side_effect=failure):
+                with self.assertRaises(on_device_setup.OnDeviceSetupError) as raised:
+                    on_device_setup.clear_staged_host_copy(staged)
+        message = str(raised.exception)
+        self.assertIn(str(staged), message)
+        self.assertIn("holds nothing of yours", message)
+        self.assertIn("keystore", message)
