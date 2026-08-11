@@ -1171,6 +1171,16 @@ def find_aarch64_objdump(candidates: tuple[str, ...] = _OBJDUMP_CANDIDATES) -> s
     stock GNU build on an x86 host commonly lists neither.  Picking one that
     cannot read the library would surface as a confusing failure thousands of
     disassembly calls later.
+
+    Either family is a valid answer, and so is any age of either: the encounter
+    importer reads the several ways these tools render one instruction.  It used
+    to read only what a current LLVM prints, which made this function's honest
+    "yes, this reads AArch64" the first step of a failure much further on, for a
+    tester whose `objdump` differed from a working one only by Xcode version.
+    What changed was the importer, not the answer given here.  Architecture is
+    all this can establish from a version banner -- that the tool's *output* is
+    readable is a separate question, and `verify_disassembly` asks it against the
+    library once the import has one in hand.
     """
     for candidate in candidates:
         if shutil.which(candidate) is None:

@@ -18,8 +18,10 @@ from liminal_gate.native_encounter_importer import (
     resolve_symbol,
     stage_identity,
     verify_calibration,
+    verify_disassembly,
     write_document,
 )
+from liminal_gate import native_encounter_importer
 
 
 DUMP = """
@@ -66,6 +68,31 @@ public class Chapter8 : ChapterBase // TypeDefIndex: 15432
 
 def _listing(rows: list[str]) -> str:
     return "\n".join(f" {address:x}: 00000000     \t{row}" for address, row in enumerate(rows, start=0x2000))
+
+
+def _gnu_listing(rows: list[str]) -> str:
+    """The same listing as GNU binutils prints it.
+
+    Two differences from `_listing`, which is LLVM's: the columns are tabbed
+    rather than spaced, and -- the one that matters -- an indexed load's offset
+    is printed in decimal.  Every fixture in this file was LLVM's until a tester
+    whose PATH had no `llvm-objdump` ran the guided setup and had the reviewed
+    library reported back to them as miscalibrated.
+    """
+    return "\n".join(f"  {address:x}:\t00000000 \t{row}" for address, row in enumerate(rows, start=0x2000))
+
+
+def _byte_column_listing(rows: list[str]) -> str:
+    """The listing an older LLVM prints: the encoding as four separate bytes.
+
+    Read together with `_gnu_listing`, this is the tester's case rather than a
+    hypothetical one -- an Xcode-13 `objdump`, same name and vendor as a machine
+    where the import works, printing both an unwordded encoding and a decimal
+    offset.  The bytes are not the real encoding of these rows; what is under
+    test is the column, which a pattern reading it loosely mistakes for the
+    mnemonic.
+    """
+    return "\n".join(f" {address:x}: 09 99 42 f9  \t{row}" for address, row in enumerate(rows, start=0x2000))
 
 
 class ParseDumpTest(unittest.TestCase):
@@ -200,6 +227,52 @@ class Arm64SpawnTargetTest(unittest.TestCase):
     def test_an_unmapped_slot_is_ignored(self) -> None:
         self.assertEqual([], arm64_spawn_targets(_listing(["ldr\tx9, [x8, #0x1110]", "blr\tx9"]), self.slots))
 
+    def test_gnu_decimal_offsets_read_as_the_same_instruction(self) -> None:
+        # 0x530 printed in decimal.  Whichever disassembler was selected, the
+        # library holds one instruction and it names one slot.
+        self.assertEqual(
+            [(0x2000, "ldr", "x9, [x8, #1328]"), (0x2001, "blr", "x9")],
+            instructions(_gnu_listing(["ldr\tx9, [x8, #1328]", "blr\tx9"])),
+        )
+        self.assertEqual(
+            arm64_spawn_targets(_listing(["ldr\tx9, [x8, #0x530]", "blr\tx9"]), self.slots),
+            arm64_spawn_targets(_gnu_listing(["ldr\tx9, [x8, #1328]", "blr\tx9"]), self.slots),
+        )
+
+    def test_gnu_output_rejects_the_same_offsets_llvm_output_does(self) -> None:
+        # A decimal reading must not turn a non-call into a call: 0x538 is off
+        # the stride and 0x1D0 is a slot holding something that is not a spawn.
+        self.assertEqual([], arm64_spawn_targets(_gnu_listing(["ldr\tx9, [x8, #1336]", "blr\tx9"]), self.slots))
+        self.assertEqual([], arm64_spawn_targets(_gnu_listing(["ldr\tx9, [x8, #464]", "blr\tx9"]), self.slots))
+
+    def test_a_byte_column_encoding_is_not_read_as_the_instruction(self) -> None:
+        # The whole tester case at once: bytes rather than a word, and the
+        # offset in decimal. The second byte must not become the mnemonic.
+        self.assertEqual(
+            [(0x2000, "ldr", "x9, [x8, #1328]"), (0x2001, "blr", "x9")],
+            instructions(_byte_column_listing(["ldr\tx9, [x8, #1328]", "blr\tx9"])),
+        )
+        self.assertEqual(
+            ["Init_CH8_BMAKER"],
+            arm64_spawn_targets(_byte_column_listing(["ldr\tx9, [x8, #1328]", "blr\tx9"]), self.slots),
+        )
+
+    def test_a_column_that_is_neither_rendering_is_refused(self) -> None:
+        # Three bytes is not an AArch64 encoding, and a row that cannot be read
+        # has to be no row rather than a guess assembled from its pieces.
+        self.assertEqual([], instructions(" 2000: 09 99 42  \tldr\tx9, [x8, #1328]"))
+
+    def test_gnu_output_records_every_spawn_in_order_with_repeats(self) -> None:
+        listing = _gnu_listing([
+            "ldr\tx9, [x8, #1328]", "blr\tx9",
+            "ldr\tx9, [x8, #1344]", "blr\tx9",
+            "ldr\tx9, [x8, #1328]", "blr\tx9",
+        ])
+        self.assertEqual(
+            ["Init_CH8_BMAKER", "Init_CH8_L_TICK2", "Init_CH8_BMAKER"],
+            arm64_spawn_targets(listing, self.slots),
+        )
+
 
 class StageIdentityTest(unittest.TestCase):
     def test_reads_chapter_and_section_from_a_generator_type(self) -> None:
@@ -282,7 +355,63 @@ class BuildDocumentTest(unittest.TestCase):
             build_document({}, self.enemies, self.source)
 
 
+def _calibration_methods() -> list[Method]:
+    """A dump.cs placing every calibration fixture exactly where it expects."""
+    return [
+        Method(type_name, member, rva, None)
+        for type_name, member, rva, _stop, _site, _offset in native_encounter_importer._CALIBRATION
+    ]
+
+
+def _calibration_disassembler(radix: str = "hex", offsets: dict[int, int] | None = None):
+    """Replay the reviewed library's calibration sites in one syntax or the other.
+
+    `offsets` overrides what a site loads, which is how a genuinely miscalibrated
+    library is told apart here from a disassembler that merely spells the right
+    answer differently.
+    """
+    sites = {
+        rva: (site, (offsets or {}).get(site, offset))
+        for _type, _member, rva, _stop, site, offset in native_encounter_importer._CALIBRATION
+    }
+
+    def disassemble(_objdump: str, _library: Path, start: int, _stop: int) -> str:
+        site, offset = sites[start]
+        operand = f"#0x{offset:x}" if radix == "hex" else f"#{offset}"
+        row = f"ldr\tx9, [x8, {operand}]"
+        return f"  {site:x}:\tf9429909 \t{row}" if radix == "decimal" else f" {site:x}: f9429909     \t{row}"
+
+    return disassemble
+
+
 class CalibrationTest(unittest.TestCase):
+    def test_llvm_and_gnu_syntax_calibrate_the_same_library(self) -> None:
+        # The whole of the reported failure: the reviewed build, read by a
+        # disassembler printing #1328 where the fixture was written as #0x530.
+        for radix in ("hex", "decimal"):
+            with self.subTest(radix=radix), \
+                    patch.object(native_encounter_importer, "disassemble", _calibration_disassembler(radix)):
+                verify_calibration(_calibration_methods(), "objdump", Path("/nonexistent/libil2cpp.so"))
+
+    def test_a_site_that_holds_no_vtable_load_says_so(self) -> None:
+        def disassemble(_objdump, _library, _start, _stop):
+            return _listing(["mov\tx0, x20", "blr\tx9"])
+
+        with patch.object(native_encounter_importer, "disassemble", disassemble):
+            with self.assertRaisesRegex(NativeEncounterImportError, "holds no vtable load at 0x1A384D8"):
+                verify_calibration(_calibration_methods(), "objdump", Path("/nonexistent/libil2cpp.so"))
+
+    def test_a_site_loading_a_different_offset_names_both_offsets(self) -> None:
+        # A library whose layout really has moved, in either syntax: the message
+        # has to say what was found, not only what was wanted.
+        for radix in ("hex", "decimal"):
+            with self.subTest(radix=radix), patch.object(
+                native_encounter_importer, "disassemble",
+                _calibration_disassembler(radix, offsets={0x1A384D8: 0x540}),
+            ):
+                with self.assertRaisesRegex(NativeEncounterImportError, r"loads 0x540 at 0x1A384D8, not 0x530"):
+                    verify_calibration(_calibration_methods(), "objdump", Path("/nonexistent/libil2cpp.so"))
+
     def test_a_dump_whose_fixture_method_moved_fails_before_running_objdump(self) -> None:
         methods = [Method("Chapter8.$Battle1_1$25037.$", "MoveNext", 0xDEAD, 1)]
         with self.assertRaisesRegex(NativeEncounterImportError, "vtable calibration failed"):
@@ -291,6 +420,55 @@ class CalibrationTest(unittest.TestCase):
     def test_a_dump_missing_the_fixture_method_fails(self) -> None:
         with self.assertRaisesRegex(NativeEncounterImportError, "vtable calibration failed"):
             verify_calibration([], "/nonexistent/objdump", Path("/nonexistent/libil2cpp.so"))
+
+
+class DisassemblyProbeTest(unittest.TestCase):
+    """One readable instruction, asked for before the thousands of calls.
+
+    Calibration only runs on the reviewed library, so it cannot be what tells a
+    tester on any other build that their disassembler is unreadable here. This
+    probe holds for every build and costs one invocation.
+    """
+
+    def setUp(self) -> None:
+        self.methods = parse_methods(DUMP)
+
+    def test_either_syntax_satisfies_the_probe(self) -> None:
+        for name, listing in (("llvm", _listing), ("gnu", _gnu_listing)):
+            with self.subTest(syntax=name), patch.object(
+                native_encounter_importer, "disassemble",
+                lambda *_args, **_kwargs: listing(["ldr\tx9, [x8, #0x530]", "ret"]),
+            ):
+                verify_disassembly(self.methods, "objdump", Path("/nonexistent/libil2cpp.so"))
+
+    def test_output_holding_no_instruction_names_the_tool_and_what_it_printed(self) -> None:
+        with patch.object(
+            native_encounter_importer, "disassemble",
+            lambda *_args, **_kwargs: "\nlibil2cpp.so:     file format elf64-little\n",
+        ):
+            with self.assertRaisesRegex(NativeEncounterImportError, r"gobjdump printed no instruction.*elf64-little"):
+                verify_disassembly(self.methods, "gobjdump", Path("/nonexistent/libil2cpp.so"))
+
+    def test_it_gives_up_after_a_few_bodies_rather_than_reading_the_library(self) -> None:
+        calls: list[int] = []
+
+        def disassemble(_objdump, _library, start, _stop):
+            calls.append(start)
+            return ""
+
+        with patch.object(native_encounter_importer, "disassemble", disassemble):
+            with self.assertRaises(NativeEncounterImportError):
+                verify_disassembly(self.methods, "objdump", Path("/nonexistent/libil2cpp.so"))
+        self.assertEqual([0x1000, 0x1100, 0x1200], calls)
+
+    def test_a_body_holding_nothing_readable_is_not_the_verdict(self) -> None:
+        # One method can legitimately disassemble into nothing this parses; the
+        # probe is about the tool, so it moves on to the next body.
+        def disassemble(_objdump, _library, start, _stop):
+            return "" if start == 0x1000 else _gnu_listing(["ret"])
+
+        with patch.object(native_encounter_importer, "disassemble", disassemble):
+            verify_disassembly(self.methods, "objdump", Path("/nonexistent/libil2cpp.so"))
 
 
 class WriteDocumentTest(unittest.TestCase):

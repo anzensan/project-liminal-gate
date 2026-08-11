@@ -38,6 +38,11 @@ calls in that body are *indirect*: the generator loads the chapter object's
 The vtable begins ``CLASS_HEADER_BYTES`` into ``Il2CppClass`` and each entry is
 ``VTABLE_ENTRY_BYTES`` wide, so ``0x530`` is managed slot 66, and ``dump.cs``
 names the ``Chapter8`` (or inherited ``ChapterBase``) method occupying slot 66.
+That listing is a current LLVM's.  An older LLVM and GNU binutils both print the
+same load as ``ldr x9, [x8, #1328]``, and older disassemblers write the encoding
+column as separate bytes.  Every rendering is read here -- see
+``_INSTRUCTION_RE`` and ``_VTABLE_LOAD_RE`` -- because the disassembler a tester
+happens to have is not information about the library.
 Only arguments that are immediate at the call site would be statically known, so
 this importer records the *identity* of each spawn and its multiplicity, which
 is all a drop ceiling needs, and nothing that would require emulating the
@@ -97,13 +102,18 @@ VTABLE_ENTRY_BYTES = 16
 REVIEWED_ARM64_LIBRARY_SHA256 = "ba6fecba562f7ff46305792cadeabcae1879a0c384f7195a5d77872af04c1753"
 
 #: Two calls whose caller offset and callee slot were resolved by hand against
-#: the reviewed library.  ``(type, member, rva, stop, site, operand)``: within
-#: ``member``'s body, address ``site`` must load the vtable at ``operand``.  The
+#: the reviewed library.  ``(type, member, rva, stop, site, offset)``: within
+#: ``member``'s body, address ``site`` must load the vtable at ``offset``.  The
 #: first pins a generator's call into a chapter initializer; the second pins an
 #: initializer's own call onward.  Together they fix both constants above.
+#:
+#: Both are addresses and offsets rather than the rendered text they used to be,
+#: because the check is a claim about the *library*, and matching one
+#: disassembler's spelling of it made a working GNU objdump report the reviewed
+#: build as miscalibrated.  `verify_calibration` decodes instead.
 _CALIBRATION = (
-    ("Chapter8.$Battle1_1$25037.$", "MoveNext", 0x1A38400, 0x1A38520, "1a384d8:", "#0x530]"),
-    ("Chapter8", "Init_CH8_BMAKER", 0x1A3358C, 0x1A33620, "1a335f0:", "#0x570]"),
+    ("Chapter8.$Battle1_1$25037.$", "MoveNext", 0x1A38400, 0x1A38520, 0x1A384D8, 0x530),
+    ("Chapter8", "Init_CH8_BMAKER", 0x1A3358C, 0x1A33620, 0x1A335F0, 0x570),
 )
 
 #: Every chapter whose battle program the binary compiles, not a fixed range.
@@ -125,7 +135,34 @@ _TYPE_RE = re.compile(
 )
 _ADDRESS_RE = re.compile(r"^\s*// RVA: 0x([0-9A-Fa-f]+).*?(?: Slot: (\d+))?$")
 _ENEMY_MEMBER_RE = re.compile(r"Enemies\s+(\w+)\s*=\s*(-?\d+)\s*;")
-_INSTRUCTION_RE = re.compile(r"^\s*([0-9a-f]+):\s+[0-9a-f]+\s+([.\w]+)\s*(.*?)\s*$", re.I)
+#: One disassembled instruction: address, encoding, mnemonic, operands.
+#:
+#: The encoding column is written two ways for a fixed-length ISA -- one 32-bit
+#: word (``f9429909``), or the four bytes it is made of in memory order
+#: (``09 99 42 f9``).  LLVM printed the second for years and the first since; a
+#: tester's toolchain decides which arrives.  Both are spelled out rather than
+#: allowed for by a loose ``[0-9a-f ]+``, because a column that may contain
+#: spaces and a mnemonic that may not is exactly where a sloppy pattern reads
+#: the second byte as the instruction and returns rows that look parsed.
+_INSTRUCTION_RE = re.compile(
+    r"^\s*([0-9a-f]+):\s+(?:[0-9a-f]{8}|[0-9a-f]{2}(?: [0-9a-f]{2}){3})\s+([.\w]+)\s*(.*?)\s*$", re.I
+)
+
+#: A load through a register-held base, in either radix an AArch64 disassembler
+#: prints its offset in.  LLVM writes ``ldr x9, [x8, #0x530]``; GNU binutils
+#: writes that same instruction as ``ldr x9, [x8, #1328]``.
+#:
+#: Reading only the hex form was a real failure, not a hypothetical one, and it
+#: is not a GNU-versus-LLVM split: LLVM printed these offsets in decimal too
+#: until it changed, so a tester on an older Xcode hit it with the same
+#: ``objdump`` name and vendor as a machine where it works.  Everything
+#: downstream then matched nothing.  On the reviewed build that surfaced as a
+#: vtable calibration failure naming a load the library plainly contains; on any
+#: other build calibration is skipped, so it surfaced instead as "no chapter
+#: generator produced a spawn call" after thousands of disassembler invocations
+#: -- a message pointing at the chapter programs for what was only ever a
+#: difference in spelling.
+_VTABLE_LOAD_RE = re.compile(r"ldr\s+x(\d+),\s*\[x\d+,\s*#(0x[0-9a-f]+|\d+)\]")
 
 #: A chapter program may call a *variant* initializer -- the same enemy with a
 #: behavioural modifier applied (no-move, wall-bound, appears-later, a numbered
@@ -185,6 +222,12 @@ _MAX_SUFFIX_PEELS = 4
 #: Upper bound on one generator body, used when the next method's RVA is too far
 #: away to trust (the last method in the library has no successor).
 _MAX_BODY_BYTES = 0x20000
+
+#: How wide a window `verify_disassembly` reads, and how many method bodies it
+#: reads before calling the disassembler unreadable.  Both are small: the probe
+#: only has to see one instruction it recognises.
+_PROBE_BYTES = 0x100
+_PROBE_METHODS = 3
 
 #: Callee names worth recording.  ``Init_*`` places a named enemy; ``CreateEnemy``
 #: is the shared placement helper the initializers themselves call.
@@ -274,6 +317,11 @@ def resolve_symbol(symbol: str, enemies: dict[str, int]) -> tuple[int | None, bo
     return None, False
 
 
+def _immediate(text: str) -> int:
+    """Read one disassembled immediate, whichever radix it was printed in."""
+    return int(text, 16) if text.startswith("0x") else int(text, 10)
+
+
 def instructions(text: str) -> list[tuple[int, str, str]]:
     """Return ``(address, mnemonic, operands)`` for one objdump listing."""
     rows: list[tuple[int, str, str]] = []
@@ -295,8 +343,8 @@ def arm64_spawn_targets(text: str, slots: dict[int, Method]) -> list[str]:
     targets: list[str] = []
     for _address, mnemonic, operands in instructions(text):
         line = f"{mnemonic} {operands}"
-        if match := re.match(r"ldr\s+x(\d+),\s*\[x\d+,\s*#0x([0-9a-f]+)\]", line):
-            vtable_offsets[int(match.group(1))] = int(match.group(2), 16)
+        if match := _VTABLE_LOAD_RE.match(line):
+            vtable_offsets[int(match.group(1))] = _immediate(match.group(2))
         elif match := re.match(r"blr\s+x(\d+)", line):
             offset = vtable_offsets.get(int(match.group(1)))
             method = _slot_method(offset, slots)
@@ -411,19 +459,68 @@ def objdump_version(objdump: str) -> str:
     return completed.stdout.splitlines()[0].strip() if completed.stdout.strip() else "unknown"
 
 
+def verify_disassembly(methods: Iterable[Method], objdump: str, library: Path) -> None:
+    """Confirm this disassembler prints instructions this importer can read.
+
+    One call before the thousands.  `find_aarch64_objdump` establishes that a
+    candidate *can* read AArch64; it cannot establish that what it prints is
+    what `instructions` parses, and the two are separate questions -- a tool can
+    disassemble the library perfectly and still be unreadable here.  Asking the
+    second question against the library itself costs one invocation and needs no
+    synthetic fixture, so it holds for any build rather than only the reviewed
+    one, and it fails in seconds with the tool's own output rather than in
+    minutes with an empty result blamed on the chapter programs.
+
+    Several bodies are tried because a single one could legitimately hold
+    nothing this importer recognises.
+    """
+    sample: list[str] = []
+    for rva in sorted({method.rva for method in methods if method.rva > 0})[:_PROBE_METHODS]:
+        text = disassemble(objdump, library, rva, rva + _PROBE_BYTES)
+        if instructions(text):
+            return
+        sample.extend(line.strip() for line in text.splitlines() if line.strip())
+    printed = "; ".join(sample[:3]) if sample else "nothing at all"
+    raise NativeEncounterImportError(
+        f"{objdump} printed no instruction this importer can read over the first "
+        f"{_PROBE_METHODS} method bodies in this library; it printed: {printed}"
+    )
+
+
 def verify_calibration(methods: Iterable[Method], objdump: str, library: Path) -> None:
-    """Confirm the two vtable constants against the reviewed library."""
+    """Confirm the two vtable constants against the reviewed library.
+
+    Each site is decoded rather than matched as text.  The constants under test
+    belong to the library, and two disassemblers render one load in two
+    spellings, so comparing spellings tests the disassembler and reports it as
+    the library being wrong.  The three ways this can fail -- the dump moved, the
+    site holds no vtable load, the site loads a different offset -- are three
+    messages, because a single message covering all of them sent a tester
+    looking at their APK when the answer was their objdump.
+    """
     index = {(method.type_name, method.member_name): method for method in methods}
-    for type_name, member, rva, stop, site, operand in _CALIBRATION:
+    for type_name, member, rva, stop, site, offset in _CALIBRATION:
         method = index.get((type_name, member))
         if method is None or method.rva != rva:
             raise NativeEncounterImportError(
                 f"vtable calibration failed: {type_name}.{member} is not at 0x{rva:X} in this dump.cs"
             )
-        text = disassemble(objdump, library, rva, stop).lower()
-        if site not in text or operand not in text:
+        rows = instructions(disassemble(objdump, library, rva, stop))
+        loads = {
+            address: _immediate(match.group(2))
+            for address, mnemonic, operands in rows
+            for match in (_VTABLE_LOAD_RE.match(f"{mnemonic} {operands}"),)
+            if match is not None
+        }
+        if site not in loads:
             raise NativeEncounterImportError(
-                f"vtable calibration failed: {type_name}.{member} does not load {operand} at {site}"
+                f"vtable calibration failed: {type_name}.{member} holds no vtable load at 0x{site:X}"
+                f" ({len(rows)} instruction(s) read over 0x{rva:X}-0x{stop:X})"
+            )
+        if loads[site] != offset:
+            raise NativeEncounterImportError(
+                f"vtable calibration failed: {type_name}.{member} loads 0x{loads[site]:X}"
+                f" at 0x{site:X}, not 0x{offset:X}"
             )
 
 
@@ -489,6 +586,7 @@ def import_encounters(
     version = objdump_version(objdump)
     with tempfile.TemporaryDirectory() as directory:
         library = extract_library(apk, Path(directory))
+        verify_disassembly(methods, objdump, library)
         library_sha256 = sha256_file(library)
         calibrated = library_sha256 == REVIEWED_ARM64_LIBRARY_SHA256
         if calibrated:
