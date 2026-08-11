@@ -6,7 +6,6 @@ from http.client import HTTPConnection
 from pathlib import Path
 import socket
 import tempfile
-import threading
 import unittest
 from unittest.mock import patch
 from urllib.parse import urlencode
@@ -20,6 +19,7 @@ from liminal_gate.bootstrap_server import (
 )
 from liminal_gate.bootstrap_wire import _endpoint_refusal_envelope
 from liminal_gate.story_progression_catalog import build_core_story_policy
+from tests.support import serve
 
 
 PUBLIC_ROOT = Path(__file__).resolve().parents[1]
@@ -68,8 +68,7 @@ class BootstrapServerTest(unittest.TestCase):
             BootstrapState(self.state_path),
             self.event_log_path,
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.thread = serve(self.server)
 
     def tearDown(self) -> None:
         self.server.shutdown()
@@ -178,8 +177,7 @@ class BootstrapServerTest(unittest.TestCase):
         server = BootstrapServer(
             ("127.0.0.1", 0), self.server.profile, BootstrapState(self.root / "banner-state.json"), public_data_root=self.root / "public_data"
         )
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
+        thread = serve(server)
         try:
             connection = HTTPConnection(*server.server_address)
             connection.request("GET", "/public_data/banners/sl_truth_01_en.png")
@@ -206,8 +204,7 @@ class BootstrapServerTest(unittest.TestCase):
             BootstrapState(self.root / "coin-creeps-banner-state.json"),
             public_data_root=self.root / "public_data",
         )
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
+        thread = serve(server)
         try:
             for path in (f"/resources/Banner/{name}", "/Banner/sp1003-1.bin"):
                 connection = HTTPConnection(*server.server_address)
@@ -237,8 +234,7 @@ class BootstrapServerTest(unittest.TestCase):
         restarted = BootstrapServer(
             ("127.0.0.1", 0), self.server.profile, BootstrapState(self.state_path)
         )
-        thread = threading.Thread(target=restarted.serve_forever)
-        thread.start()
+        thread = serve(restarted)
         try:
             connection = HTTPConnection(*restarted.server_address)
             connection.request("GET", f"/local/userdata?otk={token}")
@@ -502,8 +498,7 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
             load_profile(self.profile_path),
             BootstrapState(self.state_path),
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.thread = serve(self.server)
 
     def tearDown(self) -> None:
         self.server.shutdown()
@@ -536,8 +531,7 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.server = BootstrapServer(
             ("127.0.0.1", 0), load_profile(self.profile_path), BootstrapState(self.state_path)
         )
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.thread = serve(self.server)
 
     def test_first_tutorial_pull_can_choose_bahl_and_replays_without_rerolling(self) -> None:
         account_id = "bahl-tutorial-account"

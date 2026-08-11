@@ -28,6 +28,33 @@ def bootstrap_profile(path: Path | None = None) -> BootstrapProfile:
     return load_profile(DEFAULT_PROFILE_PATH if path is None else path)
 
 
+#: How often a served test server checks whether it has been asked to stop.
+#:
+#: `BaseServer.shutdown` cannot return until `serve_forever` notices the flag,
+#: and it looks once per poll interval, so the 0.5s default is paid in full by
+#: every test that starts a server -- to take down a server that constructs in
+#: about 2ms and answers a request in under 1ms. Measured over one lifecycle:
+#: 501.5ms of shutdown against 3.1ms of work, and across the suite that was
+#: near enough the whole of a 261s run for a few hundred tests that each assert
+#: something the transport does in microseconds.
+#:
+#: Small enough to disappear, not so small that several hundred lifetimes of
+#: this loop spin hot for it. It is the whole reason the helpers below exist as
+#: functions rather than as two lines written out at each site.
+SHUTDOWN_POLL_SECONDS = 0.01
+
+
+def serve(server: Any) -> threading.Thread:
+    """Serve one already-constructed test server on a promptly stoppable thread.
+
+    For the tests that build their own server -- a subclass, an unusual catalog
+    set, a restart under test -- and need only the threading discipline.
+    """
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": SHUTDOWN_POLL_SECONDS})
+    thread.start()
+    return thread
+
+
 def start_server(*args: Any, **kwargs: Any) -> tuple[BootstrapServer, threading.Thread]:
     """Construct a `BootstrapServer` and serve it on a daemon-free thread.
 
@@ -35,9 +62,7 @@ def start_server(*args: Any, **kwargs: Any) -> tuple[BootstrapServer, threading.
     the server mid-flight.
     """
     server = BootstrapServer(*args, **kwargs)
-    thread = threading.Thread(target=server.serve_forever)
-    thread.start()
-    return server, thread
+    return server, serve(server)
 
 
 def stop_server(server: BootstrapServer, thread: threading.Thread) -> None:

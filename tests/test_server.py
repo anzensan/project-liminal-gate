@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 
 from liminal_gate.release_preflight import inspect_release_tree
 from liminal_gate.server import LiminalGateServer
 from tests.support import request as http_request, write_json
+from tests.support import serve
 
 
 class PublicServerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.server = LiminalGateServer(("127.0.0.1", 0), Path(self.temporary_directory.name))
-        self.thread = threading.Thread(target=self.server.serve_forever)
-        self.thread.start()
+        self.thread = serve(self.server)
 
     def tearDown(self) -> None:
         self.server.shutdown()
@@ -54,8 +53,7 @@ class PublicServerTest(unittest.TestCase):
             }],
         })
         server = LiminalGateServer(("127.0.0.1", 0), data_directory)
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
+        thread = serve(server)
         try:
             status, body = self.request_to(server, "GET", "/data-status")
         finally:

@@ -692,8 +692,15 @@ class PactRefusalWalletTest(unittest.TestCase):
         self.assertEqual(2, payload["energy"], "a refused pull must not charge")
 
 
+@patch("liminal_gate.bootstrap_server.DEFAULT_TUNING", NO_PLUS_PACT)
 class DuplicateJobLevelTest(unittest.TestCase):
     """A duplicate raises every job the character has unlocked.
+
+    The "+" Pact is held off here for the reason `PactDrawTest` holds it off:
+    this pins exact packed job levels, and the roll lands at its real 22% rate,
+    so one draw in five disagreed with the assertion. It read as an
+    intermittent failure of the duplicate grant rather than as the decoration
+    it is -- measured at 5 failures in 12 runs before this guard, 0 after.
 
     Granting only the first slot is what a tester reported: pulling a duplicate
     levelled J1 alone, so the reason to unlock a character's jobs *before*

@@ -5,12 +5,12 @@ from argparse import Namespace
 from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 from unittest.mock import patch
 
 from liminal_gate.bootstrap_server import BootstrapServer, BootstrapState, ProfileError, load_launch_config, load_profile, parse_args
 from liminal_gate.server_config import ServerConfigError, load_server_config
+from tests.support import serve
 
 
 class ServerConfigTest(unittest.TestCase):
@@ -40,8 +40,7 @@ class ServerConfigTest(unittest.TestCase):
         self.assertEqual(self.root / "profiles" / "bootstrap.json", config.profile)
         self.assertEqual(self.root / "state" / "bootstrap.json", config.state_file)
         server = BootstrapServer((config.host, 0), load_profile(config.profile), BootstrapState(config.state_file), config.event_log)
-        thread = threading.Thread(target=server.serve_forever)
-        thread.start()
+        thread = serve(server)
         try:
             connection = HTTPConnection(*server.server_address)
             connection.request("GET", "/local/time?otk=test-token")

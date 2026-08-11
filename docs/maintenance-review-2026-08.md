@@ -104,11 +104,19 @@ dependencies, minimal mocking, per-test tempdirs. The bloat is 97 files with
   hand-rolled account seeds. **~1,300–1,400 lines (~7% of the suite) with no
   assertion changes.** The account builder also removes a real schema-drift
   hazard (30 independent update sites today).
-- [ ] **Tier 2: wall-clock.** ~140 real socket binds + thread spawns per run
-  (`test_bootstrap_server`, `test_world_map_special` (20 binds),
-  `test_hunting_runtime` (23) are the worst). Move read-mostly classes to
-  `setUpClass`-scoped servers; keep per-test servers where tests `restart()`
-  or exercise single-writer locking.
+- [x] **Tier 2: wall-clock.** Done, and the diagnosis in this item was wrong:
+  the binds were never the cost. A lifecycle measures 2.4ms to construct the
+  server and 0.7ms to answer a request, against **501.5ms in `shutdown`** --
+  `serve_forever`'s poll interval defaults to 0.5s and `shutdown` waits for the
+  loop to notice. At roughly 520 lifecycles that was substantially the whole
+  run. `tests/support.py` now owns the interval (`SHUTDOWN_POLL_SECONDS`) and
+  `serve()` threads every test server, including the 17 sites in 8 files that
+  had been threading `serve_forever` by hand: **261s -> 21s, 1449 tests, no
+  assertion changed.**
+
+  The `setUpClass`-scoped servers this item proposed are no longer worth their
+  risk. They would have traded per-test isolation to amortize a cost that was
+  an artifact of the poll interval, and the saving is now already banked.
 - [ ] **Tier 2: table-drive the copy-paste families** with `subTest`:
   the 12-file catalog-loader rejection template (~58 `assertRaises` methods),
   `test_world_map_special.py:216-296` claim-validation sextet,
