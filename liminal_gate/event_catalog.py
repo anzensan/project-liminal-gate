@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import hashlib
 import json
@@ -9,8 +10,11 @@ from pathlib import Path
 
 from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.event_manifest_data import (
+    COLLAB_SPECIAL_MANIFEST_ROWS,
+    DESCENT_QUEST_CHAPTERS,
     EVENT_MANIFEST_ROWS,
     SECTION_CLASS_LIMITS,
+    SECTION_COMPANION_MANIFESTS,
     STANDING_SPECIAL_MANIFEST_ROWS,
 )
 
@@ -73,6 +77,13 @@ class EventStage:
     #: four. Recovered; see `SECTION_CLASS_LIMITS`.
     class_min: int = 0
     class_max: int = 0
+    #: The Companions this section's own `dropBuddies` declares, with their
+    #: per-clear caps, or `None` where no manifest was read. Empty is not None:
+    #: `()` is a section that declares no Companion and therefore accepts none,
+    #: while `None` leaves the channel as unconstrained as it is for every stage
+    #: whose manifest this archive never recovered. See
+    #: `SECTION_COMPANION_MANIFESTS`.
+    companion_manifest: tuple[tuple[int, int], ...] | None = None
 
     def identity_label(self) -> str:
         return f"{self.chapter}-{self.section}"
@@ -82,6 +93,24 @@ class EventStage:
         if not self.class_max:
             return True
         return self.class_min <= character_class <= self.class_max
+
+    def companions_within_manifest(self, buddies: list[int]) -> bool:
+        """Whether a reported Companion claim stays inside the recovered manifest.
+
+        A section this archive read no manifest for admits whatever the client
+        reports, the way every event stage did before any manifest was read at
+        all. A section that declares one admits the Companions it names, none
+        of them more often than its own packed cap allows, and nothing else --
+        including a section whose declaration is that it drops nothing.
+        """
+        if self.companion_manifest is None:
+            return True
+        caps = dict(self.companion_manifest)
+        counts = Counter(buddies)
+        return all(
+            companion_id in caps and count <= caps[companion_id]
+            for companion_id, count in counts.items()
+        )
 
     def unlocked_at(self, progress_code: int | None) -> bool:
         if self.unlock_after_chapter is None:
@@ -207,11 +236,16 @@ class EventCatalog:
         }
 
     def client_lists(self, progress_code: int | None) -> dict[str, list[str]]:
-        """Project Special, Tower, and folded Strikes Back selector rows."""
+        """Project Special, Descent, Tower, and folded Strikes Back selector rows."""
         special = list(dict.fromkeys(
             stage.selector_id or stage.identity_label()
             for stage in self.stages
             if stage.selector == "special" and stage.unlocked_at(progress_code)
+        ))
+        descent = list(dict.fromkeys(
+            stage.selector_id or stage.identity_label()
+            for stage in self.stages
+            if stage.selector == "descent_quest" and stage.unlocked_at(progress_code)
         ))
         tower = [
             stage.identity_label()
@@ -232,6 +266,13 @@ class EventCatalog:
                 descent_chapters.setdefault(stage.chapter, None)
         return {
             "specialQuestList": special,
+            # Arena -> Descent Quests, `UISpecialSelect` mode 3. A separate
+            # menu from Strikes Back below it, and the one the final client put
+            # the Third Descents, the Dragon King and the Royal Rings in; see
+            # `DESCENT_QUEST_CHAPTERS`. Rows carry the same folded or
+            # per-section identity they carried as Special Quest cards, because
+            # the list a row is on decides only which menu draws it.
+            "descentQuestList": descent,
             "towerQuestList": tower,
             "eidolonQuestList": eidolon,
             # Counter Descent is a folded card, and the client folds on the
@@ -312,9 +353,12 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
     the final client. Permanent Chapter 5--18 unlocks are explicit preservation
     policy because the historical schedule was not captured, and because the
     retired result service was not either, a clear settles from the client's own
-    reported drops under `projected_rewards`. Little Noah 8008--8011 and Hime
-    Rush 8018 are deliberately excluded because their progression/reward
-    contracts are distinct and unrecovered.
+    reported drops under `projected_rewards`.
+
+    Chapters 8008--8011 and 8018 are in this range and are not here: the final
+    client listed them in Arena -> Special Quests, not Huntland -> Strikes Back.
+    They are Battle Champs and 8-Bit Rush; see
+    `build_bundled_collab_special_policy`.
     """
     manifests = [
         row
@@ -341,6 +385,61 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
         for section, stamina in enumerate(
             _counter_descent_stamina(chapter) or (), start=1
         )
+    )
+    return EventCatalog(stages)
+
+
+def build_bundled_collab_special_policy() -> EventCatalog:
+    """Return Battle Champs and 8-Bit Rush as Arena -> Special Quest cards.
+
+    These five chapters sit in the Counter Descent range, so the client starts
+    and settles them by exactly the path the Strikes Back families take -- the
+    range decides that, not the family. What differs is the menu: the retired
+    service advertised them on `specialQuestList`, and the shutdown menu record
+    lists them among the Special Quests with no Strikes Back entry of their own.
+
+    Each Battle Champs family is one folded card. That is the presentation every
+    other family in this range already uses, and folding is the only one that
+    fits: `specialQuestList` reaches exactly its 30-row ceiling with these five
+    added, and four cards rather than eight section rows is what keeps it there
+    without withholding an archive row to pay for them. The phantom tiers a fold
+    would otherwise advertise stay shut for the documented reason -- see
+    `EventCatalog.flags` -- because each stage carries its own section flag and
+    no family carries a chapter flag, so the three tiers past the two that exist
+    have neither a section nor a flag and are dropped. 8-Bit Rush is a single
+    section and has no folded banner, so it is advertised as the section row its
+    own artwork was drawn for.
+
+    The Companion channel is the one thing here that is neither projected nor
+    unconstrained: these are the only sections in the range whose `dropBuddies`
+    names anything, so a clear is held to what the section declares. Authoring
+    the granted rows remains the story-outcome catalog's job, exactly as it is
+    for every other archived family; without one the client still rolls the
+    Companion and the server still discards it.
+    """
+    stages = tuple(
+        EventStage(
+            event_id=event_id,
+            # Per section, never per chapter. A folded card that also carried a
+            # chapter flag would answer `CheckQuestFlag` true for the tiers this
+            # family does not have; see `EventCatalog.flags`.
+            flag=event_flags_for(chapter, section)[1],
+            chapter=chapter,
+            section=section,
+            stamina=stamina,
+            coins=0,
+            clear_coins=0,
+            character_ids=(),
+            selector="special",
+            unlock_after_chapter=unlock_after_chapter,
+            projected_rewards=True,
+            # One card per chapter for the two-tier families; 8-Bit Rush's lone
+            # section stays its own row, which `identity_label` already gives it.
+            selector_id=str(chapter) if len(stamina_tiers) > 1 else None,
+            companion_manifest=SECTION_COMPANION_MANIFESTS.get((chapter, section)),
+        )
+        for event_id, chapter, unlock_after_chapter, stamina_tiers in COLLAB_SPECIAL_MANIFEST_ROWS
+        for section, stamina in enumerate(stamina_tiers, start=1)
     )
     return EventCatalog(stages)
 
@@ -496,6 +595,12 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                     if 9000 <= chapter <= 9003
                     else "eidolon"
                     if 4100 <= chapter <= 4111
+                    # Applied here rather than written into the document for the
+                    # same reason the class limits are: a catalog an operator
+                    # generated before this menu existed still lands its Descent
+                    # rows in the menu the final client drew them in.
+                    else "descent_quest"
+                    if chapter in DESCENT_QUEST_CHAPTERS
                     else "special"
                 ),
                 unlock_after_chapter=unlock_after_chapter,
@@ -510,6 +615,9 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 # existed still carries the limit its own client declares.
                 class_min=SECTION_CLASS_LIMITS.get((chapter, raw["section"]), (0, 0))[0],
                 class_max=SECTION_CLASS_LIMITS.get((chapter, raw["section"]), (0, 0))[1],
+                companion_manifest=SECTION_COMPANION_MANIFESTS.get(
+                    (chapter, raw["section"]),
+                ),
             )
         )
     if (

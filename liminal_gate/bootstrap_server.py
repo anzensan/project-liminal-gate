@@ -156,6 +156,7 @@ from liminal_gate.drop_eligibility import login_chr_buddy_data
 from liminal_gate.event_catalog import (
     EventCatalog,
     EventCatalogError,
+    build_bundled_collab_special_policy,
     build_bundled_counter_descent_policy,
     load_event_catalog,
     merge_event_catalogs,
@@ -3296,6 +3297,13 @@ class BootstrapState:
                 # like a wallet or phase disagreement. Which check failed is the
                 # whole diagnosis, and the server already knew it.
                 return f"{'event' if event else 'story'}_clear_{failed}_conflict", None
+            if event and not stage.companions_within_manifest(
+                clear["battle_result"]["buddies"]
+            ):
+                # Only the sections whose own `dropBuddies` was read reach this;
+                # every other event stage leaves the channel exactly as
+                # unconstrained as it was. See `SECTION_COMPANION_MANIFESTS`.
+                return "invalid_local_event_result", None
             projected_items = None
             if event and stage.projected_rewards:
                 projected_items = _projected_event_items(
@@ -4970,6 +4978,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             "metalHuntingList": [],
             "huntingHuntingList": [],
             "descentHuntingList": [],
+            # Arena -> Descent Quests. Empty until an event catalog fills it,
+            # like the four beside it: `UISpecialSelect` mode 3 draws whatever
+            # this names and has no embedded fallback to leak, unlike mode 0.
+            "descentQuestList": [],
             "towerQuestList": [],
             "eidolonQuestList": [],
         }
@@ -4991,6 +5003,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 local_special_events = event_lists["specialQuestList"]
                 constants["specialQuestList"] = local_special_events
             constants["descentHuntingList"] = event_lists["descentHuntingList"]
+            constants["descentQuestList"] = event_lists["descentQuestList"]
             constants["towerQuestList"] = event_lists["towerQuestList"]
             constants["eidolonQuestList"] = event_lists["eidolonQuestList"]
         if progress is not None and self.server.hunting_catalog is not None:
@@ -7023,6 +7036,12 @@ def build_server(
         if args.hunting:
             events = merge_event_catalogs(
                 build_bundled_counter_descent_policy(),
+                # Battle Champs and 8-Bit Rush ride the same switch: they are
+                # the same recovered range under the same settlement, listed in
+                # a different menu. Splitting them behind a flag of their own
+                # would let one deployment advertise a Special Quest list the
+                # other does not.
+                build_bundled_collab_special_policy(),
                 events,
             )
         if args.daily_quests:

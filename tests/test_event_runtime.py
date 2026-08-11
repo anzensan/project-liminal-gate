@@ -12,6 +12,7 @@ from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.event_catalog import (
     EventCatalog,
     EventStage,
+    build_bundled_collab_special_policy,
     build_bundled_counter_descent_policy,
 )
 from liminal_gate.event_flag_data import music_event_flags
@@ -829,14 +830,26 @@ class TowerRuntimeTest(unittest.TestCase):
         )
 
 
-class CounterDescentRuntimeTest(unittest.TestCase):
-    """The standard Strikes Back slice uses the real HTTP and durable path."""
+class _CounterDescentRangeHarness:
+    """Server lifecycle and clear form for the 8000-series families.
+
+    Shared rather than copied because that is the claim being made about these
+    chapters: Strikes Back and the two Special Quest families in the same range
+    take the same start, the same durable settlement, and the same clear body.
+    A subclass changes the catalog it serves and the progress it serves it to,
+    and nothing else.
+    """
+
+    progress_chapter = 7
+
+    def build_catalog(self) -> EventCatalog:
+        return build_bundled_counter_descent_policy()
 
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.state_path = Path(self.temporary_directory.name) / "state.json"
         self.profile = bootstrap_profile()
-        self.catalog = build_bundled_counter_descent_policy()
+        self.catalog = self.build_catalog()
         self.token, self.account_id = "descent-token", "descent-account"
         state = BootstrapState(self.state_path)
         state.create_account(
@@ -846,7 +859,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 "coins": 0,
                 "energy": 20,
                 "freeEnergy": 2,
-                "progressCode": 0x01000000 | (7 << 6) | 1,
+                "progressCode": 0x01000000 | (self.progress_chapter << 6) | 1,
                 "worldMapNo": 0,
                 "chrdata": [character(3)],
                 # The client's own inventory and Summon shapes: a projected
@@ -901,6 +914,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
         items: dict[str, int] | None = None,
         summons: list[int] | None = None,
         inventory: list[int] | None = None,
+        buddies: list[int] | None = None,
     ) -> bytes:
         """Compose a clear the way the surviving client composes one.
 
@@ -933,7 +947,7 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             "summonList": json.dumps(userdata["summonList"]),
             "battle_result": json.dumps({
                 "coins": coins,
-                "buddies": [],
+                "buddies": buddies or [],
                 "items": reported,
                 "exp": experience,
                 "section": section,
@@ -948,6 +962,10 @@ class CounterDescentRuntimeTest(unittest.TestCase):
             "itmp1": 0,
             "lastUpdate": 1,
         }).encode()
+
+
+class CounterDescentRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):
+    """The standard Strikes Back slice uses the real HTTP and durable path."""
 
     def test_visibility_charge_projected_clear_and_restart_replay(self) -> None:
         status, server_status = self.get(
@@ -1126,6 +1144,113 @@ class CounterDescentRuntimeTest(unittest.TestCase):
                 clear,
             ),
         )
+
+
+class CollabSpecialRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):
+    """Battle Champs over the real HTTP path, in the menu the client drew it in.
+
+    The harness is the Strikes Back one on purpose: these five chapters take
+    the same start and the same settlement, and reusing it is what demonstrates
+    that. Only the catalog, the progress that opens it, and the Companion
+    channel differ. Chapter 24 is past the last of the five unlocks.
+    """
+
+    progress_chapter = 24
+
+    def build_catalog(self) -> EventCatalog:
+        return build_bundled_collab_special_policy()
+
+    def test_the_five_families_are_special_quests_not_strikes_back(self) -> None:
+        status, server_status = self.get(
+            f"/gd/get_server_status?otk={self.token}&requestID=status"
+        )
+        self.assertEqual(200, status)
+        constants = server_status["constants"]
+        self.assertEqual(
+            ["8008", "8009", "8010", "8011", "8018-1"],
+            constants["specialQuestList"],
+        )
+        self.assertEqual([], constants["descentHuntingList"])
+        # Mode 3's list is present and empty rather than absent: this catalog
+        # carries no Descent family, and the key is served either way.
+        self.assertEqual([], constants["descentQuestList"])
+
+    def test_login_flags_every_tier_that_exists_and_no_chapter(self) -> None:
+        status, login = self.get(
+            f"/gd/login?otk={self.token}&uuid={self.account_id}&requestID=login"
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(
+            sorted([
+                *music_event_flags(),
+                *(
+                    f"sp_ch_{chapter}-{section}"
+                    for chapter in range(8008, 8012)
+                    for section in (1, 2)
+                ),
+                "sp_ch_8018-1",
+            ]),
+            sorted(login["eventFlags"]),
+        )
+        # A chapter key would answer `CheckQuestFlag` for the three tiers the
+        # folded card offers and BattleData does not have.
+        self.assertNotIn("sp_ch_8008", login["eventFlags"])
+
+    def test_a_declared_companion_drop_settles_the_battle(self) -> None:
+        start = b"stamina=15&coins=0&chapter=8008&section=2&lastUpdate=1"
+        self.assertEqual(
+            200,
+            self.post(f"/gd/start_quest?otk={self.token}&requestID=start", start)[0],
+        )
+        status, cleared = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=clear",
+            self.clear_body(chapter=8008, section=2, buddies=[367]),
+        )
+        self.assertEqual(200, status, cleared)
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_a_companion_the_section_never_declared_is_refused(self) -> None:
+        """The bound these five carry that the rest of the range does not.
+
+        368 is a real Companion and a real drop -- of Chapter 8009, not this
+        one. The manifest is per section, so the refusal is too.
+        """
+        start = b"stamina=15&coins=0&chapter=8008&section=2&lastUpdate=1"
+        self.assertEqual(
+            200,
+            self.post(f"/gd/start_quest?otk={self.token}&requestID=start", start)[0],
+        )
+        status, refused = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=clear",
+            self.clear_body(chapter=8008, section=2, buddies=[368]),
+        )
+        self.assertEqual(
+            (409, "invalid_local_event_result"), (status, refused["error"]),
+        )
+        # The battle stays open, so the client's retry has something to settle.
+        self.assertEqual(
+            {"chapter": 8008, "section": 2},
+            self.account()["active_generic_story"],
+        )
+
+    def test_a_tier_that_declares_no_drop_accepts_none(self) -> None:
+        start = b"stamina=5&coins=0&chapter=8008&section=1&lastUpdate=1"
+        self.assertEqual(
+            200,
+            self.post(f"/gd/start_quest?otk={self.token}&requestID=start", start)[0],
+        )
+        status, refused = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=clear",
+            self.clear_body(chapter=8008, section=1, buddies=[367]),
+        )
+        self.assertEqual(
+            (409, "invalid_local_event_result"), (status, refused["error"]),
+        )
+        status, cleared = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=clean",
+            self.clear_body(chapter=8008, section=1),
+        )
+        self.assertEqual(200, status, cleared)
 
 
 class CaptiveGolemClassLimitTest(unittest.TestCase):

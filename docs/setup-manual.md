@@ -51,16 +51,17 @@ port-forward it or use it as a hosted/public service.
 ### Overriding the generated event catalog
 
 The curated 42-stage Archive, all 12 Tower solo-adapter stages, the 12
-battle/banner-backed solo Eidolon stages, and the bundled Strikes Back families are enabled by standard
-guided setup. Archive events, Tower, and solo Eidolon quests never interrupt
+battle/banner-backed solo Eidolon stages, and the bundled Strikes Back, Battle
+Champs and 8-Bit Rush families are enabled by standard guided setup. Archive events, Tower, and solo Eidolon quests never interrupt
 standard setup with a prompt — setup derives and validates them automatically.
 
 If you have independently prepared a stricter reviewed catalog, add
 `--event-catalog` to the normal setup command. Use `--dummy-dll-dir` only when you
 want setup to reuse a matching local IL2CPP dump instead of its generated one.
 Setup derives the matching character catalog and passes both runtime files to the
-server. An override replaces the generated Special Quest, Tower, and Eidolon rows;
-the bundled Strikes Back definitions remain authoritative. See [Advanced local
+server. An override replaces the generated Special Quest, Descent Quest, Tower, and
+Eidolon rows; the bundled Strikes Back, Battle Champs and 8-Bit Rush
+definitions remain authoritative. See [Advanced local
 configuration](advanced-configuration.md#local-event-stages-and-character-grants).
 
 You do not need to supply `DummyDll` yourself for normal guided setup: setup
