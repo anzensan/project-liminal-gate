@@ -2,10 +2,12 @@
 
 ## Current phase
 
-**1.0 released 2026-08-01.** What that claims is narrow and stated in
-`RELEASE_SCOPE.md`: every single-player system the retired client had is
-present, playable, and restart-safe, with reward settlement explicitly labeled
-local preservation policy. It is not a fidelity or parity claim.
+**1.0 released 2026-08-01; 1.1.0 released 2026-08-10.** What that claims is
+narrow and stated in `RELEASE_SCOPE.md`: every single-player system the retired
+client had is present, playable, and restart-safe, with reward settlement
+explicitly labeled local preservation policy. It is not a fidelity or parity
+claim, and 1.1 does not widen it — the minor bump records the size of what
+landed between the two, not a stronger claim.
 
 `PARITY_ROADMAP.md` now separates implemented behavior from permanently
 unrecoverable behavior from open work. The unrecoverable set — Luck Treasure
