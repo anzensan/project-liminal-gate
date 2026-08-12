@@ -3,6 +3,28 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Optional-stage refresh after chapter transitions
+
+- **Reported symptom:** newly eligible Metal, Huntland, and Arena solo stages
+  remained absent until the client process restarted; ordinary story stages
+  continued to appear.
+- **Confirmed implementation mismatch:** the server projected selector lists
+  from account progress only in `get_server_status.constants`, and projected
+  the exact `sp_ch_*` gates only in login `eventFlags`. Those are separate
+  pieces of client state, so refreshing one route could not repair the stale
+  half owned by the other.
+- **Confirmed ARM64 client contract:** the status callback calls
+  `EventManager.SetFlags` at `0xFB5568` and tail-calls
+  `UserData.SetServerConstants` at `0xFB5644`; the login callback calls those
+  same setters at `0xFB7998` and `0xFB7B28`. Both response shapes therefore
+  already have a recovered consumer for both objects; no new wire field was
+  invented.
+- **Correction boundary:** status and login now each send lists and flags from
+  the same progress snapshot. Locked rows remain unadvertised, and a direct
+  start remains independently progress-gated. Real-HTTP regression covers the
+  locked state, a login-only refresh after progress changes, status agreement,
+  and restart persistence. Original-client retest without relaunch is pending.
+
 ## Battle-clear Luck preservation
 
 - **Confirmed final-client wire behavior:** the preserved Chapter 3-2 clear

@@ -16,6 +16,7 @@ capabilities:
   - family: bootstrap
     routes: [get_current_time, get_server_status, signup, login, userdata, userdata_after_close]
     status: confirmed
+    note: "get_server_status and login both publish a progress-consistent constants/eventFlags pair so optional selector unlocks can refresh without relaunch; ARM64 consumers and real-HTTP locked/transition/restart behavior are confirmed, original-client no-relaunch retest pending"
     transport_tests: true
     restart_tests: true
   - family: tutorial_story

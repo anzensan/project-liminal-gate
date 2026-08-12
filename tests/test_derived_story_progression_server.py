@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 import tempfile
@@ -7,9 +8,11 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from liminal_gate.story_progression_catalog import build_core_story_policy, load_story_progression_catalog
 from liminal_gate.story_progression_importer import build_story_progression
 from liminal_gate.settlement_catalog import load_settlement_catalog
+from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, request, start_server, stop_server
 from tests.test_story_progression_importer import _metadata
 
@@ -51,9 +54,19 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def start_server(self) -> None:
+        # Open tier 1 after Chapter 2 in this fixture so its real 2-5 clear and
+        # 3-1 reveal cross an optional-content boundary. The schedule is local
+        # policy and independently tunable; the refresh contract is the part
+        # under test here.
+        hunting_tuning = replace(
+            DEFAULT_TUNING.hunting,
+            tier_unlock_chapters=(2, 9, 18),
+            metal_unlock_chapters=(2, 8, 12, 17, 21, 26, 30),
+        )
         self.server, self.thread = start_server(
             ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
             story_progression_catalog=self.catalog, settlement_catalog=self.settlements,
+            hunting_catalog=build_bundled_hunting_policy(hunting_tuning),
             stamina=True,
         )
 
@@ -139,6 +152,16 @@ class DerivedStoryProgressionServerTest(unittest.TestCase):
                 self.server.state.accounts[self.account_id]["userdata"]["progressCode"],
                 "a settled reveal must not move progress",
             )
+        # This is the actual reported lifecycle: a durable story clear/reveal,
+        # then the client's login refresh without restarting the process or
+        # fetching status again. Both visibility halves must arrive together.
+        status, login = request(
+            self.server, "GET",
+            f"/gd/login?otk={self.token}&uuid={self.account_id}&requestID=after-chapter-boundary",
+        )
+        self.assertEqual(200, status)
+        self.assertIn("1001-1", login["constants"]["huntingHuntingList"])
+        self.assertTrue(login["eventFlags"]["sp_ch_1001-1"]["value"])
         status, started = self.post(
             f"/gd/start_quest?otk={self.token}&requestID=start-3-1",
             [("stamina", "5"), ("coins", "0"), ("chapter", "3"), ("section", "1"), ("lastUpdate", "1")],
