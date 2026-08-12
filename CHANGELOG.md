@@ -12,6 +12,19 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Newly unlocked Metal, Huntland, and Arena solo stages no longer wait for
+  an app restart.** The client has two independent halves of optional-stage
+  visibility: selector lists in `constants` and matching `eventFlags`. Both
+  its status and login callbacks can install both halves, but the server sent
+  constants only with status and flags only with login. A chapter transition
+  could therefore refresh one half while the other stayed at the progress
+  seen during launch.
+
+  Status and login now each return the two objects from the same account
+  progress snapshot. Locked rows and their flags remain absent, and the start
+  routes retain their own progress checks; this changes refresh timing, not
+  unlock policy or saved progression. Server restart only.
+
 - **Daily Quests pay the Energy their result screen promises.** A tester
   cleared Sweet Temptation, watched an Energy reward appear with no amount
   beside it, and received nothing. Both halves of that were the same absence.

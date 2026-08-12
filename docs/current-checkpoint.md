@@ -11,6 +11,20 @@ Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
 
+Latest optional-selector refresh correction: two testers reported that newly
+eligible Metal, Huntland, and Arena solo stages remained absent until the app
+restarted. The server split the two client-owned halves of visibility:
+`get_server_status` carried progress-gated selector lists in `constants`, while
+login carried their matching `eventFlags`. ARM64 static analysis confirms that
+both callbacks accept both objects: status calls `EventManager.SetFlags` at
+`0xFB5568` and tail-calls `UserData.SetServerConstants` at `0xFB5644`; login
+calls the same setters at `0xFB7998` and `0xFB7B28`. Both responses now derive
+and send a progress-consistent pair. A focused real-HTTP regression proves a
+locked row and flag are absent, a progress transition followed by login alone
+publishes both without mutation, status agrees, and restart preserves the
+result. Original-client confirmation without a relaunch remains pending; no
+affected-run raw capture was supplied.
+
 Fast validation lane:
 
 ```sh

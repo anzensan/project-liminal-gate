@@ -215,11 +215,15 @@ Clears settled before this map existed are not reconstructed.
 
 ## Server constants
 
-`get_server_status` returns the complete required constants object. A partial
-object is not served because client setters directly index required economy,
-version, country, and selector fields. Hunting and Tower selector lists are
-added per account from the enabled Hunting and event catalogs and current
-progress.
+`get_server_status` and `login` each return the complete required `constants`
+object together with the matching `eventFlags` projection. The final client's
+callbacks for both routes install both objects. Keeping the pair on the same
+account-progress snapshot lets a chapter-transition login publish newly
+eligible optional stages without requiring a process restart. A partial
+constants object is not served because client setters directly index required
+economy, version, country, and selector fields. Hunting and Tower selector
+lists are added per account from the enabled Hunting and event catalogs and
+current progress.
 `specialQuestList` merges the generated Archive Special Quest rows with the
 bundled Chapter 3003-1 row whenever their gates are open. Dual-ABI
 `UISpecialSelect.SetMode(0)` analysis confirms that this nonempty server list

@@ -4242,7 +4242,14 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             if token is None:
                 return
             payload = _render(profile.responses["status"], token)
-            payload["constants"] = self._server_constants(token)
+            progress = self.server.state.progress_for_status(
+                token,
+                self._client_host(),
+            )
+            payload["constants"] = self._server_constants(progress)
+            event_flags = self._client_event_flags(progress)
+            if event_flags:
+                payload["eventFlags"] = event_flags
             self._signed(HTTPStatus.OK, token, payload)
             return
         if target.path == profile.routes.get("login"):
@@ -4277,46 +4284,21 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # Huntland button is disabled even with the category flag on and
             # today's two quests named.
             payload["lastLogin"] = now
-            # Ungated, unlike every other source below: these three name no
-            # stage, cost nothing, and touch no saved state, so there is no
-            # policy for an operator to decide. A server that answers a login
-            # at all is a server whose client should be playing the right
-            # track for the screen it is on.
-            event_flags: dict[str, Any] = music_event_flags()
             progress = self.server.state.accounts[resolved].get(
                 "userdata", {}
             ).get("progressCode", 0)
-            if self.server.event_catalog is not None:
-                event_flags |= self.server.event_catalog.flags(
-                    progress if type(progress) is int and progress >= 0 else None
-                )
-            if self.server.hunting_catalog is not None:
-                if type(progress) is int and progress >= 0:
-                    event_flags |= self.server.hunting_catalog.client_event_flags(
-                        progress
-                    )
-            if self.server.secondary_worlds and type(progress) is int and progress >= 0:
-                # Unlike the Daily Quests these do carry a story gate: the
-                # client's own map predicates check a section threshold before
-                # offering the swap, and the flag is the half the server owns.
-                event_flags |= secondary_world_event_flags(
-                    (progress & 0xFFFF) >> 6, progress & 0x3F,
-                )
-            if self.server.cavern_forest and type(progress) is int and progress >= 0:
-                # These carry a story gate for the same reason the secondary
-                # worlds do: the client's own map point compares cleared
-                # progress against an `openChapter` before drawing, and the
-                # flag is the half the server owns. Sending it earlier would
-                # draw nothing; sending it never is what kept both areas
-                # invisible, because the point is built behind a prefix scan
-                # over exactly these flags.
-                event_flags |= cavern_forest_event_flags(
-                    (progress & 0xFFFF) >> 6, progress & 0x3F,
-                )
+            # Both final-client refresh callbacks understand both halves of
+            # optional-stage visibility: EventManager.SetFlags reads
+            # `eventFlags`, while UserData.SetServerConstants reads the
+            # selector lists. Status used to carry only the latter and login
+            # only the former, so a chapter transition could update one half
+            # and leave the other stale until the process relaunched. Keep the
+            # pair on the same progress snapshot in every refresh response.
+            payload["constants"] = self._server_constants(
+                progress if type(progress) is int and progress >= 0 else None
+            )
+            event_flags = self._client_event_flags(progress)
             if self.server.daily_quests:
-                # The flags open the category; they never depend on story
-                # progress, because Daily Quests carry no recovered story gate.
-                event_flags |= daily_quest_event_flags()
                 # The flags alone leave every entry drawn and greyed out. These
                 # six fields are what the client's DailyQuestManager actually
                 # reads to know which two quests today offers and whether they
@@ -4324,18 +4306,6 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 payload |= daily_quest_login_fields(
                     self.server.state.accounts[resolved], time.time(),
                 )
-            if self.server.achievement_catalog is not None:
-                # The client holds all 99 achievements and evaluates them
-                # itself; this flag is only what makes it list them. Without it
-                # every one reads as not-shown and the menu entry is bare,
-                # which is what a bundled claim policy could never fix on its
-                # own -- it settles a claim, and nothing was listing anything.
-                event_flags |= achievement_event_flags()
-            if self.server.daily_drop_bonuses:
-                # This is only the recovered service-owned gate. The final
-                # client computes the 15-day item/monster bonus itself from
-                # the server-corrected instant and its local calendar day.
-                event_flags |= daily_bonus_event_flags()
             if event_flags:
                 payload["eventFlags"] = event_flags
             if self.server.event_catalog is not None:
@@ -4969,11 +4939,57 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _server_constants(self, token: str) -> dict[str, Any]:
-        """Return the constants block for whichever account holds this token.
+    def _client_event_flags(self, progress: object) -> dict[str, Any]:
+        """Return the flags paired with progress-gated selector constants.
 
-        The client refetches the status route after every login and after
-        clears, so the zone lists here follow story progress without any push.
+        The final client accepts this object from both status and login. Keep
+        it derived beside :meth:`_server_constants`: sending only one half on
+        either refresh leaves newly eligible optional stages stale until a
+        process relaunch.
+        """
+        # Ungated: these three name no stage, cost nothing, and touch no saved
+        # state. Any supported refresh should leave the client playing the
+        # right track for the screen it is on.
+        event_flags: dict[str, Any] = music_event_flags()
+        valid_progress = progress if type(progress) is int and progress >= 0 else None
+        if self.server.event_catalog is not None:
+            event_flags |= self.server.event_catalog.flags(valid_progress)
+        if self.server.hunting_catalog is not None and valid_progress is not None:
+            event_flags |= self.server.hunting_catalog.client_event_flags(valid_progress)
+        if self.server.secondary_worlds and valid_progress is not None:
+            # Unlike the Daily Quests these do carry a story gate: the
+            # client's own map predicates check a section threshold before
+            # offering the swap, and the flag is the half the server owns.
+            event_flags |= secondary_world_event_flags(
+                (valid_progress & 0xFFFF) >> 6, valid_progress & 0x3F,
+            )
+        if self.server.cavern_forest and valid_progress is not None:
+            # These carry a story gate for the same reason the secondary
+            # worlds do: the client's own map point compares cleared progress
+            # against an `openChapter` before drawing, and the flag is the half
+            # the server owns.
+            event_flags |= cavern_forest_event_flags(
+                (valid_progress & 0xFFFF) >> 6, valid_progress & 0x3F,
+            )
+        if self.server.daily_quests:
+            # The flags open the category; they never depend on story progress,
+            # because Daily Quests carry no recovered story gate.
+            event_flags |= daily_quest_event_flags()
+        if self.server.achievement_catalog is not None:
+            # The client holds all 99 achievements and evaluates them itself;
+            # this flag is only what makes it list them.
+            event_flags |= achievement_event_flags()
+        if self.server.daily_drop_bonuses:
+            # This is only the recovered service-owned gate. The final client
+            # computes the rotation itself from the corrected instant.
+            event_flags |= daily_bonus_event_flags()
+        return event_flags
+
+    def _server_constants(self, progress: int | None) -> dict[str, Any]:
+        """Return the constants block for one account-progress snapshot.
+
+        Both status and login set this block in the final client, so the zone
+        lists follow story progress whichever refresh the client performs.
         Dedicated list keys are always present, even when empty: the client's setter
         reads them directly, and an absent key is not the same as no zones.
         """
@@ -5003,10 +5019,6 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             # the client offers exactly the items `use_statusup_item` would
             # settle rather than a row the route answers with a 501.
             constants["statusUpItems"] = client_status_up_items(self.server.statusup_catalog)
-        progress = self.server.state.progress_for_status(
-            token,
-            self._client_host(),
-        )
         local_special_events: list[str] = []
         if self.server.event_catalog is not None:
             event_lists = self.server.event_catalog.client_lists(progress)

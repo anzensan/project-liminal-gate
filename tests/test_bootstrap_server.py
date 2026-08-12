@@ -18,6 +18,7 @@ from liminal_gate.bootstrap_server import (
     load_profile,
 )
 from liminal_gate.bootstrap_wire import _endpoint_refusal_envelope
+from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.story_progression_catalog import build_core_story_policy
 from tests.support import serve
 
@@ -802,9 +803,10 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
             f"/gd/get_server_status?platform=GooglePlay&app_version=5.57&otk={token}&digest2=client-value&requestID=request-id"
         )
         self.assertEqual(200, status)
-        self.assertEqual({"success", "digest", "constants"}, set(status_payload))
+        self.assertEqual({"success", "digest", "constants", "eventFlags"}, set(status_payload))
         self.assertTrue(status_payload["success"])
         self.assertEqual(16, len(status_payload["digest"]))
+        self.assertEqual(music_event_flags(), status_payload["eventFlags"])
         # Both version projections must clear 4.99 or the client disables every
         # Huntland card, and the country arrays must accompany them or its
         # final-major login branch dereferences a null.

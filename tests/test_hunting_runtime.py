@@ -421,6 +421,46 @@ class HuntingRuntimeTest(unittest.TestCase):
             login["eventFlags"],
         )
 
+    def test_login_refreshes_lists_and_flags_after_progress_changes(self) -> None:
+        """A chapter transition must not require a client-process restart.
+
+        The final client can refresh login without fetching status again. The
+        former split left its selector lists on the old status response while
+        its flags moved with login, so a newly eligible row stayed absent until
+        relaunch. Both response families now carry a progress-consistent pair.
+        """
+        identity = f"{LOCKED_STAGE[0]}-{LOCKED_STAGE[1]}"
+        flag = f"sp_ch_{identity}"
+
+        before_status = self.server_status(self.token)
+        before_login = self.login("before-boundary")
+        for payload in (before_status, before_login):
+            self.assertNotIn(identity, payload["constants"]["huntingHuntingList"])
+            self.assertNotIn(flag, payload["eventFlags"])
+
+        # Stand in for the already-tested durable story clear/reveal mutation.
+        # No status request follows it: login alone is the reported client path
+        # whose stale constants forced a relaunch.
+        unlocked_progress = 0x01000000 | (30 << 6) | 1
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["userdata"]["progressCode"] = unlocked_progress
+            self.server.state._persist_locked()
+
+        after_login = self.login("after-boundary")
+        self.assertIn(identity, after_login["constants"]["huntingHuntingList"])
+        self.assertTrue(after_login["eventFlags"][flag]["value"])
+        self.assertEqual(unlocked_progress, self.userdata()["progressCode"])
+
+        after_status = self.server_status("after-boundary")
+        self.assertIn(identity, after_status["constants"]["huntingHuntingList"])
+        self.assertTrue(after_status["eventFlags"][flag]["value"])
+
+        self.restart()
+        restarted = self.login("after-restart")
+        self.assertIn(identity, restarted["constants"]["huntingHuntingList"])
+        self.assertTrue(restarted["eventFlags"][flag]["value"])
+        self.assertEqual(unlocked_progress, self.userdata()["progressCode"])
+
     def test_special_quest_settles_and_replays_after_restart(self) -> None:
         self.enable_strict_outcomes()
         status, started = self.start("special-start", 3003, 1, 5)
