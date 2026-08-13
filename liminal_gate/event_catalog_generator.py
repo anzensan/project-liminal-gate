@@ -9,10 +9,10 @@ identities from :mod:`liminal_gate.event_manifest_data`. The command-line form
 remains available for inspection and explicit catalog overrides.
 
 The event chapters sit in BattleData alongside the main story, and
-`battledata_importer` reads their entry stamina and start costs exactly as it
-does ordinary stages. Only banner-backed Eidolon sections with actual battles
-are projected. Older co-op reward records are not moved onto those solo stages
-without a matching result-path capture.
+`battledata_importer` reads their entry stamina, Coins, and required items
+exactly as it does ordinary stages. Only banner-backed Eidolon sections with
+actual battles are projected. Older co-op reward records are not moved onto
+those solo stages without a matching result-path capture.
 
 Usage:
 
@@ -92,6 +92,29 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
             raise EventCatalogGeneratorError(
                 f"{event_id}: recovered flag {flag!r} cannot gate {chapter}-{number}"
             )
+        entry_item_id = section.get("entry_item_id", 0)
+        entry_item_count = section.get("entry_item_count", 0)
+        if (
+            type(entry_item_id) is not int
+            or type(entry_item_count) is not int
+            or entry_item_id < 0
+            or entry_item_count < 0
+        ):
+            raise EventCatalogGeneratorError(
+                f"{event_id}: invalid entry item for {chapter}-{number}"
+            )
+        if bool(entry_item_id) != bool(entry_item_count):
+            raise EventCatalogGeneratorError(
+                f"{event_id}: incomplete entry item for {chapter}-{number}"
+            )
+        entry_item = (
+            {
+                "entry_item_id": entry_item_id,
+                "entry_item_count": entry_item_count,
+            }
+            if entry_item_id
+            else {}
+        )
         return {
             "event_id": event_id,
             "flag": flag,
@@ -101,6 +124,7 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
             "coins": int(section.get("coins", 0)),
             "clear_coins": EVENT_CLEAR_COINS,
             "unlock_after_chapter": unlock_after,
+            **entry_item,
             **extra,
         }
 

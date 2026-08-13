@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-03"
+updated: "2026-08-12"
 canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -58,7 +58,7 @@ capabilities:
   - family: local_events
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "guided setup derives 42 curated Archive stages across Chapters 2000-2011 and 2014-2018, the labeled solo Tower adapter for 9010-9013, and solo Eidolon 4100-4111; test Chapter 2012, bannerless 2013, empty 2015-4 through 2015-6, and Donation 9100-9102 are excluded; bundled Strikes Back Chapters 8000-8007 and 8012-8017 remain authoritative while 8008-8011 and 8018 stay unsupported; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while other event clears remain pending"
+    note: "guided setup derives curated Archive stages from the reviewed BattleData, including Lucia II Item 110 x1 and Lucia III Item 111 x1 entry costs with real-HTTP spend/retry/clear/restart proof; test Chapter 2012, bannerless 2013, and empty 2015-4 through 2015-6 are excluded; Jade Dragon 2004-1 clear and restart persistence are original-client confirmed, while Lucia entry and other event clears remain pending on hardware"
     transport_tests: true
     restart_tests: true
   - family: tower_solo_archive

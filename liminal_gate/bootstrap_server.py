@@ -65,7 +65,6 @@ from liminal_gate.bootstrap_profile import (
     load_profile,
 )
 from liminal_gate.bootstrap_parsers import (
-    _TICKET_START_FIELDS,
     _apply_companion_delta,
     _companion_info,
     _companion_target_allowed,
@@ -88,6 +87,7 @@ from liminal_gate.bootstrap_parsers import (
     _parse_generic_story_clear,
     _parse_generic_story_start,
     _parse_hunting_start,
+    _parse_item_start,
     _parse_ordinary_pact_draw,
     _parse_party_companion_userdata_write,
     _parse_rebirth,
@@ -235,6 +235,9 @@ MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024
 #: party that breaks a section's class band. The enum the client renders start
 #: refusals from is the one this rides.
 CLASS_LIMIT_ERROR_CODE = 4
+#: `AppServerUtil.StartQuestErrorCode.NotEnoughItems`, returned when the exact
+#: BattleData entry item a stage declares is not in the durable inventory.
+NOT_ENOUGH_ITEMS_ERROR_CODE = 3
 #: `AppServerUtil.StartQuestErrorCode.SpeciesLimit`, its sibling, for a party
 #: that breaks a stage's species lock. Only the two Roads declare one.
 SPECIES_LIMIT_ERROR_CODE = 6
@@ -3097,17 +3100,30 @@ class BootstrapState:
                 if cached.get("body_sha256") != body_hash:
                     return "request_collision", None
                 return "replay", copy.deepcopy(cached["payload"])
-            values = _parse_generic_story_start(body)
+            event = isinstance(catalog, EventCatalog)
+            values = (
+                _parse_item_start(body)
+                if event
+                else _parse_generic_story_start(body)
+            )
             if values is None:
                 return "unsupported_start_quest", None
             stage = catalog.by_identity().get((values["chapter"], values["section"]))
+            entry_pair = (
+                (stage.entry_item_id, stage.entry_item_count)
+                if event and stage is not None
+                else (0, 0)
+            )
             if (
                 stage is None
                 or stage.stamina is not None and values["stamina"] != stage.stamina
                 or stage.coins is not None and values["coins"] != stage.coins
+                or event and (
+                    (values["itemID"], values["itemCount"]) != entry_pair
+                    or values["ticket_form"] != int(bool(entry_pair[0]))
+                )
             ):
                 return "unsupported_start_quest", None
-            event = isinstance(catalog, EventCatalog)
             userdata = account["userdata"]
             if event and not stage.unlocked_at(
                 int(userdata.get("progressCode", 0))
@@ -3155,6 +3171,11 @@ class BootstrapState:
                 if any(open_chest) or any(open_luck_up):
                     payload["luckResult"] = list(open_chest)
                     payload["luckUpTable"] = list(open_luck_up)
+                if event and stage.entry_item_id:
+                    # The first accepted start owned the item spend. A fresh-ID
+                    # re-entry must teach a client that missed that response the
+                    # same durable inventory without charging it again.
+                    payload["itemList"] = list(userdata.get("itemList", []))
                 requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
@@ -3176,8 +3197,18 @@ class BootstrapState:
             # no such floor, so an undeclared coin cost is charged as zero
             # rather than on the client's word.
             coin_cost = stage.coins if stage.coins is not None else 0
-            help_result, help_items = help_item_debit(userdata, values["helpItemID"])
+            help_result, start_items = help_item_debit(
+                userdata, values["helpItemID"]
+            )
             if help_result == "unsupported":
+                return "unsupported_start_quest", None
+            entry_result, start_items = entry_item_debit(
+                userdata,
+                entry_pair[0],
+                entry_pair[1],
+                projected=start_items,
+            )
+            if entry_result == "unsupported":
                 return "unsupported_start_quest", None
             origin = entry_stamina_origin(userdata, stamina_cost, now, enabled=stamina)
             if origin is None or int(userdata.get("coins", 0)) < coin_cost:
@@ -3186,14 +3217,22 @@ class BootstrapState:
                 )
             if help_result == "unavailable":
                 return "success", _canonical_payload({"success": False, "errorCode": 2})
+            if entry_result == "unavailable":
+                return "success", _canonical_payload({
+                    "success": False,
+                    "errorCode": NOT_ENOUGH_ITEMS_ERROR_CODE,
+                })
             userdata["refillStartTime"] = origin
             userdata["coins"] = int(userdata.get("coins", 0)) - coin_cost
-            if help_items is not None:
-                userdata["itemList"] = help_items
+            if start_items is not None:
+                userdata["itemList"] = start_items
             _synchronize_wallet_projection(userdata)
             payload = {"success": True, "refillStartTime": origin}
-            if help_items is not None:
-                payload["itemList"] = list(help_items)
+            if start_items is not None:
+                # Neither the entry item nor a selected Power-Up is debited by
+                # the client. Its guarded callback replaces the whole inventory
+                # from this field after the server commits both spends.
+                payload["itemList"] = list(start_items)
             # The Luck Treasure Chest is decided here, not at clear: the client
             # holds no chest table and renders whatever this names. Seeded from
             # the request identity so a retry cannot re-roll a better chest.
@@ -3316,9 +3355,9 @@ class BootstrapState:
                 # unconstrained as it was. See `SECTION_COMPANION_MANIFESTS`.
                 return "invalid_local_event_result", None
             projected_items = None
-            if event and stage.projected_rewards:
+            if event and (stage.projected_rewards or stage.entry_item_id):
                 projected_items = _projected_event_items(
-                    userdata, clear, chest_items(authored_chest),
+                    userdata, clear, chest_items(authored_chest), stage,
                 )
                 if projected_items is None:
                     return "invalid_local_event_result", None
@@ -4437,7 +4476,10 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return self._select_userdata_mutation(token, request_id, body)
         if path == profile.routes.get("start_quest"):
             dispatch = MutationDispatch("start", profile.story_starts)
-            parsed = _parse_generic_story_start(body)
+            # Event BattleData can add an entry-item pair (Lucia II/III), so
+            # route against the same shared form their handler validates. A
+            # normal story body parses through it unchanged.
+            parsed = _parse_item_start(body)
             if (
                 self.server.event_catalog is not None
                 and parsed is not None
@@ -5291,6 +5333,40 @@ def help_item_debit(
     projected = list(items)
     projected[help_item_id - 1] = held - 1
     return "ok", projected
+
+
+def entry_item_debit(
+    userdata: dict[str, Any], item_id: int, item_count: int, *,
+    projected: list[int] | None = None, slots: int = BUNDLED_ITEM_SLOTS,
+) -> tuple[str, list[int] | None]:
+    """Project a BattleData entry-item spend without mutating the account.
+
+    A zero pair is the ordinary start form and leaves an earlier Power-Up Item
+    projection intact. A positive pair is charged in addition to stamina; the
+    caller publishes the resulting full inventory only after every other start
+    precondition has passed, so interruption before commit eats neither item.
+    """
+    if item_id == 0 and item_count == 0:
+        return "ok", projected
+    if (
+        not 1 <= item_id <= slots
+        or item_count < 1
+        or projected is not None and len(projected) != slots
+    ):
+        return "unsupported", None
+    items = userdata.get("itemList") if projected is None else projected
+    if (
+        not isinstance(items, list)
+        or len(items) != slots
+        or any(type(value) is not int or value < 0 for value in items)
+    ):
+        return "unsupported", None
+    held = items[item_id - 1]
+    if held < item_count:
+        return "unavailable", None
+    result = list(items)
+    result[item_id - 1] = held - item_count
+    return "ok", result
 
 
 def entry_stamina_origin(
@@ -6723,8 +6799,13 @@ def _projected_list(current: object, submitted: object, rewards: dict[int, int],
 
 def _projected_event_items(
     userdata: dict[str, Any], clear: dict[str, Any], chest: dict[int, int],
+    stage: EventStage,
 ) -> list[int] | None:
     """Return the server-owned inventory for a client-reported event clear.
+
+    Reward-bearing stages follow the ordinary server-owned projection. For an
+    item-bearing entry, also reconcile the single stale pre-entry slot a client
+    can submit after losing the committed start response.
 
     Counter Descent has no recovered reward table and the result service that
     would have authored one is gone, so the surviving client's own report is the
@@ -6756,10 +6837,47 @@ def _projected_event_items(
     gains = {int(item_id): count for item_id, count in result["items"].items()}
     for item_id, count in chest.items():
         gains[item_id] = gains.get(item_id, 0) + count
-    return _count_projection(
+    projected = _count_projection(
         userdata.get("itemList"), clear["itemList"], gains,
         BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK,
     )
+    if projected is not None or not stage.entry_item_id:
+        return projected
+
+    # The start response carries the post-spend inventory, which the reviewed
+    # client callback loads. Accept its exact clear projection above. The one
+    # additional shape is interruption-compatible: a client that missed that
+    # response may repeat the pre-entry count in only the charged slot, as the
+    # confirmed Metal callback does. In both cases the durable lower count wins.
+    current = userdata.get("itemList")
+    submitted = clear["itemList"]
+    if not (
+        isinstance(current, list)
+        and isinstance(submitted, list)
+        and len(current) == BUNDLED_ITEM_SLOTS
+        and len(submitted) == BUNDLED_ITEM_SLOTS
+        and all(
+            type(value) is int and 0 <= value <= BUNDLED_MAX_STACK
+            for value in current
+        )
+    ):
+        return None
+    expected = list(current)
+    for item_id, count in gains.items():
+        if item_id > BUNDLED_ITEM_SLOTS:
+            return None
+        expected[item_id - 1] = min(
+            BUNDLED_MAX_STACK, expected[item_id - 1] + count
+        )
+    repeated_pre_entry = list(expected)
+    entry_index = stage.entry_item_id - 1
+    repeated_pre_entry[entry_index] += stage.entry_item_count
+    if (
+        repeated_pre_entry[entry_index] > BUNDLED_MAX_STACK
+        or submitted != repeated_pre_entry
+    ):
+        return None
+    return expected
 
 
 def _projected_hunting_items(

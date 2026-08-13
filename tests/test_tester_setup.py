@@ -119,6 +119,8 @@ class TesterSetupTest(unittest.TestCase):
                     "sections": [{
                         "rawStamina": 10,
                         "coins": 0,
+                        "itemID": 0,
+                        "itemCount": 0,
                         "battleCnt": 5,
                     }],
                 }],

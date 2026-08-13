@@ -6,7 +6,12 @@ import tempfile
 import unittest
 from urllib.parse import urlencode
 
-from liminal_gate.bootstrap_server import CLASS_LIMIT_ERROR_CODE, BootstrapServer, BootstrapState
+from liminal_gate.bootstrap_server import (
+    CLASS_LIMIT_ERROR_CODE,
+    NOT_ENOUGH_ITEMS_ERROR_CODE,
+    BootstrapServer,
+    BootstrapState,
+)
 from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.event_catalog import (
     EventCatalog,
@@ -125,6 +130,152 @@ class EventRuntimeTest(unittest.TestCase):
                 ["2000-1", "3003-1"],
                 status_payload["constants"]["specialQuestList"],
             )
+
+    def test_lucia_entry_key_spends_once_and_survives_retry_clear_and_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            token, account_id = "lucia-token", "lucia-account"
+            item_list = [0] * ITEM_SLOTS
+            item_list[109] = 1  # Item 110, Key of Hearts.
+            initial = {
+                "coins": 0,
+                "energy": 0,
+                "freeEnergy": 0,
+                "progressCode": 0x01000000 | (14 << 6) | 1,
+                "worldMapNo": 0,
+                "chrdata": [character(3)],
+                "itemList": item_list,
+                "summonList": [],
+            }
+            state = BootstrapState(state_path)
+            state.create_account(token, account_id, initial)
+            state.accounts[account_id]["tutorial_phase"] = "free_roam"
+            state._persist_locked()
+            state.close()
+            catalog = EventCatalog((
+                EventStage(
+                    "lucia_archive", "sp_ch_2006", 2006, 2,
+                    35, 0, 0, (), unlock_after_chapter=13,
+                    selector_id="2006", entry_item_id=110,
+                    entry_item_count=1,
+                ),
+            ))
+            start = (
+                b"stamina=35&coins=0&itemID=110&itemCount=1&"
+                b"chapter=2006&section=2&lastUpdate=1"
+            )
+            collision = (
+                b"stamina=35&coins=0&itemID=110&itemCount=2&"
+                b"chapter=2006&section=2&lastUpdate=1"
+            )
+
+            def post(
+                server: BootstrapServer, route: str, request_id: str, body: bytes,
+            ) -> tuple[int, dict]:
+                return support_post(
+                    server, f"/gd/{route}", request_id, body, token=token,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
+                event_catalog=catalog,
+            )
+            try:
+                status, started = post(server, "start_quest", "lucia-start", start)
+                self.assertEqual((200, True, 0), (
+                    status, started["success"], started["itemList"][109],
+                ))
+                self.assertEqual((status, started), post(
+                    server, "start_quest", "lucia-start", start,
+                ))
+                refused_status, refused = post(
+                    server, "start_quest", "lucia-start", collision,
+                )
+                self.assertEqual(
+                    (501, "unsupported_start_quest"),
+                    (refused_status, refused["error"]),
+                )
+                self.assertEqual(
+                    0,
+                    server.state.accounts[account_id]["userdata"]["itemList"][109],
+                )
+            finally:
+                stop_server(server, thread)
+
+            # A new request ID after process restart is re-entry into the same
+            # active battle. It returns the committed inventory without a
+            # second spend, covering a response lost after durable commit.
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
+                event_catalog=catalog,
+            )
+            stale_pre_entry = list(item_list)
+            clear = urlencode({
+                "progressCode": initial["progressCode"],
+                "worldMapNo": 0,
+                "valuables": json.dumps({
+                    "energyAppStore": 0, "energy": 0, "energyAndApp": 0,
+                    "freeEnergy": 0, "energyGooglePlay": 0, "coins": 0,
+                }),
+                "chrdata": json.dumps(initial["chrdata"]),
+                # Also accept the exact interruption shape: a client that
+                # missed the start response can repeat only the pre-entry key.
+                "itemList": json.dumps(stale_pre_entry),
+                "summonList": "[]",
+                "battle_result": json.dumps({
+                    "coins": 0, "buddies": [], "items": {}, "exp": 0,
+                    "section": 2, "monsters": [], "summons": [],
+                    "luckynum": 0, "chapter": 2006,
+                    "unableluckdrop": False, "boostup": [0] * 6,
+                }),
+                "itmp0": 0, "itmp1": 0, "lastUpdate": 1,
+            }).encode()
+            try:
+                status, reentered = post(
+                    server, "start_quest", "lucia-reenter", start,
+                )
+                self.assertEqual((200, True, 0), (
+                    status, reentered["success"], reentered["itemList"][109],
+                ))
+                clear_status, cleared = post(
+                    server, "clear_quest", "lucia-clear", clear,
+                )
+                self.assertEqual((200, 0), (
+                    clear_status, cleared["itemList"][109],
+                ))
+                missing_status, missing = post(
+                    server, "start_quest", "lucia-missing-key", start,
+                )
+                self.assertEqual(
+                    (200, True, NOT_ENOUGH_ITEMS_ERROR_CODE),
+                    (missing_status, missing["success"], missing["cmdError"]),
+                )
+                self.assertEqual(
+                    ("free_roam", 0),
+                    (
+                        server.state.accounts[account_id]["tutorial_phase"],
+                        server.state.accounts[account_id]["userdata"]["itemList"][109],
+                    ),
+                )
+            finally:
+                stop_server(server, thread)
+
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(state_path),
+                event_catalog=catalog,
+            )
+            try:
+                self.assertEqual(
+                    (clear_status, cleared),
+                    post(server, "clear_quest", "lucia-clear", clear),
+                )
+                self.assertEqual(
+                    0,
+                    server.state.accounts[account_id]["userdata"]["itemList"][109],
+                )
+            finally:
+                stop_server(server, thread)
 
     def test_a_flagged_event_chapter_grows_luck_below_the_stamina_gate(self) -> None:
         """2006 Lucia and 7010 Cryptid Forest are `allowLucky` and reach the
