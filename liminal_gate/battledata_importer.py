@@ -42,9 +42,11 @@ def build_stage_metadata(tree: dict[str, Any], apk_sha256: str) -> dict[str, obj
         for section_number, section in enumerate(sections, start=1):
             if not isinstance(section, dict):
                 raise BattleDataImportError("BattleData section must be an object")
-            fields = ("rawStamina", "coins", "battleCnt")
+            fields = ("rawStamina", "coins", "itemID", "itemCount", "battleCnt")
             if any(type(section.get(field)) is not int or section[field] < 0 for field in fields):
                 raise BattleDataImportError("BattleData section has invalid numeric metadata")
+            if bool(section["itemID"]) != bool(section["itemCount"]):
+                raise BattleDataImportError("BattleData section has an incomplete entry item")
             identity = (chapter_id, section_number)
             if identity in seen:
                 raise BattleDataImportError("BattleData contains a duplicate stage identity")
@@ -54,6 +56,8 @@ def build_stage_metadata(tree: dict[str, Any], apk_sha256: str) -> dict[str, obj
                 "section": section_number,
                 "stamina": section["rawStamina"],
                 "coins": section["coins"],
+                "entry_item_id": section["itemID"],
+                "entry_item_count": section["itemCount"],
                 "battle_count": section["battleCnt"],
                 "has_battle": section["battleCnt"] > 0,
             })

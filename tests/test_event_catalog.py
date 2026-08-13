@@ -25,6 +25,18 @@ class EventCatalogTest(unittest.TestCase):
    with self.assertRaisesRegex(EventCatalogError, "unlock_after_chapter"):
     load_event_catalog(e,c)
 
+ def test_entry_item_pair_is_loaded_and_incomplete_pairs_are_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d); c=r/'c.json'; c.write_text(json.dumps({'characters':[]}))
+   base={'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'lucia','flag':'sp_ch_2006','chapter':2006,'section':2,'stamina':35,'coins':0,'clear_coins':0,'character_ids':[],'entry_item_id':110,'entry_item_count':1}]}
+   e=r/'e.json'; e.write_text(json.dumps(base))
+   stage=load_event_catalog(e,c).stages[0]
+   self.assertEqual((110,1),(stage.entry_item_id,stage.entry_item_count))
+   base['stages'][0].pop('entry_item_count')
+   e.write_text(json.dumps(base))
+   with self.assertRaisesRegex(EventCatalogError,'entry item'):
+    load_event_catalog(e,c)
+
  def test_invalid_summon_ceiling_is_refused(self):
   with tempfile.TemporaryDirectory() as d:
    r=Path(d); c=r/'c.json'; e=r/'e.json'; c.write_text(json.dumps({'characters':[]})); e.write_text(json.dumps({'schema_version':1,'provenance':'user-supplied','character_catalog_sha256':hashlib.sha256(c.read_bytes()).hexdigest(),'stages':[{'event_id':'test','flag':'sp_ch_4100','chapter':4100,'section':1,'stamina':10,'coins':0,'clear_coins':0,'character_ids':[],'summon_ids':[4,4]}]}))

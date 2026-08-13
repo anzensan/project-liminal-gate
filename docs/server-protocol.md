@@ -75,16 +75,29 @@ A start carries `helpItemID` only when the player picked a Power-Up Item from
 the pre-battle slot, which the `helpItemEnabled` constant opens. The client
 omits the field rather than sending zero, and emits it in one fixed position in
 each start form: after `coins` in the ordinary form, after `itemCount` in the
-Metal Zone ticket form. Both forms are accepted with and without it; the field
+item-bearing form. Both forms are accepted with and without it; the field
 elsewhere, or declaring zero, is not a form the client produces. The named item
 must be one of the eight the client's own master data marks HelpItem kind (53,
 54, 55, 56, 166, 167, 172, 180) — anything else is refused as an unsupported
 form, since the selector cannot offer it — and one not held gets the soft
 `cmdError` 2 shape. The server owns the spend: it debits one at accepted entry
 and returns the resulting `itemList` with the start, which the client loads
-over its whole inventory. Starts without a power-up return no `itemList` at
-all. Chapter-1100 world-map specials refuse the field outright, matching the
-client's own `InWMSpecial` gate.
+over its whole inventory. Ordinary starts that spend no power-up return no
+`itemList` at all. Chapter-1100 world-map specials refuse the field outright,
+matching the client's own `InWMSpecial` gate.
+
+The item-bearing start form is not Metal-specific. The reviewed BattleData
+declares Lucia II as 35 stamina plus Item 110 (Key of Hearts) x1 and Lucia III
+as 40 stamina plus Item 111 (Key of Diamonds) x1. The final ARM64 client reads
+the section's `itemID` and `itemCount` fields and adds both request fields when
+they are positive, without checking the chapter. Generated event catalogs
+preserve that exact pair. An accepted Archive entry commits the stamina and key
+spends together and returns the resulting `itemList`; exact retries and a
+fresh-ID re-entry into the still-active battle do not spend twice. A client
+that lost the committed start response may repeat only that pre-entry slot at
+clear, and settlement keeps the server's already-debited count. An absent key
+uses `StartQuestErrorCode.NotEnoughItems` rather than an unsigned transport
+error.
 
 With `--secondary-worlds`, a userdata read also carries `worldProgressCode`:
 an object keyed by world index in decimal string form, whose values pack a

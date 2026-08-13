@@ -12,6 +12,21 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Lucia the Explorer II and III now honor their required keys instead of
+  returning Network Error.** The reviewed BattleData declares Lucia II as 35
+  stamina plus one Key of Hearts (Item 110), and Lucia III as 40 stamina plus
+  one Key of Diamonds (Item 111). The generated Archive catalog discarded the
+  item pair and its start handler accepted only the shorter stamina form, so
+  the exact request the final client builds was refused as unsupported.
+
+  Event generation now preserves both fields and the start transaction charges
+  the declared key and stamina together, returns the resulting inventory, and
+  remains one-time across duplicate requests, a lost response, clear, and
+  restart. Dedicated-server users must regenerate `event-catalog.json` and
+  restart the server. On-device users need a rebuilt APK because both the
+  generated catalog and server code are packaged inside it. Physical-client
+  confirmation is still pending.
+
 - **Puppet Show's strict-audit ceiling now admits the observed 74-item stock
   battle.** The old aggregate of 60 was a conservative guessed policy, not a
   recovered client limit. A tester has now reported 74 items from one

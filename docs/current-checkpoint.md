@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-08-06
+Date: 2026-08-12
 
 Mode: public-release implementation hardening and private on-device packaging.
 
@@ -10,6 +10,24 @@ physical device without a client-visible failure.
 Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
+
+Latest Lucia entry correction: a tester reports that Lucia the Explorer II
+returns Network Error on entry. The reviewed BattleData answers the proposed
+cause exactly: Chapter 2006-2 costs 35 stamina plus Item 110 (Key of Hearts) x1,
+and 2006-3 costs 40 stamina plus Item 111 (Key of Diamonds) x1. The generated
+event catalog previously discarded both entry-item fields, and the Archive
+handler accepted only the five-field stamina form. ARM64
+`AppServerUtil.<StartQuest>c__Iterator20.MoveNext` at `0xFC4F78` reads
+`BattleData.Section.itemID` at offset `0x34`, reads `itemCount` at `0x38`, and
+emits both fields whenever both are positive; there is no Metal-only chapter
+guard. BattleData import and event generation now preserve the pair, and event
+start charges stamina and the declared item in one durable commit, returns the
+post-spend inventory, refuses an absent key through the client's own
+NotEnoughItems code, and keeps the spend through exact retry, lost-response
+re-entry, clear, and service restart. Focused real-HTTP validation passes;
+physical-client Lucia II entry remains pending. Dedicated deployments must
+regenerate the event catalog and restart; on-device deployments need an APK
+rebuild because the generated catalog and server are packaged together.
 
 Latest Puppet Show audit correction: a tester reports receiving 74 items in a
 single otherwise-stock battle, disproving the bundled strict-audit aggregate of

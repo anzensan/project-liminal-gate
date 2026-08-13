@@ -17,6 +17,7 @@ from liminal_gate.event_manifest_data import (
     SECTION_COMPANION_MANIFESTS,
     STANDING_SPECIAL_MANIFEST_ROWS,
 )
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
 
 def _character_classes(characters: object) -> dict[int, int]:
@@ -84,6 +85,11 @@ class EventStage:
     #: whose manifest this archive never recovered. See
     #: `SECTION_COMPANION_MANIFESTS`.
     companion_manifest: tuple[tuple[int, int], ...] | None = None
+    #: BattleData entry item charged in addition to stamina. The final client
+    #: sends these two fields for Lucia II and III exactly as it does for a
+    #: ticket-bearing Metal start; zero means this stage has no item gate.
+    entry_item_id: int = 0
+    entry_item_count: int = 0
 
     def identity_label(self) -> str:
         return f"{self.chapter}-{self.section}"
@@ -496,7 +502,10 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
             "event_id", "flag", "chapter", "section", "stamina", "coins",
             "clear_coins", "character_ids",
         }
-        optional = {"unlock_after_chapter", "summon_ids", "selector_id"}
+        optional = {
+            "unlock_after_chapter", "summon_ids", "selector_id",
+            "entry_item_id", "entry_item_count",
+        }
         if (
             not isinstance(raw, dict)
             or not required.issubset(raw)
@@ -524,6 +533,20 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         ):
             raise EventCatalogError(
                 "event stage unlock_after_chapter must be a nonnegative integer"
+            )
+        entry_item_id = raw.get("entry_item_id", 0)
+        entry_item_count = raw.get("entry_item_count", 0)
+        if (
+            type(entry_item_id) is not int
+            or type(entry_item_count) is not int
+            or entry_item_id < 0
+            or entry_item_count < 0
+            or entry_item_id > ITEM_SLOTS
+            or entry_item_count > MAX_ITEM_STACK
+            or bool(entry_item_id) != bool(entry_item_count)
+        ):
+            raise EventCatalogError(
+                "event stage entry item must be a complete nonnegative pair"
             )
         selector_id = raw.get("selector_id")
         identity_label = f"{raw['chapter']}-{raw['section']}"
@@ -618,6 +641,8 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 companion_manifest=SECTION_COMPANION_MANIFESTS.get(
                     (chapter, raw["section"]),
                 ),
+                entry_item_id=entry_item_id,
+                entry_item_count=entry_item_count,
             )
         )
     if (

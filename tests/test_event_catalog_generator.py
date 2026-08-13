@@ -50,7 +50,8 @@ def _battledata(*chapters: int) -> dict:
         for section in sections:
             stages.append({
                 "chapter": chapter, "section": section, "stamina": 15,
-                "coins": 0, "battle_count": 5, "has_battle": True,
+                "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
+                "battle_count": 5, "has_battle": True,
             })
     return {"schema_version": 1, "provenance": "user-derived", "source": {}, "stages": stages}
 
@@ -194,6 +195,27 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         by_section = {stage.section: stage.character_ids for stage in loaded.stages}
         self.assertEqual((148,), by_section[1])
         self.assertEqual((), by_section[2])
+
+    def test_lucia_entry_keys_are_projected_from_battledata(self) -> None:
+        battledata = _battledata(2006)
+        second = next(
+            stage for stage in battledata["stages"] if stage["section"] == 2
+        )
+        second["stamina"] = 35
+        second["entry_item_id"] = 110
+        second["entry_item_count"] = 1
+        document, _, loaded = self._generate(battledata, ())
+        raw = next(
+            stage for stage in document["stages"]
+            if (stage["chapter"], stage["section"]) == (2006, 2)
+        )
+        self.assertEqual((110, 1), (
+            raw["entry_item_id"], raw["entry_item_count"],
+        ))
+        stage = loaded.by_identity()[(2006, 2)]
+        self.assertEqual((35, 110, 1), (
+            stage.stamina, stage.entry_item_id, stage.entry_item_count,
+        ))
 
     def test_tower_and_melting_pot_are_separate_selectors(self) -> None:
         # 9000--9003 and 9100--9102 are client chapter ranges with

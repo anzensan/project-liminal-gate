@@ -1962,3 +1962,40 @@ reconstructed for clears settled before this.
 the grant, the balance in all three places, and the day gate refusing a second
 entry. What the result screen draws once an amount is actually behind it has not
 been seen on hardware.
+
+## 2026-08-12: Lucia II and III use the item-bearing quest-start form
+
+**Reported symptom.** Lucia the Explorer II returned Network Error when a
+tester attempted to enter it. The initial report proposed that its required
+entry item was the difference from the first tier.
+
+- **Confirmed by reviewed BattleData.** Chapter 2006-2 is 35 stamina with
+  `itemID=110`, `itemCount=1`; Item 110 is Key of Hearts. Chapter 2006-3 is 40
+  stamina with `itemID=111`, `itemCount=1`; Item 111 is Key of Diamonds.
+  Sections 1 and 4 have a zero item pair. Across all reviewed BattleData, the
+  only other positive pairs are the existing Chapter-3000 Metal Ticket rows.
+- **Confirmed by client control flow.** ARM64
+  `AppServerUtil.<StartQuest>c__Iterator20.MoveNext` begins the item branch at
+  `0xFC4F78`: it loads `BattleData.Section.itemID` from offset `0x34`, requires
+  it to be positive, then loads `itemCount` from offset `0x38` and requires that
+  to be positive. It serializes both before continuing to chapter and section.
+  No chapter or selector test appears on that branch, so treating the longer
+  form as Metal-only was incorrect.
+- **Confirmed server mismatch.** `battledata_importer` projected stamina,
+  Coins, and battle count but dropped `itemID`/`itemCount`; consequently the
+  generated 2006-2/3 event rows declared no key, routing parsed only the shorter
+  form, and the real client body reached `unsupported_start_quest`.
+
+**What changed.** The local BattleData projection and event catalog retain a
+complete nonnegative entry-item pair. Archive routing accepts the shared
+ordered form only when it exactly matches the selected stage, and accepted
+entry debits the key with stamina in the same persisted transaction. The
+response carries the post-spend `itemList`; duplicate and fresh-ID re-entry do
+not charge again, an interrupted client may repeat only the pre-entry key slot
+at clear, and exact clear replay survives restart. A missing key returns the
+client's own `StartQuestErrorCode.NotEnoughItems` code.
+
+**Not yet validated on hardware.** Focused real-HTTP tests establish the
+generated contract, one-time spend, body-scoped refusal, lost-response
+re-entry, clear reconciliation, and restart replay. The reporting client has
+not yet retried Lucia II against this build.
