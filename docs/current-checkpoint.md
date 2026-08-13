@@ -11,6 +11,17 @@ Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
 
+Latest Puppet Show audit correction: a tester reports receiving 74 items in a
+single otherwise-stock battle, disproving the bundled strict-audit aggregate of
+60. `puppet_show_item_aggregate` now defaults to the observed 74. This remains
+local policy rather than a recovered maximum because the real-time board has no
+cumulative spawn counter and no raw capture accompanied the report. The ceiling
+applies only under `--outcome-strict`: exceeding it refuses the complete clear;
+it never discards chests after the limit. Focused real-HTTP coverage proves 75
+is rejected without mutation, 74 settles once, and exact replay survives a
+server restart. Normal preservation mode remains structurally bounded rather
+than applying catalog reward maxima.
+
 Latest optional-selector refresh correction: two testers reported that newly
 eligible Metal, Huntland, and Arena solo stages remained absent until the app
 restarted. The server split the two client-owned halves of visibility:

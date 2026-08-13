@@ -868,12 +868,13 @@ class HuntingRuntimeTest(unittest.TestCase):
 
 
 class BundledHuntingStackCeilingTest(unittest.TestCase):
-    """A haul that carries a slot past 999 settles, at the client's ceiling.
+    """Observed Puppet Show hauls settle through strict audit and stack checks.
 
-    Reported against Puppet Show 20-39 with 47 item chests: the clear was
-    refused, the refusal reached the client as an unsigned 409, and the item
-    screen looped Network Errors that only a force-close escaped
-    ([#57](https://github.com/anzensan/project-liminal-gate/issues/57)).
+    Issue 57 reported 47 item chests against Puppet Show 20-39 and exposed the
+    old inventory-stack mismatch. A later stock-client report observed 74 in a
+    single battle, disproving the former guessed aggregate of 60. No raw
+    capture accompanied the later report, so 74 is the bounded local-policy
+    ceiling rather than a claimed retail maximum.
     """
 
     PROGRESS = 0x01000000 | (20 << 6) | 1
@@ -904,10 +905,10 @@ class BundledHuntingStackCeilingTest(unittest.TestCase):
             state._persist_locked()
         self.server, self.thread = start_server(
             ("127.0.0.1", 0), bootstrap_profile(), state,
-            hunting_catalog=build_bundled_hunting_policy(),
+            hunting_catalog=build_bundled_hunting_policy(), outcome_strict=True,
         )
         self.addCleanup(self.temporary_directory.cleanup)
-        self.addCleanup(stop_server, self.server, self.thread)
+        self.addCleanup(self.stop_server)
 
     def userdata(self) -> dict:
         return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]["userdata"]
@@ -916,42 +917,65 @@ class BundledHuntingStackCeilingTest(unittest.TestCase):
         return post(self.server, route, request_id, urlencode(fields), token="token",
                     headers={"Content-Type": "application/x-www-form-urlencoded"})
 
-    def test_a_haul_that_crosses_the_old_ceiling_settles(self) -> None:
+    def test_observed_74_item_haul_is_strict_ceiling_and_replays(self) -> None:
         status, started = self.post("/gd/start_quest", "start", [
             ("stamina", "8"), ("coins", "0"), ("chapter", "1004"),
             ("section", "2"), ("lastUpdate", "1"),
         ])
         self.assertEqual((200, True), (status, started["success"]))
         userdata = self.userdata()
-        chests, held = 47, userdata["itemList"][0]
-        # What the client reports: its own inventory plus the drops, capped
-        # where the client caps it rather than where this server used to.
-        submitted = list(userdata["itemList"])
-        submitted[0] = min(MAX_ITEM_STACK, held + chests)
-        self.assertGreater(submitted[0], self.WITHDRAWN_CEILING,
-                           "the case only bites past the old ceiling")
-        status, cleared = self.post("/gd/clear_quest", "clear", [
-            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
-            ("valuables", json.dumps({
-                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
-                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
-                "coins": userdata["coins"],
-            })),
-            ("chrdata", json.dumps([self.CHARACTER])),
-            ("itemList", json.dumps(submitted)),
-            ("summonList", json.dumps(userdata["summonList"])),
-            ("battle_result", json.dumps({
-                "chapter": 1004, "section": 2, "coins": 0, "exp": 0,
-                "items": {"1": chests}, "buddies": [], "monsters": [], "summons": [],
-                "luckynum": 0, "unableluckdrop": False, "boostup": [0] * 6,
-            })),
-            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
-        ])
+        held = userdata["itemList"][0]
+
+        def clear(request_id: str, chests: int) -> tuple[int, dict]:
+            submitted = list(userdata["itemList"])
+            submitted[0] = min(MAX_ITEM_STACK, held + chests)
+            self.assertGreater(submitted[0], self.WITHDRAWN_CEILING,
+                               "the case only bites past the old ceiling")
+            return self.post("/gd/clear_quest", request_id, [
+                ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+                ("valuables", json.dumps({
+                    "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                    "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                    "coins": userdata["coins"],
+                })),
+                ("chrdata", json.dumps([self.CHARACTER])),
+                ("itemList", json.dumps(submitted)),
+                ("summonList", json.dumps(userdata["summonList"])),
+                ("battle_result", json.dumps({
+                    "chapter": 1004, "section": 2, "coins": 0, "exp": 0,
+                    "items": {"1": chests}, "buddies": [], "monsters": [], "summons": [],
+                    "luckynum": 0, "unableluckdrop": False, "boostup": [0] * 6,
+                })),
+                ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+            ])
+
+        before = self.userdata()
+        status, refused = clear("over-ceiling", 75)
+        self.assertEqual((409, "invalid_local_hunting_bounds"), (status, refused["error"]))
+        self.assertEqual(before, self.userdata())
+        self.assertEqual("hunting_active", json.loads(
+            self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]["tutorial_phase"])
+
+        status, cleared = clear("clear", 74)
         self.assertEqual(200, status, cleared)
         self.assertTrue(cleared["success"], cleared)
-        self.assertEqual(held + chests, self.userdata()["itemList"][0])
+        self.assertEqual(held + 74, self.userdata()["itemList"][0])
         self.assertEqual("free_roam", json.loads(
             self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]["tutorial_phase"])
+        self.assertEqual((status, cleared), clear("clear", 74))
+        self.restart_server()
+        self.assertEqual((status, cleared), clear("clear", 74))
+        self.assertEqual(held + 74, self.userdata()["itemList"][0])
+
+    def stop_server(self) -> None:
+        stop_server(self.server, self.thread)
+
+    def restart_server(self) -> None:
+        self.stop_server()
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(self.state_path),
+            hunting_catalog=build_bundled_hunting_policy(), outcome_strict=True,
+        )
 
 
 class BundledMetalZoneFullBoxTest(unittest.TestCase):

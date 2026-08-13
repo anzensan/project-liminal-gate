@@ -3,6 +3,20 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Puppet Show strict-audit aggregate
+
+- **Reported runtime evidence:** a tester received 74 items from one
+  otherwise-stock Puppet Show battle. No raw capture accompanied the report.
+- **Disproved policy:** the former aggregate of 60 was a conservative project
+  choice, not a recovered client or retired-service maximum.
+- **Correction boundary:** the shared default is now the observed 74. The
+  setting applies only with `--outcome-strict`; an over-ceiling report refuses
+  the entire clear without mutation rather than discarding excess chests.
+  Normal preservation play does not apply catalog reward maxima.
+- **Transport proof:** a focused real-HTTP regression rejects 75 without
+  mutation, settles 74 exactly once, and replays the response after restart.
+  The true retail maximum remains unknown.
+
 ## Optional-stage refresh after chapter transitions
 
 - **Reported symptom:** newly eligible Metal, Huntland, and Arena solo stages

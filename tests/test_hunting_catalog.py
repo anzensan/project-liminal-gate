@@ -133,7 +133,7 @@ class BundledHuntingPolicyTest(unittest.TestCase):
         for section in (1, 2, 3):
             creeps = self.stages[(3002, section)]
             self.assertEqual(({}, 0), (creeps.item_maxima, creeps.max_items_total))
-            self.assertEqual(60, self.stages[(1004, section)].max_items_total)
+            self.assertEqual(74, self.stages[(1004, section)].max_items_total)
         self.assertEqual(2, self.stages[(1004, 3)].item_maxima[2])
 
     def test_metal_zone_carries_its_recovered_costs_and_drop_manifests(self) -> None:
