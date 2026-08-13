@@ -925,8 +925,9 @@ Stage identities, entry stamina, and the population-derived item ceilings there
 are recovered from the final client. Two things in it are explicitly local
 policy rather than claims about the original service: availability — each tier
 becomes permanent after story chapters 3, 9, and 18, because the retired
-rotations were never captured — and Puppet Show's aggregate of 60 items, whose
-real-time board has no cumulative spawn counter to recover a true cap from.
+rotations were never captured — and Puppet Show's aggregate of 74 items, the
+highest stock-client result reported so far. Its real-time board has no
+cumulative spawn counter from which to recover a true maximum.
 
 Dragon and Machine Road carry one further recovered limit that is *not* audit
 data and is always enforced: each admits only its own species, which is the
@@ -1128,9 +1129,11 @@ strengthen_bonus_weights = [[0, 85], [25, 8], [50, 5], [100, 2]]
 # ladders must be given whole and must not decrease.
 tier_unlock_chapters = [3, 9, 18]
 metal_unlock_chapters = [3, 8, 12, 17, 21, 26, 30]
-# Puppet Show's per-clear item aggregate. Its board refills with no cumulative
-# spawn counter, so no exact cap exists to recover.
-puppet_show_item_aggregate = 60
+# Puppet Show's per-clear item aggregate for optional --outcome-strict audits.
+# Its board refills with no cumulative spawn counter, so no exact cap exists to
+# recover. 74 is the highest stock-client result reported so far. Exceeding it
+# refuses the whole clear in strict mode; it does not discard excess items.
+puppet_show_item_aggregate = 74
 
 [gates]
 species_limits = true           # Dragon Road and Machine Road

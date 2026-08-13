@@ -106,9 +106,11 @@ provenance = "user-supplied"
 # is local policy. Give either ladder whole; neither may decrease.
 # tier_unlock_chapters = [3, 9, 18]
 # metal_unlock_chapters = [3, 8, 12, 17, 21, 26, 30]
-# Puppet Show's per-clear item aggregate. Its board refills with no cumulative
-# spawn counter, so no exact cap exists to recover.
-# puppet_show_item_aggregate = 60
+# Puppet Show's per-clear item aggregate for optional --outcome-strict audits.
+# Its board refills with no cumulative spawn counter, so no exact cap exists to
+# recover. The bundled 74 is the highest stock-client result reported so far;
+# exceeding it refuses the clear in strict mode rather than discarding items.
+# puppet_show_item_aggregate = 74
 
 [gates]
 # Dragon Road and Machine Road admitting only Dragons and Machines, and
@@ -333,7 +335,7 @@ DEFAULT_TUNING = Tuning(
     hunting=HuntingTuning(
         tier_unlock_chapters=(3, 9, 18),
         metal_unlock_chapters=(3, 8, 12, 17, 21, 26, 30),
-        puppet_show_item_aggregate=60,
+        puppet_show_item_aggregate=74,
     ),
 )
 

@@ -486,9 +486,10 @@ def build_bundled_hunting_policy(tuning: HuntingTuning = DEFAULT_TUNING.hunting)
     Stage identities, entry stamina, and the population-derived item ceilings
     are recovered from the final client and are Confirmed.  Two things are
     deliberately *not* claims about the original service: the availability
-    thresholds above, and Puppet Show's aggregate of 60 -- its real-time board
-    refills without any cumulative spawn counter, so no exact finite cap exists
-    to recover and 60 is retained as conservative anti-inflation policy.
+    thresholds above, and Puppet Show's aggregate of 74 -- the highest
+    stock-client result reported so far. Its real-time board refills without
+    any cumulative spawn counter, so no exact finite cap exists to recover;
+    this remains an evidence-bounded anti-inflation policy.
 
     Metal Zone and the two Roads are included, with their recovered entry costs
     and Companion manifests.  Two things about them are local policy and are

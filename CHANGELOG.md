@@ -12,6 +12,16 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Puppet Show's strict-audit ceiling now admits the observed 74-item stock
+  battle.** The old aggregate of 60 was a conservative guessed policy, not a
+  recovered client limit. A tester has now reported 74 items from one
+  otherwise-stock battle, so the bundled `puppet_show_item_aggregate` follows
+  that evidence. This setting is only used by optional `--outcome-strict`:
+  exceeding it refuses the entire clear rather than discarding later chests,
+  while the normal preservation path continues to trust structurally valid
+  client results. No raw capture accompanied the report, and 74 is not claimed
+  as the retail maximum.
+
 - **Newly unlocked Metal, Huntland, and Arena solo stages no longer wait for
   an app restart.** The client has two independent halves of optional-stage
   visibility: selector lists in `constants` and matching `eventFlags`. Both

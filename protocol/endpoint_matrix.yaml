@@ -34,7 +34,7 @@ capabilities:
   - family: hunting_metal_and_default_special
     routes: [start_quest, clear_quest, unlock_metal_zone]
     status: local_policy
-    note: "structurally valid active-battle outcomes are trusted by default; --outcome-strict audits catalog maxima; Pixel 7 Pro confirmed Crystal Road reports 280 Coins and 5400/5625 EXP, while full historical reward distributions remain unknown"
+    note: "structurally valid active-battle outcomes are trusted by default; --outcome-strict audits catalog maxima, including the locally bounded Puppet Show aggregate raised from a guessed 60 to the highest reported stock result of 74; Pixel 7 Pro confirmed Crystal Road reports 280 Coins and 5400/5625 EXP, while full historical reward distributions remain unknown"
     transport_tests: true
     restart_tests: true
   - family: pacts_and_companions
