@@ -1577,6 +1577,44 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(487, userdata["coins"])
 
+    def test_free_roam_roster_write_never_walks_progression_backwards(self) -> None:
+        """A stale save must not undo a grant the server already committed.
+
+        Reported as Luck vanishing after a battle. Luck itself turned out to be
+        safe by accident -- `Character.ToHashTable` does not serialize it -- but
+        `skillBoost` and `jobLevels` are serialized, and this write took every
+        submitted member wholesale, so an ordinary equip or party save rolled
+        back whatever the client had not read yet.
+        """
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            account["userdata"]["chrdata"] = [
+                {"id": 9001, "jobID": 0, "jobLevels": [40], "jobSlots": [],
+                 "skillBoost": 300, "luck": 265, "plusCount": 4},
+            ]
+            self.server.state._persist_locked()
+
+        # The client's own shape: eight members, no `luck`, no `plusCount`, and
+        # every progression figure one gain out of date.
+        stale = [{"id": 9001, "jobID": 0, "jobLevels": [20], "jobSlots": [],
+                  "skillBoost": 200, "buddy": 0, "date": 0.0, "flags": 0}]
+        body = urlencode({"chrdata": json.dumps(stale), "lastUpdate": "1"})
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=stale-save", body)
+        self.assertEqual((200, True), (status, payload["success"]))
+        persisted = self.server.state.userdata_for(token)
+        assert persisted is not None
+        row = persisted["chrdata"][0]
+        self.assertEqual((300, 265, 4, [40]), (
+            row["skillBoost"], row["luck"], row["plusCount"], row["jobLevels"],
+        ))
+        # What the client legitimately owns still moves, in either direction.
+        self.assertEqual((0, 0.0), (row["flags"], row["date"]))
+
     def test_free_roam_party_delta_never_discards_roster_on_rejection(self) -> None:
         account_id = "0123456789ABCDEF0123456789ABCDEF"
         token = "0123456789ABCDEF"

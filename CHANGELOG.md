@@ -12,6 +12,34 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A Hunt For Joker duplicate now pays the Skill Boost the client announces,
+  once, and the Luck it announces in full.** A tester reported +20% Skill Boost
+  and +1 Luck where the recruit message said +10% and +10. Both figures had one
+  cause each. The client raises a duplicate's Skill Boost itself and reports
+  the raised value — `Character.ToHashTable` serializes `skillBoost` — so
+  granting the stage's increment after the clear merged that row added it a
+  second time; the grant now runs before the merge, where the server's
+  increment and the client's report describe the same state and the merge keeps
+  one of them. The Luck grant was 10 tenths against an announced 10.0, reduced
+  earlier on a reading of the community record; the client cannot correct that
+  one, because the same serializer omits `luck` entirely, so a server paying a
+  tenth of the announcement contradicts the game's own message with nothing to
+  tell the player which number is real. It now pays 100 tenths. Server restart;
+  on-device testers need a rebuilt APK.
+
+- **An ordinary equip or party save can no longer roll back progression the
+  server had already committed.** The free-roam roster write merged the
+  client's submitted members with a bare dictionary update, so a client stale
+  about a character it knows overwrote that character's durable `skillBoost`
+  and `jobLevels` — silently, because nothing about a save tells the player
+  what it replaced. That write now runs through the same monotonic merge every
+  clear already used, keeping the greater of the two values while leaving the
+  members a player legitimately owns (active job, equipped slots, flags)
+  client-authoritative, and keeping the members the client never serializes.
+  Luck and plus count were never reachable this way, but only because
+  `Character.ToHashTable` does not write them. Server restart; on-device
+  testers need a rebuilt APK.
+
 - **Lucia the Explorer II and III now honor their required keys instead of
   returning Network Error.** The reviewed BattleData declares Lucia II as 35
   stamina plus one Key of Hearts (Item 110), and Lucia III as 40 stamina plus

@@ -29,6 +29,30 @@ physical-client Lucia II entry remains pending. Dedicated deployments must
 regenerate the event catalog and restart; on-device deployments need an APK
 rebuild because the generated catalog and server are packaged together.
 
+Latest duplicate-grant and roster-write correction: two testers reported Luck
+that appeared after a battle and was gone afterwards, and one reported a Hunt
+For Joker duplicate paying +20% Skill Boost and +1 Luck where the client's own
+recruit message announced +10% and +10. Disassembly settles who owns what:
+`Character.ToHashTable` (`0xD0A318`) serializes exactly `id`, `jobID`, `flags`,
+`jobLevels`, `jobSlots`, `skillBoost`, `buddy`, `date`, while
+`Character.LoadFromJson` (`0xD07C5C`) additionally calls `set_luck` and reads
+`plusCount` — so the client transmits Luck on no route at all, and
+`UITeamStateItem.UpdateForResult` applying `luckUpTable` at the result screen is
+an in-memory change the next userdata read replaces. Two defects followed from
+that split and are fixed: the Joker duplicate's Skill Boost was granted after
+the clear merged a row the client had already raised, paying it twice, and is
+now granted before the merge; and the free-roam roster write merged submitted
+members with a bare dictionary update, letting a stale client walk `skillBoost`
+and `jobLevels` backwards, and now runs through the same monotonic merge every
+clear uses. `_JOKER_DUPLICATE_LUCK` returns to 100 tenths to match the
+announcement the client renders. Focused real-HTTP regressions cover a
+duplicate clear that reports the raised Skill Boost, one that does not, and a
+stale roster write. Both deployments are affected: dedicated servers restart,
+on-device testers need an APK rebuild. The originally reported Luck loss on the
+Lucky Orbling daily is **not** explained by these two: that settlement commits
+correctly in a focused real-HTTP reproduction, so the reporting testers' server
+logs around a daily clear are still wanted.
+
 Latest Puppet Show audit correction: a tester reports receiving 74 items in a
 single otherwise-stock battle, disproving the bundled strict-audit aggregate of
 60. `puppet_show_item_aggregate` now defaults to the observed 74. This remains

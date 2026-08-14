@@ -57,6 +57,32 @@ Private inputs, captures, account state, and original assets remain excluded.
   payload, and durable save therefore agree. This prevents future loss but
   cannot reconstruct values already overwritten without a backup.
 
+## Which roster members the client serializes
+
+- **Confirmed ARM64 client contract:** `Character.ToHashTable` (`0xD0A318`)
+  builds its Hashtable from exactly eight keys — `id`, `jobID`, `flags`,
+  `jobLevels`, `jobSlots`, `skillBoost`, `buddy`, `date` — read from the string
+  literals its own call sites load. `Character.LoadFromJson` (`0xD07C5C`) reads
+  those eight and two more, calling `set_luck` and reading `plusCount`. The
+  earlier finding that a clear omits `luck` is therefore not a property of the
+  clear: the client has no code path that transmits `luck` or `plusCount` on
+  any route, so the server owns both outright.
+- **Confirmed client-side application:** `UITeamStateItem.UpdateForResult` and
+  `UIBattleResultTeam.ShowMsg` both call `Character.set_luck`, so the result
+  screen applies `luckUpTable` to the client's own objects. That value is
+  in-memory only and is replaced by the server's on the next userdata read —
+  which is why a gain the server failed to commit reads to a player as Luck
+  that appeared and then vanished, rather than as Luck that never arrived.
+- **Consequence for Skill Boost:** because `skillBoost` *is* serialized, a
+  client that raises it locally reports the raised figure, and a server-side
+  grant added after the clear merge is paid twice. See the Joker duplicate
+  entry in the changelog.
+- **Consequence for roster writes:** the free-roam roster write took every
+  submitted member wholesale, so a stale client could walk `skillBoost` and
+  `jobLevels` backwards through an ordinary equip or party save. `luck` and
+  `plusCount` were never exposed to that, but only because the client does not
+  send them. Both halves now run through the same monotonic merge.
+
 ## Daily item and monster drop rotation
 
 - **Confirmed final-client mechanism:** `DailyQuestManager.GetDailyBonusType`

@@ -257,20 +257,33 @@ _YAMAMOTO_COMPANIONS = {(6011, 1): 267, (6011, 2): 140}
 #: A dropped copy arrives at level 1, like every other bundled Companion drop.
 _COMPANION_DROP_LEVEL = 1
 
-#: A further Joker Λ recruit adds 10% Skill Boost and 1 Luck, both in the
+#: A further Joker Λ recruit adds 10% Skill Boost and 10 Luck, both in the
 #: client's tenths wire unit.
 #:
-#: The Luck figure was 100, i.e. 10.0 Luck, which is ten times what a duplicate
-#: pays. Both sources agree on the rule and neither is stage-specific: the
-#: community record's Luck page says an already-owned Lambda dropping from a
-#: quest gains Luck "by 1 for each duplicate character recruited", and
-#: Mistwalker's own Ver 4.2.0 announcement lists receiving an already-owned
-#: character from a quest drop as a Luck source without exception. Ten Luck a
-#: clear would carry a character from nothing to the 100.0 ceiling in ten
-#: repeats of one Daily Quest, which is the length of the whole Luck grind.
-#: The Skill Boost figure is unchanged: no source contradicts it.
+#: The Luck figure was reduced to 10 -- 1.0 Luck -- on the reading that the
+#: community record's Luck page ("by 1 for each duplicate character recruited")
+#: describes this drop, and that 10.0 a clear would cross the whole Luck grind
+#: in ten repeats of one Daily Quest. A tester's report is what settled it back:
+#: the client announces the recruit as +10 Luck and the player then saw +1.0.
+#:
+#: The client's announcement is decisive here in a way it is not elsewhere,
+#: because Luck is the one progression member the client cannot correct on its
+#: own. `Character.ToHashTable` (ARM64 `0xD0A318`) serializes eight members --
+#: `id`, `jobID`, `flags`, `jobLevels`, `jobSlots`, `skillBoost`, `buddy`,
+#: `date` -- and `luck` is not among them, while `Character.LoadFromJson`
+#: (`0xD07C5C`) reads it. The client therefore renders whatever figure it
+#: announces and then takes the server's back on the next userdata read: a
+#: server that pays a tenth of the announcement is not being conservative, it
+#: is contradicting the game's own message with no way for the player to tell
+#: which number is real. The record's "by 1" is left as the weaker reading of
+#: an ambiguous unit -- the same page states Luck in whole displayed points.
+#:
+#: The Skill Boost figure is unchanged: no source contradicts it. Note that the
+#: client raises Skill Boost itself and reports the raised value, which is why
+#: `_apply_hunting_character_grants` runs before a clear merges the client's
+#: roster rather than after it.
 _JOKER_DUPLICATE_SKILL_BOOST = 100
-_JOKER_DUPLICATE_LUCK = 10
+_JOKER_DUPLICATE_LUCK = 100
 
 
 def build_bundled_daily_quest_stages() -> tuple[HuntingStage, ...]:

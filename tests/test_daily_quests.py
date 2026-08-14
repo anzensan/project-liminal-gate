@@ -87,8 +87,9 @@ class DailyQuestDataTest(unittest.TestCase):
         """Joker Λ is character 1018: a character grant, not an item or Companion."""
         stage = next(s for s in build_bundled_daily_quest_stages() if (s.chapter, s.section) == (6012, 1))
         self.assertEqual((1018,), stage.character_grants)
-        # 10% Skill Boost and 1 Luck, both in the client's tenths.
-        self.assertEqual((100, 10), (stage.duplicate_grant_skill_boost, stage.duplicate_grant_luck))
+        # 10% Skill Boost and 10 Luck, both in the client's tenths, which is
+        # what the client's own recruit message announces to the player.
+        self.assertEqual((100, 100), (stage.duplicate_grant_skill_boost, stage.duplicate_grant_luck))
         self.assertEqual({}, stage.companion_maxima)
 
     def test_only_the_joker_quest_grants_a_character(self) -> None:
@@ -227,7 +228,7 @@ class DailyQuestGrantTest(unittest.TestCase):
         userdata = {"chrdata": [{"id": 1018, "skillBoost": 50, "luck": 20}]}
         _apply_hunting_character_grants(userdata, self.stage())
         self.assertEqual(1, len(userdata["chrdata"]), "a duplicate must not add a second row")
-        self.assertEqual((150, 30), (userdata["chrdata"][0]["skillBoost"], userdata["chrdata"][0]["luck"]))
+        self.assertEqual((150, 120), (userdata["chrdata"][0]["skillBoost"], userdata["chrdata"][0]["luck"]))
 
     def test_duplicate_gains_stop_at_the_clients_ceiling(self) -> None:
         userdata = {"chrdata": [{"id": 1018, "skillBoost": 960, "luck": 995}]}
@@ -674,6 +675,108 @@ class PuzzleQuestCompanionRuntimeTest(unittest.TestCase):
         # path a wedged account takes: replay the same stage and finish it.
         self.assertEqual(200, self.clear("recover", buddies=[self.GLASSY_MINION])[0])
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+
+class JokerDuplicateRuntimeTest(unittest.TestCase):
+    """The +20% Skill Boost a tester read where the client announced +10%.
+
+    The client raises a duplicate's Skill Boost itself and reports the raised
+    figure -- `Character.ToHashTable` (ARM64 `0xD0A318`) serializes
+    `skillBoost` -- so granting the stage's increment *after* the clear merged
+    that row paid it twice. Luck cannot double the same way, because the same
+    serializer omits `luck`; it is checked here so the two halves of one
+    duplicate stay described by one test.
+
+    The clock is pinned to UTC day 17819, whose rotation offers 6012-1.
+    """
+
+    NOW = 17819 * 86400.0
+    JOKER = 1018
+
+    def setUp(self) -> None:
+        patcher = mock.patch("liminal_gate.bootstrap_server.time.time", return_value=self.NOW)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.token, self.account_id = "joker-token", "joker-account"
+        self.character = {
+            "id": self.JOKER, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+            "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+            "luck": 0,
+        }
+        catalog = HuntingCatalog(build_bundled_daily_quest_stages(), BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(self.state_path),
+            hunting_catalog=catalog, daily_quests=True,
+        )
+        self.addCleanup(lambda: stop_server(self.server, self.thread))
+        self.server.state.create_account(self.token, self.account_id, {
+            "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
+            "progressCode": (1 << 24) | (3 << 6) | 1,
+            "chrdata": [dict(self.character)], "teamMembers": [self.JOKER, 0, 0, 0, 0, 0],
+            "itemList": [0] * BUNDLED_ITEM_SLOTS, "summonList": [0, 0],
+        })
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            self.server.state._persist_locked()
+
+    def userdata(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]["userdata"]
+
+    def send(self, route: str, request_id: str, fields: list) -> tuple:
+        return post(
+            self.server, route, request_id, urlencode(fields), token=self.token,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    def clear(self, request_id: str, reported: dict) -> tuple:
+        userdata = self.userdata()
+        return self.send("/gd/clear_quest", request_id, [
+            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"],
+            })),
+            ("chrdata", json.dumps([reported])),
+            ("itemList", json.dumps(userdata["itemList"])),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": 6012, "section": 1, "coins": 0, "exp": 0, "items": {},
+                "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+
+    def start(self, request_id: str) -> tuple:
+        return self.send("/gd/start_quest", request_id, [
+            ("stamina", "0"), ("coins", "0"), ("chapter", "6012"),
+            ("section", "1"), ("lastUpdate", "1"),
+        ])
+
+    def test_a_duplicate_is_paid_once_when_the_client_reports_it(self) -> None:
+        self.assertEqual(200, self.start("joker-start")[0])
+        # What the client posts: no `luck` member, and `skillBoost` already
+        # carrying the increment it announced on the result screen.
+        reported = {key: value for key, value in self.character.items() if key != "luck"}
+        status, _ = self.clear("joker-clear", reported | {"skillBoost": 100})
+        self.assertEqual(200, status)
+        row = self.userdata()["chrdata"][0]
+        self.assertEqual((100, 100), (row["skillBoost"], row["luck"]))
+
+    def test_a_duplicate_is_paid_in_full_when_the_client_does_not(self) -> None:
+        """The grant is the server's either way; the client only agrees with it."""
+        self.assertEqual(200, self.start("silent-start")[0])
+        reported = {key: value for key, value in self.character.items() if key != "luck"}
+        status, _ = self.clear("silent-clear", reported)
+        self.assertEqual(200, status)
+        row = self.userdata()["chrdata"][0]
+        self.assertEqual((100, 100), (row["skillBoost"], row["luck"]))
 
 
 class DailyQuestGameOverContinueTest(unittest.TestCase):

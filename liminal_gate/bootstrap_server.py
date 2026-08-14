@@ -2453,14 +2453,28 @@ class BootstrapState:
                 # than replacing the roster before validation.  This makes a
                 # rejected party save non-destructive and prevents a UI close
                 # from discarding earlier Pact results.
+                #
+                # The delta is then held to the same floor a clear is held to.
+                # Taking every submitted member wholesale was the same defect
+                # `_preserved_progress` exists to prevent one route over: a
+                # client stale about a character it knows reports that
+                # character's older job levels and Skill Boost, and an ordinary
+                # equip or party save then rolled back a grant the server had
+                # already committed -- silently, because nothing about a save
+                # tells the player what it overwrote.  Applying the update to
+                # the durable row first keeps every member the client does not
+                # serialize (`Character.ToHashTable` writes eight of them, and
+                # `luck` and `plusCount` are not among the eight), so this
+                # narrows what a write may do without narrowing what it keeps.
                 for character in characters:
                     character_id = character["id"]
                     index = candidate_indices.get(character_id)
                     if index is None:
                         return "unsupported_userdata_write", None
-                    merged = copy.deepcopy(candidate_rows[index])
-                    merged.update(copy.deepcopy(character))
-                    candidate_rows[index] = merged
+                    held = candidate_rows[index]
+                    candidate_rows[index] = _preserved_progress(
+                        held, copy.deepcopy(held) | copy.deepcopy(character),
+                    )
             if party is not None:
                 roster_ids = {
                     row.get("id") for row in candidate_rows
@@ -2786,6 +2800,20 @@ class BootstrapState:
                 if companions is None:
                     return "invalid_local_hunting_companions", None
             wallet_fields = ("energyAppStore", "energy", "energyAndApp", "freeEnergy", "energyGooglePlay", "coins")
+            # Before the merge, and this ordering is the whole correction: the
+            # client raises a duplicate's Skill Boost itself and reports the
+            # raised figure, because `Character.ToHashTable` writes `skillBoost`.
+            # Granting afterwards added the stage's increment to a row that had
+            # already taken it, so The Hunt For Joker paid twice and a tester
+            # read +20% where the client had announced +10%. Granted here, the
+            # server's own increment and the client's report describe the same
+            # state, and `_preserved_progress` keeps the larger of the two
+            # rather than stacking them. Luck cannot double the same way -- that
+            # serializer omits `luck` entirely -- but it is granted here too, so
+            # one rule covers both halves of a duplicate.
+            announced: dict[int, int] = {}
+            if stage.character_grants:
+                announced |= _apply_hunting_character_grants(userdata, stage)
             userdata.update({
                 "lastupdate": 1.0,
                 "coins": expected_coins,
@@ -2811,9 +2839,6 @@ class BootstrapState:
             active_luck_up = account.get("active_luck_up")
             if isinstance(active_luck_up, list):
                 apply_luck_up_table(userdata, active_luck_up)
-            announced: dict[int, int] = {}
-            if stage.character_grants:
-                announced |= _apply_hunting_character_grants(userdata, stage)
             if result["monsters"]:
                 announced |= _apply_monster_recruits(userdata, result["monsters"])
             if stage.once_per_utc_day:
@@ -5493,6 +5518,13 @@ def _apply_hunting_character_grants(userdata: dict[str, Any], stage: Any) -> dic
     Skill Boost and Luck by the stage's declared amounts, both capped at the
     client's absolute 100.0 ceiling in its own tenths.
 
+    **Called on the durable roster, before a clear merges the client's own.**
+    The client applies a duplicate's Skill Boost itself and reports the result,
+    so raising a row that has already taken the increment pays it twice; run
+    here, the two agree and `_preserved_progress` keeps one of them. The caller
+    owns that ordering -- this function only ever adds its increment to the row
+    it is handed.
+
     Returns the levels each newly granted character arrived at, for the caller
     to announce on its response.
     """
@@ -6696,6 +6728,12 @@ def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[
     the larger of the two values is the true one.  Everything else (active job,
     equipped slots, flags) is a player choice that legitimately moves in either
     direction, and stays client-authoritative.
+
+    Every route that takes roster members from the client runs through here:
+    the three clears via `_preserved_roster`, Rebirth's destination row, and
+    the free-roam roster write.  That last one used to merge with a bare
+    ``dict.update`` and was the one way a save could still walk progression
+    backwards.
     """
     merged = copy.deepcopy(reported)
     levels, reported_levels = held.get("jobLevels"), merged.get("jobLevels")
@@ -6708,8 +6746,8 @@ def _preserved_progress(held: dict[str, Any], reported: dict[str, Any]) -> dict[
         merged["skillBoost"] = max(held["skillBoost"], merged["skillBoost"])
     if type(held.get("luck")) is int:
         reported_luck = merged.get("luck")
-        # Clamped rather than merely accumulated, and this is the one place a
-        # value already over the ceiling comes back down. Luck only ever rises,
+        # Clamped rather than merely accumulated, and this is where a value
+        # already over the ceiling comes back down. Luck only ever rises,
         # so a character carried past its class cap while nothing enforced one
         # would otherwise keep the excess for the life of the save -- and Luck
         # is not cosmetic, it decides which chest tiers a battle can pay out.
