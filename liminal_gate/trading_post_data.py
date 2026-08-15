@@ -186,3 +186,34 @@ TRADING_POST_WEEKS: tuple[tuple[tuple[int, int, int, int, int, int, int], ...], 
         (126, 50, 0, 1, 20, 181, 100),
     ),
 )
+
+
+#: The Trading Post's currency, in the order it is spent.
+#:
+#: **Confirmed, from the client.** `UIExchange.ExchangeItemIDs` is a static
+#: `int[9]` built by the type's own `.cctor` (ARM64 `0xECE8F0`, which allocates
+#: length 9 and initializes it from a metadata blob). The blob is the single
+#: nine-integer permutation of the nine Animata item IDs anywhere in the
+#: reviewed `global-metadata.dat`, at offset `0x602B01`, and it reads exactly as
+#: below: Animata Core first, then the eight older Animata items in ID order.
+#: `UIExchange.UpdateOwnCount` labels the counter with the `weeklyItem` holding
+#: and files the rest of this array under a parenthesised remainder, which is
+#: why the screen reads "86 (+5796)" rather than one total.
+#:
+#: **Community record, for the spend rule the client does not decide.** The
+#: retired service settled a trade, so nothing in the APK states which of these
+#: it charged; the same wiki that supplies the rotation states it three times
+#: over. Trading Post: 5.5.0 "changed Animata items so that only Animata Core
+#: drops from quests. Older items can no longer be obtained, but may still be
+#: used in the Trading Post." Animata Core: "If a player still owns older
+#: Animata items, they can be used after running out of Animata Core when
+#: trading in the Trading Post." Animata Egg: "Unused Animata items are still
+#: usable in the Trading Post and will be used after Animata Core." The client's
+#: own array order and the record's stated order agree, so the sequence below is
+#: sourced twice and guessed nowhere.
+#:
+#: **Local policy, labeled.** That the nine are interchangeable one for one. No
+#: source states a rate, and the counter's plain sum of a holding across all
+#: nine is the only arithmetic the client shows for them; a rate would be an
+#: invention where the record describes substitutes.
+ANIMATA_CURRENCY_IDS: tuple[int, ...] = (181, 124, 125, 126, 127, 128, 129, 130, 131)

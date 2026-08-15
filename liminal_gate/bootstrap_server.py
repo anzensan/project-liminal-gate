@@ -1468,8 +1468,13 @@ class BootstrapState:
             amount=request[1]; stock=remaining.get(str(offer.offer_id),offer.initial_count)
             raw_info=data.get("buddyInfo",{"list":[],"record":[]}); owned=raw_info.get("list") if isinstance(raw_info,dict) else None
             minted=offer.target_buddy_id and offer.target_count*amount
+            # What this trade spends, drawn across the interchangeable Animata
+            # currencies in the order the client's own counter and the rotation
+            # record both give: Core first, then the older items a long-serving
+            # account still holds. `None` is the honest refusal.
+            spend=None if amount<1 else catalog.payment_plan(offer,amount,items)
             if amount>stock: payload={"success":False,"errorCode":6}
-            elif any(type(items[i-1]) is not int or items[i-1]<n*amount for i,n in offer.ingredients.items()): payload={"success":False,"errorCode":3}
+            elif spend is None: payload={"success":False,"errorCode":3}
             elif offer.target_buddy_id and not isinstance(owned,list): return "invalid_local_exchange",None
             # A Companion offer fills the box rather than an item slot, so each
             # target checks only the ceiling that actually applies to it.
@@ -1477,7 +1482,7 @@ class BootstrapState:
             elif offer.target_item_id and items[offer.target_item_id-1]+offer.target_count*amount>catalog.max_stack: payload={"success":False,"errorCode":4}
             else:
                 updated=list(items)
-                for item_id,count in offer.ingredients.items(): updated[item_id-1]-=count*amount
+                for item_id,count in spend.items(): updated[item_id-1]-=count
                 if offer.target_item_id: updated[offer.target_item_id-1]+=offer.target_count*amount
                 if minted:
                     known={row["iid"] for row in owned if isinstance(row,dict) and type(row.get("iid")) is int}

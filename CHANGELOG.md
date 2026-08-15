@@ -12,6 +12,27 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A Trading Post trade spends the older Animata items once the Animata Core
+  runs out.** A tester with 86 Cores and 5,796 Eggs was refused with the
+  counter's own "Not enough items." while the Eggs sat on the same screen. The
+  arithmetic was the server's and it was exactly wrong by design: the recovered
+  rotation prices all 126 offers in Animata Core, and the trade charged that one
+  item, so a purse the client counts as one total was spendable only down to its
+  Core. The nine currencies and their order are recovered rather than assumed —
+  `UIExchange.ExchangeItemIDs` is a static `int[9]` whose initializer blob is the
+  single nine-integer permutation of the nine Animata IDs anywhere in the
+  reviewed metadata, reading Core first and then the eight retired items — and
+  the wiki that supplied the rotation states the spend rule three times over,
+  most plainly on Animata Egg: "Unused Animata items are still usable in the
+  Trading Post and will be used after Animata Core." A cost priced in any of the
+  nine now draws across all of them in that order. One thing here is policy and
+  is labeled as such in `trading_post_data`: that they are interchangeable one
+  for one. No source states a rate, and the counter's plain sum across all nine
+  is the only arithmetic the client shows for them. An operator's own catalog
+  declares no pool and is still charged exactly the ingredients it names, and a
+  cost the whole purse cannot cover is still refused. Server restart; on-device
+  testers need a rebuilt APK.
+
 - **A battle the server released can still be settled by the clear that
   finishes it, so a resumed battle is no longer unfinishable.** Releasing an
   open battle is right — an account must not be left unable to start anything —

@@ -43,11 +43,12 @@ class BundledTradingPostTest(unittest.TestCase):
         self.profile = bootstrap_profile()
         self.open_offers = self.catalog.offers_open_at(active_week_index(time.time(), self.catalog.week_count()))
 
-    def trade(self, offer, amount: int = 1):
+    def trade(self, offer, amount: int = 1, holdings: list[int] | None = None):
         with tempfile.TemporaryDirectory() as directory:
             state = BootstrapState(Path(directory) / "state.json")
-            items = [0] * 181
-            items[181 - 1] = 20000  # Animata Core, the only cost in this rotation
+            items = [0] * 181 if holdings is None else list(holdings)
+            if holdings is None:
+                items[181 - 1] = 20000  # Animata Core, the only cost in this rotation
             state.create_account("token", "account", {
                 "coins": 0, "itemList": items, "chrdata": [],
                 "buddyInfo": {"list": [], "record": []},
@@ -120,6 +121,62 @@ class BundledTradingPostTest(unittest.TestCase):
         offer = next(o for o in self.open_offers.values() if o.initial_count == 1)
         payload, _ = self.trade(offer, amount=2)
         self.assertEqual((True, 6), (payload["success"], payload["cmdError"]))
+
+    def test_a_cost_spends_animata_core_first_and_then_the_older_items(self) -> None:
+        """The nine Animata items are one purse, in the client's own order.
+
+        A player who ran the Core down and still holds thousands of the retired
+        Animata items was refused with "Not enough items." at a counter showing
+        the retired ones right beside the Core, because only the Core was ever
+        charged. `UIExchange.ExchangeItemIDs` lists all nine with the Core
+        first, and the rotation record says the older items "will be used after
+        Animata Core".
+        """
+        offer = next(o for o in self.open_offers.values()
+                     if o.target_item_id and o.ingredients.get(181))
+        cost = offer.ingredients[181]
+        holdings = [0] * 181
+        # Exactly one Core short of the price, with the remainder in Eggs.
+        holdings[181 - 1] = cost - 1
+        holdings[124 - 1] = 500
+        payload, _ = self.trade(offer, holdings=holdings)
+        # An accepted trade carries no `cmdError` at all; only a refusal does.
+        self.assertEqual((True, 0), (payload["success"], payload.get("cmdError", 0)), payload)
+        self.assertEqual(0, payload["itemList"][181 - 1], "Core is spent first")
+        self.assertEqual(499, payload["itemList"][124 - 1], "the shortfall comes from Eggs")
+        self.assertEqual(offer.target_count, payload["itemList"][offer.target_item_id - 1])
+
+    def test_a_cost_no_animata_can_cover_is_still_refused(self) -> None:
+        """Pooling widens what can pay, never what a holding is worth."""
+        offer = next(o for o in self.open_offers.values()
+                     if o.target_item_id and o.ingredients.get(181))
+        cost = offer.ingredients[181]
+        holdings = [0] * 181
+        # One short across the whole purse, spread over two of the nine.
+        holdings[181 - 1] = cost - 2
+        holdings[131 - 1] = 1
+        payload, _ = self.trade(offer, holdings=holdings)
+        self.assertEqual((True, 3), (payload["success"], payload["cmdError"]))
+
+    def test_an_operator_catalog_is_charged_only_what_it_names(self) -> None:
+        """Pooling is the recovered rotation's, not a rule for every catalog."""
+        catalog = build_bundled_exchange_policy()
+        self.assertEqual((181, 124, 125, 126, 127, 128, 129, 130, 131), catalog.currency_order)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "offers.json"
+            path.write_text(json.dumps({
+                "schema_version": 1, "provenance": "user-supplied", "item_slots": 3,
+                "max_stack": 99, "max_coins": 99, "weekly_item": 0, "end_date": "",
+                "offers": [{"offer_id": 1, "target_item_id": 3, "coins": 0,
+                            "target_count": 1, "initial_count": 1,
+                            "weekly_item_count": 0, "ingredients": {"1": 2}}],
+            }))
+            authored = load_exchange_catalog(path)
+        self.assertEqual((), authored.currency_order)
+        offer = authored.offers[1]
+        # Holding the other item instead pays nothing towards this cost.
+        self.assertIsNone(authored.payment_plan(offer, 1, [1, 50, 0]))
+        self.assertEqual({1: 2}, authored.payment_plan(offer, 1, [2, 50, 0]))
 
 
 class RotatedTokenReadTest(unittest.TestCase):

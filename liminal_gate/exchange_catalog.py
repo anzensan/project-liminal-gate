@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tomllib
 
-from liminal_gate.trading_post_data import TRADING_POST_WEEKS
+from liminal_gate.trading_post_data import ANIMATA_CURRENCY_IDS, TRADING_POST_WEEKS
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
 class ExchangeCatalogError(ValueError): pass
@@ -24,6 +24,50 @@ class ExchangeCatalog:
     # Offer IDs per week of the rotation. A single-entry tuple means the whole
     # catalog is always open, which is how an operator catalog behaves.
     weeks: tuple[tuple[int, ...], ...] = ()
+    # Interchangeable currencies, in the order a cost consumes them. Empty for
+    # an operator catalog, which is charged exactly the ingredients it names.
+    currency_order: tuple[int, ...] = ()
+
+    def payment_plan(self, offer: ExchangeOffer, amount: int, items: list[int]) -> dict[int, int] | None:
+        """How many of each item one trade spends, or ``None`` if it cannot pay.
+
+        An ingredient the catalog prices in a member of `currency_order` is
+        payable from that whole ordered pool rather than from the named item
+        alone: the retired Trading Post spent Animata Core first and then the
+        older Animata items a long-serving account still holds, which is what
+        the client's own counter is showing when it reads "86 (+5796)". Charging
+        only the named item refused a trade the player could afford, and the
+        refusal arrived as the counter's own "Not enough items." with a holding
+        of thousands on screen. See `trading_post_data.ANIMATA_CURRENCY_IDS`.
+
+        Every other ingredient is charged exactly as named, so an operator
+        catalog -- which declares no pool -- is unaffected.
+
+        The plan is returned rather than applied, and it is built against a
+        running remainder, so two ingredients drawing on the same pool cannot
+        each spend the same holding.
+        """
+        pool = tuple(item_id for item_id in self.currency_order if 1 <= item_id <= len(items))
+        spend: dict[int, int] = {}
+        for item_id, count in offer.ingredients.items():
+            owed = count * amount
+            sources = pool if item_id in pool else (item_id,)
+            for source in sources:
+                if not 1 <= source <= len(items):
+                    return None
+                held = items[source - 1]
+                if type(held) is not int or held < 0:
+                    return None
+                available = held - spend.get(source, 0)
+                taken = min(max(available, 0), owed)
+                if taken:
+                    spend[source] = spend.get(source, 0) + taken
+                    owed -= taken
+                if not owed:
+                    break
+            if owed:
+                return None
+        return spend
 
     def week_count(self) -> int:
         return len(self.weeks) or 1
@@ -108,4 +152,4 @@ def build_bundled_exchange_policy() -> ExchangeCatalog:
     # of its offers in a single item, so name it rather than hard-code it.
     weekly_item = costs.pop() if len(costs) == 1 else 0
     return ExchangeCatalog(BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK, BUNDLED_MAX_COINS, weekly_item, "",
-                           offers, BUNDLED_MAX_OWNED, tuple(weeks))
+                           offers, BUNDLED_MAX_OWNED, tuple(weeks), ANIMATA_CURRENCY_IDS)
