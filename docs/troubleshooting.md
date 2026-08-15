@@ -246,11 +246,31 @@ which layout you run, and the two are not interchangeable:
 | Layout | Where the log is | How to read it |
 | --- | --- | --- |
 | Separate server (workstation serves the device) | `user-data/events.jsonl`, beside the rest of your tester files | Read it on the workstation, not the device. PowerShell: `Get-Content user-data\events.jsonl -Tail 100 \| Select-String '"status":(4\|5)'` |
-| On-device APK (the app hosts its own server) | The app's private storage, `files/events.jsonl` — there is **no** `user-data` folder on the device | `adb shell run-as com.mistwalkercorp.guardians cat files/events.jsonl > events.jsonl`, then filter it on the workstation |
+| On-device APK (the app hosts its own server) | The app's private storage, `files/events.jsonl` — there is **no** `user-data` folder on the device | Fetch it over `adb` from the server's own loopback route, below |
 
-`run-as` reads app-private storage without root, and works because the
-self-hosted build is debuggable. If it refuses, `adb logcat` still shows the
-Python server's own output for the same run.
+On the on-device layout the log cannot be read with `adb shell run-as`. That
+command needs a debuggable package, and the combined APK is reassembled after
+Gradle builds it, so the merged package is not debuggable however it was built.
+The server serves the log to the device's own loopback instead:
+
+```sh
+adb forward tcp:8002 tcp:8002
+curl http://127.0.0.1:8002/local/events > events.jsonl
+```
+
+PowerShell has no `curl`; use `Invoke-WebRequest http://127.0.0.1:8002/local/events
+-OutFile events.jsonl`. Port 8002 is fixed — the app always serves itself there.
+`adb forward` connects from the device's own loopback, which is the only address
+this route answers, so it works with no root and no debuggable flag. The save is
+the sibling route `/local/state`, and `{"error": "no_local_event_log"}` means the
+server was started without a log rather than that it refused nothing.
+
+**A logcat cannot substitute for this.** The server writes no per-request line to
+standard output on any layout, so `adb logcat` carries none of its decisions —
+a full logcat of a failing session contains exactly one line from the server, the
+tuning notice it prints at startup. Logcat shows *that* the client raised its
+error dialog and when; only the event log names which check refused the request.
+Attach both.
 
 A `Get-Content user-data\...` command run on the device, in a terminal
 emulator, finds nothing on either layout — `Get-Content` is PowerShell, and

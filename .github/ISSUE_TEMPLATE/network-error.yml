@@ -37,6 +37,26 @@ body:
       description: Include the visible error and a sanitized server/client log excerpt if available.
     validations:
       required: true
+  - type: textarea
+    id: server_log
+    attributes:
+      label: Server event log
+      description: |
+        The log that names which check refused the request. A logcat cannot
+        substitute for it: the server writes no per-request line to standard
+        output, so its decisions never reach logcat on any layout.
+
+        On-device APK — `adb forward tcp:8002 tcp:8002`, then
+        `curl http://127.0.0.1:8002/local/events` (PowerShell:
+        `Invoke-WebRequest http://127.0.0.1:8002/local/events -OutFile events.jsonl`).
+
+        Separate server — the last lines of `user-data/events.jsonl` on the
+        workstation.
+
+        Paste the lines around the failure. See
+        [Finding the request log](https://github.com/anzensan/project-liminal-gate/blob/main/docs/troubleshooting.md#finding-the-request-log).
+      placeholder: |
+        {"time": ..., "method": "POST", "path": "/gd/clear_quest", "status": 409, ...}
   - type: input
     id: route
     attributes:
