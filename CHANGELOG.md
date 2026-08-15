@@ -146,6 +146,23 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **Chapter 30-10 settles, and a core-story clear no longer insists the wallet
+  took the battle's Coins.** A tester's event log settled this one by itself.
+  Every stage from 30-1 to 30-9 folds the battle's Coins into the wallet the
+  client reports — 10,904 plus 936 is 11,840, and each stage before it agrees to
+  the Coin — and then the Part 1 finale reports `coins: 1, exp: 1` and leaves the
+  wallet at 11,840. The clear was refused for that one Coin, eight times over,
+  across two force-closes, with the battle still open and every other check
+  passing. What made the demand wrong is that the core story's clear Coins are
+  the client's own reported figure rather than a recovered price, so the check
+  was comparing two client numbers and calling the client wrong about its own
+  battle. A clear may now report a wallet that folded the Coins in or one that
+  did not, and settles at the balance the client actually holds, so the two
+  cannot drift apart afterwards. A wallet neither reading allows is still
+  refused, and still says which check refused it. The archive and Hunting clears
+  are untouched: their prices are recovered, so their arithmetic stands. Server
+  restart; on-device testers need a rebuilt APK.
+
 - **A Trading Post trade spends the older Animata items once the Animata Core
   runs out.** A tester with 86 Cores and 5,796 Eggs was refused with the
   counter's own "Not enough items." while the Eggs sat on the same screen. The
@@ -186,9 +203,10 @@ superseded before release and says so where it stands.
   spends it, so nothing pays twice. This grants no capability that was not
   already reachable: an account in this state could always re-enter the stage
   through `start_quest` and settle it, and this only lets the client that cannot
-  send one reach the same place. Stages with long unskippable results sequences
-  are the ones with time to be interrupted, which is why the reports arrive at
-  chapter boundaries. Server restart; on-device testers need a rebuilt APK.
+  send one reach the same place. This was written expecting it to be the
+  Chapter 30-10 report; a tester's event log then showed that clear refused on
+  the wallet with its battle still open, so this fixes a real deadlock that was
+  not that one. Server restart; on-device testers need a rebuilt APK.
 
 - **A Hunt For Joker duplicate now pays the Skill Boost the client announces,
   once, and the Luck it announces in full.** A tester reported +20% Skill Boost
