@@ -1577,6 +1577,126 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(487, userdata["coins"])
 
+    def test_a_released_story_battle_is_still_settled_by_the_clear_that_follows(self) -> None:
+        """A resumed battle finishes even though nothing re-opened it.
+
+        The client that resumes an interrupted battle from its own `resumedata`
+        posts `clear_quest` and never `start_quest`, so the re-entry branch that
+        makes a retried battle settleable is out of reach. Before the release
+        was remembered, any roster save arriving between the battle and the
+        clear -- which is what a long results sequence gives the client time to
+        write -- refused every clear afterwards with `story_clear_phase_conflict`
+        and left the stage unfinishable by any action the player could take.
+        """
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        # The clear parser reads this roster too, so it carries every member a
+        # settlement types rather than the write route's shorter shape.
+        characters = [{
+            "id": 3, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+            "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+        }]
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            account["userdata"].update({
+                "progressCode": 0x01000000 | (30 << 6) | 10,
+                "coins": 100,
+                "valuables": {"coins": 100},
+                "chrdata": copy.deepcopy(characters),
+            })
+            self.server.state._persist_locked()
+        self.server.story_progression_catalog = build_core_story_policy()
+
+        start = urlencode([("stamina", "0"), ("coins", "0"), ("chapter", "30"),
+                           ("section", "10"), ("lastUpdate", "1")])
+        self.assertEqual(200, self.post(f"/gd/start_quest?otk={token}&requestID=enter", start)[0])
+
+        # The save the client writes while the results sequence is still running.
+        save = urlencode({"chrdata": json.dumps(characters), "lastUpdate": "1"})
+        self.assertEqual(200, self.post(f"/gd/userdata?otk={token}&requestID=mid-results", save)[0])
+        account = self.server.state.accounts[account_id]
+        self.assertEqual(("free_roam", None), (
+            account["tutorial_phase"], account["active_generic_story"],
+        ))
+
+        expected = 0x03000000 | 0x01000000 | (31 << 6) | 1
+        clear = urlencode([
+            ("progressCode", str(expected)), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": 0, "energyAndApp": 0,
+                "freeEnergy": 0, "energyGooglePlay": 0, "coins": 110,
+            })),
+            ("chrdata", json.dumps(characters)),
+            ("itemList", "[]"), ("summonList", "[]"),
+            ("battle_result", json.dumps({
+                "chapter": 30, "section": 10, "coins": 10, "exp": 0,
+                "items": {}, "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+        status, settled = self.post(f"/gd/clear_quest?otk={token}&requestID=resume-clear", clear)
+        self.assertEqual((200, True, 110), (status, settled["success"], settled["coins"]))
+
+        account = self.server.state.accounts[account_id]
+        self.assertEqual(expected, account["userdata"]["progressCode"])
+        # Settled once. The record is spent, so a second differently-keyed clear
+        # of the same battle cannot pay it again.
+        self.assertIsNone(account["released_generic_story"])
+        self.assertEqual(
+            409,
+            self.post(f"/gd/clear_quest?otk={token}&requestID=second-clear", clear)[0],
+        )
+        self.assertEqual(110, self.server.state.accounts[account_id]["userdata"]["coins"])
+
+    def test_a_released_story_battle_is_forgotten_once_another_one_opens(self) -> None:
+        """Starting something else is the player moving on, and ends the claim."""
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        characters = [{
+            "id": 3, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+            "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+        }]
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            account["userdata"].update({
+                "progressCode": 0x01000000 | (30 << 6) | 10,
+                "coins": 100, "valuables": {"coins": 100},
+                "chrdata": copy.deepcopy(characters),
+            })
+            self.server.state._persist_locked()
+        self.server.story_progression_catalog = build_core_story_policy()
+
+        self.post(f"/gd/start_quest?otk={token}&requestID=enter", urlencode([
+            ("stamina", "0"), ("coins", "0"), ("chapter", "30"), ("section", "10"),
+            ("lastUpdate", "1"),
+        ]))
+        self.post(f"/gd/userdata?otk={token}&requestID=give-up", urlencode({
+            "chrdata": json.dumps(characters), "lastUpdate": "1",
+        }))
+        self.assertIsNotNone(
+            self.server.state.accounts[account_id]["released_generic_story"]
+        )
+        # Re-entering the stage is an ordinary fresh start, and it takes the
+        # claim with it: the battle being settled from here is this one.
+        self.assertEqual(200, self.post(
+            f"/gd/start_quest?otk={token}&requestID=re-enter", urlencode([
+                ("stamina", "0"), ("coins", "0"), ("chapter", "30"),
+                ("section", "10"), ("lastUpdate", "1"),
+            ]),
+        )[0])
+        account = self.server.state.accounts[account_id]
+        self.assertEqual(
+            ("generic_story_active", None),
+            (account["tutorial_phase"], account["released_generic_story"]),
+        )
+
     def test_free_roam_roster_write_never_walks_progression_backwards(self) -> None:
         """A stale save must not undo a grant the server already committed.
 

@@ -705,6 +705,10 @@ def _parse_state_document(document: object) -> tuple[
         account.setdefault("tutorial_requests", {})
         account.setdefault("initial_userdata_served", False)
         account.setdefault("active_generic_story", None)
+        # Absent on every save written before released battles were kept, which
+        # is the correct value for one: nothing was remembered, so there is
+        # nothing to settle. No migration beyond this default is owed.
+        account.setdefault("released_generic_story", None)
         account.setdefault("active_hunt", None)
         account.setdefault("active_hunt_ticket_spent", None)
         account.setdefault("active_world_map_special", None)
@@ -736,6 +740,7 @@ def _parse_state_document(document: object) -> tuple[
                 )
             )
             or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
+            or account["released_generic_story"] is not None and not _valid_released_story(account["released_generic_story"])
             or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
             or account["active_hunt_ticket_spent"] is not None and type(account["active_hunt_ticket_spent"]) is not bool
             or account["active_world_map_special"] is not None and not isinstance(account["active_world_map_special"], dict)
@@ -2517,6 +2522,13 @@ class BootstrapState:
                 # normal userdata saves (the former may contain only chrdata).
                 # Treat either durable write as an explicit local abandon,
                 # rather than leaving the account trapped in the active stage.
+                #
+                # The battle is remembered on the way out. This route cannot
+                # tell a Give Up from a save the client writes while a results
+                # sequence is still running, and it does not have to: a Give Up
+                # is followed by no clear at all, while the other is followed by
+                # exactly the clear `remember_released_story` keeps settleable.
+                remember_released_story(account)
                 account["tutorial_phase"] = "free_roam"
                 account["active_generic_story"] = None
                 account["active_hunt"] = None
@@ -2637,6 +2649,9 @@ class BootstrapState:
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "hunting_active"
             account["active_hunt"] = identity
+            # Another battle is open now, so a battle released earlier is no
+            # longer the one the client is finishing.
+            account["released_generic_story"] = None
             account["active_battle_continue_coins"] = 0
             if stage.once_per_utc_day:
                 # The day is consumed at accepted start, not at clear: the
@@ -2954,6 +2969,9 @@ class BootstrapState:
             _synchronize_wallet_projection(userdata)
             account["tutorial_phase"] = "world_map_special_active"
             account["active_world_map_special"] = identity
+            # Another battle is open now, so a battle released earlier is no
+            # longer the one the client is finishing.
+            account["released_generic_story"] = None
             account["active_battle_continue_coins"] = 0
             # Chapter 1100 charges 25 stamina, which clears the battle-end gate
             # comfortably; its recovered `allowLucky` is 0, so it carries no
@@ -3277,6 +3295,9 @@ class BootstrapState:
                 payload["luckUpTable"] = list(luck_up)
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity
+            # Another battle is open now, so a battle released earlier is no
+            # longer the one the client is finishing.
+            account["released_generic_story"] = None
             account["active_battle_continue_coins"] = 0
             # Retained because the client folds the chest into the balances it
             # reports at clear; settlement has to know what it handed out.
@@ -3342,7 +3363,16 @@ class BootstrapState:
             # `battle_result` (`luckynum=0`) while already inside the balances
             # the client submits. Settling without expecting them reads a
             # legitimate chest as an over-claim and refuses a won battle.
-            authored_chest = account.get("active_luck_result")
+            # A battle this account started and something later released, being
+            # finished now by the client that resumed it. It settles on the
+            # terms of the entry that opened it -- its chest, its Luck growth,
+            # its Continue charges -- because those are what the client's own
+            # reported balances already carry. See `remember_released_story`.
+            released = released_story_matches(account, identity)
+            authored_chest = (
+                released["luck_result"] if released is not None
+                else account.get("active_luck_result")
+            )
             authored_chest = authored_chest if isinstance(authored_chest, list) else []
             expected_coins = (
                 int(userdata.get("coins", 0))
@@ -3350,12 +3380,16 @@ class BootstrapState:
                 + (reported_battle_coins if event else 0)
                 + chest_coins(authored_chest)
             )
+            continue_coins = (
+                released["continue_coins"] if released is not None
+                else _continue_coins_charged(account)
+            )
             checks = (
-                ("phase", account.setdefault("tutorial_phase", "initial") == "generic_story_active"),
-                ("active_stage", active == {"chapter": identity[0], "section": identity[1]}),
+                ("phase", account.setdefault("tutorial_phase", "initial") == "generic_story_active" or released is not None),
+                ("active_stage", active == {"chapter": identity[0], "section": identity[1]} or released is not None),
                 ("progress", expected_progress is not None and clear["progressCode"] == expected_progress),
                 ("world_map", clear["worldMapNo"] == int(userdata.get("worldMapNo", 0))),
-                ("wallet", clear["valuables"].get("coins") in _settled_wallet_coins(account, expected_coins)),
+                ("wallet", clear["valuables"].get("coins") in _settled_wallet_coins(account, expected_coins, continue_coins)),
                 (
                     "battle_coins",
                     event or reported_battle_coins == fixed_clear_coins,
@@ -3471,7 +3505,10 @@ class BootstrapState:
             # The Luck gain rolled at start is committed here, after the roster
             # merge, so a stale client's chrdata cannot overwrite it -- the same
             # ordering `_preserved_roster` exists to guarantee for grants.
-            active_luck_up = account.get("active_luck_up")
+            active_luck_up = (
+                released["luck_up"] if released is not None
+                else account.get("active_luck_up")
+            )
             if isinstance(active_luck_up, list):
                 apply_luck_up_table(userdata, active_luck_up)
             cleared_quests = _record_quest_clear(userdata, identity, time.time())
@@ -3508,6 +3545,10 @@ class BootstrapState:
             account["active_battle_continue_coins"] = 0
             account["active_luck_result"] = []
             account["active_luck_up"] = []
+            # Settled, so there is nothing left to keep settleable. Dropping it
+            # here is what stops a released battle from paying its chest twice
+            # across two differently-keyed clears.
+            account["released_generic_story"] = None
             payload = _canonical_payload(payload)
             requests[_replay_key(request_id, body)] = {"body_sha256": body_hash, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -5268,7 +5309,9 @@ def _started_identity(body: bytes) -> tuple[int, int] | None:
 ACTIVE_BATTLE_PHASES = frozenset({"generic_story_active", "hunting_active", "world_map_special_active"})
 
 
-def _settled_wallet_coins(account: dict[str, Any], expected: int) -> tuple[int, ...]:
+def _settled_wallet_coins(
+    account: dict[str, Any], expected: int, charged: int | None = None,
+) -> tuple[int, ...]:
     """The coin totals a clear may honestly report for this battle.
 
     Normally one: the server's own total plus what the battle paid. A battle
@@ -5277,8 +5320,12 @@ def _settled_wallet_coins(account: dict[str, Any], expected: int) -> tuple[int, 
     about. The widening is exactly what this battle's Continues charged and
     nothing else, and the settlement still commits `expected`, so continuing
     costs what it says it costs.
+
+    `charged` names those Continues explicitly for a caller settling a battle
+    the account no longer holds open, where the live counter has already been
+    reset; it defaults to the open battle's own.
     """
-    charged = _continue_coins_charged(account)
+    charged = _continue_coins_charged(account) if charged is None else charged
     return (expected,) if charged == 0 else (expected, expected + charged)
 
 
@@ -5305,11 +5352,16 @@ def release_abandoned_battle(account: dict[str, Any]) -> bool:
     every other start answered 409 until the UTC day rolled over.
 
     A save carrying a roster or party already releases a battle the same way
-    (see `write_userdata`); this covers the client that starts something else
-    without writing one first.
+    (see `update_character_userdata`); this covers the client that starts
+    something else without writing one first.
+
+    The released core-story battle is remembered rather than forgotten; see
+    `remember_released_story` for why letting go of it entirely is what
+    stranded an account.
     """
     if account.get("tutorial_phase") not in ACTIVE_BATTLE_PHASES:
         return False
+    remember_released_story(account)
     account["tutorial_phase"] = "free_roam"
     account["active_generic_story"] = None
     account["active_hunt"] = None
@@ -5317,6 +5369,101 @@ def release_abandoned_battle(account: dict[str, Any]) -> bool:
     account["active_world_map_special"] = None
     account["active_battle_continue_coins"] = 0
     return True
+
+
+def remember_released_story(account: dict[str, Any]) -> None:
+    """Keep a released core-story battle settleable by the clear that follows it.
+
+    Releasing an open battle is right -- the account must not be stuck unable to
+    start anything -- but *forgetting* it is what strands a player, because one
+    client path finishes a battle without ever starting it again. A client that
+    resumes an interrupted battle from its own `resumedata` goes straight to
+    `clear_quest`; it sends no `start_quest`, so the re-entry branch in
+    `apply_generic_story_start` that already exists to make a retried battle
+    settleable is never reached. If anything released the battle in between --
+    a Give Up, a declined resume, or any roster or party save the client writes
+    while the results sequence is still running -- every clear afterwards
+    answers `story_clear_phase_conflict`, force-closing replays the same clear,
+    and the stage cannot be finished by any action the player can take.
+
+    So the identity is kept, with everything the settlement reads off the
+    battle: the Luck chest that was dealt at entry, whose Coins the client folds
+    into the wallet it reports and which the wallet check therefore has to
+    expect, the Luck growth rolled with it, and the Coins this battle's
+    Continues charged that the client never took off its own wallet. The live
+    fields are emptied as they move, so a released battle is described in one
+    place rather than half here and half in state that names an open battle
+    there is no longer any of.
+
+    This grants no capability that was not already reachable. An account whose
+    battle was released can re-enter the stage through `start_quest` and settle
+    it -- that path is open today and is exactly how the client recovers when it
+    does send a start. All this does is let the client that cannot send one
+    reach the same place.
+
+    Nothing is remembered for a battle that was not a core-story one. Releasing
+    an already-released battle records nothing either, because the phase it
+    reads is the one the first release cleared, so the chest kept is always the
+    one the entry actually dealt.
+    """
+    identity = account.get("active_generic_story")
+    if account.get("tutorial_phase") != "generic_story_active" or not isinstance(identity, dict):
+        return
+    chapter, section = identity.get("chapter"), identity.get("section")
+    if type(chapter) is not int or type(section) is not int or chapter < 1 or section < 1:
+        return
+    chest = account.get("active_luck_result")
+    growth = account.get("active_luck_up")
+    account["released_generic_story"] = {
+        "chapter": chapter,
+        "section": section,
+        "luck_result": [slot for slot in chest if isinstance(slot, str)] if isinstance(chest, list) else [],
+        "luck_up": [gain for gain in growth if type(gain) is int and gain >= 0] if isinstance(growth, list) else [],
+        "continue_coins": _continue_coins_charged(account),
+    }
+    account["active_luck_result"] = []
+    account["active_luck_up"] = []
+
+
+def _valid_released_story(released: object) -> bool:
+    """Whether a stored released battle has the shape settlement will read.
+
+    Checked on load like every other durable shape, because this one decides a
+    wallet: a malformed chest would either refuse a legitimate clear or expect
+    Coins nothing dealt.
+    """
+    required = {"chapter", "section", "luck_result", "luck_up", "continue_coins"}
+    if not isinstance(released, dict) or set(released) != required:
+        return False
+    if any(type(released[name]) is not int or released[name] < 1 for name in ("chapter", "section")):
+        return False
+    if type(released["continue_coins"]) is not int or released["continue_coins"] < 0:
+        return False
+    return (
+        isinstance(released["luck_result"], list)
+        and all(isinstance(slot, str) for slot in released["luck_result"])
+        and isinstance(released["luck_up"], list)
+        and all(type(gain) is int and gain >= 0 for gain in released["luck_up"])
+    )
+
+
+def released_story_matches(account: dict[str, Any], identity: tuple[int, int]) -> dict[str, Any] | None:
+    """The released battle this clear is finishing, if that is what it is.
+
+    Only when no battle of any kind is open. An account that has started
+    something else has moved on, and every start already drops the record --
+    this reads the phase as well so that a record which somehow outlived its
+    claim still cannot settle a clear beside a live battle.
+    """
+    released = account.get("released_generic_story")
+    if (
+        account.get("active_generic_story") is not None
+        or account.get("tutorial_phase") in ACTIVE_BATTLE_PHASES
+        or not isinstance(released, dict)
+        or (released.get("chapter"), released.get("section")) != identity
+    ):
+        return None
+    return released
 
 
 def help_item_debit(

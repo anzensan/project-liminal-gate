@@ -12,6 +12,29 @@ superseded before release and says so where it stands.
 
 ### Fixed
 
+- **A battle the server released can still be settled by the clear that
+  finishes it, so a resumed battle is no longer unfinishable.** Releasing an
+  open battle is right — an account must not be left unable to start anything —
+  but forgetting it stranded one client path completely. A client that resumes
+  an interrupted battle from its own `resumedata` posts `clear_quest` and never
+  `start_quest`, so the re-entry branch that already exists to make a retried
+  battle settleable is out of reach. If anything released the battle in the
+  meantime — a Give Up, a declined resume, or any roster or party save the
+  client writes while a results sequence is still running — every clear
+  afterwards answered `story_clear_phase_conflict`, force-closing replayed the
+  same clear, and no action available to the player finished the stage. The
+  released core-story battle is now remembered with what its settlement reads:
+  the Luck chest dealt at entry, whose Coins the client folds into the wallet it
+  reports and which the wallet check therefore has to expect, the Luck growth
+  rolled with it, and the Coins its Continues charged that the client never took
+  off its own wallet. Starting any other battle drops the claim, and settling it
+  spends it, so nothing pays twice. This grants no capability that was not
+  already reachable: an account in this state could always re-enter the stage
+  through `start_quest` and settle it, and this only lets the client that cannot
+  send one reach the same place. Stages with long unskippable results sequences
+  are the ones with time to be interrupted, which is why the reports arrive at
+  chapter boundaries. Server restart; on-device testers need a rebuilt APK.
+
 - **A Hunt For Joker duplicate now pays the Skill Boost the client announces,
   once, and the Luck it announces in full.** A tester reported +20% Skill Boost
   and +1 Luck where the recruit message said +10% and +10. Both figures had one
@@ -163,6 +186,24 @@ superseded before release and says so where it stands.
   A dedicated server needs a restart. On-device testers need an APK rebuild to
   carry the gate change, though the package binds loopback and behaves the same
   either way.
+
+### Documentation
+
+- **The on-device event log is retrieved over `adb forward`, not `run-as`.**
+  `docs/troubleshooting.md` told on-device testers to read `events.jsonl` with
+  `adb shell run-as`, on the stated grounds that the self-hosted build is
+  debuggable. It is not: the combined package is reassembled after Gradle
+  builds it, which is why the loopback `/local/events` route exists at all —
+  and that route was documented only under the dedicated server, the one
+  deployment that does not need it. The fallback the same passage offered was
+  wrong for a second reason: the server writes no per-request line to standard
+  output on any layout, so `adb logcat` carries none of its decisions, and a
+  full logcat of a failing session contains exactly one line from the server.
+  Two reports arrived with large logcats and no server-side evidence before
+  this was noticed. The troubleshooting table now gives the working commands
+  for both shells and says plainly what a logcat can and cannot show, and the
+  Network error issue form asks for the event log by those steps. Documentation
+  only; no restart or rebuild.
 
 ### Added
 
