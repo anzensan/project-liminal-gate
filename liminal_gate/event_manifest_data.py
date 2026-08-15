@@ -30,9 +30,12 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
     ("lucia_archive", "sp_ch_2006", 2006, 13, ()),
     ("yamamoto_archive", "sp_ch_2007", 2007, 10, ()),
     ("captive_golem_archive", "sp_ch_2008", 2008, 15, (805,)),
+    # One card, so one gate: see `FOLDED_CARD_CHAPTERS`. The 30/31/32 ladder
+    # these carried was written when each chapter was believed to be a card of
+    # its own, and it staged a single card's three tiers across three chapters.
     ("dragon_king_one_archive", "sp_ch_2009", 2009, 30, ()),
-    ("dragon_king_two_archive", "sp_ch_2010", 2010, 31, ()),
-    ("dragon_king_three_archive", "sp_ch_2011", 2011, 32, ()),
+    ("dragon_king_two_archive", "sp_ch_2010", 2010, 30, ()),
+    ("dragon_king_three_archive", "sp_ch_2011", 2011, 30, ()),
     ("vengeful_vision_archive", "sp_ch_2014", 2014, 10, ()),
     ("final_fantasy_xv_archive", "sp_ch_2015", 2015, 20, (1080,)),
     ("sun_moon_kings_archive", "sp_ch_2016", 2016, 30, ()),
@@ -67,16 +70,34 @@ EVENT_MANIFEST_ROWS: tuple[tuple[str, str, int, int, tuple[int, ...]], ...] = (
 # `SPECIAL_QUEST_LIST_MAX` without hanging the client, so unfolding a family the
 # client folds spends rows this server then has to withhold from somewhere else.
 #
-# ``2015`` is the one chapter whose bare literal is deliberately **not**
-# honoured. The client folds it because it shipped six sections; sections 4--6
-# are the ``空き`` placeholders below, with zero battles and no banners, and a
-# folded card offers a tier per section the flag answers for -- `CheckQuestFlag`
-# retries an unset ``sp_ch_2015-4`` as ``sp_ch_2015``, which is set. Folding it
-# would advertise three tiers this archive cannot draw and this server refuses
-# to start. Per-section rows cost two extra rows and offer only what exists.
+# ``2015`` folds like the rest, and the section flags below are what make that
+# safe. It was unfolded here for as long as the chapter flag was the only flag
+# it could carry: the client folds it because it shipped six sections, sections
+# 4--6 are the ``空き`` placeholders with zero battles and no banners, and
+# `CheckQuestFlag` retries an unset ``sp_ch_2015-4`` as ``sp_ch_2015`` -- so a
+# folded card carrying the chapter flag would advertise three tiers this
+# archive cannot draw. Withholding the chapter flag closes that door, which is
+# the shape Battle Champs already uses (see `SECTION_FLAGGED_FOLDED_CHAPTERS`),
+# and the retained ``sp2015.bin`` folded banner says the fold is what the
+# service drew: the card is `Final Fantasy XV`, and Gladiolus, Ignis and
+# Prompto are the three tiers inside it. Three unfolded rows advertised
+# Gladiolus alone under a banner drawn for the whole card.
 FOLDED_ARCHIVE_CHAPTERS = frozenset({
-    2000, 2001, 2002, 2006, 2007, 2008, 2009, 2016, 2017,
+    2000, 2001, 2002, 2006, 2007, 2008, 2009, 2015, 2016, 2017,
 })
+
+#: Folded cards whose stages carry their own ``sp_ch_<chapter>-<section>`` flag
+#: and never the chapter flag.
+#:
+#: Folding and flagging are separate decisions, and this is the pair that lets a
+#: card fold without offering the sections the archive withholds. `GetSectionCount`
+#: expands a folded card to a tier per section the client believes the chapter
+#: has, and for a tier the archive does not serve `IsQuestOpen` defers to the
+#: flag alone -- which the chapter flag would answer true. Flagged per section,
+#: those tiers have neither a section nor a flag and the client drops them.
+#: See `EventCatalog.flags`, which documents the same mechanism for the
+#: Counter Descent range.
+SECTION_FLAGGED_FOLDED_CHAPTERS = frozenset({2015})
 
 # Chapter 2012 consists of three explicitly named attribute-test rows and
 # Chapter 2013 has no SpecialBanner catalog entry; neither is a release-facing
@@ -124,6 +145,46 @@ ARCHIVE_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
 #: hangs above 30, so two were already being withheld before anything was added.
 DESCENT_QUEST_CHAPTERS = frozenset({2000, 2001, 2002, 2009, 2010, 2011, 2016})
 
+#: Member chapter -> the chapter whose folded card lists it.
+#:
+#: A folded card is normally one chapter's own sections, but two families span
+#: several chapters, and the final client carries their membership as literals
+#: rather than deriving it. The reviewed 5.5.7 metadata holds the two member
+#: lists contiguously and in card order:
+#:
+#:     '2009-1', '2010-1', '2011-1',
+#:     '8010-1', '8010-2', '8008-1', '8008-2', '8009-1', '8009-2', '8011-1', '8011-2'
+#:
+#: which is exactly the order the shutdown menu record lists under
+#: `Dragon King Descended` (The Primordial / Inexorable / Resplendent Dragon
+#: King) and under `Battle Champs` (Void Venom I--II, Tempest I--II, Dire Fang
+#: I--II, Brushfyr I--II). `UISpecialSelect.GetSectionTitlesIfSpecialFoldedQuest`
+#: and `GetBannerTitleForFoldedQuest` are the two accessors that read them.
+#:
+#: Serving a member chapter as a card of its own is what this table prevents,
+#: and the retained banners are the second witness for both halves of it. Only
+#: `sp2009.bin` exists for the Dragon King -- there is no `sp2010.bin` or
+#: `sp2011.bin` -- so 2010-1 and 2011-1 were advertising cards the archive
+#: cannot draw. All four of `sp8008.bin`--`sp8011.bin` do exist, and all four
+#: read `BATTLE CHAMPS`: four cards, one family, each expanding to the same
+#: eight tiers. That is the duplicate a tester reported seeing.
+#:
+#: The card chapter is the member that keeps its own bare banner as the card's,
+#: and nothing about a member's start or clear changes: each tier carries its
+#: own chapter and section exactly as before.
+FOLDED_CARD_CHAPTERS: dict[int, int] = {
+    2010: 2009,
+    2011: 2009,
+    8009: 8008,
+    8010: 8008,
+    8011: 8008,
+}
+
+
+def folded_card_chapter(chapter: int) -> int:
+    """The chapter whose card lists this chapter's sections."""
+    return FOLDED_CARD_CHAPTERS.get(chapter, chapter)
+
 # event_id, chapter, unlock_after_chapter, section stamina
 #
 # Battle Champs and 8-Bit Rush: the two families inside the Counter Descent
@@ -149,11 +210,18 @@ DESCENT_QUEST_CHAPTERS = frozenset({2000, 2001, 2002, 2009, 2010, 2011, 2016})
 # unlock chapters continue the same permanent local cadence the fourteen
 # Strikes Back families carry through Chapter 18; they are archive policy, not
 # a recovered schedule.
+#
+# The four Battle Champs chapters share one gate because they share one card --
+# see `FOLDED_CARD_CHAPTERS`. The 19/20/21/22 ladder they carried was written
+# when each was believed to be a card of its own; against a single card it
+# would open `Battle Champs` at Chapter 19 holding two of its eight tiers and
+# fill the rest in over three more chapters, with the two the client lists
+# first missing until last.
 COLLAB_SPECIAL_MANIFEST_ROWS: tuple[tuple[str, int, int, tuple[int, ...]], ...] = (
     ("battle_champs_stormy_serpent", 8008, 19, (5, 15)),
-    ("battle_champs_fearsome_fiends", 8009, 20, (5, 15)),
-    ("battle_champs_creature_from_the_void", 8010, 21, (5, 15)),
-    ("battle_champs_dragon_awakens", 8011, 22, (5, 15)),
+    ("battle_champs_fearsome_fiends", 8009, 19, (5, 15)),
+    ("battle_champs_creature_from_the_void", 8010, 19, (5, 15)),
+    ("battle_champs_dragon_awakens", 8011, 19, (5, 15)),
     ("eight_bit_rush", 8018, 23, (15,)),
 )
 

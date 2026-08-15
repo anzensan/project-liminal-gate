@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from pathlib import Path
@@ -13,9 +13,12 @@ from liminal_gate.event_manifest_data import (
     COLLAB_SPECIAL_MANIFEST_ROWS,
     DESCENT_QUEST_CHAPTERS,
     EVENT_MANIFEST_ROWS,
+    FOLDED_ARCHIVE_CHAPTERS,
     SECTION_CLASS_LIMITS,
     SECTION_COMPANION_MANIFESTS,
+    SECTION_FLAGGED_FOLDED_CHAPTERS,
     STANDING_SPECIAL_MANIFEST_ROWS,
+    folded_card_chapter,
 )
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
@@ -404,17 +407,18 @@ def build_bundled_collab_special_policy() -> EventCatalog:
     service advertised them on `specialQuestList`, and the shutdown menu record
     lists them among the Special Quests with no Strikes Back entry of their own.
 
-    Each Battle Champs family is one folded card. That is the presentation every
-    other family in this range already uses, and folding is the only one that
-    fits: `specialQuestList` reaches exactly its 30-row ceiling with these five
-    added, and four cards rather than eight section rows is what keeps it there
-    without withholding an archive row to pay for them. The phantom tiers a fold
-    would otherwise advertise stay shut for the documented reason -- see
+    Battle Champs is **one** folded card across all four chapters, not one per
+    chapter. The client carries the eight members as literals and expands the
+    card into them itself; see `FOLDED_CARD_CHAPTERS` for the recovered list and
+    for the two witnesses that four cards were wrong -- the shutdown menu record
+    lists a single `Battle Champs` card holding all eight tiers, and all four
+    retained `sp8008.bin`--`sp8011.bin` banners read `BATTLE CHAMPS`, so serving
+    four rows drew the same card four times over. The phantom tiers a fold would
+    otherwise advertise stay shut for the documented reason -- see
     `EventCatalog.flags` -- because each stage carries its own section flag and
-    no family carries a chapter flag, so the three tiers past the two that exist
-    have neither a section nor a flag and are dropped. 8-Bit Rush is a single
-    section and has no folded banner, so it is advertised as the section row its
-    own artwork was drawn for.
+    no family carries a chapter flag, so a tier with neither a section nor a
+    flag is dropped. 8-Bit Rush is a single section and has no folded banner, so
+    it is advertised as the section row its own artwork was drawn for.
 
     The Companion channel is the one thing here that is neither projected nor
     unconstrained: these are the only sections in the range whose `dropBuddies`
@@ -439,15 +443,52 @@ def build_bundled_collab_special_policy() -> EventCatalog:
             selector="special",
             unlock_after_chapter=unlock_after_chapter,
             projected_rewards=True,
-            # One card per chapter for the two-tier families; 8-Bit Rush's lone
+            # One card for all four Battle Champs chapters; 8-Bit Rush's lone
             # section stays its own row, which `identity_label` already gives it.
-            selector_id=str(chapter) if len(stamina_tiers) > 1 else None,
+            selector_id=(
+                str(folded_card_chapter(chapter)) if len(stamina_tiers) > 1 else None
+            ),
             companion_manifest=SECTION_COMPANION_MANIFESTS.get((chapter, section)),
         )
         for event_id, chapter, unlock_after_chapter, stamina_tiers in COLLAB_SPECIAL_MANIFEST_ROWS
         for section, stamina in enumerate(stamina_tiers, start=1)
     )
     return EventCatalog(stages)
+
+
+def _share_folded_card_gates(stages: list[EventStage]) -> list[EventStage]:
+    """Open every tier of a folded card on the gate its earliest tier carries.
+
+    A folded card is one row, so it is one thing to unlock. Its tiers can be
+    gated apart -- an unflagged tier is simply dropped from the card -- but the
+    only cards whose tiers ever disagreed are the two that span several
+    chapters, where the disagreement was an artifact of gating per chapter
+    before the card was known to be one card. Left alone, `Dragon King
+    Descended` would appear holding one of its three tiers and grow two
+    chapters later.
+
+    Single-chapter cards already share a gate, so this is a no-op for them, and
+    an operator's own `unlock_after_chapter` is still what is being read: the
+    earliest of the card's own values is chosen rather than a value from here.
+    """
+    earliest: dict[tuple[str, str], int] = {}
+    for stage in stages:
+        if stage.selector_id is None or stage.unlock_after_chapter is None:
+            continue
+        key = (stage.selector, stage.selector_id)
+        earliest[key] = min(
+            earliest.get(key, stage.unlock_after_chapter), stage.unlock_after_chapter,
+        )
+    return [
+        stage
+        if stage.selector_id is None
+        or (stage.selector, stage.selector_id) not in earliest
+        else replace(
+            stage,
+            unlock_after_chapter=earliest[(stage.selector, stage.selector_id)],
+        )
+        for stage in stages
+    ]
 
 
 def merge_event_catalogs(*catalogs: EventCatalog | None) -> EventCatalog | None:
@@ -551,20 +592,28 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         selector_id = raw.get("selector_id")
         identity_label = f"{raw['chapter']}-{raw['section']}"
         chapter_label = str(raw["chapter"])
+        card_label = str(folded_card_chapter(raw["chapter"]))
         if (
             selector_id is not None
             and (
                 not isinstance(selector_id, str)
-                or selector_id not in {identity_label, chapter_label}
+                or selector_id not in {identity_label, chapter_label, card_label}
             )
         ):
             raise EventCatalogError(
-                "event selector_id must be its chapter or exact stage identity"
+                "event selector_id must be its chapter, its folded card's "
+                "chapter, or its exact stage identity"
             )
         if (
             selector_id == chapter_label
             and raw["flag"] != f"sp_ch_{chapter_label}"
+            and raw["chapter"] not in SECTION_FLAGGED_FOLDED_CHAPTERS
         ):
+            # A folded card normally needs the chapter flag, because
+            # `CheckQuestFlag` is what opens each tier. The exception is a
+            # chapter that folds *and* withholds sections: there the chapter
+            # flag is what would open the withheld ones, so its stages carry
+            # their own instead. See `SECTION_FLAGGED_FOLDED_CHAPTERS`.
             raise EventCatalogError(
                 "a folded chapter selector_id requires its chapter event flag"
             )
@@ -600,10 +649,25 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                 "event summon grants must be ordered Summon IDs from 1 through 16"
             )
         chapter = raw["chapter"]
+        # Both applied from the recovered tables rather than read off the
+        # document, for the reason the class limits and the Descent selector
+        # already are: a catalog an operator generated before a card's real
+        # shape was known still draws the card the final client drew, without
+        # being regenerated. See `FOLDED_CARD_CHAPTERS`.
+        folded_selector_id = (
+            card_label
+            if card_label != chapter_label or chapter in FOLDED_ARCHIVE_CHAPTERS
+            else selector_id
+        )
+        folded_flag = (
+            event_flags_for(chapter, raw["section"])[1]
+            if chapter in SECTION_FLAGGED_FOLDED_CHAPTERS
+            else raw["flag"]
+        )
         stages.append(
             EventStage(
                 raw["event_id"],
-                raw["flag"],
+                folded_flag,
                 chapter,
                 raw["section"],
                 raw["stamina"],
@@ -632,7 +696,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
                     or _is_melting_pot(chapter)
                     or _is_standing_special(chapter)
                 ),
-                selector_id=selector_id,
+                selector_id=folded_selector_id,
                 # Applied from the recovered table rather than read off the
                 # document, so an operator's catalog generated before this
                 # existed still carries the limit its own client declares.
@@ -650,4 +714,6 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         or len({(stage.chapter, stage.section) for stage in stages}) != len(stages)
     ):
         raise EventCatalogError("event stages must be nonempty and unique")
-    return EventCatalog(tuple(stages), _character_classes(characters))
+    return EventCatalog(
+        tuple(_share_folded_card_gates(stages)), _character_classes(characters),
+    )

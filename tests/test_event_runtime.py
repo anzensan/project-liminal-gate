@@ -1311,16 +1311,15 @@ class CollabSpecialRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):
     def build_catalog(self) -> EventCatalog:
         return build_bundled_collab_special_policy()
 
-    def test_the_five_families_are_special_quests_not_strikes_back(self) -> None:
+    def test_the_two_cards_are_special_quests_not_strikes_back(self) -> None:
         status, server_status = self.get(
             f"/gd/get_server_status?otk={self.token}&requestID=status"
         )
         self.assertEqual(200, status)
         constants = server_status["constants"]
-        self.assertEqual(
-            ["8008", "8009", "8010", "8011", "8018-1"],
-            constants["specialQuestList"],
-        )
+        # Two rows, not five: the four Battle Champs chapters are one card the
+        # client expands into all eight of its tiers itself.
+        self.assertEqual(["8008", "8018-1"], constants["specialQuestList"])
         self.assertEqual([], constants["descentHuntingList"])
         # Mode 3's list is present and empty rather than absent: this catalog
         # carries no Descent family, and the key is served either way.
