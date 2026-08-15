@@ -13,12 +13,12 @@ from liminal_gate.event_manifest_data import (
     COLLAB_SPECIAL_MANIFEST_ROWS,
     DESCENT_QUEST_CHAPTERS,
     EVENT_MANIFEST_ROWS,
-    FOLDED_ARCHIVE_CHAPTERS,
     SECTION_CLASS_LIMITS,
     SECTION_COMPANION_MANIFESTS,
     SECTION_FLAGGED_FOLDED_CHAPTERS,
     STANDING_SPECIAL_MANIFEST_ROWS,
     folded_card_chapter,
+    is_folded_chapter,
 )
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
@@ -47,6 +47,19 @@ DEFAULT_EVENT_CATALOG = "event-catalog.json"
 #: advertises inside it.
 RAID_QUEST_CHAPTER = 9000
 RAID_QUEST_END_CHAPTER = 9009
+
+#: `ChapterInterface.NumOfRaidQuestSections`, the tier count a folded card in
+#: the raid range expands to. Recovered as a literal from the same `..cctor`
+#: the ranges above come from: `orr w10, wzr, #0x3` into static offset 0x70 at
+#: ARM64 `0xD07620`, immediately before the 15 written to 0x74 that this
+#: project already carries as `MELTING_POT_SECTIONS`.
+#:
+#: It is what makes folding Tower of Temptation safe rather than a guess. A
+#: folded card offers this many tiers whatever the family, so a family with
+#: fewer sections than this would advertise tiers it cannot start; Tower's four
+#: chapters carry exactly three sections each. `test_a_folded_tower_card_offers
+#: _exactly_the_tiers_it_has` is what keeps the two in step.
+RAID_QUEST_SECTIONS = 3
 
 #: `UISpecialItem.RaidStatus.Subjugating`. The enum is `Lock` 1, `Subjugating`
 #: 2, `Overkilling` 3, `Completed` 4; the start path refuses 1 and 4, so this is
@@ -256,11 +269,11 @@ class EventCatalog:
             for stage in self.stages
             if stage.selector == "descent_quest" and stage.unlocked_at(progress_code)
         ))
-        tower = [
-            stage.identity_label()
+        tower = list(dict.fromkeys(
+            stage.selector_id or stage.identity_label()
             for stage in self.stages
             if stage.selector == "tower" and stage.unlocked_at(progress_code)
-        ]
+        ))
         eidolon = [
             stage.identity_label()
             for stage in self.stages
@@ -656,7 +669,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         # being regenerated. See `FOLDED_CARD_CHAPTERS`.
         folded_selector_id = (
             card_label
-            if card_label != chapter_label or chapter in FOLDED_ARCHIVE_CHAPTERS
+            if card_label != chapter_label or is_folded_chapter(chapter)
             else selector_id
         )
         folded_flag = (

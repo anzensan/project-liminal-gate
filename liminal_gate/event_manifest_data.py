@@ -279,6 +279,36 @@ TOWER_MANIFEST_ROWS: tuple[tuple[str, str, int, int], ...] = (
     ("tower_of_temptation_4", "sp_ch_9003", 9003, 3),
 )
 
+#: The four Tower chapters are folded cards, one per boss.
+#:
+#: The shutdown menu record lists four cards -- Alika, Gugba, Bajanna and Zeera
+#: -- each holding its three tiers, and the retained banners are shaped the same
+#: way: every one of 9000--9003 ships a bare `sp<chapter>.bin` alongside its
+#: `-1`--`-3` tiers, and the bare one is the tower architecture without the
+#: boss portrait the tier banners carry. Twelve flat rows drew a tier's artwork
+#: where a card belonged and spent twelve rows doing it.
+#:
+#: Folding is unconditionally safe here, which is *not* true of every family:
+#: these chapters sit in the client's Raid range, so a folded card expands to
+#: `ChapterInterface.NumOfRaidQuestSections` tiers, and that constant is 3
+#: (`orr w10, wzr, #0x3` into static offset 0x70 in the `..cctor` at
+#: `0xD07620`; the 15 written to 0x74 beside it is the Donation count this
+#: project already had). Every Tower chapter carries exactly three BattleData
+#: sections and three retained tier banners, so the fold offers three tiers,
+#: three sections back them and three banners draw them -- there is no phantom
+#: tier for a chapter flag to open, which is why these keep the chapter flag
+#: rather than needing `SECTION_FLAGGED_FOLDED_CHAPTERS`.
+#:
+#: The Raid range decides the start path, and folding does not change it: a
+#: tier is still started as `<chapter>-<section>`, and `raid_quest_params`
+#: still answers for each one.
+FOLDED_TOWER_CHAPTERS = frozenset({9000, 9001, 9002, 9003})
+
+
+def is_folded_chapter(chapter: int) -> bool:
+    """Whether the client draws this chapter as one card over its sections."""
+    return chapter in FOLDED_ARCHIVE_CHAPTERS or chapter in FOLDED_TOWER_CHAPTERS
+
 # event_id, chapter, unlock_after_chapter
 #
 # Six standing Special Quests the earlier manifest never named. Each is present

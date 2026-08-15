@@ -17,7 +17,12 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from liminal_gate.event_catalog import load_event_catalog
+from liminal_gate.event_catalog import (
+    RAID_QUEST_CHAPTER,
+    RAID_QUEST_END_CHAPTER,
+    RAID_QUEST_SECTIONS,
+    load_event_catalog,
+)
 from liminal_gate.event_catalog_generator import (
     EventCatalogGeneratorError,
     build_catalog,
@@ -29,6 +34,7 @@ from liminal_gate.event_manifest_data import (
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
     FOLDED_ARCHIVE_CHAPTERS,
+    FOLDED_TOWER_CHAPTERS,
     MELTING_POT_MANIFEST_ROWS,
     MELTING_POT_SECTIONS,
     SECTION_FLAGGED_FOLDED_CHAPTERS,
@@ -120,12 +126,9 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             lists["specialQuestList"],
         )
         # The Third Descents, the Dragon King and the Royal Rings are drawn by
-        # a different Arena menu, and each keeps the folded or per-section
-        # identity it had while it was miscarried on the Special list: 2000,
-        # 2009 and 2016 fold, 2010 and 2011 do not.
-        # `Dragon King Descended` is one card over three chapters: 2010 and
-        # 2011 are its tiers, not cards, and neither has a bare banner of its
-        # own. See `FOLDED_CARD_CHAPTERS`.
+        # a different Arena menu. `Dragon King Descended` is one card over three
+        # chapters: 2010 and 2011 are its tiers, not cards, and neither has a
+        # bare banner of its own. See `FOLDED_CARD_CHAPTERS`.
         self.assertEqual(["2000", "2009", "2016"], lists["descentQuestList"])
         self.assertEqual(
             {"2009"},
@@ -233,6 +236,39 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         for section in (4, 5, 6):
             self.assertNotIn((2015, section), loaded.by_identity())
 
+    def test_a_folded_tower_card_offers_exactly_the_tiers_it_has(self) -> None:
+        """What makes folding Tower safe, rather than a guess.
+
+        These chapters sit in the client's Raid range, so a folded card expands
+        to `ChapterInterface.NumOfRaidQuestSections` tiers whatever the family
+        behind it. A Tower chapter with fewer sections than that would offer a
+        tier with no section and no banner -- the blank card this archive keeps
+        refusing to draw -- and one with more would hide the rest.
+        """
+        battledata = _battledata(*sorted(FOLDED_TOWER_CHAPTERS))
+        for chapter in sorted(FOLDED_TOWER_CHAPTERS):
+            battledata["stages"].append({
+                "chapter": chapter, "section": 3, "stamina": 15,
+                "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
+                "battle_count": 5, "has_battle": True,
+            })
+        _, _, loaded = self._generate(battledata, ())
+        after = 0x01000000 | (43 << 6) | 1
+        self.assertEqual(
+            [str(chapter) for chapter in sorted(FOLDED_TOWER_CHAPTERS)],
+            loaded.client_lists(after)["towerQuestList"],
+        )
+        by_chapter: dict[int, int] = {}
+        for chapter, _section in loaded.by_identity():
+            by_chapter[chapter] = by_chapter.get(chapter, 0) + 1
+        for chapter in FOLDED_TOWER_CHAPTERS:
+            self.assertEqual(
+                RAID_QUEST_SECTIONS,
+                by_chapter[chapter],
+                f"chapter {chapter} folds but does not carry the tiers the fold offers",
+            )
+            self.assertTrue(RAID_QUEST_CHAPTER <= chapter <= RAID_QUEST_END_CHAPTER)
+
     def test_grant_rides_the_first_section_only(self) -> None:
         # Repeating it per section would grant the character once per stage.
         _, _, loaded = self._generate(_battledata(2000), (148,))
@@ -283,12 +319,12 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         before = 0x01000000 | (3 << 6) | 1
         after = 0x01000000 | (4 << 6) | 1
         self.assertEqual([], loaded.client_lists(before)["towerQuestList"])
+        # One folded card per boss, holding its tiers -- not a row per tier.
+        # These chapters sit in the client's Raid range, where a folded card
+        # expands to `NumOfRaidQuestSections` (3) tiers, and every Tower
+        # chapter carries exactly three sections and three tier banners.
         self.assertEqual(
-            [
-                f"{chapter}-{section}"
-                for chapter in (9000, 9001, 9002, 9003)
-                for section in (1, 2)
-            ],
+            ["9000", "9001", "9002", "9003"],
             loaded.client_lists(after)["towerQuestList"],
         )
         stage = loaded.by_identity()[(9000, 1)]
