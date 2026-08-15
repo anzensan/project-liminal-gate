@@ -1652,6 +1652,80 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         )
         self.assertEqual(110, self.server.state.accounts[account_id]["userdata"]["coins"])
 
+    def test_a_story_clear_settles_whether_or_not_the_wallet_took_its_coins(self) -> None:
+        """Chapter 30-10 keeps its Coins, and the clear must still settle.
+
+        Numbers taken from a tester's own event log. Every stage from 30-1 to
+        30-9 folds the battle's Coins into the wallet it reports -- 10904 plus
+        936 is 11840 -- and then the Part 1 finale reports `coins: 1, exp: 1`
+        and leaves the wallet at 11840. Requiring the fold refused that clear by
+        one Coin, eight times over, across two force-closes.
+
+        The core story's clear Coins are the client's own figure, so this check
+        only ever compared two client numbers against the durable balance. Both
+        readings settle at the balance the client actually holds.
+        """
+        account_id = "0123456789ABCDEF0123456789ABCDEF"
+        token = "0123456789ABCDEF"
+        self.request(f"/gd/signup?uuid={account_id}&otk={token}&requestID=signup")
+        characters = [{
+            "id": 3, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+            "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+        }]
+        with self.server.state.lock:
+            account = self.server.state.accounts[account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            account["userdata"].update({
+                "progressCode": 0x01000000 | (30 << 6) | 10,
+                "coins": 11840, "valuables": {"coins": 11840},
+                "chrdata": copy.deepcopy(characters),
+            })
+            self.server.state._persist_locked()
+        self.server.story_progression_catalog = build_core_story_policy()
+
+        def clear(wallet: int, request_id: str) -> tuple[int, dict]:
+            self.post(f"/gd/start_quest?otk={token}&requestID=enter-{request_id}", urlencode([
+                ("stamina", "20"), ("coins", "0"), ("chapter", "30"),
+                ("section", "10"), ("lastUpdate", "1"),
+            ]))
+            return self.post(f"/gd/clear_quest?otk={token}&requestID={request_id}", urlencode([
+                ("progressCode", str(0x03000000 | 0x01000000 | (31 << 6) | 1)),
+                ("worldMapNo", "0"),
+                ("valuables", json.dumps({
+                    "energyAppStore": 0, "energy": 0, "energyAndApp": 0,
+                    "freeEnergy": 0, "energyGooglePlay": 0, "coins": wallet,
+                })),
+                ("chrdata", json.dumps(characters)),
+                ("itemList", "[]"), ("summonList", "[]"),
+                ("battle_result", json.dumps({
+                    "chapter": 30, "section": 10, "coins": 1, "exp": 1,
+                    "items": {}, "buddies": [], "monsters": [], "summons": [],
+                    "luckynum": 0, "unableluckdrop": False,
+                    "boostup": [0, 0, 0, 0, 0, 0],
+                })),
+                ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+            ]))
+
+        # A wallet neither reading allows is still refused, and refused by name.
+        status, refused = clear(9999, "stale-wallet")
+        self.assertEqual((409, "story_clear_wallet_conflict"), (status, refused["error"]))
+        with self.server.state.lock:
+            self.server.state.accounts[account_id]["tutorial_phase"] = "free_roam"
+            self.server.state.accounts[account_id]["active_generic_story"] = None
+            self.server.state.accounts[account_id]["released_generic_story"] = None
+            self.server.state._persist_locked()
+
+        status, settled = clear(11840, "kept-its-coins")
+        self.assertEqual((200, True), (status, settled["success"]))
+        # Settled at the balance the client holds, so the two cannot drift.
+        self.assertEqual(11840, settled["coins"])
+        account = self.server.state.accounts[account_id]
+        self.assertEqual(11840, account["userdata"]["coins"])
+        self.assertEqual(11840, account["userdata"]["valuables"]["coins"])
+        self.assertEqual(0x03000000 | 0x01000000 | (31 << 6) | 1,
+                         account["userdata"]["progressCode"])
+
     def test_a_released_story_battle_is_forgotten_once_another_one_opens(self) -> None:
         """Starting something else is the player moving on, and ends the claim."""
         account_id = "0123456789ABCDEF0123456789ABCDEF"

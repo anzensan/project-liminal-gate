@@ -3389,12 +3389,34 @@ class BootstrapState:
                 released["continue_coins"] if released is not None
                 else _continue_coins_charged(account)
             )
+            # A core-story stage may hand its Coins to the wallet or keep them,
+            # and only the client knows which -- `fixed_clear_coins` here *is*
+            # the figure the client just reported, so this check compares two
+            # client numbers against the server's durable balance rather than
+            # against any recovered price. Chapter 30-10 ends Part 1 with a
+            # scripted battle: it reports `coins: 1, exp: 1` and leaves the
+            # wallet exactly where 30-9 left it, so demanding the Coins be
+            # folded in refused the clear by one Coin, on every retry and across
+            # every force-close, with the whole chapter already paid for. Both
+            # readings are settled at the balance the client actually holds, so
+            # the two can never drift apart afterwards.
+            wallet_bases = (
+                (expected_coins, expected_coins - fixed_clear_coins) if dynamic
+                else (expected_coins,)
+            )
+            settled_coins = next(
+                (
+                    base for base in wallet_bases
+                    if clear["valuables"].get("coins") in _settled_wallet_coins(account, base, continue_coins)
+                ),
+                None,
+            )
             checks = (
                 ("phase", account.setdefault("tutorial_phase", "initial") == "generic_story_active" or released is not None),
                 ("active_stage", active == {"chapter": identity[0], "section": identity[1]} or released is not None),
                 ("progress", expected_progress is not None and clear["progressCode"] == expected_progress),
                 ("world_map", clear["worldMapNo"] == int(userdata.get("worldMapNo", 0))),
-                ("wallet", clear["valuables"].get("coins") in _settled_wallet_coins(account, expected_coins, continue_coins)),
+                ("wallet", settled_coins is not None),
                 (
                     "battle_coins",
                     event or reported_battle_coins == fixed_clear_coins,
@@ -3411,6 +3433,10 @@ class BootstrapState:
                 # like a wallet or phase disagreement. Which check failed is the
                 # whole diagnosis, and the server already knew it.
                 return f"{'event' if event else 'story'}_clear_{failed}_conflict", None
+            # Settle at the reading the wallet check accepted, so the balance
+            # this commits and the balance the client holds are the same number
+            # and the next clear has nothing to disagree about.
+            expected_coins = settled_coins
             if event and not stage.companions_within_manifest(
                 clear["battle_result"]["buddies"]
             ):
