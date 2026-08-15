@@ -30,6 +30,21 @@ Private inputs, captures, account state, and original assets remain excluded.
   card, and when a card unlocks, are archive policy. A card's tiers share one
   gate because a card is one thing to unlock. Nothing about a tier's start or
   clear changes — each carries its own chapter and section as before.
+- **Tower of Temptation is four folded cards, and the raid range decides how
+  many tiers a fold offers.** The record lists four cards — Alika, Gugba,
+  Bajanna and Zeera — each holding three tiers, and every one of chapters
+  9000--9003 ships a bare `sp<chapter>.bin` beside its `-1`--`-3` tiers; the
+  bare one is the tower architecture without the boss portrait the tier
+  banners carry. These chapters sit in the client's Raid range, so a folded
+  card expands to `ChapterInterface.NumOfRaidQuestSections`, recovered as the
+  literal 3 (`orr w10, wzr, #0x3` into static offset 0x70 at ARM64 `0xD07620`,
+  immediately before the 15 written to 0x74 that this project already carries
+  as the Donation count). Three tiers offered, three BattleData sections and
+  three retained banners behind them, so no phantom tier exists and these keep
+  the chapter flag rather than needing per-section flags. Folding does not move
+  the start: a tier is still started as `<chapter>-<section>` and
+  `eventQuestParams` still answers for each one.
+
 - **Separately, folding and flagging are independent decisions.** Chapter 2015
   was left unfolded because a folded card offers a tier per section its flag
   answers for and `CheckQuestFlag` retries an unset `sp_ch_2015-4` as

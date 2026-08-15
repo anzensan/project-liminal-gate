@@ -57,9 +57,29 @@ run the command.
   Champs already used. The retained `sp2015.bin` folded banner is what says the
   fold is what the service drew.
 
-- **The Special Quest list has more headroom.** These three fixes remove five
-  rows at full progress, taking a completed account from 29 to 24 against the
-  30-row ceiling that hangs the client.
+- **Tower of Temptation is four cards again instead of twelve rows.** The
+  shutdown menu record lists one card per boss — Alika, Gugba, Bajanna and
+  Zeera — each holding its three tiers, and the banners are shaped to match:
+  every one of chapters 9000--9003 ships a bare `sp<chapter>.bin` beside its
+  three tier banners, and the bare one is the tower architecture without the
+  boss portrait the tiers carry. Twelve flat rows drew a tier's artwork where a
+  card belonged and spent twelve rows doing it. Folding was held back until the
+  count behind it was recovered rather than assumed, because these chapters sit
+  in the client's Raid range and a folded card there expands to
+  `ChapterInterface.NumOfRaidQuestSections` tiers whatever the family: that
+  constant is 3, read as a literal from the same static constructor the ranges
+  come from, and every Tower chapter carries exactly three sections and three
+  retained banners. So the card offers three tiers, three sections back them
+  and three banners draw them — no phantom tier, which is why these keep their
+  chapter flag rather than needing the per-section treatment Final Fantasy XV
+  does. Nothing about a tier's start changes: it is still started as
+  `<chapter>-<section>` and its raid `eventQuestParams` entry is unchanged.
+
+- **The Special Quest list has more headroom.** Battle Champs and Final Fantasy
+  XV remove five rows at full progress between them, taking a completed account
+  from 29 to 24 against the 30-row ceiling that hangs the client. The Tower and
+  Dragon King fixes spend nothing from that budget — they shorten their own
+  menus, from twelve rows to four and from seven to five.
 
 ### Changed
 
