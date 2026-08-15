@@ -31,6 +31,7 @@ from liminal_gate.event_manifest_data import (
     FOLDED_ARCHIVE_CHAPTERS,
     MELTING_POT_MANIFEST_ROWS,
     MELTING_POT_SECTIONS,
+    SECTION_FLAGGED_FOLDED_CHAPTERS,
     STANDING_SPECIAL_MANIFEST_ROWS,
     STANDING_SPECIAL_SECTION_ALLOWLIST,
     TOWER_MANIFEST_ROWS,
@@ -107,9 +108,10 @@ class EventCatalogGeneratorTest(unittest.TestCase):
             [
                 "2003-1", "2003-2", "2005-1", "2005-2",
                 "2007", "2008", "2014-1", "2014-2",
-                # 2015 stays per-section although the client folds it: the
-                # placeholders below are what a folded card would advertise.
-                "2015-1", "2015-2",
+                # 2015 folds like the rest. Its stages carry their own section
+                # flags rather than the chapter flag, so the placeholders below
+                # have neither a section nor a flag and the client drops them.
+                "2015",
                 # 2017 folds, which is how the client names it and what keeps
                 # `specialQuestList` inside the length it can draw.
                 "2017",
@@ -121,16 +123,24 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         # a different Arena menu, and each keeps the folded or per-section
         # identity it had while it was miscarried on the Special list: 2000,
         # 2009 and 2016 fold, 2010 and 2011 do not.
+        # `Dragon King Descended` is one card over three chapters: 2010 and
+        # 2011 are its tiers, not cards, and neither has a bare banner of its
+        # own. See `FOLDED_CARD_CHAPTERS`.
+        self.assertEqual(["2000", "2009", "2016"], lists["descentQuestList"])
         self.assertEqual(
-            ["2000", "2009", "2010-1", "2010-2", "2011-1", "2011-2", "2016"],
-            lists["descentQuestList"],
+            {"2009"},
+            {
+                stage.selector_id
+                for stage in loaded.stages
+                if stage.chapter in (2009, 2010, 2011)
+            },
         )
-        # The client names 2015 bare too, and that literal is deliberately not
-        # honoured: a folded card offers a tier per section its flag answers
-        # for, and three of 2015's six are the placeholders below.
+        # 2015 folds like the rest, and withholds its chapter flag so the three
+        # placeholders below stay shut.
         self.assertIn(2017, FOLDED_ARCHIVE_CHAPTERS)
         self.assertIn(2016, FOLDED_ARCHIVE_CHAPTERS)
-        self.assertNotIn(2015, FOLDED_ARCHIVE_CHAPTERS)
+        self.assertIn(2015, FOLDED_ARCHIVE_CHAPTERS)
+        self.assertIn(2015, SECTION_FLAGGED_FOLDED_CHAPTERS)
         self.assertEqual((1, 2, 3), ARCHIVE_SECTION_ALLOWLIST[2015])
         self.assertFalse(
             {(2015, 4), (2015, 5), (2015, 6)} & set(loaded.by_identity())
@@ -173,21 +183,55 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         # and there is no longer a `-5` key to answer for it.
         self.assertNotIn("sp_ch_8002-5", loaded.flags(None))
 
-    def test_a_folded_chapter_never_withholds_one_of_its_own_sections(self) -> None:
+    def test_a_folded_chapter_that_withholds_sections_flags_per_section(self) -> None:
         """The property that makes folding safe, and the 2015 trap in one line.
 
         A folded card offers a tier per section its chapter flag answers for --
         `CheckQuestFlag` retries an unset `sp_ch_<chapter>-<section>` as
-        `sp_ch_<chapter>` -- so the client will offer every section BattleData
+        `sp_ch_<chapter>` -- so the client offers every section BattleData
         carries, not just the ones this server serves. A chapter that withholds
-        any of its own sections therefore must not be folded, or it advertises
-        tiers this archive cannot draw and this server refuses to start.
+        any of its own sections and *also* carries the chapter flag therefore
+        advertises tiers this archive cannot draw and this server refuses to
+        start. Withholding the chapter flag is what closes that door, so the
+        two sets have to move together.
         """
         self.assertEqual(
             set(),
-            FOLDED_ARCHIVE_CHAPTERS & set(ARCHIVE_SECTION_ALLOWLIST),
-            "a chapter cannot both be folded and have sections withheld",
+            FOLDED_ARCHIVE_CHAPTERS
+            & set(ARCHIVE_SECTION_ALLOWLIST)
+            - SECTION_FLAGGED_FOLDED_CHAPTERS,
+            "a folded chapter that withholds sections must flag per section",
         )
+
+    def test_the_folded_placeholders_get_neither_a_row_nor_a_flag(self) -> None:
+        """Chapter 2015 folds, and its three `空き` sections stay shut.
+
+        The card is `Final Fantasy XV` and its tiers are Gladiolus, Ignis and
+        Prompto. Sections 4--6 have zero battles and no banner, so the flag
+        block must not carry anything that opens them -- including the chapter
+        flag every other folded chapter carries.
+        """
+        battledata = _battledata(2015)
+        # The real import carries three playable sections and three empty ones.
+        battledata["stages"].append({
+            "chapter": 2015, "section": 3, "stamina": 40,
+            "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
+            "battle_count": 5, "has_battle": True,
+        })
+        battledata["stages"].extend({
+            "chapter": 2015, "section": section, "stamina": 25,
+            "coins": 0, "battle_count": 0, "has_battle": False,
+        } for section in (4, 5, 6))
+        _, _, loaded = self._generate(battledata, (1080,))
+        after_story = 0x01000000 | (43 << 6) | 1
+        self.assertEqual(["2015"], loaded.client_lists(after_story)["specialQuestList"])
+        flags = loaded.flags(after_story)
+        self.assertEqual(
+            ["sp_ch_2015-1", "sp_ch_2015-2", "sp_ch_2015-3"], sorted(flags),
+        )
+        self.assertNotIn("sp_ch_2015", flags)
+        for section in (4, 5, 6):
+            self.assertNotIn((2015, section), loaded.by_identity())
 
     def test_grant_rides_the_first_section_only(self) -> None:
         # Repeating it per section would grant the character once per stage.

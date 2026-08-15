@@ -45,9 +45,11 @@ from liminal_gate.event_manifest_data import (
     MELTING_POT_MANIFEST_ROWS,
     MELTING_POT_SECTIONS,
     FOLDED_ARCHIVE_CHAPTERS,
+    SECTION_FLAGGED_FOLDED_CHAPTERS,
     STANDING_SPECIAL_MANIFEST_ROWS,
     STANDING_SPECIAL_SECTION_ALLOWLIST,
     TOWER_MANIFEST_ROWS,
+    folded_card_chapter,
 )
 from liminal_gate.atomic_json import write_json_document
 
@@ -148,15 +150,23 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
                 "not in the local character catalog; grant omitted"
             )
 
+        card_chapter = folded_card_chapter(chapter)
         for section in sections:
             number = section["section"]
             rows.append(row(
-                event_id, flag, chapter, unlock_after, section,
+                event_id,
+                # A chapter that folds while withholding sections carries its
+                # own section flag, never the chapter flag that would also open
+                # what it withholds. See `SECTION_FLAGGED_FOLDED_CHAPTERS`.
+                event_flags_for(chapter, number)[1]
+                if chapter in SECTION_FLAGGED_FOLDED_CHAPTERS
+                else flag,
+                chapter, unlock_after, section,
                 # The permanent archive cadence declared beside the recovered
                 # identities, not a recovered historical schedule.
                 selector_id=(
-                    str(chapter)
-                    if chapter in FOLDED_ARCHIVE_CHAPTERS
+                    str(card_chapter)
+                    if card_chapter != chapter or chapter in FOLDED_ARCHIVE_CHAPTERS
                     else f"{chapter}-{number}"
                 ),
                 # Grants ride the first section only; repeating them per section

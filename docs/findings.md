@@ -3,6 +3,41 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## Folded Special Quest cards that span several chapters
+
+- **Reported symptom:** a tester saw Battle Champs listed twice — one
+  `Battle Champs` card holding the sub-battles, and three more cards beside it
+  (`Battle Champs: Fearsome Fiends!`, `The Creature From the Void`, `The Dragon
+  Awakens`) at the same difficulties, names, graphics and costs — and saw
+  `Final Fantasy XV - Gladiolus` where 5.5.7 had a `Final Fantasy XV` card
+  holding Gladiolus, Ignis and Prompto.
+- **Confirmed client contract:** a folded card is normally one chapter's own
+  sections, but the final client carries two families' membership as literals
+  rather than deriving it. The reviewed 5.5.7 metadata holds the two member
+  lists contiguously and in card order: `2009-1`, `2010-1`, `2011-1`, then
+  `8010-1`, `8010-2`, `8008-1`, `8008-2`, `8009-1`, `8009-2`, `8011-1`,
+  `8011-2`. `UISpecialSelect.GetSectionTitlesIfSpecialFoldedQuest(string ch)`
+  and `GetBannerTitleForFoldedQuest(string ch)` (RVA `0xF82244` and `0xF82E48`)
+  are the accessors that read them; both resolve a chapter key against a table
+  held on a manager singleton rather than expanding `ch-1..ch-N`.
+- **Corroboration from the retained archive:** the orders above are exactly the
+  orders the shutdown menu record (issue 62) lists under one `Dragon King
+  Descended` and one `Battle Champs` heading. The banners agree independently:
+  only `sp2009.bin` exists for the Dragon King — there is no `sp2010.bin` or
+  `sp2011.bin` — and all four of `sp8008.bin`--`sp8011.bin` decode to artwork
+  reading `BATTLE CHAMPS`.
+- **Correction boundary:** membership is recovered; which chapter carries the
+  card, and when a card unlocks, are archive policy. A card's tiers share one
+  gate because a card is one thing to unlock. Nothing about a tier's start or
+  clear changes — each carries its own chapter and section as before.
+- **Separately, folding and flagging are independent decisions.** Chapter 2015
+  was left unfolded because a folded card offers a tier per section its flag
+  answers for and `CheckQuestFlag` retries an unset `sp_ch_2015-4` as
+  `sp_ch_2015`, which would have opened the three empty `空き` placeholders.
+  Withholding the chapter flag and carrying per-section flags closes that door
+  while keeping the fold — the shape the Counter Descent range already used —
+  so a chapter can now fold *and* withhold sections.
+
 ## Puppet Show strict-audit aggregate
 
 - **Reported runtime evidence:** a tester received 74 items from one

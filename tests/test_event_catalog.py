@@ -269,40 +269,59 @@ class BundledCollabSpecialPolicyTest(unittest.TestCase):
         )
         self.assertTrue(all(stage.selector == "special" for stage in self.catalog.stages))
 
-    def test_battle_champs_folds_and_eight_bit_rush_does_not(self) -> None:
-        """Four cards, not eight rows, and the fifth family is a lone section.
+    def test_battle_champs_is_one_card_and_eight_bit_rush_another(self) -> None:
+        """One card across four chapters, not one card per chapter.
 
-        Folding is what holds `specialQuestList` at the 30 rows the client can
-        draw. 8018 has one section and no folded banner, so it is advertised as
-        the section row its own artwork was drawn for.
+        The client carries the eight members as literals and expands the card
+        into them itself, which is why the shutdown menu record shows a single
+        `Battle Champs` holding all eight tiers. All four retained
+        `sp8008.bin`--`sp8011.bin` banners read `BATTLE CHAMPS`, so a row per
+        chapter drew the same card four times. 8018 has one section and no
+        folded banner, so it stays the section row its own artwork was drawn
+        for.
         """
         lists = self.catalog.client_lists(self.progress_at(24))
-        self.assertEqual(
-            ["8008", "8009", "8010", "8011", "8018-1"],
-            lists["specialQuestList"],
-        )
+        self.assertEqual(["8008", "8018-1"], lists["specialQuestList"])
         self.assertEqual([], lists["descentHuntingList"])
         self.assertEqual([], lists["descentQuestList"])
 
-    def test_a_folded_card_flags_only_the_two_tiers_it_has(self) -> None:
+    def test_a_folded_card_flags_only_the_tiers_it_has(self) -> None:
         """The same rule the three-tier Strikes Back families rely on.
 
         `GetSectionCount` returns the hard-coded five for every chapter in this
         range, so a card offers `8008-3` through `8008-5` as well. None is
         backed by a section, and a chapter flag would answer `CheckQuestFlag`
-        true for all three, so the flags stay per section.
+        true for all three, so the flags stay per section -- one per member of
+        the card, across all four of its chapters, and no chapter flag at all.
         """
+        flags = sorted(self.catalog.flags(self.progress_at(20)))
         self.assertEqual(
-            ["sp_ch_8008-1", "sp_ch_8008-2"],
-            sorted(self.catalog.flags(self.progress_at(20))),
+            [
+                f"sp_ch_{chapter}-{section}"
+                for chapter in range(8008, 8012)
+                for section in (1, 2)
+            ],
+            flags,
+        )
+        self.assertFalse(
+            any(flag == f"sp_ch_{chapter}" for flag in flags for chapter in range(8008, 8012))
         )
 
-    def test_the_release_cadence_opens_one_family_at_a_time(self) -> None:
+    def test_the_one_card_opens_as_one_card(self) -> None:
+        """A card is one thing to unlock, so its eight tiers share a gate."""
         self.assertEqual(
             [], self.catalog.client_lists(self.progress_at(19))["specialQuestList"],
         )
         self.assertEqual(
             ["8008"], self.catalog.client_lists(self.progress_at(20))["specialQuestList"],
+        )
+        self.assertEqual(
+            {19},
+            {
+                stage.unlock_after_chapter
+                for stage in self.catalog.stages
+                if 8008 <= stage.chapter <= 8011
+            },
         )
 
     def test_the_recovered_drop_manifests_bound_a_reported_claim(self) -> None:

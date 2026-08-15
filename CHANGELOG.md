@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased
+
+Every entry below needs a server restart; on-device testers need a rebuilt
+APK. None of them needs the event catalog regenerated — the folded-card
+identities are applied when the catalog is loaded, exactly as the class limits
+and the Descent menu already are, so a catalog generated before this still
+draws the cards the final client drew.
+
+### Fixed
+
+- **Battle Champs is one card again instead of four copies of itself.** A
+  tester reported the family listed twice: an `Arena -> Special Quests -> Battle
+  Champs` card holding the sub-battles, and then `Battle Champs: Fearsome
+  Fiends!`, `The Creature From the Void` and `The Dragon Awakens` beside it at
+  the same difficulties, names, graphics and costs. They were the same card.
+  This server advertised chapters 8008--8011 as a folded card each, and the
+  client does not read them that way: the reviewed 5.5.7 metadata carries the
+  eight members as literals — `8010-1`, `8010-2`, `8008-1`, `8008-2`, `8009-1`,
+  `8009-2`, `8011-1`, `8011-2`, read by
+  `UISpecialSelect.GetSectionTitlesIfSpecialFoldedQuest` — in exactly the order
+  the shutdown menu record lists them under one `Battle Champs` heading. The
+  retained banners say it twice over: all four of `sp8008.bin`--`sp8011.bin`
+  read `BATTLE CHAMPS`. One row is served now, and the client expands it into
+  all eight tiers itself. Nothing about a tier's start or clear changes. The
+  four chapters also share one unlock now, because a card is one thing to
+  unlock; the 19/20/21/22 ladder would have opened the card holding two of its
+  eight tiers, missing the two the client lists first.
+
+- **Dragon King Descended is one card over its three chapters, and 2010 and
+  2011 no longer advertise cards the archive cannot draw.** The same recovered
+  literal list holds `2009-1`, `2010-1`, `2011-1` as the members of one card,
+  which is what the shutdown menu record shows as `Dragon King Descended` (The
+  Primordial, Inexorable and Resplendent Dragon King). Only `sp2009.bin` exists
+  as a bare banner — there is no `sp2010.bin` or `sp2011.bin` — so the two extra
+  rows were the blank-card failure the Coin Creeps derivation already taught us
+  to look for. Their three gates collapse to one for the same reason Battle
+  Champs' four do. `Royal Rings Descended` (2016) was already one card and is
+  unchanged; both open after Chapter 30, which is archive policy and is why a
+  tester below it does not see either yet.
+
+- **Final Fantasy XV is one card holding Gladiolus, Ignis and Prompto instead
+  of Gladiolus alone.** Chapter 2015 was advertised as three per-section rows
+  and a tester saw only the first. It was unfolded deliberately, and the reason
+  was sound while it held: the chapter shipped six sections, 4--6 are the empty
+  `空き` placeholders with no battles and no banner, and a folded card carrying
+  the chapter flag would have offered all six because `CheckQuestFlag` retries
+  an unset `sp_ch_2015-4` as `sp_ch_2015`. The missing half was that folding and
+  flagging are separate decisions. The card folds now and its stages carry their
+  own section flags, never the chapter flag, so the three placeholders have
+  neither a section nor a flag and the client drops them — the same shape Battle
+  Champs already used. The retained `sp2015.bin` folded banner is what says the
+  fold is what the service drew.
+
+- **The Special Quest list has more headroom.** These three fixes remove five
+  rows at full progress, taking a completed account from 29 to 24 against the
+  30-row ceiling that hangs the client.
+
 ## 1.1.0 — 2026-08-10
 
 Every entry below needs only a server restart, except Melting Pot and the six
