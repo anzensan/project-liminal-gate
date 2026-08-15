@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -170,15 +171,70 @@ class TesterSetupTest(unittest.TestCase):
             self.assertTrue((data / "character-catalog.json").is_file())
             self.assertTrue((data / "companion-equipment.json").is_file())
     def test_requires_explicit_choice_when_multiple_devices_are_ready(self) -> None:
-        with patch("liminal_gate.tester_setup._adb_devices", return_value=("emulator-5554", "emulator-5570")):
+        with patch("liminal_gate.tester_setup._adb_devices", return_value={"emulator-5554": "device", "emulator-5570": "device"}):
             with self.assertRaisesRegex(TesterSetupError, "--device"):
                 select_device("adb", None)
             self.assertEqual("emulator-5570", select_device("adb", "emulator-5570"))
 
     def test_selects_a_physical_device_serial(self) -> None:
-        with patch("liminal_gate.tester_setup._adb_devices", return_value=("R52T80ABCDE",)):
+        with patch("liminal_gate.tester_setup._adb_devices", return_value={"R52T80ABCDE": "device"}):
             self.assertEqual("R52T80ABCDE", select_device("adb", None))
             self.assertEqual("R52T80ABCDE", select_device("adb", "R52T80ABCDE"))
+
+    def test_a_connected_device_awaiting_its_prompt_is_not_reported_as_absent(self) -> None:
+        # The whole point of keeping unready rows: this phone is plugged in and
+        # listed, and the answer is on its screen rather than in the serial.
+        with patch("liminal_gate.tester_setup._adb_devices", return_value={"R52T80ABCDE": "unauthorized"}):
+            with self.assertRaisesRegex(TesterSetupError, "USB-debugging prompt"):
+                select_device("adb", "R52T80ABCDE")
+            with self.assertRaisesRegex(TesterSetupError, "R52T80ABCDE"):
+                select_device("adb", None)
+
+    def test_a_serial_adb_does_not_list_names_the_ones_it_does(self) -> None:
+        with patch("liminal_gate.tester_setup._adb_devices", return_value={"R52T80ABCDE": "device"}):
+            with self.assertRaisesRegex(TesterSetupError, "R52T80ABCDE"):
+                select_device("adb", "RF8N90ZZZZZ")
+
+    def test_an_empty_device_list_says_what_to_do_at_the_phone(self) -> None:
+        with patch("liminal_gate.tester_setup._adb_devices", return_value={}):
+            with self.assertRaisesRegex(TesterSetupError, "File Transfer rather than Charging"):
+                select_device("adb", None)
+            with self.assertRaisesRegex(TesterSetupError, "do not need --device"):
+                select_device("adb", "R52T80ABCDE")
+
+    def test_the_device_table_skips_the_daemon_notice_above_it(self) -> None:
+        listing = (
+            "* daemon not running; starting now at tcp:5037\n"
+            "* daemon started successfully\n"
+            "List of devices attached\n"
+            "R52T80ABCDE\tunauthorized\n"
+            "emulator-5554\tdevice\n"
+        )
+        with patch("liminal_gate.tester_setup.subprocess.run", return_value=SimpleNamespace(stdout=listing)):
+            self.assertEqual(
+                {"R52T80ABCDE": "unauthorized", "emulator-5554": "device"},
+                tester_setup._adb_devices("adb"),
+            )
+
+    def test_a_missing_apk_names_the_neighbour_that_is_the_right_file(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            directory = Path(name)
+            mistyped = directory / "terra-battle-5.5.7-170.apk.apk"
+            mistyped.write_bytes(b"client")
+            with patch.object(tester_setup, "_is_reviewed_apk", return_value=True):
+                detail = tester_setup.describe_missing_apk(directory / "terra-battle-5.5.7-170.apk")
+        self.assertIn("terra-battle-5.5.7-170.apk.apk", detail)
+        self.assertIn("right file under the wrong name", detail)
+        self.assertIn("Windows Explorer hides a known extension", detail)
+
+    def test_a_missing_apk_beside_an_unrecognized_one_asks_for_a_path(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            directory = Path(name)
+            (directory / "some-other-build.apk").write_bytes(b"not the client")
+            detail = tester_setup.describe_missing_apk(directory / "terra-battle-5.5.7-170.apk")
+        self.assertIn("some-other-build.apk", detail)
+        self.assertIn("--apk", detail)
+        self.assertNotIn("right file", detail)
 
     def test_device_host_defaults_to_the_emulator_loopback_alias(self) -> None:
         self.assertEqual("http://10.0.2.2:8696", build_server_origin(EMULATOR_LOOPBACK_HOST, 8696))

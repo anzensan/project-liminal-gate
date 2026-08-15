@@ -2,11 +2,15 @@
 
 ## Unreleased
 
-Every entry below needs a server restart; on-device testers need a rebuilt
+Every gameplay fix below needs a server restart; on-device testers need a rebuilt
 APK. None of them needs the event catalog regenerated — the folded-card
 identities are applied when the catalog is loaded, exactly as the class limits
 and the Descent menu already are, so a catalog generated before this still
 draws the cards the final client drew.
+
+The setup and documentation changes at the end need neither a restart nor a
+rebuild: they are build-computer behaviour, and take effect the next time you
+run the command.
 
 ### Fixed
 
@@ -56,6 +60,59 @@ draws the cards the final client drew.
 - **The Special Quest list has more headroom.** These three fixes remove five
   rows at full progress, taking a completed account from 29 to 24 against the
   30-row ceiling that hangs the client.
+
+### Changed
+
+- **Setup says why a connected phone is not ready, instead of reporting it as
+  absent.** `adb devices` states every device it can see, and only rows reading
+  `device` were kept; every other state was discarded before anything looked at
+  it. A phone plugged in and waiting for its **Allow USB debugging** prompt is
+  listed as `unauthorized`, so setup said `available: none` — the one thing that
+  was not true — and a first-time tester spent half an hour hunting a serial
+  number that had been right all along. Each unready state is now named with
+  what it means where the tester is standing: `unauthorized` points at the
+  prompt on the screen and at the vendors that switch USB debugging back off by
+  themselves, `offline` at a USB mode left on Charging, `no permissions` at udev
+  rules. An empty list says the same things in the order they fail, and adds
+  that `--device` is not needed at all when one device is connected. This
+  reaches every route, since all three launchers select their device here.
+
+- **A missing source APK says what the folder does hold.** `no APK at
+  local-input/terra-battle-5.5.7-170.apk` was accurate and useless in the case
+  that keeps arriving: the file is there, named
+  `terra-battle-5.5.7-170.apk.apk`, because Windows Explorer hides a known
+  extension and typing the documented name onto a file already called `.apk`
+  appends a second one. The tester is looking at the name they were told to use
+  and being told it is absent. Setup now lists the `.apk` files beside the
+  expected path, and hashes them: a file whose SHA-256 is the reviewed
+  5.5.7-170 value is reported as the right file under the wrong name, which
+  distinguishes a rename from a re-download — the question that costs the time.
+  The double extension is called out by name when one is present. The reviewed
+  digest moved to `reviewed_build` so both setup routes can read it; the
+  on-device route still requires it, and the emulator route uses it only to
+  explain this.
+
+### Documentation
+
+- **The phone's own settings are documented, and the serial number is not.**
+  Four separate device settings can stop an otherwise correct setup — Developer
+  options, USB debugging, USB mode set to File Transfer rather than Charging,
+  and the separate "Install via USB" switch Samsung and Xiaomi add — and only
+  the first two were written down. All four are now listed before the build
+  steps on the self-hosted route, with the note that several vendors turn USB
+  debugging off again after a period of inactivity, which is why a command that
+  worked yesterday reports no device today. The worked examples no longer pass
+  `--device`: setup finds a single connected device by itself, and teaching the
+  flag as mandatory sent testers looking for a serial before they needed one.
+
+- **Updating is written for people who downloaded a zip.** The instructions said
+  to pull a source revision, which is no help to a tester who does not use Git,
+  and the warning that matters lived three sections away: the folder must be
+  extracted *over*, never replaced, because `user-data/` holds the signing key
+  that lets Android update the install in place. Losing it costs the save. The
+  update section now says that where the updating happens, keeps the existing
+  virtual environment rather than rebuilding it, and notes that a changelog
+  entry reading "server restart" still means a rebuilt APK on this route.
 
 ## 1.1.0 — 2026-08-10
 

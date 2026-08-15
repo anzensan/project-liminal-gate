@@ -46,7 +46,7 @@ computer corresponds to it. `on_device_state` moves it across, over USB, while
 the app is running — open the game and wait for it to appear first.
 
 ```bash
-python3 -m liminal_gate.on_device_state export --device YOUR_ADB_SERIAL
+python3 -m liminal_gate.on_device_state export
 ```
 
 That writes a full copy under `user-data/on-device-state/` and changes nothing
@@ -58,7 +58,7 @@ Everything else on this page works on that exported file. To put it back:
 
 ```bash
 python3 -m liminal_gate.on_device_state import \
-  --device YOUR_ADB_SERIAL user-data/on-device-state/YOUR-EXPORT.json --yes
+  user-data/on-device-state/YOUR-EXPORT.json --yes
 ```
 
 `import` refuses a file that breaks the invariants the client relies on, and
@@ -70,7 +70,7 @@ restarted and re-read to confirm the import took.
 To rebuild and reinstall with the save backed up first:
 
 ```bash
-python3 -m liminal_gate.on_device_state update --device YOUR_ADB_SERIAL
+python3 -m liminal_gate.on_device_state update
 ```
 
 `update` exports before it builds, installs over the existing app, and then

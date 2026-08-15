@@ -20,8 +20,13 @@ expose it to the internet, or use it as a hosted service.
 
 Enable **Developer options** (Settings → About → tap **Build number** seven
 times), then turn on **USB debugging** inside Developer options. Connect the
-device by USB, and accept the **Allow USB debugging** prompt that appears on the
-device screen. Then confirm your computer can see it:
+device by USB, and set the USB connection mode to **File Transfer** rather than
+Charging — pull down the notification the phone shows when you plug it in. In
+Charging mode nothing is listed at all, which reads exactly like a broken cable.
+Accept the **Allow USB debugging** prompt that appears on the device screen.
+Samsung and Xiaomi have a second Developer options switch, **Install via USB**,
+which is what refuses the install at the very end of an otherwise successful run.
+Then confirm your computer can see it:
 
 ```sh
 adb devices -l
@@ -29,8 +34,12 @@ adb devices -l
 
 A physical device shows a hardware serial rather than an `emulator-NNNN` name,
 for example `R52T80ABCDE   device  ...`. If it says `unauthorized`, the on-device
-prompt has not been accepted yet. If nothing is listed, try a different cable —
-charge-only USB cables are a common cause.
+prompt has not been accepted yet. If nothing is listed, check the USB mode above,
+then try a different cable — charge-only USB cables are a common cause.
+
+Several vendors switch USB debugging back off by themselves after a period of
+inactivity. A device that worked earlier and is now missing has usually only had
+that happen; check the switch before looking anywhere else.
 
 ## B. Find this machine's network address
 

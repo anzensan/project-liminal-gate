@@ -53,7 +53,7 @@ from liminal_gate.setup_progress import (
     run_with_heartbeat as _run_with_heartbeat,
 )
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
-from liminal_gate import account_state, toolchain
+from liminal_gate import account_state, reviewed_build, toolchain
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, build_character_catalog, load_master_trees, sha256_file, write_character_catalog
 from liminal_gate.coin_creeps_banner import CoinCreepsBannerError, prepare_coin_creeps_banners
 from liminal_gate.event_catalog import (
@@ -159,17 +159,84 @@ def run_with_heartbeat(
     )
 
 
-def _adb_devices(adb: str) -> tuple[str, ...]:
+#: What each unready `adb devices` state means to somebody holding the phone.
+#: These are the states installation cannot use, and the reason this table
+#: exists is that they used to be discarded: every one of them reported the
+#: device as absent, which is the one thing none of them is. A tester whose
+#: phone was plugged in, listed, and merely waiting to be answered was told
+#: nothing was connected, and went looking for a wrong serial number instead of
+#: at the screen in their hand.
+_ADB_STATE_CAUSES = {
+    "unauthorized": (
+        "the phone has not accepted this computer's USB-debugging prompt. Unlock the screen "
+        "and tap Allow, ticking \"Always allow from this computer\". Samsung switches USB "
+        "debugging back off by itself after a while, so also confirm it is still on under "
+        "Developer options"
+    ),
+    "offline": (
+        "adb can see the phone but cannot talk to it. Set the USB connection mode to File "
+        "Transfer rather than Charging, then unplug and reconnect it"
+    ),
+    "no permissions": (
+        "this account may not open the USB device. On Linux install your phone vendor's udev "
+        "rules, then run `adb kill-server` and rerun"
+    ),
+    "authorizing": "adb is still negotiating with the phone; wait a moment and rerun",
+    "connecting": "adb is still connecting to the phone; wait a moment and rerun",
+    "recovery": "the phone is in recovery mode rather than booted into Android",
+    "sideload": "the phone is in sideload mode rather than booted into Android",
+    "bootloader": "the phone is in its bootloader rather than booted into Android",
+    "host": "this entry is adb's own host loopback, not an installable device",
+}
+#: Said wherever an empty device list is the finding. Each clause is a step a
+#: tester can carry out while looking at the phone, in the order they fail.
+_CONNECT_ADVICE = (
+    "Connect the phone or tablet with a cable that carries data -- many charging cables do not "
+    "-- set its USB mode to File Transfer rather than Charging, turn on USB debugging under "
+    "Developer options, and accept the prompt the phone then shows."
+)
+
+
+def describe_adb_state(state: str) -> str:
+    """Explain an unready adb state, or quote it when it is not one we know."""
+    # `no permissions` arrives with a trailing help URL and every other state is
+    # one word, so the cause is whatever precedes the first semicolon.
+    cause = _ADB_STATE_CAUSES.get(state.split(";")[0].strip().lower())
+    return cause if cause is not None else f"adb reports it as {state!r}"
+
+
+def _adb_devices(adb: str) -> dict[str, str]:
+    """Return every serial `adb devices` reports, mapped to its state.
+
+    Unready states are kept rather than filtered out; `select_device` is what
+    decides which ones can be installed on, and it can only say why not if it
+    is told.
+    """
     try:
         result = subprocess.run((adb, "devices"), check=True, text=True, capture_output=True)
     except (OSError, subprocess.CalledProcessError) as error:
         raise TesterSetupError("adb is unavailable; start an Android emulator and ensure adb is on PATH") from error
-    devices: list[str] = []
-    for line in result.stdout.splitlines()[1:]:
+    lines = result.stdout.splitlines()
+    # Parsing now starts at adb's own header rather than at the second line,
+    # because the daemon's "* daemon started successfully *" chatter can precede
+    # it. While only `device` rows were kept those lines could not be mistaken
+    # for a target; a table that accepts every state has to know where it began.
+    start = next(
+        (index + 1 for index, line in enumerate(lines) if line.startswith("List of devices attached")),
+        1,
+    )
+    devices: dict[str, str] = {}
+    for line in lines[start:]:
         fields = line.split()
-        if len(fields) >= 2 and fields[1] == "device":
-            devices.append(fields[0])
-    return tuple(devices)
+        if len(fields) >= 2:
+            devices[fields[0]] = " ".join(fields[1:])
+    return devices
+
+
+def _not_ready(serial: str, state: str) -> TesterSetupError:
+    return TesterSetupError(
+        f"device {serial} is connected but not ready to install on: {describe_adb_state(state)}"
+    )
 
 
 def select_device(adb: str, requested: str | None) -> str:
@@ -179,19 +246,105 @@ def select_device(adb: str, requested: str | None) -> str:
     here; `adb devices` reports both the same way.
     """
     devices = _adb_devices(adb)
+    ready = tuple(serial for serial, state in sorted(devices.items()) if state == "device")
+    unready = {serial: state for serial, state in devices.items() if state != "device"}
     if requested is not None:
-        if requested not in devices:
-            available = ", ".join(devices) if devices else "none"
-            raise TesterSetupError(f"requested device {requested!r} is not ready (available: {available})")
-        return requested
-    if len(devices) == 1:
-        return devices[0]
-    if not devices:
+        if requested in ready:
+            return requested
+        if requested in unready:
+            raise _not_ready(requested, unready[requested])
+        if not devices:
+            raise TesterSetupError(
+                f"adb lists no devices at all, so it cannot install on {requested}. "
+                f"{_CONNECT_ADVICE} With one device connected you do not need --device at all."
+            )
         raise TesterSetupError(
-            "no ready Android device found; start an emulator, or connect a phone or tablet "
-            "with USB debugging enabled and accept its authorization prompt, then rerun"
+            f"adb does not list {requested}. Pass one of the serials it does list, or leave "
+            "--device off when only one device is connected. It lists: "
+            + "; ".join(
+                serial if state == "device" else f"{serial}, {describe_adb_state(state)}"
+                for serial, state in sorted(devices.items())
+            )
         )
-    raise TesterSetupError("multiple Android devices are ready; rerun with --device one of: " + ", ".join(devices))
+    if len(ready) == 1:
+        return ready[0]
+    if not ready:
+        if len(unready) == 1:
+            # The common shape by far, and the one worth reading as a sentence:
+            # one phone, connected, with something on its own screen to answer.
+            raise _not_ready(*next(iter(unready.items())))
+        if unready:
+            raise TesterSetupError(
+                "no Android device is ready to install on. adb lists: "
+                + "; ".join(
+                    f"{serial}, {describe_adb_state(state)}"
+                    for serial, state in sorted(unready.items())
+                )
+            )
+        raise TesterSetupError(
+            f"adb lists no devices at all. {_CONNECT_ADVICE} An emulator started from Android "
+            "Studio works here too."
+        )
+    raise TesterSetupError("multiple Android devices are ready; rerun with --device one of: " + ", ".join(ready))
+
+
+def _is_reviewed_apk(path: Path) -> bool:
+    try:
+        return sha256_file(path) == reviewed_build.SOURCE_APK_SHA256
+    except OSError:
+        return False
+
+
+def describe_missing_apk(apk: Path) -> str:
+    """Report a missing source APK by saying what its folder does hold.
+
+    "no APK at local-input/terra-battle-5.5.7-170.apk" is true, and unhelpful in
+    the case that keeps arriving: the file is there, under
+    `terra-battle-5.5.7-170.apk.apk`, because Windows Explorer hides a known
+    extension and typing the name the instructions give appends a second copy of
+    it. The tester sees the name they were told to use and is told it is absent.
+
+    Naming the neighbours turns that from a guess into a reading, and hashing
+    them separates the two repairs, which is the part guessing cannot do: a file
+    whose digest is the reviewed one needs renaming, and anything else needs
+    fetching again. Both were on the table for half an hour once, with only the
+    name to go on.
+    """
+    directory = apk.parent
+    detail = [f"no APK at {apk}"]
+    candidates: list[Path] = []
+    if directory.is_dir():
+        try:
+            candidates = sorted(
+                path for path in directory.iterdir()
+                if path.is_file() and path.suffix.lower() == ".apk"
+            )
+        except OSError:
+            candidates = []
+    if not candidates:
+        detail.append(
+            f"Nothing in {directory} is named *.apk" if directory.is_dir()
+            else f"{directory} does not exist yet, so create it and put your copy there"
+        )
+        detail.append("Pass --apk with the path to your own Terra Battle 5.5.7-170 copy")
+        return ". ".join(detail) + "."
+    reviewed = next((path for path in candidates if _is_reviewed_apk(path)), None)
+    if reviewed is not None:
+        detail.append(
+            f"{directory} holds {reviewed.name}, whose SHA-256 is the reviewed 5.5.7-170 value: "
+            f"that is the right file under the wrong name, so rename it to {apk.name}"
+        )
+    else:
+        detail.append(
+            f"{directory} holds {', '.join(path.name for path in candidates)}. Rename your Terra "
+            f"Battle 5.5.7-170 copy to {apk.name}, or pass --apk with its path"
+        )
+    if any(path.name.lower().endswith(".apk.apk") for path in candidates):
+        detail.append(
+            "A name ending .apk.apk is that extension typed twice: Windows Explorer hides a known "
+            "extension, so the name it shows you is already one short"
+        )
+    return ". ".join(detail) + "."
 
 
 def validate_port(port: int) -> None:
@@ -1365,7 +1518,7 @@ def prepare_local_tester(
     server_origin = build_server_origin(device_host, port)
     apk, resource_root = apk.resolve(), resolve_resource_root(resource_root)
     if not apk.is_file():
-        raise TesterSetupError(f"no APK to redirect at {apk}; pass --apk with the path to your own copy")
+        raise TesterSetupError(describe_missing_apk(apk))
     data_directory.mkdir(parents=True, exist_ok=True)
     # Written rather than documented into existence, for the reason
     # `server_setup` gives: it is a short list of knobs with known defaults, so
@@ -1598,7 +1751,7 @@ def preflight_checks(
 
     def local_apk() -> str:
         if not apk.is_file():
-            raise TesterSetupError(f"no APK at {apk}; pass --apk with the path to your own copy")
+            raise TesterSetupError(describe_missing_apk(apk))
         return f"{apk} ({_format_bytes(apk.stat().st_size)})"
 
     def resources() -> str:

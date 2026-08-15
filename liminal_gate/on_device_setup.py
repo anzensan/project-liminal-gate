@@ -23,7 +23,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from liminal_gate import tester_setup, tool_install, toolchain
+from liminal_gate import reviewed_build, tester_setup, tool_install, toolchain
 from liminal_gate.android_entrypoint import LOOPBACK_HOST, LOOPBACK_PORT
 from liminal_gate.apk_patcher import apply_patch_plan, load_patch_plan
 from liminal_gate.apk_signer import sign_apk
@@ -43,7 +43,9 @@ DEFAULT_HOST_SOURCE = Path("android-host")
 HOST_ACTIVITY = "org.liminalgate.android.HostedActivity"
 MINIMUM_DEVICE_API = 24
 MINIMUM_DEVICE_FREE_BYTES = 4 * 1024**3
-REVIEWED_SOURCE_SHA256 = "f2c0ffa188255f4694f0f60e898a58b372c2cc3fff7dd312a01d593189bd7a15"
+#: Re-exported under its historical name; the literal itself lives with the rest
+#: of the reviewed build's identity so a re-pin changes one line.
+REVIEWED_SOURCE_SHA256 = reviewed_build.SOURCE_APK_SHA256
 #: Where the packaged tuning document lands in the app-private files dir.
 TUNING_RUNTIME_FILE = DEFAULT_TUNING_DOCUMENT
 GRADLE_VERSION = "8.11.1"
@@ -508,7 +510,7 @@ def preflight_checks(
     """Mirror every non-mutating prerequisite of a real on-device build."""
     def source_apk() -> str:
         if not apk.is_file():
-            raise OnDeviceSetupError(f"no APK at {apk}; pass --apk with your own Terra Battle 5.5.7-170 APK")
+            raise OnDeviceSetupError(tester_setup.describe_missing_apk(apk))
         digest = sha256_file(apk)
         if digest != REVIEWED_SOURCE_SHA256:
             raise OnDeviceSetupError(
@@ -603,7 +605,7 @@ def prepare_on_device_apk(
     """Prepare the combined APK using the assembly module and stable local signing key."""
     resource_root = tester_setup.resolve_resource_root(resource_root)
     if not apk.is_file():
-        raise OnDeviceSetupError(f"no APK at {apk}; pass --apk with your own Terra Battle 5.5.7-170 APK")
+        raise OnDeviceSetupError(tester_setup.describe_missing_apk(apk))
     data_directory.mkdir(parents=True, exist_ok=True)
     keystore = data_directory / "liminal-gate-test.keystore"
     password_file = data_directory / "keystore-password.txt"

@@ -37,7 +37,9 @@ You need:
 
 - a physical Android device or emulator running API 24 or newer;
 - an `arm64-v8a` or `armeabi-v7a` runtime;
-- USB debugging and enough USB access for `adb devices -l` to show `device`;
+- USB debugging and enough USB access for `adb devices -l` to show `device`
+  (see [Prepare the phone](#prepare-the-phone) below, which is where most first
+  setups stall);
 - at least 4 GiB free in the device's `/data` partition;
 - several GiB of temporary space on the build computer;
 - your own Terra Battle Android 5.5.7-170 APK and matching Android resources;
@@ -60,6 +62,44 @@ One exception, and it is the one that misleads: after step 2 activates the
 virtual environment, use plain `python` rather than `py -3`. Naming a version
 makes the launcher skip the active environment, so `py -3` from a `(.venv)`
 prompt runs the system Python instead.
+
+## Prepare the phone
+
+Four separate settings, and every one of them has stopped a setup that was
+otherwise correct. Do all four before running anything.
+
+1. **Developer options.** Settings → About phone → tap **Build number** seven
+   times.
+2. **USB debugging**, inside Developer options. Some phones — Samsung notably —
+   switch this back off by themselves after a period of inactivity. If a command
+   that worked earlier now reports no device, check this switch first; nothing
+   about your setup has changed.
+3. **USB mode: File Transfer.** Plugging the cable in is not enough. Pull down
+   the notification that says *Charging this device via USB* and change it to
+   **File Transfer / Android Auto** (wording varies). In Charging mode `adb`
+   sees nothing at all, which reads exactly like a broken cable — though a
+   charge-only cable does the same thing, so try another cable if the mode is
+   already right.
+4. **Install via USB.** On Samsung and Xiaomi this is a *separate* Developer
+   options switch from USB debugging ("Install via USB", or "USB debugging
+   (Security settings)"). Without it the build finishes and the install is
+   refused at the last step.
+
+Then plug the phone in and check that the computer sees it:
+
+```sh
+adb devices -l
+```
+
+You want a line ending in `device`. `unauthorized` means the phone is waiting for
+you to answer its **Allow USB debugging** prompt — unlock the screen and tap
+Allow, ticking *Always allow from this computer*. An empty list means item 3 or
+the cable.
+
+**You do not need the serial number.** With one device connected, every command
+below finds it by itself; `--device` exists only for when `adb devices` lists
+more than one. If you do pass it, use the serial from the first column of
+`adb devices -l` — the number in Settings is not always the same string.
 
 ## 1. Put your private inputs in place
 
@@ -154,33 +194,32 @@ environment active for the remaining commands. See
 [Installing the tools](install-tools.md) for manual and platform-specific
 alternatives.
 
-Now run the non-mutating check with the exact device you intend to use:
+Now run the non-mutating check, with the device you intend to use connected:
 
 ```sh
-adb devices -l
-python3 -m liminal_gate.on_device_setup --check --device YOUR_ADB_SERIAL
+python3 -m liminal_gate.on_device_setup --check
 ```
 
-The serial is the first column in `adb devices -l`. Accept the USB-debugging
-prompt on the device if it says `unauthorized`. Fix every `FAIL` before
-continuing. A missing Gradle cache is only a warning: the real command downloads
-the pinned, checksum-verified Gradle 8.11.1 distribution into `user-data/work/`.
+Fix every `FAIL` before continuing — the real command needs the same things and
+will stop at the same place. A missing Gradle cache is only a warning: the real
+command downloads the pinned, checksum-verified Gradle 8.11.1 distribution into
+`user-data/work/`.
 
-When using non-default inputs, repeat them exactly:
+Add `--device YOUR_ADB_SERIAL` only if `adb devices -l` lists more than one
+target. When using non-default inputs, repeat them exactly:
 
 ```sh
 python3 -m liminal_gate.on_device_setup --check \
-  --device YOUR_ADB_SERIAL \
   --apk /path/to/terra-battle-5.5.7-170.apk \
   --resource-root /path/to/data_u2017/android
 ```
 
 ## 3. Build, install, and launch
 
-With the default file layout:
+With the default file layout, and the phone connected:
 
 ```sh
-python3 -m liminal_gate.on_device_setup --device YOUR_ADB_SERIAL
+python3 -m liminal_gate.on_device_setup
 ```
 
 This one command:
@@ -202,6 +241,10 @@ it is signing or installing. The command succeeds only after printing both:
 Prepared private on-device APK: user-data/on-device-liminal-gate.apk
 Installed and launched on YOUR_ADB_SERIAL. The embedded server binds only to 127.0.0.1:8002.
 ```
+
+The game starts on the phone by itself when this finishes, which is the clearest
+sign that everything worked. Watch the screen during the install: it may ask you
+to allow an install over USB.
 
 To build without changing a device, use:
 
@@ -258,7 +301,7 @@ The combined APK keeps its server state and replay records in the app's private
 files directory. Copy that state to this computer before you rely on it:
 
 ```sh
-python3 -m liminal_gate.on_device_state export --device YOUR_ADB_SERIAL
+python3 -m liminal_gate.on_device_state export
 ```
 
 The app must be open and past the loading screen; the export reads the running
@@ -287,7 +330,7 @@ separate server first, then:
 
 ```sh
 cp user-data/bootstrap-state.json user-data/seed-state.json
-python3 -m liminal_gate.on_device_setup --device YOUR_ADB_SERIAL --seed-state
+python3 -m liminal_gate.on_device_setup --seed-state
 ```
 
 `--seed-state` reads exactly `<data-dir>/seed-state.json`, embeds that private
@@ -301,9 +344,40 @@ commit it.
 
 ## Rebuild or update
 
-Pull the desired source revision, then rerun the same command with the same
-`--data-dir`. The local signing key under `user-data/` lets Android update the
-package in place, and the existing on-device save remains in app data.
+Update the source, then rerun the same command with the same `--data-dir`. The
+local signing key under `user-data/` lets Android update the package in place,
+and the existing on-device save remains in app data.
+
+> **Whatever you do, keep the folder you already have.** Your signing key, your
+> derived catalogs, and your tuning are all inside it, under `user-data/`, and
+> none of them comes from the download. Lose the key and Android will refuse to
+> update the installed app ever again — the only way back is an uninstall, which
+> takes the save with it.
+
+With a clone, that is `git pull`. If you downloaded a zip instead, extract the
+new one **over** the existing folder and let it overwrite — do not delete the
+old folder first, and do not extract to a fresh location and copy the APK across.
+The zip contains no `user-data/` and no `local-input/`, so overwriting leaves
+both untouched.
+
+Then, from that same folder, activate the environment you already made and rerun
+the one command. There is no need to recreate the virtual environment:
+
+```sh
+source .venv/bin/activate
+python3 -m liminal_gate.on_device_setup
+```
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m liminal_gate.on_device_setup
+```
+
+Recreating `.venv` does no harm, but it re-downloads everything. If activation is
+refused on Windows, skip it and use `.\.venv\Scripts\python.exe -m ...` as in
+step 2. Note that a changelog entry saying "server restart" still means a rebuilt
+APK here: on this route the server is inside the app, so the command above is how
+every fix reaches the phone.
 
 If Android reports a signature mismatch, stop before using
 `--replace-existing`. That flag uninstalls the current app and clears its private

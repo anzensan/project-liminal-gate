@@ -192,7 +192,9 @@ Pick a free TCP port with **four digits or fewer** (the example is `8696`), then
 python3 -m liminal_gate.tester_setup --port 8696 --device emulator-5570
 ```
 
-Replace the port and serial with yours. This one command validates your inputs,
+Replace the port and serial with yours. With only one emulator or device running
+you can leave `--device` off entirely and setup will find it; it is needed only
+to choose between several. This one command validates your inputs,
 recovers what it needs from your own APK, creates a local signing key, patches and
 signs the APK, installs it on that one device, and starts the server in the
 foreground. Press Control-C when you finish testing.
