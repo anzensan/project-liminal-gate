@@ -17,12 +17,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from liminal_gate.event_catalog import (
-    RAID_QUEST_CHAPTER,
-    RAID_QUEST_END_CHAPTER,
-    RAID_QUEST_SECTIONS,
-    load_event_catalog,
-)
+from liminal_gate.event_catalog import load_event_catalog
 from liminal_gate.event_catalog_generator import (
     EventCatalogGeneratorError,
     build_catalog,
@@ -34,13 +29,13 @@ from liminal_gate.event_manifest_data import (
     EVENT_CLEAR_COINS,
     EVENT_MANIFEST_ROWS,
     FOLDED_ARCHIVE_CHAPTERS,
-    FOLDED_TOWER_CHAPTERS,
     MELTING_POT_MANIFEST_ROWS,
     MELTING_POT_SECTIONS,
     SECTION_FLAGGED_FOLDED_CHAPTERS,
     STANDING_SPECIAL_MANIFEST_ROWS,
     STANDING_SPECIAL_SECTION_ALLOWLIST,
     TOWER_MANIFEST_ROWS,
+    client_folded_section_count,
 )
 
 
@@ -236,38 +231,44 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         for section in (4, 5, 6):
             self.assertNotIn((2015, section), loaded.by_identity())
 
-    def test_a_folded_tower_card_offers_exactly_the_tiers_it_has(self) -> None:
-        """What makes folding Tower safe, rather than a guess.
+    def test_no_card_is_folded_that_the_client_cannot_expand(self) -> None:
+        """Every folded row must be a chapter `GetSectionCount` can count.
 
-        These chapters sit in the client's Raid range, so a folded card expands
-        to `ChapterInterface.NumOfRaidQuestSections` tiers whatever the family
-        behind it. A Tower chapter with fewer sections than that would offer a
-        tier with no section and no banner -- the blank card this archive keeps
-        refusing to draw -- and one with more would hide the rest.
+        A folded row is one the client expands itself, and it decides how far
+        by `UISpecialSelect.GetSectionCount`: the two ranges, then
+        `sectionNumOfFoldedQuests`, then a default of **one**. A card folded
+        outside all three opens onto its first tier and strands the rest, which
+        is exactly what folding Tower of Temptation did -- four cards, three
+        floors each, one floor reachable. Nothing on the wire says so, and no
+        server log records it, so this is the only place it can be caught.
         """
-        battledata = _battledata(*sorted(FOLDED_TOWER_CHAPTERS))
-        for chapter in sorted(FOLDED_TOWER_CHAPTERS):
-            battledata["stages"].append({
-                "chapter": chapter, "section": 3, "stamina": 15,
-                "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
-                "battle_count": 5, "has_battle": True,
-            })
+        battledata = _battledata(*sorted(chapter for _, _, chapter, _ in TOWER_MANIFEST_ROWS))
+        _, _, loaded = self._generate(battledata, ())
+        offered: dict[str, int] = {}
+        for stage in loaded.stages:
+            if stage.selector_id is None or "-" in stage.selector_id:
+                continue
+            offered[stage.selector_id] = offered.get(stage.selector_id, 0) + 1
+        for card, tiers in sorted(offered.items()):
+            self.assertEqual(
+                tiers,
+                client_folded_section_count(int(card)),
+                f"card {card} carries {tiers} tier(s) but the client expands it "
+                f"into {client_folded_section_count(int(card))}",
+            )
+
+    def test_tower_is_a_row_per_tier(self) -> None:
+        # 9000--9003 are absent from `sectionNumOfFoldedQuests` -- the client's
+        # own Tower entries are 9010--9013 -- so these cannot be folded from
+        # here at all. The client's Raid range still decides the start path,
+        # which is why each row keeps its `<chapter>-<section>` identity.
+        self.assertEqual(1, client_folded_section_count(9000))
+        battledata = _battledata(9000)
         _, _, loaded = self._generate(battledata, ())
         after = 0x01000000 | (43 << 6) | 1
         self.assertEqual(
-            [str(chapter) for chapter in sorted(FOLDED_TOWER_CHAPTERS)],
-            loaded.client_lists(after)["towerQuestList"],
+            ["9000-1", "9000-2"], loaded.client_lists(after)["towerQuestList"],
         )
-        by_chapter: dict[int, int] = {}
-        for chapter, _section in loaded.by_identity():
-            by_chapter[chapter] = by_chapter.get(chapter, 0) + 1
-        for chapter in FOLDED_TOWER_CHAPTERS:
-            self.assertEqual(
-                RAID_QUEST_SECTIONS,
-                by_chapter[chapter],
-                f"chapter {chapter} folds but does not carry the tiers the fold offers",
-            )
-            self.assertTrue(RAID_QUEST_CHAPTER <= chapter <= RAID_QUEST_END_CHAPTER)
 
     def test_grant_rides_the_first_section_only(self) -> None:
         # Repeating it per section would grant the character once per stage.
@@ -319,12 +320,15 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         before = 0x01000000 | (3 << 6) | 1
         after = 0x01000000 | (4 << 6) | 1
         self.assertEqual([], loaded.client_lists(before)["towerQuestList"])
-        # One folded card per boss, holding its tiers -- not a row per tier.
-        # These chapters sit in the client's Raid range, where a folded card
-        # expands to `NumOfRaidQuestSections` (3) tiers, and every Tower
-        # chapter carries exactly three sections and three tier banners.
+        # A row per tier, because the client cannot expand a folded card here:
+        # `sectionNumOfFoldedQuests` has no entry for 9000--9003 and
+        # `GetSectionCount` falls back to one tier.
         self.assertEqual(
-            ["9000", "9001", "9002", "9003"],
+            [
+                f"{chapter}-{section}"
+                for chapter in (9000, 9001, 9002, 9003)
+                for section in (1, 2)
+            ],
             loaded.client_lists(after)["towerQuestList"],
         )
         stage = loaded.by_identity()[(9000, 1)]

@@ -279,35 +279,77 @@ TOWER_MANIFEST_ROWS: tuple[tuple[str, str, int, int], ...] = (
     ("tower_of_temptation_4", "sp_ch_9003", 9003, 3),
 )
 
-#: The four Tower chapters are folded cards, one per boss.
+#: How many tiers the client expands a folded card into, per card chapter.
 #:
-#: The shutdown menu record lists four cards -- Alika, Gugba, Bajanna and Zeera
-#: -- each holding its three tiers, and the retained banners are shaped the same
-#: way: every one of 9000--9003 ships a bare `sp<chapter>.bin` alongside its
-#: `-1`--`-3` tiers, and the bare one is the tower architecture without the
-#: boss portrait the tier banners carry. Twelve flat rows drew a tier's artwork
-#: where a card belonged and spent twelve rows doing it.
+#: **A card may only be folded if this can answer for it.** The count is not
+#: derived from anything a server sends: `UISpecialSelect.GetSectionCount`
+#: (ARM64 `0xF82328`) parses the chapter out of the row id and returns
+#: `NumOfCounterDescentQuestSections` for a Counter Descent chapter,
+#: `NumOfDonationQuestSections` for a Donation one, this table's value for a
+#: chapter it names, and **1** for anything else. There is no fourth branch --
+#: in particular no Raid one, so a raid-range chapter absent from this table
+#: folds into a single tier and every tier above the first becomes unreachable.
+#: That is what happened when Tower of Temptation was folded: the client has no
+#: entry for 9000--9003, so each of the four cards opened onto floor 1 alone.
 #:
-#: Folding is unconditionally safe here, which is *not* true of every family:
-#: these chapters sit in the client's Raid range, so a folded card expands to
-#: `ChapterInterface.NumOfRaidQuestSections` tiers, and that constant is 3
-#: (`orr w10, wzr, #0x3` into static offset 0x70 in the `..cctor` at
-#: `0xD07620`; the 15 written to 0x74 beside it is the Donation count this
-#: project already had). Every Tower chapter carries exactly three BattleData
-#: sections and three retained tier banners, so the fold offers three tiers,
-#: three sections back them and three banners draw them -- there is no phantom
-#: tier for a chapter flag to open, which is why these keep the chapter flag
-#: rather than needing `SECTION_FLAGGED_FOLDED_CHAPTERS`.
+#: Read out of `UISpecialSelect..cctor` (`0xF8768C`), which builds
+#: `sectionNumOfFoldedQuests` entry by entry; the string literals `9000`--`9003`
+#: do not occur anywhere in the reviewed metadata. The client's own Tower
+#: entries are 9010--9013, the copy this archive cannot draw tier banners for.
+#: `specialFolldedQuestDict` beside it names a card's members explicitly instead
+#: of counting them, which is how `2009` and `8008` hold tiers from chapters
+#: other than their own; those two are the only cards that use it, and both are
+#: also counted here.
+#: The two cards the client expands by naming their members instead of counting
+#: them, as ``card chapter -> tier ids``.
 #:
-#: The Raid range decides the start path, and folding does not change it: a
-#: tier is still started as `<chapter>-<section>`, and `raid_quest_params`
-#: still answers for each one.
-FOLDED_TOWER_CHAPTERS = frozenset({9000, 9001, 9002, 9003})
+#: `UISpecialItem.OnClickedBtn` (`0xF81D2C`) asks
+#: `GetSectionTitlesIfSpecialFoldedQuest` (`0xF82244`) first and only counts
+#: when that misses, so these two override everything below -- which is how one
+#: card holds tiers from chapters other than its own, and why the Battle Champs
+#: card offers eight tiers rather than the five its Counter Descent range would
+#: have given it. Read from `specialFolldedQuestDict` in the same `..cctor`,
+#: where these are the only two entries.
+CLIENT_FOLDED_CARD_MEMBERS: dict[int, tuple[str, ...]] = {
+    2009: ("2009-1", "2010-1", "2011-1"),
+    8008: (
+        "8010-1", "8010-2", "8008-1", "8008-2",
+        "8009-1", "8009-2", "8011-1", "8011-2",
+    ),
+}
+
+CLIENT_FOLDED_SECTION_COUNTS: dict[int, int] = {
+    1001: 3, 1002: 3, 1004: 3,
+    2000: 4, 2001: 4, 2002: 4, 2006: 4, 2007: 2, 2008: 4, 2009: 1,
+    2015: 3, 2016: 2, 2017: 5,
+    3002: 3,
+    8008: 1,
+    9010: 3, 9011: 3, 9012: 3, 9013: 3,
+}
 
 
-def is_folded_chapter(chapter: int) -> bool:
-    """Whether the client draws this chapter as one card over its sections."""
-    return chapter in FOLDED_ARCHIVE_CHAPTERS or chapter in FOLDED_TOWER_CHAPTERS
+def client_folded_section_count(chapter: int) -> int:
+    """Return the tier count the client expands a folded `chapter` into.
+
+    The named members first, exactly as `OnClickedBtn` asks for them, then
+    `GetSectionCount`'s three branches in order and its default of one. The two
+    ranges answer for every chapter inside them whether or not this archive
+    serves anything there, which is why they are tested before the table.
+    """
+    if chapter in CLIENT_FOLDED_CARD_MEMBERS:
+        return len(CLIENT_FOLDED_CARD_MEMBERS[chapter])
+    # `ChapterInterface..cctor` (`0xD0741C`) writes the ranges as literals:
+    # Counter Descent 8000--8999 and Donation 9100--9199. Both are tested
+    # before the table and answer for every chapter inside them, whether or not
+    # this archive serves anything there. `COUNTER_DESCENT_SECTIONS` is the
+    # hard-coded five that `EventCatalog.flags` already documents, and it is
+    # why a Counter Descent family with three sections is flagged per section:
+    # the two tiers the fold offers beyond them have to be refused somewhere.
+    if 8000 <= chapter <= 8999:
+        return COUNTER_DESCENT_SECTIONS
+    if 9100 <= chapter <= 9199:
+        return MELTING_POT_SECTIONS
+    return CLIENT_FOLDED_SECTION_COUNTS.get(chapter, 1)
 
 # event_id, chapter, unlock_after_chapter
 #
@@ -352,6 +394,13 @@ STANDING_SPECIAL_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
 #: generator checks the BattleData import against it rather than trusting
 #: either source alone.
 MELTING_POT_SECTIONS = 15
+
+#: `ChapterInterface.NumOfCounterDescentQuestSections`, the same thing for the
+#: 8000--8999 range. Its `..cctor` sets it at `0xD07608`, and the range bounds
+#: beside it at `0xD07588` and `0xD07598`. Read by
+#: `client_folded_section_count`; `EventCatalog.flags` explains what a family
+#: with fewer sections than this has to do about the difference.
+COUNTER_DESCENT_SECTIONS = 5
 
 # event_id, flag, chapter, unlock_after_chapter
 #

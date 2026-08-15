@@ -15,10 +15,10 @@ from liminal_gate.event_manifest_data import (
     EVENT_MANIFEST_ROWS,
     SECTION_CLASS_LIMITS,
     SECTION_COMPANION_MANIFESTS,
+    FOLDED_ARCHIVE_CHAPTERS,
     SECTION_FLAGGED_FOLDED_CHAPTERS,
     STANDING_SPECIAL_MANIFEST_ROWS,
     folded_card_chapter,
-    is_folded_chapter,
 )
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
@@ -47,19 +47,6 @@ DEFAULT_EVENT_CATALOG = "event-catalog.json"
 #: advertises inside it.
 RAID_QUEST_CHAPTER = 9000
 RAID_QUEST_END_CHAPTER = 9009
-
-#: `ChapterInterface.NumOfRaidQuestSections`, the tier count a folded card in
-#: the raid range expands to. Recovered as a literal from the same `..cctor`
-#: the ranges above come from: `orr w10, wzr, #0x3` into static offset 0x70 at
-#: ARM64 `0xD07620`, immediately before the 15 written to 0x74 that this
-#: project already carries as `MELTING_POT_SECTIONS`.
-#:
-#: It is what makes folding Tower of Temptation safe rather than a guess. A
-#: folded card offers this many tiers whatever the family, so a family with
-#: fewer sections than this would advertise tiers it cannot start; Tower's four
-#: chapters carry exactly three sections each. `test_a_folded_tower_card_offers
-#: _exactly_the_tiers_it_has` is what keeps the two in step.
-RAID_QUEST_SECTIONS = 3
 
 #: `UISpecialItem.RaidStatus.Subjugating`. The enum is `Lock` 1, `Subjugating`
 #: 2, `Overkilling` 3, `Completed` 4; the start path refuses 1 and 4, so this is
@@ -207,8 +194,8 @@ class EventCatalog:
         ]
         return {name: {"name": name, "value": True} for name in names}
 
-    def raid_quest_params(self, progress_code: int | None = None) -> dict[str, dict[str, object]]:
-        """Return the `eventQuestParams` entry every advertised raid-range stage needs.
+    def raid_quest_params(self) -> dict[str, dict[str, object]]:
+        """Return the `eventQuestParams` entry every raid-range stage needs.
 
         Chapters 9000--9009 are **Raid quests** to this client, whatever the
         family a server advertises there. `ChapterInterface..cctor`
@@ -249,12 +236,30 @@ class EventCatalog:
         HP bar only once that date is present, so withholding it keeps the cards
         rendering as the ordinary quest cards they are, rather than dressing
         them in a live-service schedule this project never recovered.
+
+        **Every raid-range stage the catalog declares is answered, unlocked or
+        not, and that is deliberate.** This block is not a gate: what decides
+        whether a card is offered is `client_lists`, which the client rebuilds
+        from `constants` on every status refresh. This block is installed once
+        per process, by `EventManager.SetQuestParams` from
+        `AppServerUtil.<Login>c__Iterator4.<>m__0` (`0xFB7A60`) -- the only
+        caller in the client, so no later response can add to it. Narrowing it
+        to what was unlocked at login therefore left a player who crossed a
+        Tower unlock *during* a session holding four cards the status refresh
+        had just handed them and a status object that had never heard of them,
+        and every one answered `Lock` until the app was relaunched. The two
+        halves cannot be kept on one snapshot the way `constants` and
+        `eventFlags` are, because only one of them can be refreshed at all, so
+        the half that cannot be refreshed carries no progress in it.
+
+        Answering for a locked stage costs nothing: the client asks this only
+        after a card it was offered has been tapped, and a card it was not
+        offered cannot be tapped.
         """
         return {
             stage.identity_label(): {"status": RAID_STATUS_SUBJUGATING, "remainHp": 1.0}
             for stage in self.stages
             if RAID_QUEST_CHAPTER <= stage.chapter <= RAID_QUEST_END_CHAPTER
-            and stage.unlocked_at(progress_code)
         }
 
     def client_lists(self, progress_code: int | None) -> dict[str, list[str]]:
@@ -269,11 +274,15 @@ class EventCatalog:
             for stage in self.stages
             if stage.selector == "descent_quest" and stage.unlocked_at(progress_code)
         ))
-        tower = list(dict.fromkeys(
-            stage.selector_id or stage.identity_label()
+        # A row per tier. Tower of Temptation is not folded, and cannot be from
+        # here: `UISpecialSelect.GetSectionCount` has no entry for 9000--9003
+        # and falls back to one tier, so a folded card would open onto floor 1
+        # and strand floors 2 and 3. See `client_folded_section_count`.
+        tower = [
+            stage.identity_label()
             for stage in self.stages
             if stage.selector == "tower" and stage.unlocked_at(progress_code)
-        ))
+        ]
         eidolon = [
             stage.identity_label()
             for stage in self.stages
@@ -669,7 +678,7 @@ def load_event_catalog(path: Path, character_catalog_path: Path) -> EventCatalog
         # being regenerated. See `FOLDED_CARD_CHAPTERS`.
         folded_selector_id = (
             card_label
-            if card_label != chapter_label or is_folded_chapter(chapter)
+            if card_label != chapter_label or chapter in FOLDED_ARCHIVE_CHAPTERS
             else selector_id
         )
         folded_flag = (

@@ -387,10 +387,6 @@ class RaidRangeQuestParamsTest(unittest.TestCase):
     inside the client with no request on the wire.
     """
 
-    @staticmethod
-    def progress_at(chapter: int) -> int:
-        return ((chapter + 1) << 6) | 1
-
     def catalog(self, *chapters: int) -> EventCatalog:
         return EventCatalog(tuple(
             EventStage(
@@ -400,33 +396,43 @@ class RaidRangeQuestParamsTest(unittest.TestCase):
             for chapter in chapters
         ))
 
-    def test_every_advertised_raid_range_stage_is_answered(self) -> None:
-        params = self.catalog(9000, 9003).raid_quest_params(self.progress_at(19))
+    def test_every_raid_range_stage_is_answered(self) -> None:
+        params = self.catalog(9000, 9003).raid_quest_params()
         self.assertEqual({"9000-1", "9003-1"}, set(params))
 
     def test_status_is_one_the_start_path_admits(self) -> None:
         # `Lock` (1) and `Completed` (4) are the two the client refuses.
-        for entry in self.catalog(9000).raid_quest_params(self.progress_at(19)).values():
+        for entry in self.catalog(9000).raid_quest_params().values():
             self.assertNotIn(entry["status"], (1, 4))
 
     def test_remaining_hp_is_a_double_the_client_can_read(self) -> None:
         # `GetRaidQuestRemainHp` reads it with LitJson's `double` accessor,
         # which throws on `JsonType.Int` rather than converting -- the same
         # trap `jobLevels` and `questClearDate` carry.
-        for entry in self.catalog(9000).raid_quest_params(self.progress_at(19)).values():
+        for entry in self.catalog(9000).raid_quest_params().values():
             self.assertIs(float, type(entry["remainHp"]))
 
     def test_no_overkill_end_date_is_declared(self) -> None:
         # Its presence is what makes `UpdateItems` draw the raid countdown and
         # HP bar. This server has no recovered schedule to put there.
-        for entry in self.catalog(9000).raid_quest_params(self.progress_at(19)).values():
+        for entry in self.catalog(9000).raid_quest_params().values():
             self.assertEqual({"status", "remainHp"}, set(entry))
 
     def test_chapters_outside_the_raid_range_are_left_alone(self) -> None:
         # 8999 is the last Counter Descent chapter and 9010 the first Tower of
         # Temptation one; neither takes the raid path.
         catalog = self.catalog(8999, 9010, 9100)
-        self.assertEqual({}, catalog.raid_quest_params(self.progress_at(19)))
+        self.assertEqual({}, catalog.raid_quest_params())
 
-    def test_a_stage_the_account_cannot_see_is_not_answered(self) -> None:
-        self.assertEqual({}, self.catalog(9000).raid_quest_params(self.progress_at(1)))
+    def test_a_stage_the_account_cannot_see_yet_is_answered_anyway(self) -> None:
+        # This block is installed once per process, by the login handler alone
+        # -- `EventManager.SetQuestParams` has no other caller -- while the card
+        # list is rebuilt from `constants` on every status refresh. Narrowing
+        # this to what login could see handed a player who crossed the Tower
+        # unlock mid-session four cards and no status for any of them, and each
+        # one refused with "You don't meet the requirements to unlock this
+        # quest" until the app was relaunched. It gates nothing: the client
+        # asks only about a card it was offered.
+        self.assertEqual(
+            {"9000-1"}, set(self.catalog(9000).raid_quest_params()),
+        )
