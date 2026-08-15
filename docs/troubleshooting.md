@@ -12,11 +12,14 @@ port, Wi-Fi routing, or firewall access.
 
 | What you see | What to do |
 | --- | --- |
+| `no APK at local-input/terra-battle-5.5.7-170.apk`, and the file looks like it is there | Read the rest of that message: it lists what the folder does hold, and confirms by SHA-256 whether one of those files is your client under the wrong name. The usual cause is `terra-battle-5.5.7-170.apk.apk`, because Windows Explorer hides a known extension, so typing the documented name onto a file already called `.apk` adds a second one. Turn on **File name extensions** in Explorer's View menu to see it. |
+| `device ... is connected but not ready to install on`, or `adb lists no devices at all` | The message names the state adb reported and what it means. See [Prepare the phone](on-device-setup.md#prepare-the-phone): USB mode must be File Transfer rather than Charging, the **Allow USB debugging** prompt must be accepted on the phone, and some phones (Samsung especially) switch USB debugging off again after a period of inactivity — a command that worked earlier failing this way usually means only that. |
+| The install is refused at the very end, after a long successful build | Look at the phone during the install: Samsung and Xiaomi gate installs over USB behind a **separate** Developer options switch ("Install via USB"). Turn it on and rerun; the build is cached, so the second run is much shorter. |
 | `--check` reports `Gradle cache` as `warn` | This is the one non-required build check. Run the normal command once while online; it downloads checksum-verified Gradle 8.11.1 below ignored `user-data/work/`. |
 | The device check reports API below 24, no supported ABI, or less than 4 GiB free | Use an API 24+ device with `arm64-v8a` or `armeabi-v7a`, or free space before building. The full validated package is roughly 1.0 GiB and setup deliberately requires more installation headroom. |
-| `on-device setup failed: Android host Gradle build failed` | Keep the complete trailing Gradle message. Rerun `python3 -m liminal_gate.on_device_setup --check --device YOUR_ADB_SERIAL`; confirm Android SDK Platform 35 and Java 17–23 are reported ready. The host source must exist at `android-host/` unless `--host-source` names another complete copy. |
+| `on-device setup failed: Android host Gradle build failed` | Keep the complete trailing Gradle message. Rerun `python3 -m liminal_gate.on_device_setup --check`; confirm Android SDK Platform 35 and Java 17–23 are reported ready. The host source must exist at `android-host/` unless `--host-source` names another complete copy. |
 | A large APK install appears successful but the package is absent | Update the checkout and use `liminal_gate.on_device_setup`; it forces ADB `--no-incremental` because incremental installation falsely reported success for the validated 1-GiB package. Do not substitute a manual incremental install. |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` or `signatures do not match` | The installed app and this checkout use different local signing keys. **Do not use `--replace-existing` if the installed app has progress you need:** uninstalling clears its app-private save. Export it first with `python3 -m liminal_gate.on_device_state export --device YOUR_ADB_SERIAL`, then restore it afterwards — a cleared install needs [`adopt`](saves.md#the-on-device-save) for the client's regenerated UUID. Otherwise use the original checkout/data directory and key. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` or `signatures do not match` | The installed app and this checkout use different local signing keys. **Do not use `--replace-existing` if the installed app has progress you need:** uninstalling clears its app-private save. Export it first with `python3 -m liminal_gate.on_device_state export`, then restore it afterwards — a cleared install needs [`adopt`](saves.md#the-on-device-save) for the client's regenerated UUID. Otherwise use the original checkout/data directory and key. |
 | The app stays at **Starting local service…** and then shows **Local service failed to start.** | Tap **Copy diagnostics**, preserve the copied text, then tap **Retry** once. The gate waits up to about 60 seconds for a matching loopback build ID. Do not start a LAN server; this package only uses `127.0.0.1:8002`. If retry fails, report the copied diagnostics and the exact setup command. |
 | The app says **Unity player is unavailable in this package.** | The embedded server passed readiness, but the combined package does not contain the expected Unity player. Update the checkout, rerun the complete build from the reviewed source APK, and reinstall with the same signing key. Do not replace the launcher or assemble host/client APKs by hand. |
 | The app closes instantly on launch, with `NoSuchMethodError` / `onServiceConnected` / `bitter.jnibridge` in the crash log | Rebuild with `--disable-google-services`. See [The app crashes instantly on recent Android](#the-app-crashes-instantly-on-recent-android) below; this affects both routes. |
@@ -65,7 +68,7 @@ using `--replace-existing`.
 | What you see | What to do |
 | --- | --- |
 | `adb devices` shows no emulator | Start an emulator from Android Studio Device Manager, then run `adb devices` again. |
-| `adb devices` does not list a connected phone or tablet | Enable USB debugging and accept the on-device authorization prompt; if still absent, try another USB cable, since charge-only cables carry no data. |
+| `adb devices` does not list a connected phone or tablet | Set the USB connection mode to File Transfer rather than Charging — in Charging mode nothing is listed at all — then enable USB debugging and accept the on-device authorization prompt. If it is still absent, try another USB cable, since charge-only cables carry no data. A phone that worked yesterday and is missing today has usually had USB debugging switched off for it: several vendors do that after a period of inactivity. |
 | `does not look like an emulator, and --device-host is still ...` | You are installing to a physical device but did not pass `--device-host`. Pass this machine's LAN address. If the target really is an emulator attached over TCP, pass `--device-host 10.0.2.2` explicitly. |
 | `--device-host ... refers to the client's own device` | `localhost`, `127.0.0.1`, and `0.0.0.0` mean the phone or tablet itself. Use `10.0.2.2` for an emulator or this machine's LAN address for a device. |
 | `--device-host must not contain a port` | Pass only the address in `--device-host` and set the port separately with `--port`. |
@@ -74,7 +77,7 @@ using `--replace-existing`.
 
 | What you see | What to do |
 | --- | --- |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | For a self-hosted APK, stop: uninstalling also deletes its server save. Export it first with `python3 -m liminal_gate.on_device_state export --device YOUR_SERIAL`, then read [the on-device warning above](#on-device-apk); restoring afterwards needs [`adopt`](saves.md#the-on-device-save) for the client's regenerated UUID. For the separate-server layout, a build made with another checkout's local key is installed; rerun with `--replace-existing`, or uninstall it with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either choice clears client app data, while the separate workstation server state remains in its `--data-dir`. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | For a self-hosted APK, stop: uninstalling also deletes its server save. Export it first with `python3 -m liminal_gate.on_device_state export`, then read [the on-device warning above](#on-device-apk); restoring afterwards needs [`adopt`](saves.md#the-on-device-save) for the client's regenerated UUID. For the separate-server layout, a build made with another checkout's local key is installed; rerun with `--replace-existing`, or uninstall it with `adb -s YOUR_SERIAL uninstall com.mistwalkercorp.guardians`. Either choice clears client app data, while the separate workstation server state remains in its `--data-dir`. |
 | `INSTALL_FAILED_NO_MATCHING_ABIS` / `res=-113` | The emulator image has no ARM translation. Pick a **Translated ABI** image; see [Emulator setup](emulator.md#choose-an-android-14-image-with-translated-abi-support). |
 | Android refuses to install the APK | Use a clean emulator profile or remove the differently signed prior test build. |
 
@@ -106,7 +109,7 @@ server log shows no incoming connection, because the client never gets that far.
 Rebuild with `--disable-google-services` and reinstall:
 
 ```sh
-python3 -m liminal_gate.on_device_setup --device YOUR_ADB_SERIAL --disable-google-services
+python3 -m liminal_gate.on_device_setup --disable-google-services
 ```
 
 For the separate-server route, pass the same flag to
