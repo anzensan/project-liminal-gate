@@ -14,6 +14,57 @@ run the command.
 
 ### Fixed
 
+- **Tower of Temptation is a row per floor again, because a folded card there
+  only ever opened onto floor 1.** Drawing the four bosses as cards was wrong,
+  and the reasoning that made it look safe was wrong in a specific way worth
+  recording: the client does not expand a folded card by any rule about the
+  chapter range it sits in. `UISpecialSelect.GetSectionCount` asks a hard-coded
+  table, `sectionNumOfFoldedQuests`, and returns **one** for a chapter the
+  table does not name. It names 9010–9013 — the client's own Tower chapters,
+  the copy this archive has no tier artwork for — and says nothing about the
+  9000–9003 copy served here. So each of the four cards expanded into a single
+  tier and floors 2 and 3 became unreachable, with nothing on the wire and
+  nothing in the server log to say so.
+
+  The twelve rows are back, each starting and settling exactly as before. The
+  shutdown menu did list four cards, and that reading was not wrong — it is the
+  9010–9013 copy the client folds, and this archive has no tier artwork for it.
+  Twelve reachable floors beat four cards holding one floor each.
+
+  What the client actually declares is recorded now, in
+  `client_folded_section_count`, together with the two cards it expands by
+  naming their members rather than counting them — which is what makes the
+  Battle Champs card eight tiers rather than the five its own range would give
+  it. A generated catalog is checked against it, so a card folded onto a
+  chapter the client cannot expand fails at build time instead of quietly
+  losing its tiers.
+
+- **Tower of Temptation said you did not meet the requirements again, on a save
+  that reached it during a session.** Reported by a tester on a fresh save. The
+  message is the same one as before and the cause is not: the status block a
+  raid quest needs was being sent, but only for the cards that were already
+  open when the app logged in.
+
+  The client rebuilds its quest menus from `constants` every time it asks for
+  server status, so a card unlocked mid-session appears without a relaunch.
+  The raid status block is not like that. The client installs it once, from the
+  login reply, and nothing it receives afterwards can add to it. So a player
+  who logged in below Tower's Chapter 3 gate and cleared past it in the same
+  sitting was handed four cards the login had never described, and every one of
+  them answered "You don't meet the requirements to unlock this quest" until
+  the app was closed and reopened. A save that was already past Chapter 3 at
+  launch never saw it, which is why this survived the first fix.
+
+  The login reply now describes every stage in the raid range the catalog
+  declares, whether or not the account can see it yet. The block gates nothing
+  — which cards are offered is the menu's business, and the client asks about a
+  card only after tapping one it was offered — so what it costs is a dozen
+  fields on one reply, and what it buys is that the two halves can no longer
+  disagree.
+
+  Closing and reopening the app is still a complete workaround on an older
+  build.
+
 - **Battle Champs is one card again instead of four copies of itself.** A
   tester reported the family listed twice: an `Arena -> Special Quests -> Battle
   Champs` card holding the sub-battles, and then `Battle Champs: Fearsome
@@ -57,29 +108,12 @@ run the command.
   Champs already used. The retained `sp2015.bin` folded banner is what says the
   fold is what the service drew.
 
-- **Tower of Temptation is four cards again instead of twelve rows.** The
-  shutdown menu record lists one card per boss — Alika, Gugba, Bajanna and
-  Zeera — each holding its three tiers, and the banners are shaped to match:
-  every one of chapters 9000--9003 ships a bare `sp<chapter>.bin` beside its
-  three tier banners, and the bare one is the tower architecture without the
-  boss portrait the tiers carry. Twelve flat rows drew a tier's artwork where a
-  card belonged and spent twelve rows doing it. Folding was held back until the
-  count behind it was recovered rather than assumed, because these chapters sit
-  in the client's Raid range and a folded card there expands to
-  `ChapterInterface.NumOfRaidQuestSections` tiers whatever the family: that
-  constant is 3, read as a literal from the same static constructor the ranges
-  come from, and every Tower chapter carries exactly three sections and three
-  retained banners. So the card offers three tiers, three sections back them
-  and three banners draw them — no phantom tier, which is why these keep their
-  chapter flag rather than needing the per-section treatment Final Fantasy XV
-  does. Nothing about a tier's start changes: it is still started as
-  `<chapter>-<section>` and its raid `eventQuestParams` entry is unchanged.
-
 - **The Special Quest list has more headroom.** Battle Champs and Final Fantasy
   XV remove five rows at full progress between them, taking a completed account
-  from 29 to 24 against the 30-row ceiling that hangs the client. The Tower and
-  Dragon King fixes spend nothing from that budget — they shorten their own
-  menus, from twelve rows to four and from seven to five.
+  from 29 to 24 against the 30-row ceiling that hangs the client. The Dragon
+  King fix spends nothing from that budget — it shortens its own menu, from
+  seven rows to five. Tower has a menu of its own and never counted against
+  this one.
 
 ### Changed
 

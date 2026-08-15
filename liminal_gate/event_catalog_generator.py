@@ -44,12 +44,12 @@ from liminal_gate.event_manifest_data import (
     EVENT_MANIFEST_ROWS,
     MELTING_POT_MANIFEST_ROWS,
     MELTING_POT_SECTIONS,
+    FOLDED_ARCHIVE_CHAPTERS,
     SECTION_FLAGGED_FOLDED_CHAPTERS,
     STANDING_SPECIAL_MANIFEST_ROWS,
     STANDING_SPECIAL_SECTION_ALLOWLIST,
     TOWER_MANIFEST_ROWS,
     folded_card_chapter,
-    is_folded_chapter,
 )
 from liminal_gate.atomic_json import write_json_document
 
@@ -166,7 +166,7 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
                 # identities, not a recovered historical schedule.
                 selector_id=(
                     str(card_chapter)
-                    if card_chapter != chapter or is_folded_chapter(chapter)
+                    if card_chapter != chapter or chapter in FOLDED_ARCHIVE_CHAPTERS
                     else f"{chapter}-{number}"
                 ),
                 # Grants ride the first section only; repeating them per section
@@ -180,13 +180,11 @@ def build_catalog(battledata: dict[str, Any], characters: dict[str, Any], charac
             notes.append(f"{event_id}: chapter {chapter} absent from the BattleData import; skipped")
             continue
         for section in sections:
-            rows.append(row(
-                event_id, flag, chapter, unlock_after, section, character_ids=[],
-                # One card per boss, holding its three tiers. See
-                # `FOLDED_TOWER_CHAPTERS` for why folding is safe in the Raid
-                # range these chapters sit in.
-                selector_id=str(chapter),
-            ))
+            # A row per tier, not one card per boss. The client has no
+            # `sectionNumOfFoldedQuests` entry for 9000--9003, so a folded card
+            # here would expand into a single tier and strand the two above it;
+            # see `client_folded_section_count`.
+            rows.append(row(event_id, flag, chapter, unlock_after, section, character_ids=[]))
 
     for event_id, chapter, unlock_after in STANDING_SPECIAL_MANIFEST_ROWS:
         sections = sorted(stages_by_chapter.get(chapter, []), key=lambda value: value["section"])

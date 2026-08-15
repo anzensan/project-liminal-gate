@@ -1510,7 +1510,7 @@ class RaidRangeLoginParamsTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def login(self, chapter: int) -> dict:
+    def login(self, chapter: int, standing_in: int = 4) -> dict:
         catalog = EventCatalog((
             EventStage(
                 "tower_of_temptation", f"sp_ch_{chapter}", chapter, 1, 15, 0, 0, (),
@@ -1522,7 +1522,7 @@ class RaidRangeLoginParamsTest(unittest.TestCase):
             self.token, self.account_id,
             {
                 "coins": 0, "energy": 20, "freeEnergy": 2,
-                "progressCode": 0x01000000 | (4 << 6) | 1, "worldMapNo": 0,
+                "progressCode": 0x01000000 | (standing_in << 6) | 1, "worldMapNo": 0,
                 "chrdata": [character(3)], "itemList": [], "summonList": [],
             },
         )
@@ -1545,6 +1545,29 @@ class RaidRangeLoginParamsTest(unittest.TestCase):
 
     def test_a_raid_range_stage_is_answered_with_an_unlocked_status(self) -> None:
         payload = self.login(9000)
+        self.assertEqual(
+            {"status": 2, "remainHp": 1.0}, payload["eventQuestParams"]["9000-1"],
+        )
+
+    def test_a_stage_the_login_cannot_see_yet_is_answered_anyway(self) -> None:
+        """A card the session reveals later still has its status installed.
+
+        The two other halves of optional-stage visibility refresh: `constants`
+        carries the selector lists and `eventFlags` the flags, and the status
+        route sends both on the current progress snapshot. This one cannot.
+        `EventManager.SetQuestParams` is called from
+        `AppServerUtil.<Login>c__Iterator4.<>m__0` (`0xFB7A60`) and nowhere
+        else, so whatever login installs is what the process has until it is
+        relaunched.
+
+        Standing in Chapter 2 leaves Chapter 1 completed, which is short of the
+        stage's own gate -- so login neither lists the card nor needs to. When
+        the player clears Chapter 3 in the same session the status refresh
+        hands them the card, and the entry that opens it has to have been sent
+        already or every tap answers `RaidStatus.Lock`.
+        """
+        payload = self.login(9000, standing_in=2)
+        self.assertEqual([], payload["constants"]["towerQuestList"])
         self.assertEqual(
             {"status": 2, "remainHp": 1.0}, payload["eventQuestParams"]["9000-1"],
         )

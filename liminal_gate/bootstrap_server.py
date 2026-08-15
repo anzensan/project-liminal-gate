@@ -4451,9 +4451,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 # device, so an unsent key reads as a locked quest and no
                 # server log can show the refusal. See
                 # `EventCatalog.raid_quest_params`.
-                raid_params = self.server.event_catalog.raid_quest_params(
-                    progress if type(progress) is int and progress >= 0 else None
-                )
+                #
+                # Unlike the two above, this one carries no progress snapshot.
+                # It is installed once per process and no refresh can add to
+                # it, so it answers for every raid-range stage the catalog
+                # declares rather than for the ones open at this instant.
+                raid_params = self.server.event_catalog.raid_quest_params()
                 if raid_params:
                     payload["eventQuestParams"] = raid_params
             if self.server.drop_eligibility:
