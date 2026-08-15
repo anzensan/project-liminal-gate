@@ -3,6 +3,36 @@
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 
+## `teamMembers` is every squad, not the party
+
+- **Reported symptom:** Machine Road answered "all members must meet the
+  requirements" to a squad whose members a tester had checked the species of,
+  then levelled into the stage's declared range, then reduced to two Machines.
+  Every attempt refused.
+- **Confirmed by disassembly.** `UserData.teamMembers` is a flat
+  `TeamMember[]` holding every squad the account keeps, and `UserData.teamNo`
+  names the one on screen. `UserData.GetTeamMember(teamID, memberID)` (ARM64
+  `0x19D95D8`) indexes it as `(teamID - 1) * membersPerTeam + memberID - 1`,
+  reading the slot count from a static -- both indices one-based. The reporting
+  save carried ninety entries, fifteen squads of six, with `teamNo` 14.
+- **Consequence, and the shape of the bug.** A gate that reads more state than
+  its own rule covers cannot be satisfied at all. Walking the whole array made
+  the species lock judge fourteen squads the player was not fielding, so no
+  squad they could build would have entered. The same array is read by the
+  Captive Golem class band, by an operator EXP multiplier's extra share, and by
+  the clear-state audit -- whose six-slot precondition no real save can meet,
+  so it had silently never run.
+- **Local policy.** One resolver reproduces the client's arithmetic and every
+  reader of "the party" goes through it. A save with a single squad is returned
+  unchanged, and a `teamNo` naming no squad in its own array is read as the
+  first rather than judged on all of them: a malformed pairing is not a
+  statement about the party.
+- **Worth stating, because it bounds the fix.** `start_quest` carries no party
+  at all -- its fields are `stamina`, `coins`, `chapter`, `section`,
+  `lastUpdate` -- so a server gate on party composition can only ever read the
+  last save. That is sound while saves commit, and is the reason a failing save
+  route shows up as an unrelated refusal somewhere else.
+
 ## Folded Special Quest cards that span several chapters
 
 - **Reported symptom:** a tester saw Battle Champs listed twice — one

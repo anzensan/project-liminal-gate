@@ -1104,7 +1104,10 @@ class RoadSpeciesLimitTest(unittest.TestCase):
         self.state_path = Path(self.temporary_directory.name) / "state.json"
         self.addCleanup(self.temporary_directory.cleanup)
 
-    def start(self, chapter: int, party: list[int], request_id: str = "road", tuning=None) -> tuple[int, dict]:
+    def start(
+        self, chapter: int, party: list[int], request_id: str = "road", tuning=None,
+        squad: int | None = None,
+    ) -> tuple[int, dict]:
         state = BootstrapState(self.state_path, tuning)
         state.create_account("token", "account", {
             "coins": 100, "energy": 100, "freeEnergy": 2, "worldMapNo": 0,
@@ -1114,6 +1117,7 @@ class RoadSpeciesLimitTest(unittest.TestCase):
                 "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
             }],
             "itemList": [0] * ITEM_SLOTS, "summonList": [0, 0], "teamMembers": party,
+            **({} if squad is None else {"teamNo": squad}),
         })
         with state.lock:
             account = state.accounts["account"]
@@ -1169,6 +1173,39 @@ class RoadSpeciesLimitTest(unittest.TestCase):
     def test_one_wrong_member_is_enough_to_refuse(self) -> None:
         status, payload = self.start(1200, [self.DRAGON, self.HUMAN, 0, 0, 0, 0])
         self.assertEqual(SPECIES_LIMIT_ERROR_CODE, payload["cmdError"])
+
+    def test_only_the_squad_on_screen_is_judged(self) -> None:
+        """`teamMembers` is every squad, and `teamNo` names the one playing.
+
+        A played save carries fifteen squads flattened into ninety entries, and
+        the client reads its party out of that as
+        ``(teamNo - 1) * 6 + slot - 1`` -- `UserData.GetTeamMember`
+        (`0x19D95D8`), both indices one-based. Judging the whole array refused
+        Machine Road to a squad of two Machines over the Humans and Lizards
+        parked in the player's other fourteen squads, and no squad they could
+        have built would have passed it.
+        """
+        squads = [self.HUMAN, self.DRAGON, 0, 0, 0, 0] * 13
+        squads += [self.MACHINE, self.MACHINE, 0, 0, 0, 0]
+        squads += [self.HUMAN, 0, 0, 0, 0, 0]
+        self.assertEqual(90, len(squads))
+        status, payload = self.start(1201, squads, squad=14)
+        self.assertEqual((200, True), (status, payload["success"]))
+
+    def test_a_squad_that_breaks_the_lock_is_still_refused(self) -> None:
+        # The same ninety entries, playing a squad that does hold a Human.
+        squads = [self.HUMAN, self.DRAGON, 0, 0, 0, 0] * 13
+        squads += [self.MACHINE, self.MACHINE, 0, 0, 0, 0]
+        squads += [self.HUMAN, 0, 0, 0, 0, 0]
+        status, payload = self.start(1201, squads, squad=1)
+        self.assertEqual(SPECIES_LIMIT_ERROR_CODE, payload["cmdError"])
+
+    def test_a_squad_number_outside_the_array_reads_the_first(self) -> None:
+        # A malformed pairing says nothing about the party, so it is read the
+        # way a single-squad save means it rather than judged on every squad.
+        squads = [self.MACHINE, self.MACHINE, 0, 0, 0, 0] + [self.HUMAN, 0, 0, 0, 0, 0]
+        status, payload = self.start(1201, squads, squad=99)
+        self.assertEqual((200, True), (status, payload["success"]))
 
     def test_a_character_the_table_cannot_describe_is_not_refused(self) -> None:
         """The gate restores a declared limit; it does not invent one."""

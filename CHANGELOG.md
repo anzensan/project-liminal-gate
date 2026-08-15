@@ -14,6 +14,32 @@ run the command.
 
 ### Fixed
 
+- **Machine Road refused a squad of two Machines, and no squad could have
+  passed it.** Reported by a tester who checked the species of every member,
+  then levelled them, then tried again with a two-Machine squad — the game
+  answered "all members must meet the requirements" every time.
+
+  `teamMembers` is not the party. It is every squad the account has kept,
+  flattened into one array, and `teamNo` says which one is on screen: this
+  tester's save carries fifteen squads and ninety entries. The client reads its
+  party out of that array as `(teamNo - 1) × 6 + slot - 1`. The species lock
+  read the whole array, found the Humans and Lizards parked in the other
+  fourteen squads, and refused — so no squad the player could build would ever
+  have entered, which is why levelling and re-picking changed nothing.
+
+  Every gate and settlement that means "the party" now resolves the squad on
+  screen the way the client does. Checked against the reporting save: their
+  Squad 14 is Tronic Gal and Chirol, both Machine, and it enters. Dragon Road
+  still refuses it, correctly.
+
+  Three more places read the same array and are corrected with it: the Captive
+  Golem class band, which had the identical fault waiting; an operator EXP
+  multiplier, whose extra share was split across every character in every squad
+  instead of the six who fought; and the clear-state audit, whose six-slot
+  requirement no real save could satisfy, so it silently never ran — an
+  operator who configured that catalog would have had every core-story clear
+  refused instead.
+
 - **Tower of Temptation is a row per floor again, because a folded card there
   only ever opened onto floor 1.** Drawing the four bosses as cards was wrong,
   and the reasoning that made it look safe was wrong in a specific way worth

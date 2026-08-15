@@ -2602,7 +2602,7 @@ class BootstrapState:
             # never walks the party. Refused before anything is charged, in the
             # same soft shape the Daily Quest rotation uses, so the player sees
             # the game's own refusal rather than a Network Error.
-            if self.tuning.gates.species_limits and catalog.over_species_limit(stage, userdata.get("teamMembers")):
+            if self.tuning.gates.species_limits and catalog.over_species_limit(stage, active_party_members(userdata)):
                 return "success", _canonical_payload(
                     {"success": False, "errorCode": SPECIES_LIMIT_ERROR_CODE}
                 )
@@ -2849,7 +2849,7 @@ class BootstrapState:
                 # the client happened to report.
                 "chrdata": _exp_credited_roster(
                     _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
-                    userdata.get("teamMembers"), result["exp"],
+                    active_party_members(userdata), result["exp"],
                     self.tuning.exp.multiplier_percent, self.exp_curve,
                 ),
             })
@@ -3062,7 +3062,7 @@ class BootstrapState:
             # no longer has to come back unchanged.
             userdata["chrdata"] = _exp_credited_roster(
                 _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
-                userdata.get("teamMembers"), result["exp"],
+                active_party_members(userdata), result["exp"],
                 self.tuning.exp.multiplier_percent, self.exp_curve,
             )
             # Coins, items and Summons settle from the same report, each through
@@ -3183,7 +3183,7 @@ class BootstrapState:
             # it never looks at the party. Refused in the client's own soft
             # shape, under that same code, so the player sees the game's
             # refusal rather than a Network Error.
-            if event and self.tuning.gates.class_bands and catalog.over_class_limit(stage, userdata.get("teamMembers")):
+            if event and self.tuning.gates.class_bands and catalog.over_class_limit(stage, active_party_members(userdata)):
                 return "success", _canonical_payload(
                     {"success": False, "errorCode": CLASS_LIMIT_ERROR_CODE}
                 )
@@ -3486,7 +3486,7 @@ class BootstrapState:
                 "valuables": canonical_valuables,
                 "chrdata": _exp_credited_roster(
                     _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
-                    userdata.get("teamMembers"), clear["battle_result"]["exp"],
+                    active_party_members(userdata), clear["battle_result"]["exp"],
                     self.tuning.exp.multiplier_percent, self.exp_curve,
                 ),
                 # A projected settlement persists the array the server derived,
@@ -5342,6 +5342,44 @@ def _started_identity(body: bytes) -> tuple[int, int] | None:
 #: are not among them: only these three own an active stage to release.
 ACTIVE_BATTLE_PHASES = frozenset({"generic_story_active", "hunting_active", "world_map_special_active"})
 
+#: Slots in one squad. `UserData.GetTeamMember` reads it from a static rather
+#: than a literal, and every save seen carries a `teamMembers` whose length is a
+#: multiple of six.
+TEAM_MEMBERS_PER_SQUAD = 6
+
+
+def active_party_members(userdata: dict[str, Any]) -> list[Any] | None:
+    """The six members the account is actually fielding.
+
+    **`teamMembers` is not a party.** It is every squad the account has kept,
+    flattened into one array, and `teamNo` says which of them is on screen: a
+    played save carries fifteen squads and ninety entries. The client indexes it
+    as `UserData.GetTeamMember` (ARM64 `0x19D95D8`) does --
+    ``(teamID - 1) * membersPerTeam + memberID - 1``, both indices one-based --
+    and nothing but that slice is the party.
+
+    Reading the whole array as one is what refused Machine Road to a squad of
+    two Machines: the species lock walked all ninety entries, found the Humans
+    and Lizards sitting in the other fourteen squads, and answered
+    `SpeciesLimit` to a party that never held one. No squad the player could
+    build would have passed, which is the shape of the bug -- a gate that reads
+    more state than the rule it enforces covers cannot be satisfied at all.
+
+    A save with one squad is returned unchanged, which is every save written
+    before a second squad existed and every party in the tests. A `teamNo` that
+    names no squad in the array is treated as the first, because a squad number
+    outside its own array is a malformed pairing rather than a statement about
+    the party, and the first squad is what a single-squad save means by it.
+    """
+    members = userdata.get("teamMembers")
+    if not isinstance(members, list) or len(members) <= TEAM_MEMBERS_PER_SQUAD:
+        return members if isinstance(members, list) else None
+    squad = userdata.get("teamNo")
+    start = (squad - 1) * TEAM_MEMBERS_PER_SQUAD if type(squad) is int and squad >= 1 else 0
+    if start + TEAM_MEMBERS_PER_SQUAD > len(members):
+        start = 0
+    return members[start:start + TEAM_MEMBERS_PER_SQUAD]
+
 
 def _settled_wallet_coins(
     account: dict[str, Any], expected: int, charged: int | None = None,
@@ -6624,7 +6662,7 @@ def _clear_state_matches(userdata: dict[str, Any], clear: dict[str, Any], catalo
     """
     current_rows = userdata.get("chrdata")
     submitted_rows = clear["chrdata"]
-    team = userdata.get("teamMembers")
+    team = active_party_members(userdata)
     if not (isinstance(current_rows, list) and isinstance(team, list) and len(team) == catalog.team_slots and all(type(value) is int and value >= 0 for value in team)):
         return False
     current = {row.get("id"): row for row in current_rows if _valid_generic_character_record(row)}
