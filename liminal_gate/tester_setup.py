@@ -495,19 +495,28 @@ def _category_holds_a_file(directory: Path) -> bool:
     return any(entry.is_file() for entry in directory.rglob("*"))
 
 
-def resolve_resource_root(requested: Path) -> Path:
-    """Validate the final Android resource folder or find it beneath a common parent."""
+def resolve_resource_root(
+    requested: Path, platform: str = "Android", tree: str = "android",
+) -> Path:
+    """Validate the final resource folder or find it beneath a common parent.
+
+    The check is structural rather than by name -- it asks whether the nine
+    categories are there -- so it already accepts a platform tree other than
+    the one it was written for.  `platform` and `tree` only steer the search
+    below a common parent and the wording the operator reads, so that a tester
+    pointed at the wrong iOS directory is not told to go find an Android one.
+    """
     candidates = (
         requested,
-        requested / "android",
-        requested / "data_u2017" / "android",
-        requested / "gdresources" / "data_u2017" / "android",
+        requested / tree,
+        requested / "data_u2017" / tree,
+        requested / "gdresources" / "data_u2017" / tree,
     )
     for candidate in candidates:
         if candidate.is_dir() and all((candidate / category).is_dir() for category in REQUIRED_RESOURCE_CATEGORIES):
             resolved = candidate.resolve()
             if resolved != requested.resolve():
-                print(f"Using detected Android resource root: {resolved}")
+                print(f"Using detected {platform} resource root: {resolved}")
             # A category directory that exists but holds nothing passes every
             # structural check here and then ships a package missing whatever
             # belonged in it: the manifest names only the files that were
@@ -524,11 +533,11 @@ def resolve_resource_root(requested: Path) -> Path:
                     f"re-extract them from your own game data into {resolved}"
                 )
             return resolved
-    expected = "data_u2017/android containing " + ", ".join(REQUIRED_RESOURCE_CATEGORIES)
+    expected = f"data_u2017/{tree} containing " + ", ".join(REQUIRED_RESOURCE_CATEGORIES)
     if not requested.exists():
         raise TesterSetupError(f"resource path does not exist: {requested}; expected {expected}")
     missing = [category for category in REQUIRED_RESOURCE_CATEGORIES if not (requested / category).is_dir()]
-    raise TesterSetupError(f"resource path is not the final Android resource folder; expected {expected} (missing here: {', '.join(missing)})")
+    raise TesterSetupError(f"resource path is not the final {platform} resource folder; expected {expected} (missing here: {', '.join(missing)})")
 
 
 def _sdk_roots() -> tuple[Path, ...]:

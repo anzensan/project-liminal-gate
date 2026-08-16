@@ -37,7 +37,7 @@ from liminal_gate.companion_equipment_catalog import (
 from liminal_gate.coin_creeps_banner import CoinCreepsBannerError, prepare_coin_creeps_banners
 from liminal_gate.pact_banner_importer import PactBannerImportError, prepare_pact_banners
 from liminal_gate.event_catalog import DEFAULT_EVENT_CATALOG
-from liminal_gate.resource_catalog import ResourceCatalogError
+from liminal_gate.resource_catalog import IOS_RESOURCE_URL_PREFIX, ResourceCatalogError
 from liminal_gate.resource_catalog_builder import build_resource_manifest, report_resource_inventory, write_resource_manifest
 from liminal_gate.luck_pool_catalog import DEFAULT_LUCK_POOL_CATALOG
 from liminal_gate.server_config import STANDARD_POLICY_FLAGS
@@ -151,6 +151,10 @@ class StartupReport:
 
 
 DEFAULT_RESOURCES = Path("local-input/resources/data_u2017/android")
+#: The iOS tree sits beside the Android one under the same extracted archive.
+#: A host that has it serves both clients at once; a host that does not is
+#: unaffected, so its absence is not an error.
+DEFAULT_IOS_RESOURCES = Path("local-input/resources/data_u2017/iOS_2")
 DEFAULT_DATA = Path("user-data")
 DEFAULT_PROFILE = Path("profiles/legacy-client-bootstrap.json")
 
@@ -181,15 +185,19 @@ DERIVATION_FIX = (
 )
 
 
-def resolve_resource_root(requested: Path) -> Path:
-    """Find and validate the final data_u2017/android resource directory.
+def resolve_resource_root(
+    requested: Path, platform: str = "Android", tree: str = "android",
+) -> Path:
+    """Find and validate the final data_u2017 resource directory for a platform.
 
     One probe serves both deployment layouts: this delegates to the guided
     setup's resolver so the two paths can never disagree about what a valid
-    resource root is, and only the error type is this launcher's own.
+    resource root is, and only the error type is this launcher's own.  The
+    platform arguments are forwarded for the same reason -- there is still one
+    definition of a valid tree, whichever client it feeds.
     """
     try:
-        return tester_setup.resolve_resource_root(requested)
+        return tester_setup.resolve_resource_root(requested, platform=platform, tree=tree)
     except tester_setup.TesterSetupError as error:
         raise ServerSetupError(str(error)) from error
 
@@ -479,6 +487,47 @@ def prepare_server(
     return resolved_resources, resolved_data, len(manifest["resources"])
 
 
+def prepare_ios_resources(
+    requested: Path | None, data_directory: Path, explicit: bool,
+) -> tuple[Path, Path] | None:
+    """Build the iOS resource manifest, if this host has an iOS tree to serve.
+
+    The iOS client's resource base is compiled into an encrypted binary, so
+    unlike the Android one it cannot be pointed at this server -- it asks for
+    the retired CDN's own spelling, and the manifest is built under that base
+    so the two platforms answer on prefixes that cannot collide.  They must
+    not share one: the 32-hex filename prefix hashes the asset's logical name
+    rather than its bytes, so both trees spell the same filenames while
+    holding different bundles.
+
+    An operator who asked for a specific tree is told when it is not there,
+    because a mistyped path must not look like a host that simply has no iOS
+    files.  An operator who asked for nothing gets no iOS and no failure: the
+    overwhelmingly common host serves Android only, and a half-extracted or
+    absent iOS directory it never asked about must not be able to stop the
+    server every Android tester is waiting on.
+    """
+    if requested is None:
+        return None
+    if not explicit and not requested.is_dir():
+        return None
+    try:
+        resolved = resolve_resource_root(requested, platform="iOS", tree="iOS_2")
+        manifest = build_resource_manifest(resolved, url_prefix=IOS_RESOURCE_URL_PREFIX)
+    except (ServerSetupError, ResourceCatalogError) as error:
+        if explicit:
+            raise
+        print(f"Not serving the iOS tree at {requested}: {error}")
+        return None
+    manifest_path = data_directory.resolve() / "ios-resources.json"
+    write_resource_manifest(manifest_path, manifest)
+    print(
+        f"Serving the iOS tree as well: {len(manifest['resources'])} URL(s) "
+        f"from {resolved} under {IOS_RESOURCE_URL_PREFIX}"
+    )
+    return resolved, manifest_path
+
+
 def resolve_story_outcome_catalog(requested: Path | None, data_directory: Path) -> Path | None:
     """Choose the story-outcome catalog to run with, if there is one.
 
@@ -591,8 +640,15 @@ def server_arguments(
     enable_stamina: bool = False,
     tuning: Path | None = None,
     drop_compendium: Path | None = None,
+    ios_resources: tuple[Path, Path] | None = None,
 ) -> list[str]:
     """Build the standard server command without any client preparation."""
+    ios_resource_flags = (
+        [] if ios_resources is None else [
+            "--ios-resource-root", str(ios_resources[0]),
+            "--ios-resource-manifest", str(ios_resources[1]),
+        ]
+    )
     # No `--outcome-strict` here: the catalog's job in the guided setup is to let
     # story Companion drops settle, and bounding the reported items and monsters
     # on top of that can only refuse clears, never enable one.
@@ -653,6 +709,7 @@ def server_arguments(
         str(resource_root),
         "--resource-manifest",
         str(data_directory / "resources.json"),
+        *ios_resource_flags,
         "--public-data-root",
         str(data_directory / "public_data"),
         *STANDARD_POLICY_FLAGS,
@@ -689,6 +746,15 @@ def run_server(arguments: Sequence[str]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resource-root", type=Path, default=DEFAULT_RESOURCES)
+    parser.add_argument(
+        "--ios-resource-root",
+        type=Path,
+        default=None,
+        help=(
+            "iOS resource tree to serve alongside the Android one; defaults to "
+            f"{DEFAULT_IOS_RESOURCES} when that directory exists"
+        ),
+    )
     parser.add_argument(
         "--apk",
         type=Path,
@@ -813,6 +879,11 @@ def main() -> int:
             rederive_catalogs=args.rederive_catalogs,
             report=report,
         )
+        ios_resources = prepare_ios_resources(
+            DEFAULT_IOS_RESOURCES if args.ios_resource_root is None else args.ios_resource_root,
+            data_directory,
+            explicit=args.ios_resource_root is not None,
+        )
         print(f"Prepared server resource manifest: {resource_count} mapped entries")
         print(f"Durable account state: {data_directory / 'bootstrap-state.json'}")
         outcome_catalog = resolve_story_outcome_catalog(
@@ -925,6 +996,7 @@ def main() -> int:
                 data_directory,
                 args.host,
                 args.port,
+                ios_resources=ios_resources,
                 story_outcome_catalog=outcome_catalog,
                 companion_equipment_catalog=equipment_catalog,
                 event_catalog=event_catalog,

@@ -280,6 +280,7 @@ resources, captures, account saves, tokens, digests, or keys.
 
 - [Setup options and manual setup](docs/setup-manual.md) — every option, and the individual commands.
 - [Run only the server on a separate Linux machine](docs/dedicated-server.md) — dedicated server, systemd, remote access.
+- [Play on an iPhone or iPad](docs/ios-client.md) — the unmodified iOS client, and sharing one save with an Android device.
 - [What setup generates](docs/generated-files.md) — every produced file and why it is kept.
 - [Advanced local configuration](docs/advanced-configuration.md) — optional progression, outcome, inventory, Pact, and Companion catalogs, and the [tuning document](docs/advanced-configuration.md#tuning-rates-gates-and-exp) for rates, gates, and EXP.
 - [Save editor](tools/save-editor.html) — a single local page; see [Editing a save](docs/saves.md#editing-a-save).

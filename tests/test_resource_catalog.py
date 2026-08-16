@@ -9,7 +9,10 @@ import unittest
 import zipfile
 
 from liminal_gate.bootstrap_server import BootstrapState, load_profile
-from liminal_gate.resource_catalog import ResourceCatalogError, load_resource_catalog
+from liminal_gate.resource_catalog import (
+    IOS_RESOURCE_URL_PREFIX, ResourceCatalogError, combine_resource_catalogs, load_resource_catalog,
+)
+from liminal_gate.resource_catalog_builder import build_resource_manifest
 from tests.support import start_server, stop_server, write_json
 
 
@@ -169,3 +172,86 @@ class ResourceCatalogTest(unittest.TestCase):
         }]})
         with self.assertRaisesRegex(ResourceCatalogError, "ZIP_STORED"):
             load_resource_catalog(self.manifest, apk)
+
+
+class TwoPlatformCatalogTest(unittest.TestCase):
+    """One server answers both clients, and must never cross the two trees.
+
+    The 32-hex filename prefix hashes the asset's logical name rather than its
+    bytes, so the Android and iOS trees spell every filename identically while
+    holding different bundles.  Serving them from one URL base would hand a
+    client the other platform's bundle; these tests hold the bases apart.
+    """
+
+    #: The exact name and both spellings a real client asked for, taken from a
+    #: packet capture of the iOS build rather than invented here.
+    ASSET = "BG/52329f63eb2827d0fa6c9d1ad9f1fad4stage_back_9000.bin"
+    LOGICAL = "BG/stage_back_9000.bin"
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary_directory.name)
+        self.android_payload = b"android-bundle-bytes"
+        self.ios_payload = b"ios-bundle-bytes-which-are-longer-and-different"
+        self.android_root = self.root / "android"
+        self.ios_root = self.root / "iOS_2"
+        for tree, payload in (
+            (self.android_root, self.android_payload), (self.ios_root, self.ios_payload),
+        ):
+            (tree / "BG").mkdir(parents=True)
+            (tree / self.ASSET).write_bytes(payload)
+        android_manifest = self.root / "resources.json"
+        ios_manifest = self.root / "ios-resources.json"
+        write_json(android_manifest, build_resource_manifest(self.android_root))
+        write_json(ios_manifest, build_resource_manifest(
+            self.ios_root, url_prefix=IOS_RESOURCE_URL_PREFIX,
+        ))
+        catalog = combine_resource_catalogs(
+            load_resource_catalog(android_manifest, self.android_root),
+            load_resource_catalog(ios_manifest, self.ios_root),
+        )
+        profile = self.root / "profile.json"
+        write_json(profile, {"schema_version": 1, "routes": {
+            "time": "/local/time", "status": "/local/status", "signup": "/local/signup",
+            "login": "/local/login", "userdata": "/local/userdata",
+        }, "response_signing": {"algorithm": "md5-uppercase-slice", "salt": "test-salt", "digest_start": 16, "digest_end": 32},
+            "account_binding": {"signup_response_field": "id", "login_query_field": "uuid"},
+            "responses": {"signup": {"success": True, "id": "account"}, "login": {"success": True}, "status": {"success": True}},
+            "userdata_seed": {}})
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), load_profile(profile),
+            BootstrapState(self.root / "state.json"), resource_catalog=catalog,
+        )
+
+    def tearDown(self) -> None:
+        stop_server(self.server, self.thread)
+        self.temporary_directory.cleanup()
+
+    def get(self, path: str) -> tuple[int, bytes]:
+        connection = HTTPConnection(*self.server.server_address)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        body = response.read()
+        connection.close()
+        return response.status, body
+
+    def test_each_client_receives_its_own_platform_bundle(self) -> None:
+        status, body = self.get("/resources/" + self.ASSET)
+        self.assertEqual((200, self.android_payload), (status, body))
+        status, body = self.get(IOS_RESOURCE_URL_PREFIX + self.ASSET)
+        self.assertEqual((200, self.ios_payload), (status, body))
+
+    def test_the_ios_unhashed_retry_reaches_the_same_ios_file(self) -> None:
+        """The client asks for the hashed name, then this one 300ms later."""
+        status, body = self.get(IOS_RESOURCE_URL_PREFIX + self.LOGICAL)
+        self.assertEqual((200, self.ios_payload), (status, body))
+
+    def test_overlapping_catalogs_are_refused_rather_than_resolved(self) -> None:
+        """Two manifests claiming one URL have no correct answer to pick."""
+        manifest = self.root / "duplicate.json"
+        write_json(manifest, build_resource_manifest(self.ios_root))
+        with self.assertRaisesRegex(ResourceCatalogError, "both map /resources/"):
+            combine_resource_catalogs(
+                load_resource_catalog(self.root / "resources.json", self.android_root),
+                load_resource_catalog(manifest, self.ios_root),
+            )
