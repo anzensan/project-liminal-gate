@@ -548,6 +548,10 @@ td.stage{font-family:var(--mono);color:var(--brass);white-space:nowrap}
 
 .empty{padding:60px 20px;text-align:center;color:var(--parch-faint);font-style:italic}
 
+.floor{margin:0 0 14px;padding:10px 13px;border-left:2px solid var(--ember);
+       background:rgba(217,122,69,.07);color:var(--parch-dim);font-size:13px;line-height:1.5}
+.floor strong{color:var(--ember);font-weight:600}
+
 /* ---- prose ---- */
 .prose{max-width:74ch;margin-top:36px}
 .prose h2{font-size:27px;font-weight:400;margin:44px 0 12px;letter-spacing:-.01em}
@@ -598,10 +602,27 @@ function dropRows(d){
     <td class="num">${s.ceiling ?? '—'}</td>
     <td class="num">${s.stamina}</td>
     <td>${badge(s)}</td></tr>`).join('');
-  return `<div class="scroll"><table>
+  return floorNote(d) + `<div class="scroll"><table>
     <thead><tr><th>Stage</th><th>Family</th><th>Dropped by</th><th>Rate</th>
     <th>Spawns</th><th>Cap</th><th>Stam</th><th>Basis</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
+}
+
+// A drop's stage list reads as a farming guide, so it has to say what it is.
+// It is a floor: the stages that could be evidenced, not the stages that drop
+// this. For an item or a character the gap is total rather than partial --
+// an unjoined stage's only surviving evidence is its dropBuddies allowlist,
+// which names Companions and nothing else -- so those two kinds cannot be
+// evidenced from an unjoined stage even in principle.
+function floorNote(d){
+  const c = DATA.coverage, blind = c.unjoined, total = c.stages;
+  const kindNote = (d.kind === 'item' || d.kind === 'character')
+    ? `No ${d.kind} drop can be evidenced from any of them, because the only evidence an
+       unjoined stage carries is its Companion allowlist.`
+    : `Their section allowlists still speak, but no rate and no spawn count survives for them.`;
+  return `<div class="floor"><strong>This list is a floor, not a census.</strong>
+    ${blind} of ${total} stages have no usable encounter map. ${kindNote}
+    A stage missing below has not been ruled out &mdash; it has not been looked at.</div>`;
 }
 
 function stageRows(key, s){
@@ -773,8 +794,11 @@ without stating odds, and nothing here invents the difference.</div>
 
 <p>{coverage["unjoined"]} of {coverage["stages"]} playable stages have no usable encounter map. For
 those, an absent drop means <strong>unknown</strong>, never <strong>none</strong> &mdash; the
-section allowlist is all that speaks, and it only ever lists Companions. Three causes, and only
-one of them is a limit of effort rather than of the data:</p>
+section allowlist is all that speaks, and it only ever lists Companions. That last clause is the
+one to hold on to: an <em>item</em> or <em>character</em> can only ever be evidenced from a stage
+whose encounter map resolved, so for those two kinds every unjoined stage is silent by
+construction rather than by measurement. Four causes, and all but one are limits of the data
+rather than of effort:</p>
 
 <ul>
 <li><strong>No enemy rows.</strong> Spawn symbols that resolve to enemy IDs carrying no
@@ -789,9 +813,20 @@ one section's spawns under another, so such chapters are withheld rather than gu
 a wrong ceiling is worse than a missing one, because a ceiling decides whether a legitimate clear
 is refused. Compiling <em>fewer</em> generators than a chapter declares is not skew and is not
 withheld.</li>
+<li><strong>No battle program.</strong> A chapter class that compiles no generator for that section
+at all. Metal Zone, the unbannered Tower copy, the Five Emperors side world and the tutorial are
+wholly of this kind, and no amount of reading recovers a program the client does not contain. The
+one recoverable case found so far was different in kind: the World Map Specials compile their
+generators under quest names (<code>Battle_Shinen_1</code>) rather than section numbers, so they
+read as absent until the importer learned that shape.</li>
 <li><strong>Unrecognised variants.</strong> Symbols whose suffix chain reduces to no known base
-enemy. This is the one tractable class: each census of them widens the suffix table and recovers
-more.</li>
+enemy. This class looks tractable and is not. On the reviewed build a census of every one of them
+found 37 distinct symbols across 41 stages; a <em>perfect</em> resolver &mdash; one allowed to reduce
+each symbol to any real <code>Enemies</code> member at all &mdash; would join <strong>none</strong>
+of those stages. Four reduce to a real member whose ID has no <code>EnemyData</code> record, and the
+other 33 reduce to no member under any rule. The ceiling is structural: the enum names 1,932
+enemies and only 992 of them have a record. Widening the suffix table would lower the unresolved
+count on this page while adding no drop at all, which is worse than leaving it alone.</li>
 </ul>
 
 <table class="ftable">
