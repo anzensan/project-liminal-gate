@@ -13,6 +13,27 @@ import zipfile
 RESOURCE_MANIFEST_SCHEMA_VERSION = 1
 APK_RESOURCE_MANIFEST_SCHEMA_VERSION = 2
 
+#: The URL base the patched Android client asks on. Its resource literal is
+#: rewritten at build time, so it reaches this server under a prefix of the
+#: project's own choosing.
+RESOURCE_URL_PREFIX = "/resources/"
+
+#: The URL base the iOS client asks on. Its resource literal lives in a
+#: FairPlay-encrypted binary and cannot be rewritten, so it arrives spelled
+#: exactly as the retired CDN served it and the server has to answer that.
+#:
+#: The two bases must stay distinct, because the platforms do not share bytes:
+#: the 32-hex filename prefix hashes the logical asset name rather than the
+#: content, so `BG/52329f63...stage_back_9000.bin` names a 101,967-byte bundle
+#: in the Android tree and a different 247,692-byte bundle in the iOS one.
+#: Serving both from one prefix would hand a client the other platform's
+#: bundle under a Content-Length taken from its own manifest.
+IOS_RESOURCE_URL_PREFIX = "/gdresources/data_u2017/iOS_2/"
+
+#: Every URL base a v1 filesystem manifest may map onto, longest first so a
+#: prefix that contains another still identifies the longer one.
+_MANIFEST_URL_PREFIXES = (IOS_RESOURCE_URL_PREFIX, RESOURCE_URL_PREFIX)
+
 
 class ResourceCatalogError(ValueError):
     """A local resource manifest is unsafe, malformed, or stale."""
@@ -135,6 +156,31 @@ def load_resource_catalog_document(document: object, resource_root: Path) -> Res
     return _load_apk_catalog(resources, root)
 
 
+def combine_resource_catalogs(*catalogs: ResourceCatalog) -> ResourceCatalog:
+    """Serve several manifests from one server, refusing any overlap.
+
+    One server answers both clients at once, each on its own URL base, so the
+    catalogs it holds are expected to be disjoint. An overlap would mean two
+    manifests claiming the same URL, and there is no basis for preferring
+    either, so it fails here rather than resolving to whichever loaded last.
+
+    At most one catalog may hold an archive handle: the packaged APK manifest
+    is the only one that does, and that deployment serves a single platform.
+    """
+    entries: dict[str, ResourceEntry] = {}
+    archive: zipfile.ZipFile | None = None
+    for catalog in catalogs:
+        if catalog._archive is not None:
+            if archive is not None:
+                raise ResourceCatalogError("only one resource catalog may hold an archive")
+            archive = catalog._archive
+        for path, entry in catalog.entries.items():
+            if path in entries:
+                raise ResourceCatalogError(f"resource catalogs both map {path}")
+            entries[path] = entry
+    return ResourceCatalog(entries, archive)
+
+
 def _load_filesystem_catalog(resources: list[object], root: Path) -> ResourceCatalog:
     entries: dict[str, ResourceEntry] = {}
     for resource in resources:
@@ -152,8 +198,12 @@ def _load_file_entry(resource: object, root: Path) -> ResourceEntry:
     relative = resource.get("file")
     expected_hash = resource.get("sha256")
     content_type = resource.get("content_type", "application/octet-stream")
-    if not isinstance(path, str) or not path.startswith("/resources/") or path == "/resources/":
-        raise ResourceCatalogError("resource path must start with /resources/")
+    if not isinstance(path, str) or not any(
+        path.startswith(prefix) and path != prefix for prefix in _MANIFEST_URL_PREFIXES
+    ):
+        raise ResourceCatalogError(
+            "resource path must start with " + " or ".join(_MANIFEST_URL_PREFIXES)
+        )
     if not isinstance(relative, str) or not _safe_relative_path(relative):
         raise ResourceCatalogError("resource file must be a safe relative path")
     if not isinstance(expected_hash, str) or len(expected_hash) != 64 or any(char not in "0123456789abcdef" for char in expected_hash):

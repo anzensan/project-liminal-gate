@@ -62,7 +62,8 @@ def standard_policy_fields() -> dict[str, bool]:
 
 
 _PATH_FIELDS = (
-    "profile", "state_file", "event_log", "drop_compendium", "resource_root", "resource_manifest", "public_data_root",
+    "profile", "state_file", "event_log", "drop_compendium", "resource_root", "resource_manifest",
+    "ios_resource_root", "ios_resource_manifest", "public_data_root",
     "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "statusup_catalog",
     "clear_state_catalog",
     "job_catalog", "rebirth_catalog", "summon_skill_catalog", "companion_catalog",
@@ -111,6 +112,8 @@ class ServerConfig:
     drop_compendium: Path | None = None
     resource_root: Path | None = None
     resource_manifest: Path | None = None
+    ios_resource_root: Path | None = None
+    ios_resource_manifest: Path | None = None
     public_data_root: Path | None = None
     story_catalog: Path | None = None
     story_progression_catalog: Path | None = None

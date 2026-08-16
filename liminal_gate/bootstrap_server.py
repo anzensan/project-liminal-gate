@@ -111,7 +111,9 @@ from liminal_gate.bootstrap_wire import (
     _valid_last_update,
 )
 from liminal_gate.coin_creeps_banner import ALIASES as COIN_CREEPS_BANNER_ALIASES, hashed_resource_name
-from liminal_gate.resource_catalog import ResourceCatalog, ResourceCatalogError, load_resource_catalog
+from liminal_gate.resource_catalog import (
+    ResourceCatalog, ResourceCatalogError, combine_resource_catalogs, load_resource_catalog,
+)
 from liminal_gate.stamina_meter import (
     FULL_METER_ORIGIN,
     chapter_for_progress,
@@ -7199,6 +7201,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--resource-root", type=Path, help="user-local root containing manifest-mapped files")
     parser.add_argument("--resource-manifest", type=Path, help="user-local explicit resource mapping manifest")
+    parser.add_argument("--ios-resource-root", type=Path, help="user-local root containing the iOS resource tree, served alongside the Android one")
+    parser.add_argument("--ios-resource-manifest", type=Path, help="user-local explicit iOS resource mapping manifest")
     parser.add_argument("--public-data-root", type=Path, help="user-local derived UI and resource payloads")
     parser.add_argument("--story-catalog", type=Path, help="user-local normalized generic-story catalog")
     parser.add_argument("--story-progression-catalog", type=Path, help="user-derived reviewed core-story progression catalog")
@@ -7249,7 +7253,8 @@ def parse_args() -> argparse.Namespace:
 
 def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     value_fields = (
-        "profile", "state_file", "host", "port", "event_log", "drop_compendium", "resource_root", "resource_manifest", "public_data_root",
+        "profile", "state_file", "host", "port", "event_log", "drop_compendium", "resource_root", "resource_manifest",
+        "ios_resource_root", "ios_resource_manifest", "public_data_root",
         "story_catalog", "story_progression_catalog", "settlement_catalog", "story_outcome_catalog", "clear_state_catalog", "statusup_catalog", "job_catalog",
         "rebirth_catalog", "summon_skill_catalog", "companion_catalog", "companion_equipment_catalog", "companion_strengthen_catalog",
         "companion_evolution_catalog", "companion_draw_catalog", "pact_draw_catalog", "event_catalog", "character_catalog", "hunting_catalog",
@@ -7279,7 +7284,9 @@ def load_launch_config(args: argparse.Namespace) -> ServerConfig:
     return ServerConfig(
         profile=args.profile, state_file=args.state_file,
         host="127.0.0.1" if args.host is None else args.host, port=8080 if args.port is None else args.port,
-        event_log=args.event_log, drop_compendium=getattr(args, "drop_compendium", None), resource_root=args.resource_root, resource_manifest=args.resource_manifest, public_data_root=getattr(args, "public_data_root", None),
+        event_log=args.event_log, drop_compendium=getattr(args, "drop_compendium", None), resource_root=args.resource_root, resource_manifest=args.resource_manifest,
+        ios_resource_root=getattr(args, "ios_resource_root", None), ios_resource_manifest=getattr(args, "ios_resource_manifest", None),
+        public_data_root=getattr(args, "public_data_root", None),
         story_catalog=args.story_catalog, core_story=getattr(args, "core_story", False), settlement_catalog=args.settlement_catalog,
         story_progression_catalog=args.story_progression_catalog,
         story_outcome_catalog=args.story_outcome_catalog, outcome_strict=getattr(args, "outcome_strict", False),
@@ -7370,6 +7377,14 @@ def build_server(
             raise ProfileError("--resource-root and --resource-manifest must be supplied together")
         if resources is None and args.resource_root is not None:
             resources = load_resource_catalog(args.resource_manifest, args.resource_root)
+        if (args.ios_resource_root is None) != (args.ios_resource_manifest is None):
+            raise ProfileError("--ios-resource-root and --ios-resource-manifest must be supplied together")
+        if args.ios_resource_root is not None:
+            # Both clients are served from one process, each on its own URL
+            # base, so this is an addition rather than a choice between them:
+            # an operator running iOS does not stop running Android.
+            ios_resources = load_resource_catalog(args.ios_resource_manifest, args.ios_resource_root)
+            resources = ios_resources if resources is None else combine_resource_catalogs(resources, ios_resources)
         stories = None if args.story_catalog is None else load_story_catalog(args.story_catalog)
         if args.core_story and args.story_progression_catalog is not None:
             raise ProfileError("--core-story cannot be combined with --story-progression-catalog")

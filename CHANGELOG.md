@@ -12,6 +12,47 @@ The setup and documentation changes at the end need neither a restart nor a
 rebuild: they are build-computer behaviour, and take effect the next time you
 run the command.
 
+### Added
+
+- **The iOS client can play against this server, sharing one save with an
+  Android device.** It needs a server restart and no APK rebuild: this is the
+  dedicated-server route only, and the on-device package is unaffected.
+
+  The Android client is patched to ask this server directly. The iOS one
+  cannot be — its executable is FairPlay-encrypted, so the URLs compiled into
+  it are unreadable — and it only ever asks for the two hostnames the retired
+  service used. So the client is left alone and the names are redirected
+  instead, which works because it validates no certificate at all.
+
+  `liminal_gate.ios_front_end` answers those two names, terminating TLS on 443
+  and serving cleartext on 80, and relays both to the server unchanged. It
+  parses no game request and decides nothing; the server remains the only
+  authority. A service template that grants it `CAP_NET_BIND_SERVICE` rather
+  than root is in `deploy/`.
+
+  One server now answers both clients at once, because each asks on its own
+  URL base — Android on `/resources/`, iOS on `/gdresources/data_u2017/iOS_2/`.
+  The two resource trees must never share a base: the 32-hex prefix on a
+  resource filename hashes the asset's logical name rather than its contents,
+  so both trees spell every filename identically while holding different
+  bundles, and a merged mapping would serve one client the other's data. An
+  overlap between two manifests is refused rather than resolved.
+
+  The iOS tree is picked up automatically beside the Android one at
+  `local-input/resources/data_u2017/iOS_2`, or named with
+  `--ios-resource-root`. A host without one is unaffected, and so is a host
+  whose copy is missing or half-extracted: it serves Android and says why it
+  is not serving iOS. Only an operator who named a tree explicitly gets a
+  failure, because a mistyped path must not look like a host that simply has
+  no iOS files.
+
+  Sharing a save needs no new mechanism. A device that has talked to another
+  server goes straight to login and is refused with `unknown_local_account`;
+  `account_state link` attaches its UUID to an existing account, which both
+  admits the device and shares the progress. It is handoff rather than
+  simultaneous play. [Play on an iPhone or iPad](docs/ios-client.md) covers
+  the DNS, firewall, and certificate steps, and what each failure looks like.
+
 ### Fixed
 
 - **Machine Road refused a squad of two Machines, and no squad could have

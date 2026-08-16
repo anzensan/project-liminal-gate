@@ -9,7 +9,9 @@ from pathlib import Path, PurePosixPath
 import re
 from typing import Callable
 
-from liminal_gate.resource_catalog import RESOURCE_MANIFEST_SCHEMA_VERSION, ResourceCatalogError, _sha256_file
+from liminal_gate.resource_catalog import (
+    RESOURCE_MANIFEST_SCHEMA_VERSION, RESOURCE_URL_PREFIX, ResourceCatalogError, _sha256_file,
+)
 from liminal_gate.atomic_json import write_json_document
 
 
@@ -17,7 +19,7 @@ _CACHE_PREFIX = re.compile(r"^[0-9a-f]{32}(?P<name>.+)$")
 
 
 def _logical_relative_path(relative: str) -> str:
-    """Translate the known cache-prefixed Android filename form to its URL name."""
+    """Translate the known cache-prefixed filename form to its URL name."""
     path = Path(relative)
     match = _CACHE_PREFIX.fullmatch(path.name)
     if match is None:
@@ -25,28 +27,43 @@ def _logical_relative_path(relative: str) -> str:
     return path.with_name(match.group("name")).as_posix()
 
 
-def resource_url_aliases(relative: str) -> tuple[str, ...]:
+def resource_url_aliases(relative: str, url_prefix: str = RESOURCE_URL_PREFIX) -> tuple[str, ...]:
     """Every client resource URL one on-disk file answers to, literal name first.
 
-    Android caches many bundles under a 32-hex-prefixed filename while the
-    client requests the logical name, so a prefixed file has to be reachable
-    under both.  Both manifest builders derive their URL sets here -- the v1
+    The client caches many bundles under a 32-hex-prefixed filename while
+    asking for the logical name, so a prefixed file has to be reachable under
+    both.  Both manifest builders derive their URL sets here -- the v1
     filesystem tree the separate server reads and the v2 packaged manifest the
     on-device APK carries.  They diverged once, and the self-contained build
     served only the on-disk spelling: every prefixed resource 404ed there while
     the same content loaded from a separate server.
+
+    This is not an Android detail, though it was found there.  The iOS client
+    asks the same way, and a capture of it recorded the whole pattern in one
+    pair: the hashed name first, then the bare one 300ms later.
+
+    `url_prefix` is what the client spells before the tree.  It differs per
+    platform because only the Android literal can be rewritten at build time,
+    and the trees must not share a base: the hash prefix is taken over the
+    logical name rather than the content, so the same filename names different
+    bundles on each platform.
     """
     aliases = dict.fromkeys((relative, _logical_relative_path(relative)))
-    return tuple("/resources/" + alias for alias in aliases)
+    return tuple(url_prefix + alias for alias in aliases)
 
 
 def build_resource_manifest(
     resource_root: Path, digests: Callable[[Path], str] | None = None,
+    url_prefix: str = RESOURCE_URL_PREFIX,
 ) -> dict[str, object]:
     """Map every regular user-local file beneath root to its client resource URL.
 
     `digests` accepts a shared hashing function so a caller that already
     inventoried this tree does not read every byte of it a second time.
+
+    `url_prefix` defaults to the Android base, so every manifest built before
+    the iOS tree existed still comes out byte for byte as it did.  That matters
+    beyond tidiness: these bytes are hashed into the provenance chains.
     """
     hash_file = digests if digests is not None else _sha256_file
     try:
@@ -67,7 +84,7 @@ def build_resource_manifest(
             raise ResourceCatalogError("resource root contains an unsafe file path")
         content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
         digest = hash_file(candidate)
-        for path in resource_url_aliases(relative):
+        for path in resource_url_aliases(relative, url_prefix):
             if path in mapped_paths:
                 raise ResourceCatalogError(f"resource root maps more than one file to {path}")
             mapped_paths.add(path)
