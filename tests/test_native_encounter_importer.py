@@ -306,6 +306,87 @@ class StageIdentityTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIsNone(stage_identity(name))
 
+    def test_reads_the_world_map_specials_quest_named_generators(self) -> None:
+        # Chapter 1100 names its generators after the quest and carries no
+        # section number at all.  BattleData's section titles put tier 1 at
+        # section 4 and section 9, so both groups run backwards; reading them
+        # in ascending order would file every tier under the wrong stage.
+        for name, identity in (
+            ("Chapter1100.$Battle_Shinen_1$9197.$", (1100, 4)),
+            ("Chapter1100.$Battle_Shinen_4$9207.$", (1100, 1)),
+            ("Chapter1100.$Battle_Mutou_1$9211.$", (1100, 9)),
+            ("Chapter1100.$Battle_Mutou_4$9224.$", (1100, 6)),
+            ("Chapter1100.$$Battle_Mutou_2$closure$984$9252.$", (1100, 8)),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(identity, stage_identity(name))
+
+    def test_a_numbered_generator_still_wins_over_the_quest_named_form(self) -> None:
+        # Several chapters suffix a numbered generator (`Battle2_3_A`).  Those
+        # carry their own section number and must never reach the named table.
+        self.assertEqual((8008, 2), stage_identity("Chapter8008.$Battle2_3_A$1$"))
+        self.assertEqual((9100, 15), stage_identity("Chapter9100.$Battle15_5_Normal$1$"))
+
+    def test_reads_the_lower_case_alternative_bodies_of_one_battle(self) -> None:
+        # `battle1_3a` is a second encounter for the same battle as `Battle1_3`.
+        # The section number is in the name; only the capital B was ever missing.
+        # Chapter 2003 read 14 of its 63 generator bodies before this.
+        for name, identity in (
+            ("Chapter2003.$$battle1_3a$closure$1$", (2003, 1)),
+            ("Chapter2003.$$battle1_10c$closure$1$", (2003, 1)),
+            ("Chapter2004.$$battle1_5d$closure$1$", (2004, 1)),
+            ("Chapter2005.$$battle1_7b$closure$1$", (2005, 1)),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(identity, stage_identity(name))
+
+    def test_a_body_numbered_from_the_battle_needs_a_sole_playable_section(self) -> None:
+        # `battle_2a` carries no section at all.  Chapter 2003 declares exactly
+        # one playable section, so there is nowhere else it could belong.
+        self.assertEqual((2003, 1), stage_identity("Chapter2003.$$battle_2a$closure$1$"))
+
+    def test_a_chapter_with_no_playable_section_reads_none_of_them(self) -> None:
+        # Chapter 2014 compiles twenty-six of these against a single slot whose
+        # battleCnt is 0.  Reading them would invent a stage that does not exist.
+        for name in ("Chapter2014.$$battle_10b$closure$1$", "Chapter2014.$$battle_2_common$closure$1$"):
+            with self.subTest(name=name):
+                self.assertIsNone(stage_identity(name))
+
+    def test_a_name_that_is_not_a_quest_generator_stays_unread(self) -> None:
+        # `BattleExp_1`, `BattleCommon` and `Battle_Toad2` are neither numbered
+        # nor of the `Battle_<quest>_<tier>` shape, so they must not be mistaken
+        # for one.  Each sits in a chapter whose BattleData cannot say which of
+        # its sections would receive the spawns.
+        for name in (
+            "Chapter1000.$BattleExp_1$1$", "Chapter2015.$Battle_Toad2$1$",
+            "Chapter2014.$Battle_1$1$", "Chapter1003.$BattleCommon$1$",
+            "Chapter3003.$BattleCommon$1$",
+        ):
+            with self.subTest(name=name):
+                self.assertIsNone(stage_identity(name))
+
+    def test_an_unrecovered_quest_fails_visibly_rather_than_reading_as_absent(self) -> None:
+        # Returning None here is how the World Map Specials went unread: an
+        # unnumbered generator looks exactly like a chapter with no program.
+        with self.assertRaises(NativeEncounterImportError) as caught:
+            stage_identity("Chapter1101.$Battle_Kraken_1$1$")
+        self.assertEqual(
+            "chapter 1101 compiles an unrecognised quest-named generator 'Kraken';"
+            " its section mapping must be recovered from BattleData before it can be read",
+            str(caught.exception),
+        )
+
+    def test_a_tier_outside_the_recovered_mapping_fails_visibly(self) -> None:
+        # Tier 5 of each World Map Special quest compiles no generator on the
+        # reviewed build.  A build that compiles one is a shape this table has
+        # not been checked against.
+        with self.assertRaises(NativeEncounterImportError) as caught:
+            stage_identity("Chapter1100.$Battle_Shinen_5$1$")
+        self.assertEqual(
+            "chapter 1100 compiles Shinen tier 5, which the recovered section mapping does not cover",
+            str(caught.exception),
+        )
+
 
 class BuildDocumentTest(unittest.TestCase):
     def setUp(self) -> None:

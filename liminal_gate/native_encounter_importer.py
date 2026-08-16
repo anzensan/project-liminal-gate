@@ -127,6 +127,86 @@ _CALIBRATION = (
 #: instead of silently returning the chapters this one happened to ship.
 _CHAPTER_TYPE_RE = re.compile(r"^Chapter(\d+)(?:\.|$)")
 _BATTLE_TYPE_RE = re.compile(r"Battle(\d+)_(\d+)")
+
+#: A chapter may name its generators after the quest instead of numbering them.
+#:
+#: ``Chapter1100`` -- the World Map Specials -- compiles ``Battle_Shinen_1`` and
+#: ``Battle_Mutou_1`` where every other chapter compiles ``Battle1_1``.  Nothing
+#: in the type name carries a section number, so the numeric form above finds no
+#: identity and all ten stages read as having no battle program at all.  They
+#: were not missing from the binary; they were missing from this pattern.
+#:
+#: ``BattleData`` settles the mapping outright, because its own section titles
+#: name the quest and the tier: sections 1-5 are ``シンエン戦4``, ``3``, ``2``,
+#: ``1``, ``5`` and sections 6-10 are ``ムトウ戦4``, ``3``, ``2``, ``1``, ``5``.
+#: Both groups run *backwards* -- tier 1 sits at section 4 and section 9 -- which
+#: is why this is a recovered table rather than an arithmetic offset, and why
+#: guessing the obvious ascending order would have filed every tier under the
+#: wrong stage.  The client's own stage metadata agrees independently: sections 4
+#: and 9 are the only two at assumed level 80 where the other eight are 90,
+#: exactly as a tier-1 stage should be.
+#:
+#: Tier 5 of each quest -- sections 5 and 10 -- compiles no generator, so those
+#: two stay unresolved.  They are also the only two of the ten whose section
+#: carries an empty ``dropBuddies`` allowlist, so nothing is lost by it.
+_NAMED_BATTLE_TYPE_RE = re.compile(r"Battle_([A-Za-z]+)_(\d+)")
+_NAMED_SECTIONS: dict[tuple[int, str], dict[int, int]] = {
+    (1100, "Shinen"): {1: 4, 2: 3, 3: 2, 4: 1},
+    (1100, "Mutou"): {1: 9, 2: 8, 3: 7, 4: 6},
+}
+
+#: An alternative body for one battle, compiled under a lower-case name.
+#:
+#: Chapters 2003, 2004 and 2005 compile ``battle1_3a`` and ``battle1_3b``
+#: alongside the ordinary ``Battle1_3``: the same battle with a different
+#: encounter, up to four to a battle.  The section number is right there in the
+#: name, so nothing needs recovering -- ``_BATTLE_TYPE_RE`` is simply
+#: case-sensitive and never saw them.
+#:
+#: This is the failure that hides best.  Every one of these chapters settles its
+#: section from the capitalised generators regardless, so the stage joined, drew
+#: a Confirmed badge, and published a ceiling built from part of its encounters.
+#: A missing stage announces itself; a stage short a few alternative bodies does
+#: not, and the direction is the unsafe one -- a ceiling that omits a drop
+#: *refuses* a legitimate clear.
+_VARIANT_BATTLE_TYPE_RE = re.compile(r"battle(\d+)_(\d+)[a-z]")
+
+#: The same alternative bodies, in a chapter that numbers them from the battle
+#: rather than the section: chapter 2003 compiles ``battle_2a`` beside
+#: ``battle1_3a``.  Nothing in those names carries a section, so they are read
+#: only where ``BattleData`` leaves no room for doubt -- a chapter declaring
+#: exactly one playable section, which is what chapter 2003 declares (one slot,
+#: ``battleCnt`` 10).
+#:
+#: Chapter 2014 compiles twenty-six of these and is deliberately absent: it
+#: declares a single slot with ``battleCnt`` 0, so it has no playable stage for
+#: them to belong to, and reading them would invent one.
+_SECTIONLESS_BATTLE_RE = re.compile(r"battle_(\d+)[a-z_]")
+_SECTIONLESS_SECTIONS: dict[int, int] = {2003: 1}
+
+#: Generator names left deliberately unread, and why.  None of them carries a
+#: section number, and each sits in a chapter where `BattleData` cannot supply
+#: one, so reading any of them would mean guessing which stage gets the spawns:
+#:
+#: * ``BattleCommon`` (chapters 1003, 3003) -- a shared body with no number at
+#:   all.  Chapter 1003 declares three playable sections, so it cannot be
+#:   attributed to one.
+#: * ``BattleExp_1``-``_5`` (chapter 1000, the Hunting Zone) -- five generators
+#:   against fourteen playable sections.  Reading them would add nothing even if
+#:   the mapping were known: every symbol they spawn (``EXP_ML_*``) is absent
+#:   from the ``Enemies`` enum, so none resolves to an enemy at all.
+#: * ``Battle_Toad``, ``Battle_Toad2`` (chapter 2015) -- no number, three
+#:   playable sections.
+#: * ``Battle_1``, ``battle_2_common`` (chapter 2014) -- no playable section.
+#:
+#: These are listed rather than pattern-matched because an exhaustive rule is
+#: not available here: ``EndBattle``, ``SetBattles`` and
+#: ``SetBattleBehaviour`` are ordinary coroutines that share the prefix, so a
+#: catch-all "unrecognised battle name" check would raise on routines that were
+#: never stage programs.  A future chapter naming its generators some new way
+#: will therefore go unread rather than announce itself -- which is exactly how
+#: the World Map Specials and these variant bodies hid -- so a build bringing
+#: new chapters is worth re-running this census against.
 _TYPE_RE = re.compile(
     r"^(?:public|private|internal|protected)?\s*"
     r"(?:sealed\s+|static\s+|abstract\s+)*"
@@ -366,12 +446,42 @@ def _slot_method(offset: int | None, slots: dict[int, Method]) -> Method | None:
 
 
 def stage_identity(type_name: str) -> tuple[int, int] | None:
-    """Map a generator type name to the ``(chapter, section)`` it settles."""
+    """Map a generator type name to the ``(chapter, section)`` it settles.
+
+    A quest-named generator (`_NAMED_SECTIONS`) whose chapter and quest are not
+    in the recovered table raises rather than returning ``None``.  Returning
+    ``None`` is how the World Map Specials went unread for as long as they did:
+    an unnumbered generator is indistinguishable from a chapter that compiles no
+    program at all, so the ten stages simply reported no battle data and nothing
+    said otherwise.  A build carrying a quest this table has never seen is an
+    unknown shape, and unknown shapes fail here rather than read as absence.
+    """
     chapter_match = _CHAPTER_TYPE_RE.match(type_name)
-    battle_match = _BATTLE_TYPE_RE.search(type_name)
-    if chapter_match is None or battle_match is None:
+    if chapter_match is None:
         return None
     chapter = int(chapter_match.group(1))
+    battle_match = _BATTLE_TYPE_RE.search(type_name) or _VARIANT_BATTLE_TYPE_RE.search(type_name)
+    if battle_match is None:
+        if _SECTIONLESS_BATTLE_RE.search(type_name) is not None:
+            section = _SECTIONLESS_SECTIONS.get(chapter)
+            return None if section is None else (chapter, section)
+        named_match = _NAMED_BATTLE_TYPE_RE.search(type_name)
+        if named_match is None:
+            return None
+        quest = named_match.group(1)
+        sections = _NAMED_SECTIONS.get((chapter, quest))
+        if sections is None:
+            raise NativeEncounterImportError(
+                f"chapter {chapter} compiles an unrecognised quest-named generator {quest!r};"
+                " its section mapping must be recovered from BattleData before it can be read"
+            )
+        tier = int(named_match.group(2))
+        if tier not in sections:
+            raise NativeEncounterImportError(
+                f"chapter {chapter} compiles {quest} tier {tier}, which the recovered"
+                " section mapping does not cover"
+            )
+        return chapter, sections[tier]
     section, battle = int(battle_match.group(1)), int(battle_match.group(2))
     if chapter == 20:
         # Chapter 20 is one continuous twenty-battle program backing ten
