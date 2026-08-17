@@ -193,7 +193,7 @@ class HuntingRuntimeTest(unittest.TestCase):
               items: dict | None = None, item_list: list | None = None, exp: int = 0,
               buddies: list | None = None, monsters: list | None = None,
               summons: list | None = None, summon_list: list | None = None,
-              snapshot: dict | None = None) -> tuple[int, dict]:
+              snapshot: dict | None = None, wallet_coins: int | None = None) -> tuple[int, dict]:
         # A real retry resends the body it sent the first time.  Rebuilding it
         # from live userdata would instead echo the Energy the first clear
         # granted, producing a different body and so a cache miss rather than
@@ -204,7 +204,9 @@ class HuntingRuntimeTest(unittest.TestCase):
             ("valuables", json.dumps({
                 "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
                 "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
-                "coins": userdata["coins"] + coins,
+                # The client may fold the battle's Coins into the wallet it
+                # reports or leave them out; `wallet_coins` pins the second.
+                "coins": userdata["coins"] + coins if wallet_coins is None else wallet_coins,
             })),
             ("chrdata", json.dumps([self.character])),
             ("itemList", json.dumps(userdata["itemList"] if item_list is None else item_list)),
@@ -678,6 +680,32 @@ class HuntingRuntimeTest(unittest.TestCase):
             (before["energy"], before["freeEnergy"]),
             (self.userdata()["energy"], self.userdata()["freeEnergy"]),
         )
+
+    def test_a_clear_that_did_not_fold_its_coins_in_still_settles(self) -> None:
+        """Issue 64: a Hunting clear may report the wallet before its Coins.
+
+        Issue 68 settled this for the core story and deliberately left Hunting
+        alone, because Hunting prices are recovered. They are ceilings, not
+        prices -- `result["coins"]` is still the client's own figure -- so
+        adding it to the durable balance demanded a wallet the client did not
+        hold. A tester's log caught it on All Hail the King 3000-11, where the
+        Coins and EXP reported were the ones the story stage cleared minutes
+        earlier had already settled: the clear was refused ten times, and no
+        action the player could take would finish the stage.
+        """
+        self.assertEqual(200, self.start_with_ticket("metal-start", 3000, 11, 4)[0])
+        before = self.userdata()["coins"]
+
+        status, cleared = self.clear(
+            "metal-clear", 3000, 11, coins=423, exp=1000, wallet_coins=before,
+        )
+
+        self.assertEqual(200, status, cleared)
+        # Settled where the client actually is, so nothing is paid twice and
+        # the next clear has nothing to disagree about.
+        self.assertEqual(before, self.userdata()["coins"])
+        self.assertEqual(before, cleared["coins"])
+        self.assertEqual("free_roam", self.phase())
 
     def test_holding_no_ticket_charges_stamina_rather_than_refusing(self) -> None:
         """A ticket is an alternative to stamina, so its absence is not an error."""

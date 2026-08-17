@@ -2554,7 +2554,8 @@ class BootstrapState:
                 account["active_hunt"] = None
                 account["active_hunt_ticket_spent"] = None
                 account["active_world_map_special"] = None
-                account["active_battle_continue_coins"] = 0
+                # The Continue debt outlives the battle it was spent in; see
+                # `_continue_coins_charged`.
             userdata["lastupdate"] = 1.0
             payload = _canonical_payload({"success": True, "lastupdate": 1.0})
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
@@ -2672,7 +2673,8 @@ class BootstrapState:
             # Another battle is open now, so a battle released earlier is no
             # longer the one the client is finishing.
             account["released_generic_story"] = None
-            account["active_battle_continue_coins"] = 0
+            # A new battle does not repay the last one's Continues; see
+            # `_continue_coins_charged`.
             if stage.once_per_utc_day:
                 # The day is consumed at accepted start, not at clear: the
                 # retired service updated `lastDailyQuestPlayTime` from
@@ -2773,6 +2775,26 @@ class BootstrapState:
                 world_progress_matches = is_valid_world_progress(
                     str(reported_world), clear["progressCode"],
                 )
+            # A Hunting clear may fold the battle's Coins into the wallet it
+            # reports or leave them out, and only the client knows which. Issue
+            # 68 settled this for the core story and left Hunting alone, on the
+            # reasoning that Hunting prices are recovered so its arithmetic
+            # stands. That was wrong in the same way: `result["coins"]` here is
+            # the client's own figure too, and `max_coins` is a ceiling rather
+            # than a price -- Crystal Road declares a zero ceiling and pays 400.
+            # A client that reported the unfolded wallet was refused for Coins
+            # the server insisted it must have taken, on every retry, and the
+            # stage could not be finished by anything the player could do.
+            # Both readings settle at the balance the client actually holds, so
+            # the two cannot drift apart afterwards.
+            wallet_bases = (expected_coins, expected_coins - result["coins"])
+            settled_coins = next(
+                (
+                    base for base in wallet_bases
+                    if clear["valuables"].get("coins") in _settled_wallet_coins(account, base)
+                ),
+                None,
+            )
             # Named one at a time, for the reason `apply_generic_story_clear`
             # gives at its own `checks`: five conditions answering a single
             # `tutorial_state_conflict` -- a name thirteen other call sites also
@@ -2787,14 +2809,15 @@ class BootstrapState:
                 ),
                 ("progress", world_progress_matches),
                 ("world_map", reported_world == int(userdata.get("worldMapNo", 0))),
-                (
-                    "wallet",
-                    clear["valuables"].get("coins") in _settled_wallet_coins(account, expected_coins),
-                ),
+                ("wallet", settled_coins is not None),
             )
             failed = next((name for name, passed in checks if not passed), None)
             if failed is not None:
                 return f"hunting_clear_{failed}_conflict", None
+            # Settle at the reading the wallet check accepted, so the balance
+            # this commits and the balance the client holds are the same number
+            # and the next clear has nothing to disagree about.
+            expected_coins = settled_coins
             # A reported Summon is settled from the client's own count array,
             # the way the generic story clear settles one.  This used to refuse,
             # on the reasoning that Hunting has no recovered Summon authoring
@@ -2992,7 +3015,8 @@ class BootstrapState:
             # Another battle is open now, so a battle released earlier is no
             # longer the one the client is finishing.
             account["released_generic_story"] = None
-            account["active_battle_continue_coins"] = 0
+            # A new battle does not repay the last one's Continues; see
+            # `_continue_coins_charged`.
             # Chapter 1100 charges 25 stamina, which clears the battle-end gate
             # comfortably; its recovered `allowLucky` is 0, so it carries no
             # Lucky-enemy source.  Its chests stay refused as labeled local
@@ -3318,7 +3342,8 @@ class BootstrapState:
             # Another battle is open now, so a battle released earlier is no
             # longer the one the client is finishing.
             account["released_generic_story"] = None
-            account["active_battle_continue_coins"] = 0
+            # A new battle does not repay the last one's Continues; see
+            # `_continue_coins_charged`.
             # Retained because the client folds the chest into the balances it
             # reports at clear; settlement has to know what it handed out.
             account["active_luck_result"] = list(luck_slots)
@@ -5421,7 +5446,19 @@ def _settled_wallet_coins(
 
 
 def _continue_coins_charged(account: dict[str, Any]) -> int:
-    """Coins this battle's Continues have taken that the client has not.
+    """Coins Continue has taken that the client has not, since the last settlement.
+
+    Not per battle, and that distinction is the whole of Issue 64. The client
+    cannot deduct a Continue's coin cost -- it is local policy, and what the
+    client thinks it spent is the Energy-shaped `client_cost` -- so the wallet
+    it reports stays that much higher than the server's until a settlement
+    hands it an authoritative one. Leaving a battle does not reconcile
+    anything: the Coins are still gone on this side and still present on the
+    client's. Zeroing this when a battle was released or replaced therefore
+    dropped a real debt, and the *next* clear was refused by exactly the
+    orphaned amount, on every retry, until a relaunch resynchronised the
+    wallet. Only the three clear paths reset it, because only they tell the
+    client what it now holds.
 
     Zero for a save written before Continue charged anything, and for any value
     that is not a plain count: this only ever widens a settlement check, so a
@@ -5458,7 +5495,10 @@ def release_abandoned_battle(account: dict[str, Any]) -> bool:
     account["active_hunt"] = None
     account["active_hunt_ticket_spent"] = None
     account["active_world_map_special"] = None
-    account["active_battle_continue_coins"] = 0
+    # `active_battle_continue_coins` deliberately survives. See
+    # `_continue_coins_charged`: a released battle's Continues are Coins this
+    # server has already taken and the client still carries, so forgetting them
+    # here desynchronised the two wallets permanently.
     return True
 
 
