@@ -213,6 +213,21 @@ def _validate_roster(account_id: str, userdata: dict[str, Any]) -> list[Finding]
         if not isinstance(levels, list) or not levels:
             findings.append(Finding(account_id, f"{where}.jobLevels", "jobLevels must be a non-empty list"))
             continue
+        slots = row.get("jobSlots")
+        # A zero level is a job that is not unlocked, so it can hold nothing.
+        # The reverse is ordinary -- an unlocked job with an empty slot -- and
+        # is not reported. Only a Rebirth has ever produced the first shape, by
+        # copying the source character's array onto a destination with a
+        # different job list.
+        if isinstance(slots, list) and len(slots) == len(levels):
+            for slot, (level, equipped) in enumerate(zip(levels, slots)):
+                if type(level) in (int, float) and type(equipped) in (int, float) and level == 0 and equipped != 0:
+                    findings.append(Finding(
+                        account_id, f"{where}.jobSlots[{slot}]",
+                        f"holds {equipped} for a job this character has not unlocked "
+                        f"(jobLevels[{slot}] is 0); the client reads the slot against a job "
+                        f"that is not there",
+                    ))
         for slot, value in enumerate(levels):
             if type(value) not in (int, float) or value < 0:
                 findings.append(Finding(account_id, f"{where}.jobLevels[{slot}]", "a packed job level must be a non-negative number"))

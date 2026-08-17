@@ -264,6 +264,104 @@ class RebirthCarryoverTest(unittest.TestCase):
         self.assertEqual(0, payload["addedPlusCount"], "nothing grants a plus count yet")
 
 
+class RebirthJobSlotsTest(unittest.TestCase):
+    """`jobSlots` is per job, so the source's cannot come across with the row.
+
+    A destination is a different character with a different job list -- one job
+    rather than three, for 64 of the 65 bundled recipes -- and a slot standing
+    against a job the unit does not have is a shape no other route produces.
+    """
+
+    def recode(self, held: dict | None) -> dict:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            items = [0] * 181
+            for item_id, count in recipe.items.items():
+                items[item_id - 1] = count + 5
+            # Three jobs unlocked, all three slots filled: the source is exactly
+            # the shape a long-played character has.
+            rows = [{"id": recipe.source_character_id, "jobID": 2,
+                     "jobLevels": [90.0, 85.0, 80.0], "jobSlots": [387131153.0, 52888865.0, 85132055.0],
+                     "skillBoost": 0, "luck": 0}]
+            rows += [{"id": material_id, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
+                      "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0}
+                     for material_id, level in recipe.materials]
+            if held is not None:
+                rows.append(held)
+            state.create_account("token", "account", {
+                "coins": recipe.coins + 1000, "itemList": items, "summonList": [0] * 16,
+                "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
+                "teamMembers": [0] * 6, "teamMembers_VS": [0] * 18,
+                "chrdata": rows, "buddyInfo": {"list": [], "record": []},
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, payload = post(server, "/gd/rebirth", "rebirth", "rebirthID=1&useJoker=False")
+            finally:
+                stop_server(server, thread)
+        self.assertTrue(payload["success"], payload)
+        return next(row for row in payload["chrdata"]
+                    if row["id"] == recipe.destination_character_id)
+
+    def test_the_rebirthed_unit_carries_no_slot_from_the_character_it_replaced(self) -> None:
+        destination = self.recode(None)
+        self.assertEqual([1.0, 0.0, 0.0], destination["jobLevels"])
+        # Two of these stood against jobs the destination has neither unlocked
+        # nor got, which is what the client could not draw.
+        self.assertEqual([0.0, 0.0, 0.0], destination["jobSlots"])
+        self.assertEqual(0, destination["jobID"], "the source's active job is not the new unit's")
+
+    def test_an_already_owned_destination_keeps_its_own_slots_and_job(self) -> None:
+        """The held copy's equipment is its own; a level 1 row must not clear it."""
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        destination = self.recode({
+            "id": recipe.destination_character_id, "jobID": 1,
+            "jobLevels": [99.0, 50.0, 0.0], "jobSlots": [11.0, 22.0, 0.0],
+            "skillBoost": 0, "luck": 0,
+        })
+        self.assertEqual([11.0, 22.0, 0.0], destination["jobSlots"])
+        self.assertEqual(1, destination["jobID"])
+        self.assertEqual([99.0, 50.0, 0.0], destination["jobLevels"], "its levels still survive")
+
+
+class RebirthJobSlotRepairTest(unittest.TestCase):
+    """A save that already carries the copied slots repairs itself on load."""
+
+    def test_only_the_row_whose_slots_outlive_its_jobs_is_cleared(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            state = BootstrapState(path)
+            state.create_account("token", "account", {"chrdata": [
+                # The reported shape: one job unlocked, three jobs' slots, taken
+                # verbatim from a source character that had three.
+                {"id": 920, "jobID": 0, "jobLevels": [1.0, 0.0, 0.0],
+                 "jobSlots": [387131153.0, 52888865.0, 85132055.0], "buddy": 0},
+                # An unlocked job with an empty slot is ordinary and must stay.
+                {"id": 25, "jobID": 0, "jobLevels": [15251415126.0, 11101184074.0, 0.0],
+                 "jobSlots": [387130663.0, 0.0, 0.0], "buddy": 0},
+            ]})
+            with state.lock:
+                state._persist_locked()
+            state.close()
+
+            repaired = BootstrapState(path)
+            try:
+                rows = {row["id"]: row for row in repaired.userdata_for("token")["chrdata"]}
+                self.assertEqual([0.0, 0.0, 0.0], rows[920]["jobSlots"])
+                self.assertEqual([387130663.0, 0.0, 0.0], rows[25]["jobSlots"])
+                self.assertEqual([1.0, 0.0, 0.0], rows[920]["jobLevels"], "levels are not touched")
+            finally:
+                repaired.close()
+
+
 def _companion(inventory_id: int, character_id: int) -> dict:
     """One owned Companion. `bid` tracks `iid` so the derived book holds both."""
     return {"bid": inventory_id, "lv": 1, "date": 0.0, "iid": inventory_id, "exp": 0, "flag": 0, "chrID": character_id}
@@ -276,8 +374,9 @@ class RebirthCompanionConsistencyTest(unittest.TestCase):
     judges the whole save rather than the part a write touches -- so one
     half-attached link refuses every later party or equip save with a 501,
     for as long as the save exists. Recode is where the link comes apart: the
-    source leaves the roster, and an already-owned destination is rewritten
-    with `buddy` 0.
+    source leaves the roster, so its Companion has nothing left to hold on to.
+    An already-owned destination keeps its own, which is why only one of the
+    two here is unequipped.
     """
 
     def scenario(self) -> tuple[dict, dict, int]:
@@ -337,12 +436,20 @@ class RebirthCompanionConsistencyTest(unittest.TestCase):
         # character drawing against a Companion that is no longer there.
         self.assertEqual([1, 2], [companion["iid"] for companion in rebirthed["buddyInfo"]["list"]])
 
-    def test_both_broken_links_are_unequipped_rather_than_left_dangling(self) -> None:
+    def test_the_departed_source_lets_its_companion_go_and_nothing_else_does(self) -> None:
         _, userdata, _ = self.scenario()
-        self.assertEqual([0, 0], [companion["chrID"] for companion in userdata["buddyInfo"]["list"]])
-        self.assertEqual([0] * len(userdata["chrdata"]), [row["buddy"] for row in userdata["chrdata"]])
+        catalog = build_bundled_rebirth_policy()
+        destination_id = catalog.recipes[1].destination_character_id
+        links = {companion["iid"]: companion["chrID"] for companion in userdata["buddyInfo"]["list"]}
+        self.assertEqual({1: 0, 2: destination_id}, links)
+        # Every link that remains still names a character that claims it back,
+        # which is the whole condition `_valid_companion_equipment` reads.
+        held = {row["id"]: row["buddy"] for row in userdata["chrdata"]}
+        self.assertEqual(2, held[destination_id])
+        self.assertEqual({0}, {buddy for character_id, buddy in held.items() if character_id != destination_id})
         self.assertEqual(
-            [0, 0], [companion["chrID"] for companion in userdata["buddyInfo"]["record"]],
+            {1: 0, 2: destination_id},
+            {companion["iid"]: companion["chrID"] for companion in userdata["buddyInfo"]["record"]},
             "the book is derived from the owned list and must be reprojected with it",
         )
 

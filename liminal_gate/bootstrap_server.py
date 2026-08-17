@@ -592,6 +592,37 @@ def _migrate_companion_record(account: dict[str, Any]) -> None:
         userdata["buddyInfo"] = rebuilt
 
 
+def _migrate_rebirth_job_slots(account: dict[str, Any]) -> None:
+    """Clear slot data a Rebirth copied onto jobs its character does not have.
+
+    `jobSlots` is per job, and a recode destination is a different character
+    with a different job list -- one job rather than three, for 64 of the 65
+    bundled recipes. Copying the source's array left the rebirthed row carrying
+    equipped-slot data for jobs the unit has neither unlocked nor got, which is
+    a shape no other route can produce: a `jobLevels` entry of 0 means the job
+    is not unlocked (`add_job` fills the first zero), and in a real 170-row save
+    the rebirthed unit was the only row anywhere with a non-zero slot against a
+    zero level, and the only row with slot data past its own job count.
+
+    A row that violates it is a row the recode minted, so its whole array is
+    dropped rather than only the offending entries -- every one of them came
+    from the wrong character. A brand new row carries `[0.0, 0.0, 0.0]`, so
+    this restores the state a grant would have produced. Nothing else is
+    touched; a row whose slots agree with its levels is left exactly as it is.
+    """
+    userdata = account.get("userdata")
+    rows = userdata.get("chrdata") if isinstance(userdata, dict) else None
+    for row in rows if isinstance(rows, list) else []:
+        levels, slots = (row.get("jobLevels"), row.get("jobSlots")) if isinstance(row, dict) else (None, None)
+        if not isinstance(levels, list) or not isinstance(slots, list) or len(levels) != len(slots):
+            continue
+        if any(
+            type(level) in {int, float} and type(slot) in {int, float} and level == 0 and slot != 0
+            for level, slot in zip(levels, slots)
+        ):
+            row["jobSlots"] = [0.0] * len(slots)
+
+
 def _migrate_companion_equipment(account: dict[str, Any]) -> None:
     """Free a Companion whose character a Rebirth took off the roster.
 
@@ -714,6 +745,7 @@ def _parse_state_document(document: object) -> tuple[
         _migrate_wallet_projection(account)
         _migrate_companion_record(account)
         _migrate_companion_equipment(account)
+        _migrate_rebirth_job_slots(account)
     # Absent in saves written before per-client routing; an empty map simply
     # falls back to the active account, which is the earlier behaviour.
     client_hosts = document.get("client_hosts", {})
@@ -1667,7 +1699,17 @@ class BootstrapState:
                         held_destination = next((row for row in rows if isinstance(row, dict) and row.get("id") == recipe.destination_character_id), None)
                         overlapped = held_destination is not None
                         new_rows = [copy.deepcopy(row) for row in rows if row is not source and row.get("id") != recipe.destination_character_id]
-                        destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
+                        # `jobSlots` belongs to the jobs the row's own character
+                        # has, so the source's cannot come across with the rest
+                        # of the row: a recode destination is a different
+                        # character with a different -- and, for every Λ in the
+                        # bundled recipes, *smaller* -- job list, and the copied
+                        # array left slot data sitting on jobs the rebirthed
+                        # unit does not have and has not unlocked. A minted row
+                        # starts with none, exactly as `_granted_character_row`
+                        # does; what an already-owned destination had is put
+                        # back below.
+                        destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [0.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
                         # A fifth of each material's Skill Boost comes across
                         # with the source's own, and an already-owned
                         # destination gains 5 Luck. See the record cited beside
@@ -1701,6 +1743,17 @@ class BootstrapState:
                             # this a maxed unit was replaced outright by a
                             # level 1 row, losing its levels, Skill Boost, Luck
                             # and plus count with no route to get them back.
+                            #
+                            # Its equipped slots, active job and Companion are
+                            # its own too, and they are choices made for jobs it
+                            # actually has. A level 1 row has nothing to say
+                            # about any of them, so the held copy keeps all
+                            # three rather than being reset to a state it never
+                            # asked for -- which also leaves its Companion link
+                            # whole, so only the source's is unequipped below.
+                            for name in ("jobSlots", "jobID", "buddy"):
+                                if name in held_destination:
+                                    destination[name] = copy.deepcopy(held_destination[name])
                             destination = _preserved_progress(held_destination, destination)
                         new_rows.append(destination); new_rows.sort(key=lambda row: int(row["id"]))
                         new_items = copy.deepcopy(items)
