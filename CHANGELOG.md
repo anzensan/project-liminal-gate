@@ -55,6 +55,32 @@ run the command.
 
 ### Fixed
 
+- **A played save could be exported and then never imported back, which is
+  where moving to a new phone stops.** Reported by a tester transferring an
+  account to a second device: every step succeeded — export, `adopt`, the
+  account bookkeeping — and the final `import` answered
+  `HTTP 413 request_body_too_large` with nothing left to try.
+
+  The save-transfer route was reading its body under `MAX_REQUEST_BODY_BYTES`,
+  the four-megabyte ceiling that bounds one client mutation arriving from a LAN
+  peer. An import is not that. It is a whole multi-account save, sent from
+  loopback, from a file the operator already holds a copy of. Sizing the two
+  together made the route asymmetric in the one direction that loses progress:
+  the export is a GET and has no ceiling at all, so a save could pass a size it
+  could be read out at and never written back at, with the only copy of it on
+  the phone being left behind.
+
+  Nothing pathological had to happen to cross that line. A save is dominated by
+  the retained replay payloads — 512 per bucket per account, four buckets — so
+  a long-played account or two reaches four megabytes on ordinary play. The
+  import now has its own ceiling sized for what it actually carries, and
+  refuses only a document no save this build wrote could be.
+
+  The receiving device is the one that needs this, so an on-device tester
+  transferring an account needs the new phone's APK built from this revision;
+  the old phone's build is only ever read from and does not matter. A dedicated
+  server needs a restart.
+
 - **Machine Road refused a squad of two Machines, and no squad could have
   passed it.** Reported by a tester who checked the species of every member,
   then levelled them, then tried again with a two-Machine squad — the game
@@ -214,6 +240,17 @@ run the command.
   explain this.
 
 ### Documentation
+
+- **Moving a save to a new phone is written down as its own sequence.** Testers
+  were assembling it from the cleared-install advice and the `adopt` reference,
+  and the two questions that came back are the two the page now answers
+  outright: which copy is the untouchable backup and which one you edit, and
+  why `--seed-state` cannot be the transfer. That flag embeds a save into an
+  APK and copies it only onto an install that has none, so it cannot carry a
+  transfer at all — the UUID the save has to name does not exist until the new
+  client has run once, and by then the seed no longer applies. The sequence
+  also says where `--force` is expected rather than alarming, and what to check
+  before using it there.
 
 - **The phone's own settings are documented, and the serial number is not.**
   Four separate device settings can stop an otherwise correct setup — Developer

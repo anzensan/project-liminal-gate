@@ -69,6 +69,17 @@ def _request(port: int, route: str, payload: bytes | None = None) -> dict[str, A
                 "the installed build has no save-transfer route, so its save cannot be reached. "
                 "Builds made before this route existed are in that state."
             ) from error
+        if route == STATE_ROUTE and error.code == 413:
+            # The installed build sized this route against one client mutation
+            # rather than against a whole save, so a played save is too large
+            # for it to accept. Only the receiving device's build matters, and
+            # saying so is the difference between a dead end and a next step.
+            raise OnDeviceStateError(
+                "the installed build refuses a save this size: it predates the import ceiling being "
+                "sized for a whole save rather than for one client request. Rebuild and reinstall on "
+                "*this* device from a current revision, then import again. The file is fine and the "
+                "device's own save is untouched."
+            ) from error
         raise OnDeviceStateError(f"the app refused {route}: HTTP {error.code} {detail}") from error
     except (urllib.error.URLError, OSError) as error:
         raise OnDeviceStateError(
