@@ -249,6 +249,19 @@ SPECIES_LIMIT_ERROR_CODE = 6
 # It is deliberately outside the profile's route table: the client never calls
 # it, and it must not be reachable through the mutation transport.
 LOCAL_STATE_ROUTE = "/local/state"
+# An import carries a whole save, so the mutation ceiling above is the wrong
+# measure for it: that one bounds a single client request from a LAN peer, while
+# this one bounds a file the operator already holds a copy of, sent from
+# loopback. Sizing them together made the route asymmetric in the one direction
+# that loses a save -- the export is a GET and has no ceiling, so a save could
+# grow past a size it could never be imported back at, and a tester moving to a
+# new phone got `request_body_too_large` with no way forward. A save is
+# dominated by the retained replay payloads, `RETAINED_REQUESTS_PER_ACCOUNT` of
+# them per bucket per account, so a long-played multi-account save passes four
+# megabytes on progress nobody edited. This ceiling is still a ceiling: the
+# server parses the body into memory beside the save it already holds, and a
+# document larger than this is not a save this build wrote.
+MAX_LOCAL_STATE_BODY_BYTES = 64 * 1024 * 1024
 # The event log, read back the same way and for the same reason. On the packaged
 # Android server `events.jsonl` sits in app-private storage, and the combined
 # package is not debuggable, so `adb shell run-as` cannot reach it: a tester can
@@ -4520,7 +4533,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
 
     def _import_local_state(self) -> None:
         """Adopt an operator-supplied save in place of the running one."""
-        body = self._read_mutation_body()
+        body = self._read_mutation_body(MAX_LOCAL_STATE_BODY_BYTES)
         if body is None:
             return
         try:
@@ -4537,8 +4550,12 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return
         self._json(HTTPStatus.OK, {"status": "imported", "active_account_id": active_account_id})
 
-    def _read_mutation_body(self) -> bytes | None:
-        """Read one bounded request body, emitting its transport error in place."""
+    def _read_mutation_body(self, limit: int = MAX_REQUEST_BODY_BYTES) -> bytes | None:
+        """Read one bounded request body, emitting its transport error in place.
+
+        The caller chooses the ceiling because the two kinds of body this reads
+        are not the same size of thing; see `MAX_LOCAL_STATE_BODY_BYTES`.
+        """
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
@@ -4547,7 +4564,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         if length < 0:
             self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid_content_length"})
             return None
-        if length > MAX_REQUEST_BODY_BYTES:
+        if length > limit:
             self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "request_body_too_large"})
             return None
         body = self.rfile.read(length)

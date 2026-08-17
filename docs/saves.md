@@ -96,6 +96,45 @@ export that fresh state to read its new account id, then re-point your real save
 at it with [`adopt`](#if-you-reinstall-the-app-and-your-progress-is-gone) before
 importing.
 
+### Moving to a new phone
+
+Same problem as a cleared install, one device further apart: the new phone's
+client generates its own UUID, so your save has to be re-pointed at it before it
+means anything there. Build and install on the new phone as usual, then:
+
+```bash
+python3 -m liminal_gate.on_device_state export --device OLD-SERIAL
+cp user-data/on-device-state/YOUR-EXPORT.json transfer.json
+# open the game on the new phone, let it reach the title screen, then close it
+python3 -m liminal_gate.on_device_state export --device NEW-SERIAL \
+  --output new-install.json
+python3 -m liminal_gate.account_state adopt transfer.json \
+  --from <your-old-account-id> --to <the-new-phone-account-id> --yes
+python3 -m liminal_gate.on_device_state import --device NEW-SERIAL \
+  transfer.json --yes
+```
+
+Work on the copy, never on the export itself: the export is the only copy of
+your progress that no later step can damage.
+
+The import will refuse the file for missing the new phone's empty signup
+account — the account you just adopted *away* from — and that refusal is the
+one place in this sequence where `--force` is the right answer. Read the IDs it
+names first and confirm each is an empty signup in `new-install.json`, because
+the same refusal is what stands between a wrong file and a save you meant to
+keep. Nothing is discarded regardless: the replaced save stays on the new phone
+as `state.json.bak.1`.
+
+**`--seed-state` is not this.** It is a build-time flag that embeds
+`<data-dir>/seed-state.json` into the APK and copies it only onto an install
+with no save at all, and it cannot carry a transfer: the UUID the save must
+name does not exist until the new client has run once, and by then the seed no
+longer applies. See
+[on-device-setup.md](on-device-setup.md#protect-the-on-device-save).
+
+Nothing is removed from the old phone by any of this. Leave it installed until
+the new one has been played and exported successfully.
+
 While the app is running, its save is readable and replaceable by any other app
 on that device over loopback. That is the cost of there being any route in or
 out at all; it is worth knowing before you install this build on a phone you use

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import io
 import json
 from contextlib import ExitStack
 from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 from liminal_gate import on_device_state, tester_setup, toolchain
@@ -13,6 +15,9 @@ from liminal_gate.bootstrap_server import (
     LOCAL_COMPENDIUM_ROUTE,
     LOCAL_EVENTS_ROUTE,
     LOCAL_STATE_ROUTE,
+    MAX_LOCAL_STATE_BODY_BYTES,
+    MAX_REQUEST_BODY_BYTES,
+    RETAINED_REQUESTS_PER_ACCOUNT,
     BootstrapHandler,
     BootstrapServer,
     BootstrapState,
@@ -152,6 +157,44 @@ class LocalStateRouteTest(_StateRouteHarness):
         status, result = self.request("POST", LOCAL_STATE_ROUTE, b"{not json")
         self.assertEqual(400, status)
         self.assertEqual("invalid_local_state_document", result["error"])
+
+    def test_import_accepts_a_save_larger_than_one_client_mutation(self) -> None:
+        """A played save outgrows the mutation ceiling; the export never did.
+
+        The read side is a GET and has no ceiling, so sizing the import against
+        `MAX_REQUEST_BODY_BYTES` meant a save could reach a size it could be
+        exported at and never imported back at -- which is where a transfer to a
+        new phone stops, with the only copy of the progress on the old one.
+        """
+        self.sign_up()
+        replacement = json.loads(self.state_path.read_text(encoding="utf-8"))
+        digest = "0" * 64
+        # Padded the way a real save grows: retained replay payloads, not one
+        # oversized field.
+        replacement["accounts"]["local-account"]["tutorial_requests"] = {
+            f"request-{index}.{digest}": {"body_sha256": digest, "payload": {"filler": "x" * 8192}}
+            for index in range(600)
+        }
+        body = json.dumps(replacement).encode()
+        self.assertGreater(len(body), MAX_REQUEST_BODY_BYTES)
+        status, result = self.request("POST", LOCAL_STATE_ROUTE, body)
+        self.assertEqual((200, "imported"), (status, result["status"]))
+        # The import persists, and persisting bounds the replay caches, so the
+        # save that lands is smaller than the one that had to fit through.
+        self.assertEqual(
+            RETAINED_REQUESTS_PER_ACCOUNT,
+            len(self.server.state.accounts["local-account"]["tutorial_requests"]),
+        )
+
+    def test_import_still_refuses_a_body_no_save_could_be(self) -> None:
+        connection = HTTPConnection(*self.server.server_address[:2])
+        connection.putrequest("POST", LOCAL_STATE_ROUTE)
+        connection.putheader("Content-Length", str(MAX_LOCAL_STATE_BODY_BYTES + 1))
+        connection.endheaders()
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        self.assertEqual((413, "request_body_too_large"), (response.status, payload["error"]))
 
 
 class LanBoundStateRouteTest(_StateRouteHarness):
@@ -400,6 +443,32 @@ class ImportCommandTest(unittest.TestCase):
                 on_device_state.import_state("adb", "serial", self.source, confirmed=True, force=False)
         self.assertIn("missing account(s) a", str(raised.exception))
         push.assert_not_called()
+
+
+class StateRouteRefusalTest(unittest.TestCase):
+    """A refusal from the device has to name the device's own build.
+
+    Both refusals here come from an installed build being older than the file
+    being pushed at it, and neither is fixed by anything on this computer.
+    """
+
+    def _refuse(self, code: int) -> on_device_state.OnDeviceStateError:
+        error = urllib.error.HTTPError(
+            LOCAL_STATE_ROUTE, code, "refused", {},  # type: ignore[arg-type]
+            io.BytesIO(b'{"error":"request_body_too_large"}'),
+        )
+        with patch.object(on_device_state.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaises(on_device_state.OnDeviceStateError) as raised:
+                on_device_state.push_state(1234, {"accounts": {}, "tokens": {}})
+        return raised.exception
+
+    def test_a_save_too_large_for_the_installed_build_says_which_build(self) -> None:
+        message = str(self._refuse(413))
+        self.assertIn("Rebuild and reinstall on *this* device", message)
+        self.assertIn("The file is fine", message)
+
+    def test_a_build_predating_the_route_is_still_its_own_refusal(self) -> None:
+        self.assertIsInstance(self._refuse(404), on_device_state.StateRouteUnavailable)
 
 
 class ConnectionOptionPlacementTest(unittest.TestCase):
