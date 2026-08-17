@@ -55,6 +55,23 @@ run the command.
 
 ### Fixed
 
+- **A Recode carried no Luck from its material monsters.** Reported by a tester
+  who recoded with a Megacell at its 70.0 cap, expected a fifth of it — 14.0
+  Luck — to come across, and got none.
+
+  The record gives one proportion and applies it to both carried values: a
+  fifth of each material monster's Skill Boost, and a fifth of each material
+  monster's Luck. This bundle implemented the first and not the second. The
+  omission was in the transcription rather than the arithmetic — the rule was
+  never written down beside the constant, so nothing disagreed with it, because
+  nothing else held it. The source's own Luck, the source's own Skill Boost, the
+  5 Luck an already-owned destination gains and every ceiling were all already
+  right; only the material share was missing.
+
+  Recodes already made are not recalculated. There is no record of what a
+  material's Luck was at the time, and inventing one would grant Luck this
+  project made up.
+
 - **A Recode gave the rebirthed unit the equipped job slots of the character it
   replaced, and the party screen could not draw it.** This is the cause of the
   report below; the three defects there are real and fixed, but this is the one

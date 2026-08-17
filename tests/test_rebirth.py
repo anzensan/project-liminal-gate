@@ -201,7 +201,7 @@ class RebirthCarryoverTest(unittest.TestCase):
     """
 
     def recode(self, held: dict | None, source_boost: int, source_luck: int,
-               material_boost: int) -> tuple[dict, dict]:
+               material_boost: int, material_luck: int = 0) -> tuple[dict, dict]:
         catalog = build_bundled_rebirth_policy()
         recipe = catalog.recipes[1]
         with tempfile.TemporaryDirectory() as directory:
@@ -212,7 +212,7 @@ class RebirthCarryoverTest(unittest.TestCase):
             rows = [{"id": recipe.source_character_id, "jobID": 0, "jobLevels": [90.0, 0.0, 0.0],
                      "jobSlots": [], "skillBoost": source_boost, "luck": source_luck}]
             rows += [{"id": material_id, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
-                      "jobSlots": [], "skillBoost": material_boost, "luck": 0}
+                      "jobSlots": [], "skillBoost": material_boost, "luck": material_luck}
                      for material_id, level in recipe.materials]
             if held is not None:
                 rows.append({"id": recipe.destination_character_id, "jobID": 0, "jobSlots": [], **held})
@@ -243,6 +243,27 @@ class RebirthCarryoverTest(unittest.TestCase):
         self.assertEqual(300, destination["luck"])
         self.assertEqual([1.0, 0.0, 0.0], destination["jobLevels"])
         self.assertEqual((90, 30), (payload["addedSkillBoost"], payload["addedLuck"]))
+
+    def test_a_fifth_of_each_material_luck_comes_across_too(self) -> None:
+        """The rule the transcription dropped, in the reporting tester's numbers.
+
+        A Megacell at its 70.0 cap is a fifth of 70.0 -- 14.0 Luck -- and the
+        recode used to carry none of it.
+        """
+        payload, destination = self.recode(
+            None, source_boost=0, source_luck=0, material_boost=0, material_luck=700,
+        )
+        self.assertEqual(280, destination["luck"], "14.0 from each of the two materials")
+        self.assertEqual(28, payload["addedLuck"])
+
+    def test_material_luck_carries_alongside_the_source_and_the_owned_bonus(self) -> None:
+        payload, destination = self.recode(
+            {"jobLevels": [90.0, 0.0, 0.0], "skillBoost": 0, "luck": 100},
+            source_boost=0, source_luck=300, material_boost=0, material_luck=500,
+        )
+        # 10.0 held + 30.0 source + 10.0 from each material + the owned 5.0.
+        self.assertEqual(650, destination["luck"])
+        self.assertEqual(55, payload["addedLuck"])
 
     def test_an_owned_destination_gains_rather_than_being_overwritten(self) -> None:
         payload, destination = self.recode(

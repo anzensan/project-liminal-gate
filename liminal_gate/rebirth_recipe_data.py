@@ -28,16 +28,32 @@ from __future__ import annotations
 #: guide covers the requirements and the warnings
 #: (`terra-battle.com/en/playguide/post-5.html` and `post-4.html`) but not the
 #: proportions; the community wiki's Recode DNA page carries those, and states
-#: three things this implements:
+#: four things this implements:
 #:
+#: - the source's own Skill Boost and Luck carry over in full;
 #: - a fifth of each material monster's Skill Boost carries over, so a monster
 #:   at 100% contributes 20% and the pair contribute at most 40%;
+#: - **a fifth of each material monster's Luck carries over too**, on the same
+#:   rule and in the same words -- the page states it in its own `Luck` section,
+#:   sentence for sentence alongside the Skill Boost one;
 #: - a recode into a character the account **already owns** does not reset that
-#:   character's level -- it gains the Skill Boost and Luck instead;
-#: - an already-owned destination gains 5 Luck on top.
+#:   character's level -- it gains the Skill Boost and Luck instead, and 5 Luck
+#:   on top.
 #:
 #: The carried total is bounded by the client's own ceilings either way.
+#:
+#: The material Luck share was missing from this transcription until a tester
+#: recoded with a Megacell at its 70.0 cap, expected 14.0 Luck to come across,
+#: and got none. Two of the page's four rules were read and two were not, which
+#: is the failure mode a rule copied by hand has: nothing disagreed, because
+#: nothing else held the rule.
 MATERIAL_SKILL_BOOST_SHARE_PERCENT = 20
+#: The share of each material monster's Luck that carries over, as a percent.
+#: A fifth, the same as the Skill Boost share above and for the same reason:
+#: the record gives one proportion and applies it to both. Kept as its own name
+#: rather than folded into that one so neither can be changed by accident while
+#: reasoning about the other.
+MATERIAL_LUCK_SHARE_PERCENT = 20
 #: The Luck an already-owned destination gains, in tenths: 5.0 Luck, the same
 #: unit and the same size as the Fate duplicate gain in `pact_draw_catalog`.
 OWNED_DESTINATION_LUCK_BONUS = 50
