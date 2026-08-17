@@ -330,6 +330,55 @@ def _validate_companions(account_id: str, userdata: dict[str, Any]) -> list[Find
             f"must be greater than every id in the box (highest is {max(inventory_ids, default=0)}), "
             f"or the next Companion granted reuses an id",
         ))
+    findings.extend(_validate_companion_links(account_id, userdata, owned))
+    return findings
+
+
+def _validate_companion_links(
+    account_id: str, userdata: dict[str, Any], owned: list[Any],
+) -> list[Finding]:
+    """Report a Companion and its character that no longer name each other.
+
+    This is the one save defect the player cannot see and cannot repair from
+    the client. The link is two-sided -- the row's `buddy` names the inventory
+    id, the Companion's `chrID` names the row -- and the server's equipment
+    check reads the whole document rather than the write in front of it, so a
+    single half-attached link answers 501 to every party or equip save the
+    account makes afterwards. A Rebirth run before the recode cleared both
+    halves is how one gets here.
+
+    The server repairs this on load; the finding exists so an operator holding
+    a save can see whether a report has this cause before the save is loaded.
+    """
+    rows = userdata.get("chrdata")
+    if not isinstance(rows, list):
+        return []
+    by_row = {
+        row["id"]: row for row in rows
+        if isinstance(row, dict) and type(row.get("id")) is int and type(row.get("buddy", 0)) is int
+    }
+    by_inventory = {
+        companion["iid"]: companion for companion in owned
+        if isinstance(companion, dict) and type(companion.get("iid")) is int and type(companion.get("chrID", 0)) is int
+    }
+    findings: list[Finding] = []
+    for character_id, row in sorted(by_row.items()):
+        buddy = row.get("buddy", 0)
+        if buddy and by_inventory.get(buddy, {}).get("chrID") != character_id:
+            findings.append(Finding(
+                account_id, f"chrdata[id={character_id}].buddy",
+                f"character {character_id} claims Companion {buddy}, which does not claim it back; "
+                f"every party and equip save is refused while this is true",
+            ))
+    for inventory_id, companion in sorted(by_inventory.items()):
+        target = companion.get("chrID", 0)
+        if target and by_row.get(target, {}).get("buddy") != inventory_id:
+            findings.append(Finding(
+                account_id, f"buddyInfo.list[iid={inventory_id}].chrID",
+                f"Companion {inventory_id} is equipped to character {target}, which "
+                f"{'does not claim it back' if target in by_row else 'the roster does not contain'}; "
+                f"every party and equip save is refused while this is true",
+            ))
     return findings
 
 

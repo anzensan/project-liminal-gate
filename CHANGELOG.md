@@ -100,6 +100,12 @@ run the command.
   anything, and lets the edits in the same save stick. The server-side
   retarget that points the slot at the rebirthed unit is unchanged.
 
+  `python3 -m liminal_gate.account_state validate <save>` now reports a
+  half-attached Companion link by character and inventory id, so an operator
+  holding a save can tell whether a "cannot change my party" report has this
+  cause without loading it. The server repairs the link on load; the finding is
+  for the operator looking at a save before that happens.
+
 - **Quests became unplayable one after another, ending in a Network Error loop
   the player could not escape.** Reported against Metal Zone and All Hail the
   King ([#64](https://github.com/anzensan/project-liminal-gate/issues/64)) and
