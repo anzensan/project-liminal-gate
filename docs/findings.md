@@ -2118,3 +2118,59 @@ client's own `StartQuestErrorCode.NotEnoughItems` code.
 generated contract, one-time spend, body-scoped refusal, lost-response
 re-entry, clear reconciliation, and restart replay. The reporting client has
 not yet retried Lucia II against this build.
+
+## 2026-08-17: what a Recode answer does to the client, and the link it leaves behind
+
+**Reported symptom.** After recoding Leviathan, the character list drew rows on
+top of one another with a hole in the grid, the party could not be changed at
+all, and stages already set up still played. Taking the recoded unit out of the
+squad made the team screen fail too. The reporter noted that the client checks
+only the *materials* of a recode against the party, never the source itself.
+
+- **Confirmed by client control flow.** The recode response is read by
+  `AppServerUtil.<Rebirth>c__Iterator12.<Rebirth>c__AnonStorey62.<>m__0`
+  (ARM64 `0xFBCD00`), which reads exactly two fields: `buddyInfo` into
+  `UserData.LoadBuddyInfo` and `chrdata` into `UserData.LoadChrData`. Neither
+  the party arrays nor anything else is read, so nothing the server puts in that
+  response can correct the client's `teamMembers`.
+- **`LoadBuddyInfo` is a replace, not a merge.** At `0xDB5C50` it calls
+  `UserData.ResetBuddyList` and `UserData.ResetBuddyRecordList` before reading
+  the payload. An empty `{"list": [], "record": []}` therefore leaves the client
+  owning no Companions for the rest of the session — every character still
+  carrying one then draws against a `Buddy` that is gone.
+- **`LoadChrData` corrects only the versus squads.** At `0xDB5A04` it calls
+  `UserData.ResetChrData` (which `Clear`s the owned-character dictionary),
+  reloads each row, and finishes at `UserData.CorrectTeamMemeber_VS`. The main
+  squads' `CorrectTeamMemeber` (`0x19DBFD4`) has exactly one caller in the whole
+  binary — `AppServerUtil.LoadUserdataFromJson` (`0xDB6010`), the full-userdata
+  load — so the main party is reconciled at login and at no other moment.
+- **And `CorrectTeamMemeber` would not have helped.** It skips a slot below 1,
+  and for the rest calls `GetCharacterByID(id, create: true)`, replacing the
+  slot with `GetRandomChr` only when the id names nobody in `ChrDatabase`. A
+  slot naming a real character the account no longer *owns* passes that test, so
+  a recoded-away source survives the client's own repair.
+- **`SaveUserData(path)`/`LoadUserData(path)` are dead.** Neither has a caller,
+  so there is no local userdata cache: what the server holds at login is what
+  the client starts from.
+
+**What this cost the account.** Two of the three defects were durable rather
+than cosmetic. A Companion equipped to the source (or to a destination the
+account already owned, whose row the recode rewrites with `buddy` 0) is left
+naming a character that no longer claims it, and `_valid_companion_equipment`
+judges the whole document rather than the write in front of it — so every later
+party or equip save answered 501 for as long as the save existed, which no
+action available from the client could undo. The stale `teamMembers` then met a
+membership check that refused the save outright, so party changes answered 409
+for the rest of the session.
+
+**What changed.** The recode answers with the account's own Companion box,
+unequips both halves of any link it breaks (the Companion returns to the box;
+nothing is granted or taken), and a save already carrying a broken link repairs
+itself on load. A submitted party slot naming a character the account does not
+own is emptied rather than refusing the save — the client's own rule for a slot
+it cannot resolve, and one that cannot grant anything.
+
+**Not yet validated on hardware.** Regression tests cover the answered box, both
+unequipped halves, the party save that follows, the on-load repair, and the
+emptied slot. The reporting account has not yet been re-checked against this
+build.

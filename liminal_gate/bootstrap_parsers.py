@@ -794,7 +794,7 @@ def _parse_free_roam_party_userdata_write(
         return None
     ids = [character["id"] for character in characters]
     # The client may send only the row it changed alongside a complete party
-    # layout.  Membership is checked against the durable roster atomically in
+    # layout.  Membership is settled against the durable roster atomically in
     # ``update_character_userdata``; requiring it here would reject that valid
     # delta before it can be merged.
     if len(ids) != len(set(ids)):

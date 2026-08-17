@@ -55,6 +55,51 @@ run the command.
 
 ### Fixed
 
+- **A Recode left the account unable to change its party, and the character
+  list came back drawn on top of itself.** Reported after recoding Leviathan:
+  "it softlocks the game and I cant change party members at all", "can still
+  play stages with already built teams", and — after taking the recoded unit
+  out of the squad — "now it bugged out the team selection as well, so now I'm
+  hardlocked". Three defects, all of them in what the recode answers with.
+
+  **The recode told the client it owned no Companions.** The response carried
+  `buddyInfo` as an empty `{"list": [], "record": []}`, and that field is not
+  decoration: `UserData.LoadBuddyInfo` calls `ResetBuddyList` and
+  `ResetBuddyRecordList` and then refills the box from whatever arrived. An
+  empty one emptied it. Every character still carrying a Companion then drew
+  against a Companion the client no longer had, which is the character list
+  that came back scrambled — the same screen the report's screenshot shows,
+  rows overlapping and a hole in the grid. The Companion sale and strengthen
+  routes have always answered with the account's own box; the recode does now
+  too.
+
+  **A Companion was left attached to a character the recode took away.** A
+  Companion and its character name each other — the row's `buddy` names the
+  inventory id, the Companion's `chrID` names the row — and
+  `_valid_companion_equipment` requires both halves. It also judges the whole
+  save rather than the part a write touches, so one half-attached link answers
+  501 to *every* later party or equip save, for the life of the save. Recode
+  broke the link twice over: the source leaves the roster still claimed by its
+  Companion, and a destination the account already owned is rewritten with
+  `buddy` 0 while its own Companion still names it. Selling a Companion has
+  always cleared the row that carried it; the recode is the same event from the
+  other side and cleared nothing. Both halves are now unequipped, the Companion
+  staying in the box, and a save that already carries a broken link repairs
+  itself the next time the server loads it. Nothing is granted or taken.
+
+  **A party naming a lost character is now emptied rather than refused.** The
+  client rebuilds `teamMembers` from the server only at login:
+  `AppServerUtil.LoadChrData` corrects the versus squads
+  (`CorrectTeamMemeber_VS`) and leaves the main ones alone, and
+  `CorrectTeamMemeber` runs from `LoadUserdataFromJson` and nowhere else. So a
+  recode that removes a party member leaves the client naming it for the rest
+  of the session, and refusing that save answered every party change with a
+  409 the player had no way to satisfy — which is why removing the unit from
+  the squad made it worse rather than better. The slot is emptied instead,
+  which is the client's own rule for a slot it cannot resolve, cannot grant
+  anything, and lets the edits in the same save stick. The server-side
+  retarget that points the slot at the rebirthed unit is unchanged.
+
 - **Quests became unplayable one after another, ending in a Network Error loop
   the player could not escape.** Reported against Metal Zone and All Hail the
   King ([#64](https://github.com/anzensan/project-liminal-gate/issues/64)) and

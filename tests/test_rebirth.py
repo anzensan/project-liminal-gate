@@ -262,3 +262,92 @@ class RebirthCarryoverTest(unittest.TestCase):
         for key in ("overlapped", "addedSkillBoost", "addedLuck", "addedPlusCount"):
             self.assertIn(key, payload)
         self.assertEqual(0, payload["addedPlusCount"], "nothing grants a plus count yet")
+
+
+def _companion(inventory_id: int, character_id: int) -> dict:
+    """One owned Companion. `bid` tracks `iid` so the derived book holds both."""
+    return {"bid": inventory_id, "lv": 1, "date": 0.0, "iid": inventory_id, "exp": 0, "flag": 0, "chrID": character_id}
+
+
+class RebirthCompanionConsistencyTest(unittest.TestCase):
+    """Rebirth must not leave a Companion attached to a character that left.
+
+    A Companion and its character name each other, and `_valid_companion_equipment`
+    judges the whole save rather than the part a write touches -- so one
+    half-attached link refuses every later party or equip save with a 501,
+    for as long as the save exists. Recode is where the link comes apart: the
+    source leaves the roster, and an already-owned destination is rewritten
+    with `buddy` 0.
+    """
+
+    def scenario(self) -> tuple[dict, dict, int]:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = bootstrap_profile()
+            state = BootstrapState(root / "state.json")
+            items = [0] * 181
+            for item_id, count in recipe.items.items():
+                items[item_id - 1] = count + 5
+            # The source carries one Companion and the already-owned
+            # destination carries another; both survive the recode.
+            rows = [(recipe.source_character_id, 90, 1), (recipe.destination_character_id, 1, 2)]
+            rows += [(material_id, level, 0) for material_id, level in recipe.materials]
+            state.create_account("token", "account", {
+                "coins": recipe.coins + 1000, "itemList": items, "summonList": [0] * 16,
+                "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
+                "teamMembers": [recipe.source_character_id, 0, 0, 0, 0, 0],
+                "teamMembers_VS": [0] * 18,
+                "chrdata": [{"id": i, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
+                             "jobSlots": [], "skillBoost": 0, "luck": 0, "buddy": buddy}
+                            for i, level, buddy in rows],
+                "buddyInfo": {
+                    "list": [_companion(1, recipe.source_character_id), _companion(2, recipe.destination_character_id)],
+                    "record": [_companion(1, recipe.source_character_id), _companion(2, recipe.destination_character_id)],
+                },
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), profile, state, rebirth_catalog=catalog)
+            try:
+                _, rebirthed = post(server, "/gd/rebirth", "rebirth", "rebirthID=1&useJoker=False")
+                userdata = state.userdata_for("token")
+                # `LoadBuddyInfo` drops the dirty bits a recode's own answer
+                # rebuilt, so the save that follows one serialises `[]` --
+                # which still puts the whole document past the equipment check.
+                save = urlencode([
+                    ("chrdata", "[]"), ("buddyInfo", "[]"),
+                    ("teamMembers", json.dumps(userdata["teamMembers"])),
+                    ("teamMembers_VS", json.dumps(userdata["teamMembers_VS"])),
+                    ("teamBuddies_VS", "[]"), ("teamNo", "1"), ("teamNo_VS", "1"),
+                    ("summonId", "1"), ("lastUpdate", "1"),
+                ])
+                status, _ = post(server, "/gd/userdata", "party", save)
+            finally:
+                stop_server(server, thread)
+            return rebirthed, userdata, status
+
+    def test_the_recode_answers_with_the_companions_the_account_owns(self) -> None:
+        rebirthed, _, _ = self.scenario()
+        # An empty box here is not a no-op: `LoadBuddyInfo` resets the client's
+        # own and refills it from what arrives, so an empty one leaves every
+        # character drawing against a Companion that is no longer there.
+        self.assertEqual([1, 2], [companion["iid"] for companion in rebirthed["buddyInfo"]["list"]])
+
+    def test_both_broken_links_are_unequipped_rather_than_left_dangling(self) -> None:
+        _, userdata, _ = self.scenario()
+        self.assertEqual([0, 0], [companion["chrID"] for companion in userdata["buddyInfo"]["list"]])
+        self.assertEqual([0] * len(userdata["chrdata"]), [row["buddy"] for row in userdata["chrdata"]])
+        self.assertEqual(
+            [0, 0], [companion["chrID"] for companion in userdata["buddyInfo"]["record"]],
+            "the book is derived from the owned list and must be reprojected with it",
+        )
+
+    def test_the_account_can_still_save_a_party_afterwards(self) -> None:
+        _, _, status = self.scenario()
+        # This is the whole cost of a half-attached link: without the repair
+        # every party save answers 501 for the life of the save.
+        self.assertEqual(200, status)

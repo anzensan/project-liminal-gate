@@ -457,3 +457,38 @@ class CompanionUserdataTest(unittest.TestCase):
                 self.assertEqual(before, server.state.userdata_for("token")["buddyInfo"]["list"])
             finally:
                 stop_server(server, thread)
+
+    def test_a_save_already_carrying_a_half_link_repairs_itself_on_load(self) -> None:
+        """A Rebirth run before the fix left a save no party write could pass.
+
+        `_valid_companion_equipment` reads the whole document, so a Companion
+        still naming a character the recode removed answers 501 to every later
+        party or equip save -- and nothing the player can reach from the client
+        repairs a link the client cannot see. Fixing the recode repairs the
+        accounts that have not run one; this repairs the ones that have.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            state = BootstrapState(path)
+            state.create_account("token", "account", {
+                "chrdata": [{"id": 3, "buddy": 1}],
+                "buddyInfo": {"list": [{"bid": 1, "lv": 1, "date": 0.0, "iid": 1, "exp": 0, "flag": 0, "chrID": 3}], "record": []},
+            })
+            with state.lock:
+                state._persist_locked()
+            state.close()
+
+            # Exactly what a recode used to leave behind: the character is off
+            # the roster and its Companion still names it.
+            document = json.loads(path.read_text(encoding="utf-8"))
+            document["accounts"]["account"]["userdata"]["chrdata"] = []
+            path.write_text(json.dumps(document), encoding="utf-8")
+
+            repaired = BootstrapState(path)
+            try:
+                userdata = repaired.userdata_for("token")
+                assert userdata is not None
+                self.assertEqual([0], [companion["chrID"] for companion in userdata["buddyInfo"]["list"]])
+                self.assertEqual([0], [companion["chrID"] for companion in userdata["buddyInfo"]["record"]])
+            finally:
+                repaired.close()

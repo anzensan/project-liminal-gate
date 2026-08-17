@@ -592,6 +592,23 @@ def _migrate_companion_record(account: dict[str, Any]) -> None:
         userdata["buddyInfo"] = rebuilt
 
 
+def _migrate_companion_equipment(account: dict[str, Any]) -> None:
+    """Free a Companion whose character a Rebirth took off the roster.
+
+    Fixing the recode repairs accounts that have not run one yet; this repairs
+    the ones that already did. A save carrying the half-link cannot save a
+    party at all -- `_valid_companion_equipment` answers 501 for the whole
+    document, not for the part the write touched -- so the account arrives here
+    unable to repair itself from the client.
+
+    Nothing is granted or taken: the Companion is unequipped and stays in the
+    box. See `_unequip_orphaned_companions` for the rule.
+    """
+    userdata = account.get("userdata")
+    if isinstance(userdata, dict):
+        _unequip_orphaned_companions(userdata)
+
+
 def _migrate_tutorial_inventory(account: dict[str, Any]) -> None:
     """Give a save the inventory the scripted tutorial used to discard.
 
@@ -696,6 +713,7 @@ def _parse_state_document(document: object) -> tuple[
         _migrate_tutorial_inventory(account)
         _migrate_wallet_projection(account)
         _migrate_companion_record(account)
+        _migrate_companion_equipment(account)
     # Absent in saves written before per-client routing; an empty map simply
     # falls back to the active account, which is the earlier behaviour.
     client_hosts = document.get("client_hosts", {})
@@ -1696,12 +1714,27 @@ class BootstrapState:
                         # which case the slot empties rather than duplicating.
                         _retarget_party(data, recipe.source_character_id, 0 if overlapped else recipe.destination_character_id)
                         data["chrdata"], data["itemList"], data["coins"], account["rebirth_used_material_ids"] = new_rows, new_items, data["coins"] - recipe.coins, sorted(used)
+                        # A Companion the source carried, and one an already-owned
+                        # destination carried, are both left naming a character
+                        # that no longer claims them -- the rebirthed row takes
+                        # `buddy` 0. See `_unequip_orphaned_companions` for what
+                        # a link left half-attached costs the account.
+                        _unequip_orphaned_companions(data)
                         # The result screen reads all four of these: without
                         # them a recode reports no gain at all, however much it
                         # carried. Skill Boost and Luck are tenths on the wire
                         # and whole units on the screen, the same conversion the
                         # Power-Up Item result already makes.
-                        payload = {"success": True, "buddyInfo": {"list": [], "record": []}, "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": overlapped,
+                        # `buddyInfo` is not decoration on this response.
+                        # `UserData.LoadBuddyInfo` resets the Companion box and
+                        # refills it from what arrives, so the empty one this
+                        # used to send left the client owning no Companions at
+                        # all for the rest of the session -- and every character
+                        # still carrying one then drew against a Companion that
+                        # was no longer there, which is the character list that
+                        # came back scrambled. The account's own box is what the
+                        # sale and strengthen routes return here too.
+                        payload = {"success": True, "buddyInfo": copy.deepcopy(data.get("buddyInfo", {"list": [], "record": []})), "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": overlapped,
                                    "addedSkillBoost": (destination["skillBoost"] - held_boost) // 10,
                                    "addedLuck": (destination["luck"] - held_luck) // 10,
                                    "addedPlusCount": int(destination.get("plusCount", 0)) - held_plus}
@@ -2505,8 +2538,22 @@ class BootstrapState:
                     row.get("id") for row in candidate_rows
                     if isinstance(row, dict) and type(row.get("id")) is int and row["id"] > 0
                 }
-                if not {member for member in party["teamMembers"] if member}.issubset(roster_ids):
-                    return "tutorial_state_conflict", None
+                # A slot naming a character the account does not own is emptied
+                # rather than refusing the save. Refusing it was the sharper
+                # answer and the wrong one: the client rebuilds `teamMembers`
+                # from the server only at login -- `LoadChrData` corrects the
+                # versus squads and leaves the main ones alone -- so a Rebirth
+                # that takes a party member off the roster leaves the client
+                # naming it for the rest of the session, and every party save
+                # the player then makes came back 409 with no way to satisfy it
+                # short of relaunching. Emptying is the client's own rule for a
+                # slot it cannot resolve (`UserData.CorrectTeamMemeber`), it
+                # cannot grant anything, and the edits in the same save stick.
+                party = copy.deepcopy(party)
+                party["teamMembers"] = [
+                    member if member in roster_ids else 0
+                    for member in party["teamMembers"]
+                ]
             # Project and validate both halves before either is applied, so an
             # equip write cannot leave a one-sided character/Companion link.
             candidate_companions = None
@@ -6889,6 +6936,60 @@ def _retarget_party(userdata: dict[str, Any], removed_id: int, replacement_id: i
         for index, member in enumerate(members):
             if member == removed_id:
                 members[index] = replacement_id
+
+
+def _unequip_orphaned_companions(userdata: dict[str, Any]) -> bool:
+    """Break every Companion link whose other half is no longer there.
+
+    A Companion and the character carrying it point at each other: the row's
+    `buddy` names the Companion's inventory id and the Companion's `chrID`
+    names the row.  `_valid_companion_equipment` requires both halves of every
+    link, and it judges the *whole* save rather than the part a write touches,
+    so a single one-sided link refuses every later equip or party save with a
+    501 -- permanently, because nothing the player can do from the client
+    repairs a link the client cannot see.
+
+    Selling a Companion already clears the row that carried it. Rebirth is the
+    same event from the other side and cleared nothing: the source row leaves
+    the roster with its `buddy` still claimed, and an already-owned destination
+    is rewritten with `buddy` 0 while its Companion still names it. Either one
+    ends the recode with a save that can no longer save a party.
+
+    Both halves are read before either is written, so a link that is whole
+    survives: only a half without its other half is broken, and the Companion
+    returns to the box rather than being lost.
+    """
+    rows = userdata.get("chrdata")
+    info = userdata.get("buddyInfo")
+    owned = info.get("list") if isinstance(info, dict) else None
+    if not isinstance(rows, list) or not isinstance(owned, list):
+        return False
+    by_row = {
+        row["id"]: row for row in rows
+        if isinstance(row, dict) and type(row.get("id")) is int and type(row.get("buddy", 0)) is int
+    }
+    by_inventory = {
+        companion["iid"]: companion for companion in owned
+        if isinstance(companion, dict) and type(companion.get("iid")) is int and type(companion.get("chrID", 0)) is int
+    }
+    orphaned_rows = [
+        row for row in by_row.values()
+        if row.get("buddy", 0) and by_inventory.get(row["buddy"], {}).get("chrID") != row["id"]
+    ]
+    orphaned_companions = [
+        companion for companion in by_inventory.values()
+        if companion.get("chrID", 0) and by_row.get(companion["chrID"], {}).get("buddy") != companion["iid"]
+    ]
+    if not orphaned_rows and not orphaned_companions:
+        return False
+    for row in orphaned_rows:
+        row["buddy"] = 0
+    for companion in orphaned_companions:
+        companion["chrID"] = 0
+    # The book is derived from the owned list, so it is reprojected rather than
+    # repaired -- the same rule `_migrate_companion_record` restores.
+    userdata["buddyInfo"] = _companion_info(owned)
+    return True
 
 
 def _preserved_roster(current: object, submitted: list[dict[str, Any]]) -> list[dict[str, Any]]:
