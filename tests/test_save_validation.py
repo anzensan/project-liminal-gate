@@ -169,6 +169,31 @@ class SaveValidationTest(unittest.TestCase):
         document["tokens"] = {"token": "ACCOUNT", 1: "ACCOUNT"}
         self.assertIn("tokens", errors(document))
 
+    def test_a_whole_companion_link_is_not_a_finding(self) -> None:
+        equipped = character() | {"buddy": 7}
+        document = save(chrdata=[equipped], buddyInfo={
+            "list": [{"bid": 1, "lv": 1, "date": 0.0, "iid": 7, "exp": 0, "flag": 0, "chrID": 3}],
+            "record": [],
+        })
+        self.assertEqual([], errors(document))
+
+    def test_a_companion_left_on_a_character_the_roster_lost_is_reported(self) -> None:
+        """The one defect a player can neither see nor repair from the client."""
+        document = save(chrdata=[character()], buddyInfo={
+            "list": [{"bid": 1, "lv": 1, "date": 0.0, "iid": 7, "exp": 0, "flag": 0, "chrID": 144}],
+            "record": [],
+        })
+        self.assertIn("buddyInfo.list[iid=7].chrID", errors(document))
+
+    def test_a_character_claiming_a_companion_that_does_not_claim_it_back(self) -> None:
+        document = save(chrdata=[character() | {"buddy": 7}], buddyInfo={
+            "list": [{"bid": 1, "lv": 1, "date": 0.0, "iid": 7, "exp": 0, "flag": 0, "chrID": 0}],
+            "record": [],
+        })
+        # A `chrID` of 0 is an unequipped Companion, which is legal on its own;
+        # only the half that claims something is a finding.
+        self.assertEqual(["chrdata[id=3].buddy"], errors(document))
+
 
 
 class MasterStringTest(unittest.TestCase):
