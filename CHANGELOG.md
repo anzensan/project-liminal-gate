@@ -55,6 +55,52 @@ run the command.
 
 ### Fixed
 
+- **Quests became unplayable one after another, ending in a Network Error loop
+  the player could not escape.** Reported against Metal Zone and All Hail the
+  King ([#64](https://github.com/anzensan/project-liminal-gate/issues/64)) and
+  described by a second tester as "slowly more quests become affected by this,
+  it's always the same way, at first I can do it, but after some time it
+  becomes glitched and inaccessible". Both are `hunting_clear_wallet_conflict`,
+  and the tester's event log settles both by arithmetic rather than reasoning.
+
+  Two independent defects, each of which refuses a won battle over Coins.
+
+  **A Continue outlived the battle it was spent in, and the server forgot it.**
+  The client cannot deduct a Continue's coin cost — it is local policy, and
+  what the client thinks it spent is the Energy-shaped `client_cost` — so the
+  wallet it reports stays that much above the server's until a settlement hands
+  it an authoritative one. `release_abandoned_battle` and every quest start
+  zeroed that record, on the reasoning that a new battle starts owing nothing.
+  The battle does; the client does not. The log caught three Continues at 100
+  Coins each — one spent in a 3000-17 run abandoned for 3000-7, two in the run
+  that followed — and the clear reported 806158 against a server holding
+  805858, refused four times by exactly the 100 the abandoned run had orphaned.
+  Only the three clear paths reset it now, because only they tell the client
+  what it holds. Each orphaned Continue was cumulative, which is why more
+  quests broke the longer a session ran, and why a relaunch appeared to fix it.
+
+  **A Hunting clear that did not fold its Coins into the wallet was refused.**
+  Issue 68 settled this for the core story and deliberately left Hunting alone,
+  on the reasoning that Hunting prices are recovered so its arithmetic stands.
+  They are ceilings, not prices: `result["coins"]` is the client's own figure
+  here too, and Crystal Road declares a zero ceiling while paying 400. On
+  All Hail the King 3000-11 the client reported the Coins and EXP of the story
+  stage cleared minutes earlier — 423 and 7829, already settled — against the
+  wallet it actually held, and the server demanded 423 more than the client
+  had, ten times in nine seconds. Both readings are now accepted and the clear
+  settles at the balance the client actually holds, so the two cannot drift
+  apart afterwards. Metal Zone still pays no Coins: the stale figure is not
+  credited, it is simply no longer required.
+
+  Neither defect is in what Chapter 3000 serves. Its two families are identical
+  in the reviewed BattleData beyond title and quest text — same stamina, same
+  Metal Ticket, same `assumedLevel`, no level sync, class, species or team
+  limit — the client registers all seventeen section programs, and both
+  families settled cleanly earlier in the same log. The refusals were correct
+  answers to wallets the server had made impossible to report.
+
+  Server restart, and an APK rebuild for on-device testers.
+
 - **A played save could be exported and then never imported back, which is
   where moving to a new phone stops.** Reported by a tester transferring an
   account to a second device: every step succeeded — export, `adopt`, the

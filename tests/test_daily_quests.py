@@ -926,7 +926,10 @@ class DailyQuestGameOverContinueTest(unittest.TestCase):
         status, again = self.start("rumble-again")
         self.assertEqual((200, 1), (status, again["cmdError"]))
 
-    def clear(self, request_id: str, *, coins: int | None = None, items: dict | None = None) -> tuple:
+    def clear(
+        self, request_id: str, *, coins: int | None = None, items: dict | None = None,
+        chapter: int = 6005, section: int = 1,
+    ) -> tuple:
         """Settle the quest, reporting the wallet the way the client does.
 
         `coins` is what the client believes it holds. Left unset it is the
@@ -947,7 +950,7 @@ class DailyQuestGameOverContinueTest(unittest.TestCase):
             ("itemList", json.dumps(item_list)),
             ("summonList", json.dumps(userdata["summonList"])),
             ("battle_result", json.dumps({
-                "chapter": 6005, "section": 1, "coins": 0, "exp": 0,
+                "chapter": chapter, "section": section, "coins": 0, "exp": 0,
                 "items": items or {}, "buddies": [], "monsters": [], "summons": [],
                 "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
             })),
@@ -988,9 +991,34 @@ class DailyQuestGameOverContinueTest(unittest.TestCase):
         status, refused = self.clear("plain-clear", coins=before + self.CONTINUE_COINS)
         self.assertEqual((409, "hunting_clear_wallet_conflict"), (status, refused["error"]))
 
-    def test_the_widening_does_not_survive_into_the_next_quest(self) -> None:
-        """A new battle starts owing nothing, however the last one ended."""
+    def test_a_continue_outlives_the_battle_it_was_spent_in(self) -> None:
+        """Issue 64: leaving a continued battle must not forget what it charged.
+
+        The client cannot deduct a Continue's coin cost, so the wallet it
+        reports stays that much above the server's until a settlement hands it
+        an authoritative one. Starting something else reconciles nothing --
+        the Coins are still gone here and still present there -- so zeroing the
+        record made the *next* clear refuse by exactly the orphaned amount, on
+        every retry, until a relaunch resynchronised the wallet. A tester's
+        event log caught it as three Continues at 100 Coins each: one spent in
+        a Metal Zone run that was abandoned for another, and two in the run
+        that followed, whose clear reported a wallet 100 above the widest total
+        the server would accept.
+        """
         self.assertEqual(200, self.start("first-start")[0])
+        before = self.userdata()["coins"]
         self.assertEqual(200, self.resume("first-continue")[0])
         self.assertEqual(200, self.start("second-start", chapter=6012, section=1)[0])
+        # The debt outlives the battle it was spent in.
+        self.assertEqual(self.CONTINUE_COINS, self.account()["active_battle_continue_coins"])
+
+        # The client reports the wallet it actually holds: the pre-Continue one.
+        status, cleared = self.clear("second-clear", chapter=6012, coins=before)
+
+        self.assertEqual(200, status, cleared)
+        # The Continue is still paid for, and the answer carries the total back
+        # so the client resynchronizes.
+        self.assertEqual(before - self.CONTINUE_COINS, self.userdata()["coins"])
+        self.assertEqual(before - self.CONTINUE_COINS, cleared["coins"])
+        # Settled, so nothing is owed into the quest after this one.
         self.assertEqual(0, self.account()["active_battle_continue_coins"])
