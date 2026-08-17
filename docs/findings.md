@@ -2220,3 +2220,57 @@ fixed loader changed exactly one row of 170 and left it validating clean.
 
 **Not yet validated on hardware.** The repair is confirmed against the reporting
 save offline; the account has not yet been played on a rebuilt server.
+
+## 2026-08-17: the Recode carryover was transcribed in half, and two more divergences beside it
+
+**Reported symptom.** A tester recoded with a Megacell at its 70.0 Luck cap,
+expected a fifth of it — 14.0 Luck — on the rebirthed unit, and saw 0.
+
+**Confirmed by the community record.** The wiki's `Recode DNA` page (read
+through `api.php`; see the reference note on fetching it) gives Skill Boost and
+Luck their own sections, in parallel wording:
+
+> **Skill Boost** — Skill boosts from the character are fully (100%) carried
+> over. A fifth (20%) of the skill boosts from both monsters are also carried
+> over. […] The total skill boost carried over from the character and monsters
+> will not exceed 100%.
+>
+> **Luck** — Luck from the character is fully (100%) carried over. A fifth (20%)
+> of the Luck from both monsters is also carried over. If the recoded character
+> is already owned, an additional 5 Luck is added […]. The max Luck value of the
+> character is increased to 100.
+
+`rebirth_recipe_data` had transcribed the Skill Boost sentence and the two
+already-owned sentences, and not the material Luck one. Everything else on the
+page was already right, including the ceiling: `character_luck_cap` gives every
+Λ destination 100.0.
+
+This is the failure mode of a rule held in one place by hand. Nothing in the
+server or the client could contradict it, because nothing else carried it — the
+retired service owned this arithmetic and the APK holds no table for it. The
+value was wrong for as long as the feature has existed and only a player
+counting Luck could have noticed.
+
+**Two further divergences the same page names, neither acted on here.** Both
+are behaviour changes rather than corrections, and both would take something
+away from accounts as they stand:
+
+- **The materials are not consumed.** The page says "The two monsters will also
+  be lost upon recoding, and may be recruited again through the usual methods."
+  This bundle leaves them on the roster and instead records them in
+  `rebirth_used_material_ids`, which bars them from ever being used again. The
+  client does carry `RebirthErrorCode.MonsterUsed = 5`, so a used-monster
+  concept is real; whether it meant "consumed" or "already spent" is not settled
+  by anything recovered. The two models differ in a way a player feels: under
+  the record a material can be re-recruited and used again, and under this one
+  it cannot. This is also why a Pact of Fate pull for a spent Megacell surprised
+  a tester — the account still held it, at its cap, so the pool refused.
+- **A destination already at 100 Luck is not refused.** "Recoding is not
+  available if the recoded character is already at 100 Luck." Nothing here
+  enforces that; the carryover simply clamps.
+
+**What changed.** `MATERIAL_LUCK_SHARE_PERCENT`, applied the same way the Skill
+Boost share already was, with the source's own Luck and the already-owned bonus
+unchanged and every ceiling still bounding the total. Two tests carrying the
+reporting tester's own numbers. Recodes already made are not recalculated:
+nothing records what a material's Luck was at the time.

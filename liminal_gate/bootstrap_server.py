@@ -146,7 +146,7 @@ from liminal_gate.message_catalog import (
 from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, active_week_index, build_bundled_exchange_policy, load_exchange_catalog
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
-from liminal_gate.rebirth_recipe_data import MATERIAL_SKILL_BOOST_SHARE_PERCENT, OWNED_DESTINATION_LUCK_BONUS
+from liminal_gate.rebirth_recipe_data import MATERIAL_LUCK_SHARE_PERCENT, MATERIAL_SKILL_BOOST_SHARE_PERCENT, OWNED_DESTINATION_LUCK_BONUS
 from liminal_gate.luck_data import LUCK_TENTHS_MAX, character_luck_cap
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
 from liminal_gate.settlement_catalog import SettlementCatalog, SettlementCatalogError, load_settlement_catalog
@@ -1710,19 +1710,22 @@ class BootstrapState:
                         # does; what an already-owned destination had is put
                         # back below.
                         destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [0.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
-                        # A fifth of each material's Skill Boost comes across
-                        # with the source's own, and an already-owned
-                        # destination gains 5 Luck. See the record cited beside
-                        # these two constants; the client's ceilings bound both.
-                        material_boost = sum(
-                            int(row.get("skillBoost", 0)) * MATERIAL_SKILL_BOOST_SHARE_PERCENT // 100
-                            for material_id, _ in recipe.materials
-                            for row in rows
-                            if isinstance(row, dict) and row.get("id") == material_id
-                            and type(row.get("skillBoost", 0)) is int
-                        )
+                        # A fifth of each material's Skill Boost *and* a fifth of
+                        # each material's Luck come across with the source's own,
+                        # and an already-owned destination gains 5 Luck on top.
+                        # See the record cited beside these constants; the
+                        # client's ceilings bound all of it.
+                        def material_share(field: str, percent: int) -> int:
+                            return sum(
+                                int(row.get(field, 0)) * percent // 100
+                                for material_id, _ in recipe.materials
+                                for row in rows
+                                if isinstance(row, dict) and row.get("id") == material_id
+                                and type(row.get(field, 0)) is int
+                            )
+                        material_boost = material_share("skillBoost", MATERIAL_SKILL_BOOST_SHARE_PERCENT)
                         carried_boost = min(LUCK_TENTHS_MAX, int(source.get("skillBoost", 0)) + material_boost)
-                        carried_luck = min(LUCK_TENTHS_MAX, int(source.get("luck", 0)) + (OWNED_DESTINATION_LUCK_BONUS if overlapped else 0))
+                        carried_luck = min(LUCK_TENTHS_MAX, int(source.get("luck", 0)) + material_share("luck", MATERIAL_LUCK_SHARE_PERCENT) + (OWNED_DESTINATION_LUCK_BONUS if overlapped else 0))
                         held_boost = int(held_destination.get("skillBoost", 0)) if isinstance(held_destination, dict) and type(held_destination.get("skillBoost", 0)) is int else 0
                         held_luck = int(held_destination.get("luck", 0)) if isinstance(held_destination, dict) and type(held_destination.get("luck", 0)) is int else 0
                         held_plus = int(held_destination.get("plusCount", 0)) if isinstance(held_destination, dict) and type(held_destination.get("plusCount", 0)) is int else 0
