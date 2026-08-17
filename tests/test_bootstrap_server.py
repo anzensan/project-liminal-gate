@@ -1841,12 +1841,13 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertFalse(persisted["chrdata"][2]["isNew"])
 
         rejected_body = urlencode({
-            "chrdata": json.dumps(delta), "teamMembers": json.dumps([3, 25, 9999, 0, 0, 0]),
+            "chrdata": json.dumps([{"id": 9998, "isNew": False}]),
+            "teamMembers": json.dumps([3, 25, 9001, 0, 0, 0]),
             "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
             "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
         })
         status, payload = self.post(f"/gd/userdata?otk={token}&requestID=bad-party", rejected_body)
-        self.assertEqual((409, "tutorial_state_conflict"), (status, payload["error"]))
+        self.assertEqual((501, "unsupported_userdata_write"), (status, payload["error"]))
         persisted = self.server.state.userdata_for(token)
         assert persisted is not None
         self.assertEqual([3, 25, 9001], [row["id"] for row in persisted["chrdata"]])
@@ -1856,14 +1857,15 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual([3, 25, 9001], [row["id"] for row in userdata["chrdata"]])
 
-    def test_free_roam_party_layout_rejection_is_not_answered_by_a_scripted_success(self) -> None:
-        """A rejected party-only save must not fall through to the tutorial script.
+    def test_free_roam_party_layout_with_a_lost_member_is_not_answered_by_a_scripted_success(self) -> None:
+        """A party naming a lost character must still be settled, and settled here.
 
         The profile's last structural write has the same field names as the
         free-roam party-layout save and runs `free_roam -> free_roam`, but it
-        only stores `lastupdate`.  If it can still settle a save that the
-        free-roam handler rejected, the client is told `success` while its
-        party is silently discarded and reverts on the next login.
+        only stores `lastupdate`.  If it can settle this save instead, the
+        client is told `success` while its party is silently discarded and
+        reverts on the next login -- so the reordering has to survive, which
+        only the free-roam handler stores.
         """
         account_id = "0123456789ABCDEF0123456789ABCDEF"
         token = "0123456789ABCDEF"
@@ -1893,12 +1895,13 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         assert persisted is not None
         self.assertEqual([25, 3, 0, 0, 0, 0], persisted["teamMembers"])
 
-        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=bad-layout", layout([25, 3, 9999, 0, 0, 0]))
-        self.assertEqual((409, "tutorial_state_conflict"), (status, payload["error"]))
-        self.restart()
-        status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-bad-layout")
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=lost-layout", layout([3, 25, 9999, 0, 0, 0]))
         self.assertEqual(200, status)
-        self.assertEqual([25, 3, 0, 0, 0, 0], userdata["teamMembers"])
+        self.assertTrue(payload["success"])
+        self.restart()
+        status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-lost-layout")
+        self.assertEqual(200, status)
+        self.assertEqual([3, 25, 0, 0, 0, 0], userdata["teamMembers"])
 
     def test_userdata_read_without_a_token_cannot_break_later_saves(self) -> None:
         """A missing `otk` must not insert a non-string key into the token map.
