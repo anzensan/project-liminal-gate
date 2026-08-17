@@ -2174,3 +2174,49 @@ it cannot resolve, and one that cannot grant anything.
 unequipped halves, the party save that follows, the on-load repair, and the
 emptied slot. The reporting account has not yet been re-checked against this
 build.
+
+## 2026-08-17: the Recode carried the source's job slots, and the party screen stopped there
+
+**Reported symptom.** After a Recode the character list drew rows on top of one
+another, the party screen showed two real members followed by four identical
+Japanese-named level 99 placeholders, and relaunching did not clear it. The
+reporter named Leviathan; the save named the recipe.
+
+**Settled by the reporting save, not by reasoning.** `rebirth_used_material_ids`
+was `[221, 648]`, which is recipe 42 — Bahl (1) into Bahl Λ (920), materials Phi
+Orbling and Snaptrap. Everything the earlier entry predicted would be wrong was
+right: 1 was gone, 920 was present, all fifteen squads had been retargeted from
+1 to 920, no party slot named a character outside the roster, and no Companion
+link was half-attached. The save validated clean.
+
+- **One row in 170 was anomalous, and it was the rebirthed one.** Row 920 held
+  `jobLevels [1.0, 0.0, 0.0]` with `jobSlots [387131153.0, 52888865.0,
+  85132055.0]` — Bahl's three slots. `ChrDatabase` gives Bahl three jobs
+  (`[1, 7, 8]`) and Bahl Λ one (`[5019]`).
+- **A zero job level means the job is not unlocked**, which `add_job` confirms:
+  it fills the first zero entry. Across the whole save, 920 was the only row
+  with a non-zero slot against a zero level, and the only row carrying slot data
+  past its own character's job count. The reverse — an unlocked job with an
+  empty slot — is ordinary and appears on 163 rows.
+- **The placeholder is Bahl.** 暗黒戦士バルード and バルさん are the
+  protagonist, the natural choice for a row prefab's authored text. The four
+  identical rows are unpopulated prefabs, not four characters: squad 2 is
+  `[Ma'curi, Gatz, Bahl Λ, A'misandra, Piz'fer, Marcus]`, the loop drew the two
+  ahead of 920 and stopped there, and rows three through six never ran.
+
+**Why the recipes make this general.** 64 of the 65 bundled recipes change the
+job count, essentially always three to one, so every Λ recode produced a row of
+this shape. It had simply never been looked for: `jobSlots` is the one member of
+the roster row that no settlement, gate or projection in this server reads, so
+nothing here could notice, and the client says nothing when a coroutine dies.
+
+**What changed.** The destination starts with `jobSlots [0.0, 0.0, 0.0]`, the
+same as `_granted_character_row`. A destination the account already owned keeps
+its own `jobSlots`, `jobID` and `buddy`, which are choices made for jobs it has;
+that also leaves its Companion link whole, so only the departed source's is
+unequipped. `_migrate_rebirth_job_slots` clears the copied array on load, and
+`save_validation` reports the shape. Running the reporting save through the
+fixed loader changed exactly one row of 170 and left it validating clean.
+
+**Not yet validated on hardware.** The repair is confirmed against the reporting
+save offline; the account has not yet been played on a rebuilt server.

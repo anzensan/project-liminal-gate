@@ -55,6 +55,35 @@ run the command.
 
 ### Fixed
 
+- **A Recode gave the rebirthed unit the equipped job slots of the character it
+  replaced, and the party screen could not draw it.** This is the cause of the
+  report below; the three defects there are real and fixed, but this is the one
+  the reporting account was actually stuck on, and its save settled it.
+
+  `jobSlots` is per job. A recode destination is a *different character* with a
+  different job list — one job rather than three, for 64 of the 65 bundled
+  recipes — but the destination row was built by copying the source's row and
+  resetting only `jobLevels`, `jobID` and `buddy`. The array of equipped slots
+  came across untouched, so the rebirthed unit carried slot data standing
+  against jobs it neither has nor has unlocked, and the client reads a slot
+  against the job that owns it.
+
+  In the reporting save that row was the only anomaly in 170: Bahl Λ, one job,
+  carrying all three of Bahl's slots. It sat in third place in the squad on
+  screen, and the party screen drew the two members ahead of it and then
+  nothing — the four rows below kept their unpopulated placeholder, which is
+  why they all read as the same Japanese-named level 99 character.
+
+  The rebirthed unit now starts with no equipped slots, exactly as a granted
+  character does. A destination the account already owned keeps its own slots,
+  active job and Companion instead: they are choices it made for jobs it
+  actually has, and a level 1 row has nothing to say about any of them — which
+  also leaves its Companion link whole, so only the departed source's is
+  unequipped. A save already carrying the copied slots repairs itself the next
+  time the server loads it, and
+  `python3 -m liminal_gate.account_state validate` reports the shape by
+  character and slot.
+
 - **A Recode left the account unable to change its party, and the character
   list came back drawn on top of itself.** Reported after recoding Leviathan:
   "it softlocks the game and I cant change party members at all", "can still
