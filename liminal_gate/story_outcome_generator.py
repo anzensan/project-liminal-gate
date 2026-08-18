@@ -91,7 +91,7 @@ SCHEMA_VERSION = 1
 
 #: The Companion box the local server advertises.  Taken from the same constant
 #: block the client is sent so the catalog's capacity and the client's agree.
-MAX_COMPANIONS = int(build_server_constants()["maxBuddyBoxCount"])
+MAX_COMPANIONS = int(build_server_constants()["BuddyBoxMax"])
 
 #: The level a dropped Companion arrives at.  ``EnemyData`` records which
 #: Companion an enemy drops and at what rate, and no level, so this follows the

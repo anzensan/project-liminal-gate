@@ -6081,8 +6081,8 @@ def _granted_hunting_companions(
     battle into a Network Error loop that only selling Companions escaped.  The
     battle is settled instead, granting as many as the box holds.  The overflow
     is dropped rather than granted past the ceiling the client is told about,
-    because a box longer than `maxBuddyBoxCount` is a shape the client's own
-    screens were never given.
+    because a box longer than the `BuddyBoxMax` the client was sent is a shape
+    its own screens were never given.
     """
     raw_info = userdata.get("buddyInfo", {"list": [], "record": []})
     owned = raw_info.get("list") if isinstance(raw_info, dict) else None
