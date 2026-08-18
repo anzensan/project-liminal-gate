@@ -2447,42 +2447,15 @@ class BootstrapState:
                     ):
                         return "unsupported_ordinary_pact", None
                     else:
-                        # Every *unlocked* job gains, not just the first slot.
-                        # A duplicate raises the character, and the character is
-                        # all of its jobs -- which is why players unlocked a
-                        # character's jobs before pulling more of it, rather than
-                        # levelling each one by hand afterwards. Granting slot 0
-                        # alone also mismatched what this reply says: it reported
-                        # the *active* `jobID` beside slot 0's level, so a
-                        # character whose active job was its second told the
-                        # client that job had become a level it had not.
-                        #
-                        # A slot at level zero is a job the character has not
-                        # unlocked and stays untouched, which is the same test
-                        # the client's own screens use to tell the two apart.
+                        # Every *unlocked* job gains, not just the first slot,
+                        # and the reply describes the active one; see
+                        # `_raise_unlocked_jobs`, which the "+" decoration below
+                        # shares so that both level grants obey one rule.
                         old_boost = current.get("skillBoost", 0)
-                        active = int(current.get("jobID", 0))
-                        if not 0 <= active < len(current["jobLevels"]):
-                            active = 0
-                        old_level = int(current["jobLevels"][active]) & 0xFFF
-                        level = old_level
-                        for slot, packed_value in enumerate(current["jobLevels"]):
-                            packed_level = int(packed_value)
-                            slot_level = packed_level & 0xFFF
-                            if slot_level <= 0:
-                                continue
-                            raised = min(
-                                catalog.max_level,
-                                slot_level + selected.duplicate_level_added,
-                            )
-                            encoded_level = (packed_level & ~0xFFF) | raised
-                            current["jobLevels"][slot] = (
-                                float(encoded_level)
-                                if type(packed_value) is float
-                                else encoded_level
-                            )
-                            if slot == active:
-                                level = raised
+                        active = _active_job(current)
+                        old_level, level = _raise_unlocked_jobs(
+                            current, active, selected.duplicate_level_added, catalog.max_level,
+                        )
                         result = {
                             "id": selected.character_id,
                             "jobID": active,
@@ -6115,6 +6088,48 @@ def _granted_hunting_companions(
     return _companion_info(rows)
 
 
+def _active_job(current: dict[str, Any]) -> int:
+    """Return the roster row's active job slot, clamped to the row it indexes."""
+    active = int(current.get("jobID", 0))
+    return active if 0 <= active < len(current["jobLevels"]) else 0
+
+
+def _raise_unlocked_jobs(
+    current: dict[str, Any], active: int, added: int, max_level: int,
+) -> tuple[int, int]:
+    """Add `added` levels to every job the character has unlocked.
+
+    Returns the active job's level before and after, which is what a pull
+    result reports beside its `jobID`.
+
+    A duplicate raises the character, and the character is all of its jobs --
+    which is why players unlocked a character's jobs before pulling more of it,
+    rather than levelling each one by hand afterwards.  A slot at level zero is
+    a job the character has not unlocked and stays untouched, the same test the
+    client's own screens use to tell the two apart.  Job experience rides in the
+    high bits of the same packed value and is preserved across the grant.
+
+    Both level grants a pull can make come through here, the duplicate's and the
+    "+" decoration's, because the rule is one rule.  Granting slot 0 alone also
+    mismatches what the reply says: it reports the *active* `jobID`, so a
+    character whose active job is its second is told that job became a level
+    belonging to a different one.
+    """
+    old_level = int(current["jobLevels"][active]) & 0xFFF
+    level = old_level
+    for slot, packed_value in enumerate(current["jobLevels"]):
+        packed = int(packed_value)
+        slot_level = packed & 0xFFF
+        if slot_level <= 0:
+            continue
+        raised = min(max_level, slot_level + added)
+        encoded = (packed & ~0xFFF) | raised
+        current["jobLevels"][slot] = float(encoded) if type(packed_value) is float else encoded
+        if slot == active:
+            level = raised
+    return old_level, level
+
+
 def _apply_plus_pact(
     current: dict[str, Any], result: dict[str, Any], luck_type: bool,
     max_level: int, max_gain: int, tuning: PactTuning,
@@ -6129,15 +6144,22 @@ def _apply_plus_pact(
 
     The gains are applied to the account's own row as well as reported, because
     the client renders what it is told and then reads the roster back.
+
+    The extra levels reach every unlocked job through `_raise_unlocked_jobs`,
+    the same way the duplicate gain they decorate does.  They did not until
+    2026-08-17: this wrote slot 0 and reported slot 0's level beside the active
+    `jobID`, which is the defect the duplicate grant had already been fixed for,
+    left behind in the decoration.  A tester saw it as a "+" that levelled the
+    first job alone, and the test that should have caught it had the roll turned
+    off to stop it failing one run in five.
     """
     random_source = random.SystemRandom()
     if random_source.randrange(100) >= tuning.plus_chance_percent:
         return
-    packed = int(current["jobLevels"][0])
-    old_level = packed & 0xFFF
-    level = min(max_level, old_level + random_source.randint(*tuning.plus_levels))
-    encoded = (packed & ~0xFFF) | level
-    current["jobLevels"][0] = float(encoded) if type(current["jobLevels"][0]) is float else encoded
+    active = _active_job(current)
+    old_level, level = _raise_unlocked_jobs(
+        current, active, random_source.randint(*tuning.plus_levels), max_level,
+    )
     result["jobLevels"] = [level]
     result["levelAdded2"] = level - old_level
     gain = random_source.randint(*tuning.plus_tenths)

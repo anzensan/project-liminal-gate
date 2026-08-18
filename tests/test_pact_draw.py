@@ -22,6 +22,13 @@ NO_PLUS_PACT = replace(
     DEFAULT_TUNING, pact=replace(DEFAULT_TUNING.pact, plus_chance_percent=0),
 )
 
+#: The same tuning with the "+" on every pull, so what it does to a roster row
+#: can be asserted rather than sampled.  Its rate is the only thing forced; the
+#: levels and tenths it grants stay the policy's own random ranges.
+ALWAYS_PLUS_PACT = replace(
+    DEFAULT_TUNING, pact=replace(DEFAULT_TUNING.pact, plus_chance_percent=100),
+)
+
 
 # These pin exact result rows, durable packed levels and replayed payloads, so
 # the "+" Pact roll is held off across the class: they are about the draw
@@ -696,11 +703,12 @@ class PactRefusalWalletTest(unittest.TestCase):
 class DuplicateJobLevelTest(unittest.TestCase):
     """A duplicate raises every job the character has unlocked.
 
-    The "+" Pact is held off here for the reason `PactDrawTest` holds it off:
-    this pins exact packed job levels, and the roll lands at its real 22% rate,
-    so one draw in five disagreed with the assertion. It read as an
-    intermittent failure of the duplicate grant rather than as the decoration
-    it is -- measured at 5 failures in 12 runs before this guard, 0 after.
+    The "+" Pact is held off here because this pins exact packed job levels and
+    the "+" adds a random one to five on top of them. That guard was doing more
+    than it said: the roll it silenced was itself only levelling the first slot,
+    so a real defect read as a 22% flake for a week. `PlusPactJobLevelTest`
+    below now forces the roll on and asserts it, so nothing is hidden by turning
+    it off here.
 
     Granting only the first slot is what a tester reported: pulling a duplicate
     levelled J1 alone, so the reason to unlock a character's jobs *before*
@@ -755,5 +763,81 @@ class DuplicateJobLevelTest(unittest.TestCase):
                 self.assertEqual(1, payload["chrdata"][0]["jobID"])
                 self.assertEqual([20 + added], payload["chrdata"][0]["jobLevels"])
                 self.assertEqual(added, payload["chrdata"][0]["levelAdded"])
+            finally:
+                stop_server(server, thread)
+
+
+@patch("liminal_gate.bootstrap_server.DEFAULT_TUNING", ALWAYS_PLUS_PACT)
+class PlusPactJobLevelTest(unittest.TestCase):
+    """The "+" raises every unlocked job too, and reports the active one.
+
+    `PlusPactTest` pulls against an empty roster, so every row it decorates is a
+    brand new character with one unlocked job -- which is why it never noticed
+    that the "+" wrote slot 0 and nothing else. A tester did, on the second half
+    of [#69](https://github.com/anzensan/project-liminal-gate/issues/69): the
+    duplicate grant had been fixed to raise every unlocked job and the "+" on
+    top of it still landed on the first.
+
+    Between them those two defects hid each other. This same roster under
+    `DuplicateJobLevelTest` failed about one run in five while the "+" was live,
+    and the failure was read as a flaky test and silenced by turning the roll
+    off rather than as the roll being wrong. The rate is forced to 100 here so
+    the decoration is asserted head-on instead of sampled.
+    """
+
+    def test_the_plus_levels_reach_every_unlocked_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            policy = build_bundled_pact_policy()
+            selected = policy.fellowship_draws[0]
+            # The same row `DuplicateJobLevelTest` uses: two jobs unlocked at
+            # different levels, the third never unlocked, the *second* active.
+            roster = [
+                {
+                    "id": draw.character_id, "buddy": 0, "date": 0.0,
+                    "jobSlots": [0.0, 0.0, 0.0],
+                    "jobLevels": [float((5 << 12) | 10), float((7 << 12) | 20), 0.0],
+                    "jobID": 1, "flags": 0, "skillBoost": 17,
+                    "luck": 0 if draw.character_id == selected.character_id else policy.max_luck,
+                }
+                for draw in policy.fellowship_draws
+            ]
+            items = [0] * 181
+            items[80] = 1
+            server, thread = start_server(
+                ("127.0.0.1", 0), bootstrap_profile(),
+                BootstrapState(Path(directory) / "state.json"),
+                pact_draw_catalog=policy,
+            )
+            try:
+                server.state.create_account("token", "account", {
+                    "coins": policy.coin_cost, "energy": 0, "freeEnergy": 0,
+                    "itemList": items, "chrdata": roster,
+                })
+                status, payload = post(
+                    server, "/gd/do_slot", "fate-ticket-plus-jobs",
+                    "kind=20&count=1&luckType=true&campaignChrID=0&eventFlag=0&lastUpdate=1",
+                )
+                self.assertEqual((200, True), (status, payload["success"]))
+                stored = next(
+                    row for row in server.state.userdata_for("token")["chrdata"]
+                    if row["id"] == selected.character_id
+                )
+                row = payload["chrdata"][0]
+                added = selected.duplicate_level_added
+                plus = row["levelAdded2"]
+                self.assertTrue(1 <= plus <= 5, "the '+' must grant the policy's own range")
+                levels = [int(value) & 0xFFF for value in stored["jobLevels"]]
+                # Both unlocked jobs carry the duplicate gain *and* the "+" on
+                # top of it; the job the character never unlocked carries
+                # neither.
+                self.assertEqual([10 + added + plus, 20 + added + plus, 0], levels)
+                # Job experience is untouched by either level grant.
+                self.assertEqual([5, 7, 0], [int(value) >> 12 for value in stored["jobLevels"]])
+                # The reply describes the active job, which is the second, and
+                # reports the two gains separately -- the duplicate's as
+                # `levelAdded` and the "+" as `levelAdded2`.
+                self.assertEqual(1, row["jobID"])
+                self.assertEqual([20 + added + plus], row["jobLevels"])
+                self.assertEqual(added, row["levelAdded"])
             finally:
                 stop_server(server, thread)
