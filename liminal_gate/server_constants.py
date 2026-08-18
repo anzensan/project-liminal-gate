@@ -51,6 +51,43 @@ LOCAL_COUNTRY_NAME = "United States"
 # fallback. A configured local event catalog replaces this one-entry fixture.
 CLOSED_SPECIAL_QUEST_SENTINEL = "3003-1"
 
+# Every name `UserData.SetServerConstants` (`0x19D2A74`-`0x19D6904`) looks up in
+# this block, in the order its literals appear.  A key outside this set is not
+# rejected by the client, it is *ignored* -- the setter reads a fixed list and
+# never walks the object -- so sending one is silent and leaves the field at its
+# `UserData..cctor` default.  That is how `maxBuddyBoxCount`, the name of the
+# static rather than the name of the key, held every account's Companion box at
+# 250 while this module said 1000.  `patchVersion` is an object and the two keys
+# inside it, `appVersion` and `timestamp`, are not top-level names.
+CLIENT_CONSTANT_KEYS = frozenset({
+    "minStamina", "maxStamina", "maxChapter", "maxCoins", "maxEnergy",
+    "maxFreeEnergy", "maxItemCount", "refillInterval", "refillCost",
+    "maxMessages", "levelCap", "NormalSlotCoins", "RareSlotEnergy",
+    "AddJobEnergy", "vsStaminaRefillInterval", "maxVsStamina", "helpURL_jp",
+    "helpURL_en", "privacyPolicy_ja", "privacyPolicy_en", "tosURL_jp",
+    "tosURL_en", "creditsURL", "supportURL_jp", "supportURL_en",
+    "supportEmail_jp", "supportEmail_en", "ChapterClearEnergyBonus",
+    "EnergyBonusByDailyQuest", "NormalBuddySlotCoins", "RareBuddySlotEnergy",
+    "supportURL_fr", "supportURL_de", "supportURL_es", "supportEmail_fr",
+    "supportEmail_de", "supportEmail_es", "supportURL_zh", "supportEmail_zh",
+    "scheduleURL_jp", "scheduleURL_en", "supportURL_AndApp",
+    "supportURL_AppStore", "supportURL_GooglePlay",
+    "andapp_refundable_end_datetime", "appstore_refundable_end_datetime",
+    "googleplay_refundable_end_datetime", "luckUpBuddies", "teamLuckUpBuddies",
+    "luckUpBoostBuddies", "statusUpItems", "specialQuestList",
+    "descentQuestList", "eidolonQuestList", "towerQuestList",
+    "metalHuntingList", "huntingHuntingList", "descentHuntingList",
+    "helpItemEnabled", "changeUsernameEnabled", "currentVersion_iOS",
+    "currentVersion_Android", "patchVersion", "BuddyBoxMax",
+    "SameBuddyExpBonus", "LuckyLuckBonus", "MaxStaminaBias",
+    "VsMatchInterval1", "VsMatchInterval2", "patchDataZipped",
+    "CampaignSlotEnergy", "CampaignBuddySlotEnergy",
+    "SameBuddyExpBonus_InCampaign", "purchasePaidEnergyCount",
+    "purchaseFreeEnergyCount", "worldMaxChapter", "AdMovieFreeEnergy",
+    "AdSuppressionPeriod", "CountriesJa", "CountriesEn", "CountryCodes",
+    "NoServiceCountryCodes",
+})
+
 
 def build_server_constants(
     normal_slot_coins: int | None = None, rare_slot_energy: int | None = None,
@@ -139,16 +176,24 @@ def build_server_constants(
         # Disarmers.  The other two terms are the client's own: the slot stays
         # hidden inside the tutorial and on World-0 map specials.
         "helpItemEnabled": True,
-        # `ServerConstants.maxCharacterCount` (ARM64 field offset 0x68) is the
-        # character box, and the client falls back to 50 when the server does
-        # not set it -- five tutorial characters plus forty-five Pact pulls, and
-        # then no room for a forty-sixth. The service's own value is not
-        # recovered, so this is a local preservation policy chosen to match the
-        # Companion box below rather than a claim about the original box size.
-        "maxCharacterCount": 1000,
+        # No character-box key is sent, and that is not an omission.
+        # `SetServerConstants` reads a fixed list of names and none of them
+        # names the character box, so `maxCharacterCount` -- the static at
+        # offset 0x68 -- keeps whatever `UserData..cctor` gave it, which is
+        # 0x400 = 1024 (`0x19DE2B4`). A `maxCharacterCount` key was sent here
+        # until 2026-08-17 and was read by nothing; the roster ceiling the
+        # client actually applies has always been its own 1024.
         "NormalBuddySlotCoins": 3000,
         "RareBuddySlotEnergy": 3,
-        "maxBuddyBoxCount": 1000,
+        # The Companion box, and the key name is the client's rather than the
+        # field's: `SetServerConstants` looks up `BuddyBoxMax` (`0x19D53F4`)
+        # and stores it into the static named `maxBuddyBoxCount` at offset
+        # 0x74. Sending the field name instead left the box at the client's own
+        # `..cctor` default of 250 (`mov w13, #0xfa` at `0x19DE2C4`), which is
+        # the ceiling a tester hit while the server had already been settling
+        # drops against 1000 -- and the client, holding the smaller number,
+        # refused to enter any stage that could drop a Companion.
+        "BuddyBoxMax": 1000,
         # Final production retained the ordinary 2x matching-Companion bonus.
         "SameBuddyExpBonus": 2,
         "SameBuddyExpBonus_InCampaign": 2,

@@ -55,6 +55,32 @@ run the command.
 
 ### Fixed
 
+- **The Companion box stopped at 250, and a full box locked every stage that
+  could drop one.** Reported by a tester storing Metal Minions to strengthen
+  Companions: at 250 the counter turned red — 251 out of 250 — and Metal Zone
+  would no longer start. The wiki's [Companions](https://terrabattle.fandom.com/wiki/Companions)
+  page records 1000 as the final 5.5.7 limit, and this server had been settling
+  Companion drops against 1000 all along.
+
+  The number reached the client under the wrong name. `SetServerConstants`
+  reads a fixed list of key names, and the one it reads for the Companion box
+  is `BuddyBoxMax`; this bundle sent `maxBuddyBoxCount`, which is the name of
+  the *field* that key sets. A constants key the client does not recognise is
+  ignored rather than refused, so the box kept the client's own built-in
+  default of 250 and nothing anywhere said so. The client owns this gate: it
+  compares its box against the number it was told and withholds the stage, so
+  every server-side ceiling agreeing on 1000 could not help.
+
+  `BuddyBoxMax: 1000` is now sent. Existing saves are untouched — a box already
+  past 250 stays as it is and is now inside the ceiling the client knows about.
+
+  Two things came out of the same reading of the client. `maxCharacterCount`
+  was also being sent and is also not a key the client reads: its roster
+  ceiling has always been its own default of 1024, so that key is dropped and
+  no account changes. And the full list of names the client does read is now
+  recorded beside the block and asserted against what is served, so a key this
+  project invents or mistypes fails a test instead of going quietly nowhere.
+
 - **A Recode did not consume its monsters, and could be run against a
   destination already at maximum Luck.** Two testers reported keeping monsters
   a recode should have taken — "Snaptrap and Phi Orbling still here max luck

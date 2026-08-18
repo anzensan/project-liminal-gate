@@ -644,8 +644,10 @@ Private inputs, captures, account state, and original assets remain excluded.
   branch at `0xF85A70` also
   requires a global byte to be zero, and that field is unidentified -- the
   observed flash implies its value rather than proving it.
-- **Local policy:** the country roster and large character/Companion box sizes
-  are compatibility fixtures, not recovered production-service values.
+- **Local policy:** the country roster and the 1000-Companion box are
+  compatibility fixtures, not recovered production-service values. The character
+  box is not one of them: the client reads no key for it and keeps its own 1024
+  (see the 2026-08-17 entry on `BuddyBoxMax`).
 - **Local policy with confirmed client meter semantics:** a successful
   chapter-boundary clear in either ordinary core-story catalog writes
   `refillStartTime: 0.0`, the client's full-meter representation. The rule is
@@ -2324,3 +2326,46 @@ reading, not a recovery, and no refusal is sent on it.
 
 **Not yet validated on hardware.** The two reports confirm the old behaviour;
 the new behaviour has not yet been played.
+
+## 2026-08-17: the Companion box was sent under the static's name, not the key's
+
+**Reported symptom.** Issue 71. A tester storing Metal Minions to strengthen
+Companions reached 250 and could no longer enter a stage that might drop one —
+Metal Zone tested — with the box counter reading a red 251 out of 250. The
+server had been settling those drops against 1000 the whole time.
+
+**Confirmed from the final client.** `UserData.SetServerConstants`
+(`0x19D2A74`–`0x19D6904`) reads a fixed list of key names and never walks the
+object it is given. The name it looks up for the Companion box is `BuddyBoxMax`
+(`0x19D53F4`), which it stores into the static field the dump calls
+`maxBuddyBoxCount`, at offset `0x74`. This server sent `maxBuddyBoxCount` — the
+field's name, not the key's — so the box was never set, and
+`UserData..cctor` left it at its own default: `mov w13, #0xfa` at `0x19DE2C4`,
+250, exactly the ceiling the tester hit. A constants key the client does not
+recognise is not refused; it is ignored, which is why nothing anywhere reported
+a problem and every server-side ceiling (Metal Zone grants, chest grants, Pact
+draws, the generated story-outcome catalog) agreed on 1000 among themselves.
+
+- **The client owns this gate.** Nothing was wrong with what the server would
+  have settled. The client compares its own box against the number it was told
+  and withholds the stage; the tester's 251st Companion is a box the server
+  granted past a ceiling the client believed in.
+- **The character box has no key at all.** The same fixed list contains no name
+  for `maxCharacterCount` (offset `0x68`), so the `maxCharacterCount` this
+  server sent was read by nothing for as long as it was sent. The client's own
+  default is `orr w13, wzr, #0x400` at `0x19DE2B4` — 1024, not the 50 a comment
+  here had claimed — so the roster ceiling accounts actually had was always
+  1024, and removing the dead key changes no account. The offsets are anchored
+  by `numMemberInTeam` at `0x5C`, which the same `..cctor` sets to 6.
+
+**What changed.** The block sends `BuddyBoxMax: 1000` and no longer sends
+`maxBuddyBoxCount` or `maxCharacterCount`. The full list of names the client
+reads is recorded as `server_constants.CLIENT_CONSTANT_KEYS`, and the served
+block is asserted against it, so a key this project invents or mistypes fails a
+test rather than going quietly nowhere. Nothing about an existing save changes:
+a box already past 250 stays as it is and is now under the ceiling the client
+is told about.
+
+**Not yet validated on hardware.** The 250 ceiling is confirmed by the report
+and by the client's own default; the 1000 the client is now told has not yet
+been played to.

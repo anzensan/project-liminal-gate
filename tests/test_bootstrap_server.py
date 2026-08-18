@@ -19,6 +19,7 @@ from liminal_gate.bootstrap_server import (
 )
 from liminal_gate.bootstrap_wire import _endpoint_refusal_envelope
 from liminal_gate.event_flag_data import music_event_flags
+from liminal_gate.server_constants import CLIENT_CONSTANT_KEYS
 from liminal_gate.story_progression_catalog import build_core_story_policy
 from tests.support import serve
 
@@ -823,10 +824,18 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         # built-in 50 entries, including Metal. The closed recovered entry
         # keeps the server authoritative without rendering an unsupported row.
         self.assertEqual(["3003-1"], constants["specialQuestList"])
-        # Both boxes must be set. Left unset, the client caps the roster at its
-        # own default of 50 and refuses the pull that would exceed it.
-        self.assertGreater(constants["maxCharacterCount"], 50)
-        self.assertGreater(constants["maxBuddyBoxCount"], 50)
+        # The Companion box is sent under the client's own key. `BuddyBoxMax`
+        # is the only name `SetServerConstants` looks up for it, so a block
+        # naming the static instead leaves the box at the client's default of
+        # 250 and the client then refuses to enter a stage that could drop one.
+        self.assertEqual(1000, constants["BuddyBoxMax"])
+        self.assertNotIn("maxBuddyBoxCount", constants)
+        # The character box has no key at all: the client keeps its own 1024.
+        self.assertNotIn("maxCharacterCount", constants)
+        # Every key served has to be one the client's setter reads. A name it
+        # does not read is not refused, it is dropped, so a mistyped or invented
+        # key is a policy the server believes it declared and no account has.
+        self.assertEqual(set(), set(constants) - CLIENT_CONSTANT_KEYS)
         # The Pact costs the client will now enforce must be the same numbers
         # the server charges, or it gates a draw the server would have allowed.
         pacts = self.server.pact_draw_catalog
