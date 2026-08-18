@@ -55,6 +55,40 @@ run the command.
 
 ### Fixed
 
+- **A Recode did not consume its monsters, and could be run against a
+  destination already at maximum Luck.** Two testers reported keeping monsters
+  a recode should have taken — "Snaptrap and Phi Orbling still here max luck
+  still and level", "I still have Megacell maxed out and Chiton at level enough
+  to recode. Just Leviathan normal is gone from my roster."
+
+  The record: "The two monsters will also be lost upon recoding, and may be
+  recruited again through the usual methods." This bundle kept them on the
+  roster and instead recorded their ids in `rebirth_used_material_ids`, barring
+  every later recode that named the same monster. That substitute was wrong
+  twice over — the monsters stayed, and the bar closed a loop the same record
+  describes, where a recoded character is recoded *again* to raise its Skill
+  Boost and Luck with monsters raised again in between. A second recode of any
+  recipe was unreachable.
+
+  The monsters are now consumed, and so is a Joker Λ standing in for a missing
+  one. Any squad slot naming a consumed monster empties, the same way the
+  source's slot already followed the transformation — the client keeps monsters
+  out of squads before it will offer the recode, but a consumed character a
+  squad still names is the exact damage this route has done before. A Companion
+  a consumed monster carried is unequipped and stays in the box.
+  `rebirth_used_material_ids` is left in existing saves and no longer read or
+  written; nothing is taken from an account that already recoded, so monsters
+  kept by the old behaviour stay kept.
+
+  The ceiling on repeat recoding is the rule that bounds it in the record:
+  "Recoding is not available if the recoded character is already at 100 Luck."
+  A destination already at its cap is refused before anything is spent — the
+  source and both monsters are still there to try again with. `Character.CanRebirth`
+  reads `luck` against `luckMax` ahead of coins, items and monsters, so the
+  client withholds the option itself and a request that arrives anyway is a
+  stale menu; no error code says "already maxed", so it is answered as the
+  recipe not being available, which is what that code already means here.
+
 - **A Recode carried no Luck from its material monsters.** Reported by a tester
   who recoded with a Megacell at its 70.0 cap, expected a fifth of it — 14.0
   Luck — to come across, and got none.

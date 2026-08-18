@@ -7,6 +7,7 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.luck_data import character_luck_cap
 from liminal_gate.rebirth_catalog import build_bundled_rebirth_policy, load_rebirth_catalog
 from liminal_gate.rebirth_recipe_data import OWNED_DESTINATION_LUCK_BONUS
 from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
@@ -25,7 +26,9 @@ class RebirthTest(unittest.TestCase):
                 self.assertEqual((200, True, 7), (status, retry["success"], retry["cmdError"]))
                 status, success = post(server, "/gd/rebirth", "second", "rebirthID=1&useJoker=True")
                 self.assertEqual((200, True, 0, [0]), (status, success["success"], success["coins"], success["itemList"]))
-                self.assertEqual([3, 7, 9], [row["id"] for row in success["chrdata"]])
+                # Source 2 becomes 3; material 7 and the Joker standing in for
+                # the missing material 8 are both consumed with it.
+                self.assertEqual([3], [row["id"] for row in success["chrdata"]])
             finally:
                 stop_server(server, thread)
             restarted, restarted_thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state), rebirth_catalog=catalog)
@@ -285,6 +288,144 @@ class RebirthCarryoverTest(unittest.TestCase):
         self.assertEqual(0, payload["addedPlusCount"], "nothing grants a plus count yet")
 
 
+class RebirthMaterialConsumptionTest(unittest.TestCase):
+    """The monsters are spent by the recode, and the account may raise them again.
+
+    "The two monsters will also be lost upon recoding, and may be recruited
+    again through the usual methods." Keeping them on the roster and instead
+    barring their ids for ever was the substitute for that, and it closed the
+    loop the same record describes: recoding a character again to raise its
+    Skill Boost and Luck needs its monsters again.
+    """
+
+    def account(self, state: BootstrapState, recipe, *, extra_rows=()) -> None:
+        items = [0] * 181
+        for item_id, count in recipe.items.items():
+            items[item_id - 1] = (count + 5) * 4
+        rows = [{"id": recipe.source_character_id, "jobID": 0, "jobLevels": [90.0, 0.0, 0.0],
+                 "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0, "buddy": 0}]
+        rows += [{"id": material_id, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
+                  "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0, "buddy": 0}
+                 for material_id, level in recipe.materials]
+        rows += [dict(row) for row in extra_rows]
+        state.create_account("token", "account", {
+            "coins": recipe.coins * 4 + 1000, "itemList": items, "summonList": [0] * 16,
+            "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
+            # A monster parked in a squad cannot reach a recode through the
+            # client, but a consumed character a squad still names is the exact
+            # damage this route has done before, so the slot must empty.
+            "teamMembers": [recipe.materials[0][0], 0, 0, 0, 0, 0], "teamMembers_VS": [0] * 18,
+            "chrdata": rows, "buddyInfo": {"list": [], "record": []},
+        })
+        with state.lock:
+            state.accounts["account"]["tutorial_phase"] = "free_roam"
+            state.accounts["account"]["initial_userdata_served"] = True
+            state._persist_locked()
+
+    def test_the_monsters_leave_the_roster_and_their_squad_slots_empty(self) -> None:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            self.account(state, recipe)
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, payload = post(server, "/gd/rebirth", "recode", "rebirthID=1&useJoker=False")
+                self.assertTrue(payload["success"], payload)
+                userdata = state.userdata_for("token")
+            finally:
+                stop_server(server, thread)
+        self.assertEqual([recipe.destination_character_id], [row["id"] for row in userdata["chrdata"]])
+        self.assertEqual([0] * 6, userdata["teamMembers"])
+
+    def test_the_same_recipe_runs_again_once_the_monsters_are_raised_again(self) -> None:
+        """The bar made this impossible, so the documented loop was unreachable."""
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            self.account(state, recipe)
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, first = post(server, "/gd/rebirth", "recode-1", "rebirthID=1&useJoker=False")
+                self.assertTrue(first["success"], first)
+                # Recruit the source and both monsters again, as the record says
+                # an account may, and run the same recipe a second time.
+                with state.lock:
+                    rows = state.accounts["account"]["userdata"]["chrdata"]
+                    rows.append({"id": recipe.source_character_id, "jobID": 0, "jobLevels": [90.0, 0.0, 0.0],
+                                 "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0, "buddy": 0})
+                    rows += [{"id": material_id, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
+                              "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 700, "buddy": 0}
+                             for material_id, level in recipe.materials]
+                    state._persist_locked()
+                _, second = post(server, "/gd/rebirth", "recode-2", "rebirthID=1&useJoker=False")
+            finally:
+                stop_server(server, thread)
+        self.assertTrue(second["success"], second)
+        self.assertTrue(second["overlapped"], "the destination is now the copy the account holds")
+        # 5.0 for the owned destination plus a fifth of each monster's 70.0.
+        self.assertEqual(33, second["addedLuck"])
+
+
+class RebirthMaxLuckTest(unittest.TestCase):
+    """"Recoding is not available if the recoded character is already at 100 Luck.\""""
+
+    def recode_into(self, held_luck: int) -> dict:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            items = [0] * 181
+            for item_id, count in recipe.items.items():
+                items[item_id - 1] = count + 5
+            rows = [{"id": recipe.source_character_id, "jobID": 0, "jobLevels": [90.0, 0.0, 0.0],
+                     "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0, "buddy": 0}]
+            rows += [{"id": material_id, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
+                      "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0, "buddy": 0}
+                     for material_id, level in recipe.materials]
+            rows.append({"id": recipe.destination_character_id, "jobID": 0, "jobLevels": [99.0, 0.0, 0.0],
+                         "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": held_luck, "buddy": 0})
+            state.create_account("token", "account", {
+                "coins": recipe.coins + 1000, "itemList": items, "summonList": [0] * 16,
+                "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
+                "teamMembers": [0] * 6, "teamMembers_VS": [0] * 18,
+                "chrdata": rows, "buddyInfo": {"list": [], "record": []},
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, payload = post(server, "/gd/rebirth", "recode", "rebirthID=1&useJoker=False")
+                return payload | {"roster": [row["id"] for row in state.userdata_for("token")["chrdata"]]}
+            finally:
+                stop_server(server, thread)
+
+    def test_a_destination_already_at_its_cap_is_refused_and_spends_nothing(self) -> None:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        payload = self.recode_into(character_luck_cap(recipe.destination_character_id))
+        # A refusal reaches the client as `cmdError`, the way the Joker one does.
+        self.assertEqual((True, 6), (payload["success"], payload["cmdError"]))
+        # The refusal comes before anything is consumed, so the monsters and the
+        # source are all still there to try again with.
+        self.assertIn(recipe.source_character_id, payload["roster"])
+        for material_id, _ in recipe.materials:
+            self.assertIn(material_id, payload["roster"])
+
+    def test_a_destination_one_tenth_below_its_cap_still_recodes(self) -> None:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        payload = self.recode_into(character_luck_cap(recipe.destination_character_id) - 1)
+        self.assertNotIn("cmdError", payload, "one tenth short of the cap is not maxed")
+        self.assertTrue(payload["overlapped"])
+
+
 class RebirthJobSlotsTest(unittest.TestCase):
     """`jobSlots` is per job, so the source's cannot come across with the row.
 
@@ -464,10 +605,11 @@ class RebirthCompanionConsistencyTest(unittest.TestCase):
         links = {companion["iid"]: companion["chrID"] for companion in userdata["buddyInfo"]["list"]}
         self.assertEqual({1: 0, 2: destination_id}, links)
         # Every link that remains still names a character that claims it back,
-        # which is the whole condition `_valid_companion_equipment` reads.
+        # which is the whole condition `_valid_companion_equipment` reads. The
+        # source is recoded away and both monsters are consumed, so the held
+        # destination is all that is left to claim anything.
         held = {row["id"]: row["buddy"] for row in userdata["chrdata"]}
-        self.assertEqual(2, held[destination_id])
-        self.assertEqual({0}, {buddy for character_id, buddy in held.items() if character_id != destination_id})
+        self.assertEqual({destination_id: 2}, held)
         self.assertEqual(
             {1: 0, 2: destination_id},
             {companion["iid"]: companion["chrID"] for companion in userdata["buddyInfo"]["record"]},

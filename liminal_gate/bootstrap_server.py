@@ -1677,7 +1677,21 @@ class BootstrapState:
             recipe_id, use_joker = request; recipe = catalog.recipes.get(recipe_id)
             data = account["userdata"]; rows, items = data.get("chrdata"), data.get("itemList")
             source = next((row for row in rows if isinstance(row, dict) and recipe and row.get("id") == recipe.source_character_id), None) if isinstance(rows, list) else None
+            held_destination = next((row for row in rows if isinstance(row, dict) and recipe and row.get("id") == recipe.destination_character_id), None) if isinstance(rows, list) else None
+            held_luck = int(held_destination.get("luck", 0)) if isinstance(held_destination, dict) and type(held_destination.get("luck", 0)) is int else 0
             if recipe is None or source is None:
+                payload = {"success": False, "errorCode": 6}
+            elif held_luck >= character_luck_cap(recipe.destination_character_id):
+                # "Recoding is not available if the recoded character is already
+                # at 100 Luck" -- the ceiling on recoding the same character
+                # repeatedly for Skill Boost and Luck, and the reason a maxed
+                # unit is not worth spending materials on. `Character.CanRebirth`
+                # reads `luck` against `luckMax` ahead of coins, items and
+                # monsters, so the client withholds the option itself and a
+                # request that arrives anyway is a stale menu. No error code
+                # says "already maxed" -- the client never needed the service to
+                # answer this -- so it is answered as the recipe simply not
+                # being available, which is what code 6 already means here.
                 payload = {"success": False, "errorCode": 6}
             elif not isinstance(source.get("jobLevels"), list) or any(type(value) not in {int, float} or int(value) & 0xFFF < 80 for value in source["jobLevels"] if int(value) != 0):
                 payload = {"success": False, "errorCode": 1}
@@ -1686,114 +1700,135 @@ class BootstrapState:
             elif not isinstance(items, list) or len(items) != catalog.item_slots or any(item_id > len(items) or type(items[item_id - 1]) is not int or items[item_id - 1] < count for item_id, count in recipe.items.items()):
                 payload = {"success": False, "errorCode": 3}
             else:
-                used = set(account.setdefault("rebirth_used_material_ids", [])); missing = False
+                missing = False
+                # A material is spent by being consumed, not by being recorded
+                # against the account for ever. `rebirth_used_material_ids` was
+                # the substitute for consuming them and it barred every later
+                # recode that named the same monster -- which closes the loop the
+                # record describes, where a recoded character is recoded again
+                # to raise its Skill Boost and Luck and its monsters are
+                # "recruited again through the usual methods" in between. The
+                # key stays in existing documents and is no longer read or
+                # written; the ceiling on that loop is the 100 Luck refusal
+                # above, not a one-shot bar per monster.
                 for material_id, level in recipe.materials:
                     material = next((row for row in rows if isinstance(row, dict) and row.get("id") == material_id), None)
-                    if material_id in used: payload = {"success": False, "errorCode": 5}; break
                     if material is None or not isinstance(material.get("jobLevels"), list) or max((int(value) & 0xFFF for value in material["jobLevels"]), default=0) < level: missing = True
+                joker = next((row for row in rows if isinstance(row, dict) and row.get("id") == catalog.joker_character_id), None)
+                if missing and not use_joker: payload = {"success": False, "errorCode": 7 if joker is not None else 4}
+                elif missing and joker is None: payload = {"success": False, "errorCode": 4}
                 else:
-                    joker = next((row for row in rows if isinstance(row, dict) and row.get("id") == catalog.joker_character_id), None)
-                    if missing and not use_joker: payload = {"success": False, "errorCode": 7 if joker is not None and catalog.joker_character_id not in used else 4}
-                    elif missing and (joker is None or catalog.joker_character_id in used): payload = {"success": False, "errorCode": 4}
-                    else:
-                        held_destination = next((row for row in rows if isinstance(row, dict) and row.get("id") == recipe.destination_character_id), None)
-                        overlapped = held_destination is not None
-                        new_rows = [copy.deepcopy(row) for row in rows if row is not source and row.get("id") != recipe.destination_character_id]
-                        # `jobSlots` belongs to the jobs the row's own character
-                        # has, so the source's cannot come across with the rest
-                        # of the row: a recode destination is a different
-                        # character with a different -- and, for every Λ in the
-                        # bundled recipes, *smaller* -- job list, and the copied
-                        # array left slot data sitting on jobs the rebirthed
-                        # unit does not have and has not unlocked. A minted row
-                        # starts with none, exactly as `_granted_character_row`
-                        # does; what an already-owned destination had is put
-                        # back below.
-                        destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [0.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
-                        # A fifth of each material's Skill Boost *and* a fifth of
-                        # each material's Luck come across with the source's own,
-                        # and an already-owned destination gains 5 Luck on top.
-                        # See the record cited beside these constants; the
-                        # client's ceilings bound all of it.
-                        def material_share(field: str, percent: int) -> int:
-                            return sum(
-                                int(row.get(field, 0)) * percent // 100
-                                for material_id, _ in recipe.materials
-                                for row in rows
-                                if isinstance(row, dict) and row.get("id") == material_id
-                                and type(row.get(field, 0)) is int
-                            )
-                        material_boost = material_share("skillBoost", MATERIAL_SKILL_BOOST_SHARE_PERCENT)
-                        carried_boost = min(LUCK_TENTHS_MAX, int(source.get("skillBoost", 0)) + material_boost)
-                        carried_luck = min(LUCK_TENTHS_MAX, int(source.get("luck", 0)) + material_share("luck", MATERIAL_LUCK_SHARE_PERCENT) + (OWNED_DESTINATION_LUCK_BONUS if overlapped else 0))
-                        held_boost = int(held_destination.get("skillBoost", 0)) if isinstance(held_destination, dict) and type(held_destination.get("skillBoost", 0)) is int else 0
-                        held_luck = int(held_destination.get("luck", 0)) if isinstance(held_destination, dict) and type(held_destination.get("luck", 0)) is int else 0
-                        held_plus = int(held_destination.get("plusCount", 0)) if isinstance(held_destination, dict) and type(held_destination.get("plusCount", 0)) is int else 0
-                        # An owned destination *gains* the carryover rather than
-                        # being overwritten by it, which is the same record's
-                        # rule and why its level is not reset either.
-                        destination["skillBoost"] = min(LUCK_TENTHS_MAX, held_boost + carried_boost)
-                        destination["luck"] = min(character_luck_cap(destination.get("id")), held_luck + carried_luck)
-                        if held_destination is not None:
-                            # Recoding into a character the account already owns
-                            # must not destroy the copy it owns. The rebirthed
-                            # unit starts at level 1 and carries the source's
-                            # Skill Boost and Luck, and a held copy may be
-                            # further along in any of them -- so the two are
-                            # merged on the rule the clear settlement already
-                            # applies: progression only accumulates, so the
-                            # larger of the two values is the true one. Without
-                            # this a maxed unit was replaced outright by a
-                            # level 1 row, losing its levels, Skill Boost, Luck
-                            # and plus count with no route to get them back.
-                            #
-                            # Its equipped slots, active job and Companion are
-                            # its own too, and they are choices made for jobs it
-                            # actually has. A level 1 row has nothing to say
-                            # about any of them, so the held copy keeps all
-                            # three rather than being reset to a state it never
-                            # asked for -- which also leaves its Companion link
-                            # whole, so only the source's is unequipped below.
-                            for name in ("jobSlots", "jobID", "buddy"):
-                                if name in held_destination:
-                                    destination[name] = copy.deepcopy(held_destination[name])
-                            destination = _preserved_progress(held_destination, destination)
-                        new_rows.append(destination); new_rows.sort(key=lambda row: int(row["id"]))
-                        new_items = copy.deepcopy(items)
-                        for item_id, count in recipe.items.items(): new_items[item_id - 1] -= count
-                        used.update(material_id for material_id, _ in recipe.materials); used.update({catalog.joker_character_id} if missing and use_joker else set())
-                        # The source leaves the roster, so any party slot naming
-                        # it would point at a character the account no longer
-                        # owns -- and every later party save would be refused
-                        # for exactly that reason.  The rebirthed unit takes its
-                        # own slot, unless the destination was already owned, in
-                        # which case the slot empties rather than duplicating.
-                        _retarget_party(data, recipe.source_character_id, 0 if overlapped else recipe.destination_character_id)
-                        data["chrdata"], data["itemList"], data["coins"], account["rebirth_used_material_ids"] = new_rows, new_items, data["coins"] - recipe.coins, sorted(used)
-                        # A Companion the source carried, and one an already-owned
-                        # destination carried, are both left naming a character
-                        # that no longer claims them -- the rebirthed row takes
-                        # `buddy` 0. See `_unequip_orphaned_companions` for what
-                        # a link left half-attached costs the account.
-                        _unequip_orphaned_companions(data)
-                        # The result screen reads all four of these: without
-                        # them a recode reports no gain at all, however much it
-                        # carried. Skill Boost and Luck are tenths on the wire
-                        # and whole units on the screen, the same conversion the
-                        # Power-Up Item result already makes.
-                        # `buddyInfo` is not decoration on this response.
-                        # `UserData.LoadBuddyInfo` resets the Companion box and
-                        # refills it from what arrives, so the empty one this
-                        # used to send left the client owning no Companions at
-                        # all for the rest of the session -- and every character
-                        # still carrying one then drew against a Companion that
-                        # was no longer there, which is the character list that
-                        # came back scrambled. The account's own box is what the
-                        # sale and strengthen routes return here too.
-                        payload = {"success": True, "buddyInfo": copy.deepcopy(data.get("buddyInfo", {"list": [], "record": []})), "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": overlapped,
-                                   "addedSkillBoost": (destination["skillBoost"] - held_boost) // 10,
-                                   "addedLuck": (destination["luck"] - held_luck) // 10,
-                                   "addedPlusCount": int(destination.get("plusCount", 0)) - held_plus}
+                    overlapped = held_destination is not None
+                    # The monsters are consumed, and so is a Joker standing
+                    # in for one: "The two monsters will also be lost upon
+                    # recoding, and may be recruited again through the usual
+                    # methods." Leaving them on the roster was the visible
+                    # half of the same defect the bar above was the other
+                    # half of -- two testers reported keeping monsters a
+                    # recode should have taken.
+                    consumed = {material_id for material_id, _ in recipe.materials}
+                    consumed |= {catalog.joker_character_id} if missing and use_joker and joker is not None else set()
+                    new_rows = [copy.deepcopy(row) for row in rows if row is not source and row.get("id") != recipe.destination_character_id and row.get("id") not in consumed]
+                    # `jobSlots` belongs to the jobs the row's own character
+                    # has, so the source's cannot come across with the rest
+                    # of the row: a recode destination is a different
+                    # character with a different -- and, for every Λ in the
+                    # bundled recipes, *smaller* -- job list, and the copied
+                    # array left slot data sitting on jobs the rebirthed
+                    # unit does not have and has not unlocked. A minted row
+                    # starts with none, exactly as `_granted_character_row`
+                    # does; what an already-owned destination had is put
+                    # back below.
+                    destination = copy.deepcopy(source); destination.update({"id": recipe.destination_character_id, "jobLevels": [1.0, 0.0, 0.0], "jobSlots": [0.0, 0.0, 0.0], "jobID": 0, "buddy": 0})
+                    # A fifth of each material's Skill Boost *and* a fifth of
+                    # each material's Luck come across with the source's own,
+                    # and an already-owned destination gains 5 Luck on top.
+                    # See the record cited beside these constants; the
+                    # client's ceilings bound all of it.
+                    def material_share(field: str, percent: int) -> int:
+                        return sum(
+                            int(row.get(field, 0)) * percent // 100
+                            for material_id, _ in recipe.materials
+                            for row in rows
+                            if isinstance(row, dict) and row.get("id") == material_id
+                            and type(row.get(field, 0)) is int
+                        )
+                    material_boost = material_share("skillBoost", MATERIAL_SKILL_BOOST_SHARE_PERCENT)
+                    carried_boost = min(LUCK_TENTHS_MAX, int(source.get("skillBoost", 0)) + material_boost)
+                    carried_luck = min(LUCK_TENTHS_MAX, int(source.get("luck", 0)) + material_share("luck", MATERIAL_LUCK_SHARE_PERCENT) + (OWNED_DESTINATION_LUCK_BONUS if overlapped else 0))
+                    held_boost = int(held_destination.get("skillBoost", 0)) if isinstance(held_destination, dict) and type(held_destination.get("skillBoost", 0)) is int else 0
+                    held_plus = int(held_destination.get("plusCount", 0)) if isinstance(held_destination, dict) and type(held_destination.get("plusCount", 0)) is int else 0
+                    # An owned destination *gains* the carryover rather than
+                    # being overwritten by it, which is the same record's
+                    # rule and why its level is not reset either.
+                    destination["skillBoost"] = min(LUCK_TENTHS_MAX, held_boost + carried_boost)
+                    destination["luck"] = min(character_luck_cap(destination.get("id")), held_luck + carried_luck)
+                    if held_destination is not None:
+                        # Recoding into a character the account already owns
+                        # must not destroy the copy it owns. The rebirthed
+                        # unit starts at level 1 and carries the source's
+                        # Skill Boost and Luck, and a held copy may be
+                        # further along in any of them -- so the two are
+                        # merged on the rule the clear settlement already
+                        # applies: progression only accumulates, so the
+                        # larger of the two values is the true one. Without
+                        # this a maxed unit was replaced outright by a
+                        # level 1 row, losing its levels, Skill Boost, Luck
+                        # and plus count with no route to get them back.
+                        #
+                        # Its equipped slots, active job and Companion are
+                        # its own too, and they are choices made for jobs it
+                        # actually has. A level 1 row has nothing to say
+                        # about any of them, so the held copy keeps all
+                        # three rather than being reset to a state it never
+                        # asked for -- which also leaves its Companion link
+                        # whole, so only the source's is unequipped below.
+                        for name in ("jobSlots", "jobID", "buddy"):
+                            if name in held_destination:
+                                destination[name] = copy.deepcopy(held_destination[name])
+                        destination = _preserved_progress(held_destination, destination)
+                    new_rows.append(destination); new_rows.sort(key=lambda row: int(row["id"]))
+                    new_items = copy.deepcopy(items)
+                    for item_id, count in recipe.items.items(): new_items[item_id - 1] -= count
+                    # Every character that leaves the roster leaves party
+                    # slots naming someone the account no longer owns, and
+                    # every later party save would be refused for exactly
+                    # that reason. The rebirthed unit takes the source's own
+                    # slot, unless the destination was already owned, in
+                    # which case the slot empties rather than duplicating; a
+                    # consumed monster has no successor, so its slots simply
+                    # empty. The client keeps monsters out of squads before
+                    # it will offer the recode, so the second of these
+                    # should never have anything to do -- but a consumed
+                    # character still named by a squad is the exact damage
+                    # this route has already done once.
+                    _retarget_party(data, recipe.source_character_id, 0 if overlapped else recipe.destination_character_id)
+                    for consumed_id in sorted(consumed):
+                        _retarget_party(data, consumed_id, 0)
+                    data["chrdata"], data["itemList"], data["coins"] = new_rows, new_items, data["coins"] - recipe.coins
+                    # A Companion the source carried, and one a consumed
+                    # monster carried, are left naming a character that no
+                    # longer claims them. See `_unequip_orphaned_companions`
+                    # for what a link left half-attached costs the account.
+                    _unequip_orphaned_companions(data)
+                    # The result screen reads all four of these: without
+                    # them a recode reports no gain at all, however much it
+                    # carried. Skill Boost and Luck are tenths on the wire
+                    # and whole units on the screen, the same conversion the
+                    # Power-Up Item result already makes.
+                    # `buddyInfo` is not decoration on this response.
+                    # `UserData.LoadBuddyInfo` resets the Companion box and
+                    # refills it from what arrives, so the empty one this
+                    # used to send left the client owning no Companions at
+                    # all for the rest of the session -- and every character
+                    # still carrying one then drew against a Companion that
+                    # was no longer there, which is the character list that
+                    # came back scrambled. The account's own box is what the
+                    # sale and strengthen routes return here too.
+                    payload = {"success": True, "buddyInfo": copy.deepcopy(data.get("buddyInfo", {"list": [], "record": []})), "chrdata": copy.deepcopy(new_rows), "itemList": new_items, "coins": data["coins"], "overlapped": overlapped,
+                               "addedSkillBoost": (destination["skillBoost"] - held_boost) // 10,
+                               "addedLuck": (destination["luck"] - held_luck) // 10,
+                               "addedPlusCount": int(destination.get("plusCount", 0)) - held_plus}
             payload = _canonical_payload(payload); requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}; self._persist_locked(); return "success", payload
 
     def apply_tutorial_transition(
