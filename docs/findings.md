@@ -2251,26 +2251,76 @@ retired service owned this arithmetic and the APK holds no table for it. The
 value was wrong for as long as the feature has existed and only a player
 counting Luck could have noticed.
 
-**Two further divergences the same page names, neither acted on here.** Both
-are behaviour changes rather than corrections, and both would take something
-away from accounts as they stand:
+**Two further divergences the same page names, both since settled** — recorded
+here as open questions, then closed by the entry below once two testers
+confirmed the first from their own rosters:
 
-- **The materials are not consumed.** The page says "The two monsters will also
+- **The materials were not consumed.** The page says "The two monsters will also
   be lost upon recoding, and may be recruited again through the usual methods."
-  This bundle leaves them on the roster and instead records them in
-  `rebirth_used_material_ids`, which bars them from ever being used again. The
-  client does carry `RebirthErrorCode.MonsterUsed = 5`, so a used-monster
-  concept is real; whether it meant "consumed" or "already spent" is not settled
-  by anything recovered. The two models differ in a way a player feels: under
-  the record a material can be re-recruited and used again, and under this one
-  it cannot. This is also why a Pact of Fate pull for a spent Megacell surprised
-  a tester — the account still held it, at its cap, so the pool refused.
-- **A destination already at 100 Luck is not refused.** "Recoding is not
+  This bundle left them on the roster and instead recorded them in
+  `rebirth_used_material_ids`, which barred them from ever being used again.
+  That is also why a Pact of Fate pull for a spent Megacell surprised a tester —
+  the account still held it, at its cap, so the pool refused.
+- **A destination already at 100 Luck was not refused.** "Recoding is not
   available if the recoded character is already at 100 Luck." Nothing here
-  enforces that; the carryover simply clamps.
+  enforced it; the carryover simply clamped.
 
 **What changed.** `MATERIAL_LUCK_SHARE_PERCENT`, applied the same way the Skill
 Boost share already was, with the source's own Luck and the already-owned bonus
 unchanged and every ceiling still bounding the total. Two tests carrying the
 reporting tester's own numbers. Recodes already made are not recalculated:
 nothing records what a material's Luck was at the time.
+
+## 2026-08-17: the Recode kept its monsters, and the loop that needed them spending
+
+**Reported symptom.** Two testers, independently, after a recode succeeded:
+"Snaptrap and Phi Orbling still here max luck still and level (they was maxed
+before recoding), items was used", and "I still have Megacell maxed out and
+Chiton at level enough to recode. Just Leviathan normal is gone from my roster."
+Both accounts kept the monsters and lost only the source, which is what this
+server did.
+
+**Confirmed by the community record.** The wiki's `Recode DNA` page, under
+Effects: "Once a character has been recoded, their non-recoded form may be
+recruited again as a fresh character at base level and 0% skill boost. **The two
+monsters will also be lost upon recoding, and may be recruited again through the
+usual methods.**"
+
+- **The substitute was wrong in both directions.** `rebirth_used_material_ids`
+  recorded each monster's id against the account and refused any later recode
+  naming it (`RebirthErrorCode.MonsterUsed`). So the monsters stayed *and* were
+  barred — the opposite of the record on both counts.
+- **It closed a loop the same page describes.** Notes: "If the recoded character
+  is already owned, the pre-recode character may be recoded again to increase
+  skill boost and Luck." That needs the monsters again, and a permanent bar on
+  their ids made a second run of any recipe impossible. The feature was
+  unreachable rather than merely mispriced.
+- **The ceiling is a Luck rule, not a monster rule.** "Recoding is not available
+  if the recoded character is already at 100 Luck", and ARM64
+  `Character.CanRebirth` (`0xD0AEDC`) bears it out: it calls
+  `UserData.IsLuckSystemImplemented`, then `Character.get_luck` and
+  `Character.get_luckMax`, *before* it reads coins, items or monsters. The
+  client withholds the option itself, which is why no `RebirthErrorCode` says
+  "already maxed" — the service was never asked.
+
+**What changed.** The monsters are consumed, and so is a Joker Λ standing in for
+a missing one. `rebirth_used_material_ids` is no longer read or written and
+stays in existing documents; nothing is taken back from an account that already
+recoded, so monsters kept under the old behaviour stay kept. A destination
+already at its own Luck cap is refused ahead of every other check, so the source
+and both monsters survive the refusal — answered as code 6, the recipe not being
+available, since nothing better exists and the client should never send it.
+
+Any squad slot naming a consumed monster empties, the same way the source's slot
+already follows the transformation. The client keeps monsters out of squads
+before it will offer a recode, so that should never have anything to do — but a
+consumed character a squad still names is the exact damage this route did once
+already, and it is one line to make impossible rather than unlikely.
+
+**What `MonsterUsed` means is still open.** With the bar gone the code is
+unreachable from here. "Must not be in any squads" is the requirement it most
+plausibly names — nothing else in the enum could express it — but that is a
+reading, not a recovery, and no refusal is sent on it.
+
+**Not yet validated on hardware.** The two reports confirm the old behaviour;
+the new behaviour has not yet been played.
