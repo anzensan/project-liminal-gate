@@ -146,7 +146,7 @@ from liminal_gate.message_catalog import (
 from liminal_gate.exchange_catalog import ExchangeCatalog, ExchangeCatalogError, active_week_index, build_bundled_exchange_policy, load_exchange_catalog
 from liminal_gate.server_config import ServerConfig, ServerConfigError, load_server_config
 from liminal_gate.rebirth_catalog import RebirthCatalog, RebirthCatalogError, build_bundled_rebirth_policy, load_rebirth_catalog
-from liminal_gate.rebirth_recipe_data import MATERIAL_LUCK_SHARE_PERCENT, MATERIAL_SKILL_BOOST_SHARE_PERCENT, OWNED_DESTINATION_LUCK_BONUS
+from liminal_gate.rebirth_recipe_data import JOKER_SUBSTITUTE_LEVEL, JOKER_SUBSTITUTE_LIMIT, MATERIAL_LUCK_SHARE_PERCENT, MATERIAL_SKILL_BOOST_SHARE_PERCENT, OWNED_DESTINATION_LUCK_BONUS
 from liminal_gate.luck_data import LUCK_TENTHS_MAX, character_luck_cap
 from liminal_gate.job_catalog import JobCatalog, JobCatalogError, build_bundled_job_policy, load_job_catalog
 from liminal_gate.settlement_catalog import SettlementCatalog, SettlementCatalogError, load_settlement_catalog
@@ -1700,7 +1700,6 @@ class BootstrapState:
             elif not isinstance(items, list) or len(items) != catalog.item_slots or any(item_id > len(items) or type(items[item_id - 1]) is not int or items[item_id - 1] < count for item_id, count in recipe.items.items()):
                 payload = {"success": False, "errorCode": 3}
             else:
-                missing = False
                 # A material is spent by being consumed, not by being recorded
                 # against the account for ever. `rebirth_used_material_ids` was
                 # the substitute for consuming them and it barred every later
@@ -1711,12 +1710,30 @@ class BootstrapState:
                 # key stays in existing documents and is no longer read or
                 # written; the ceiling on that loop is the 100 Luck refusal
                 # above, not a one-shot bar per monster.
-                for material_id, level in recipe.materials:
-                    material = next((row for row in rows if isinstance(row, dict) and row.get("id") == material_id), None)
-                    if material is None or not isinstance(material.get("jobLevels"), list) or max((int(value) & 0xFFF for value in material["jobLevels"]), default=0) < level: missing = True
-                joker = next((row for row in rows if isinstance(row, dict) and row.get("id") == catalog.joker_character_id), None)
-                if missing and not use_joker: payload = {"success": False, "errorCode": 7 if joker is not None else 4}
-                elif missing and joker is None: payload = {"success": False, "errorCode": 4}
+                def roster_row(character_id: int) -> dict[str, Any] | None:
+                    return next((row for row in rows if isinstance(row, dict) and row.get("id") == character_id), None)
+
+                def at_level(row: dict[str, Any] | None, level: int) -> bool:
+                    return row is not None and isinstance(row.get("jobLevels"), list) and max((int(value) & 0xFFF for value in row["jobLevels"]), default=0) >= level
+
+                missing = tuple(material_id for material_id, level in recipe.materials if not at_level(roster_row(material_id), level))
+                joker = roster_row(catalog.joker_character_id)
+                # A Joker Lambda replaces *one* monster, and only once it has
+                # reached the level a monster owes. Both halves were missing:
+                # any monster count could be covered by the single Joker the
+                # account held, at any level, which turned a wild card for one
+                # missing monster into a recipe that needed no monsters at all.
+                # See `JOKER_SUBSTITUTE_LEVEL` for the two sentences of the
+                # record this reads.
+                #
+                # `NotEnoughMonsButCanUseJoker` is an offer, so it may only be
+                # sent when the offer would actually be honoured; a second
+                # missing monster or a Joker below level 50 is `NotEnoughMons`
+                # like any other shortfall, which is what the client shows when
+                # it cannot be rescued.
+                joker_covers = len(missing) <= JOKER_SUBSTITUTE_LIMIT and at_level(joker, JOKER_SUBSTITUTE_LEVEL)
+                if missing and not joker_covers: payload = {"success": False, "errorCode": 4}
+                elif missing and not use_joker: payload = {"success": False, "errorCode": 7}
                 else:
                     overlapped = held_destination is not None
                     # The monsters are consumed, and so is a Joker standing
@@ -1726,8 +1743,16 @@ class BootstrapState:
                     # half of the same defect the bar above was the other
                     # half of -- two testers reported keeping monsters a
                     # recode should have taken.
-                    consumed = {material_id for material_id, _ in recipe.materials}
-                    consumed |= {catalog.joker_character_id} if missing and use_joker and joker is not None else set()
+                    #
+                    # The monster the Joker stands in for is *not* spent,
+                    # because it was not used: an under-level one the account
+                    # holds stays on its roster, keeps its squad slot, and
+                    # carries none of its Skill Boost or Luck across. The Joker
+                    # is the material in its place, so the Joker's own share is
+                    # the one that carries, which is what `material_share`
+                    # reading `consumed` below says.
+                    consumed = {material_id for material_id, _ in recipe.materials if material_id not in missing}
+                    consumed |= {catalog.joker_character_id} if missing else set()
                     new_rows = [copy.deepcopy(row) for row in rows if row is not source and row.get("id") != recipe.destination_character_id and row.get("id") not in consumed]
                     # `jobSlots` belongs to the jobs the row's own character
                     # has, so the source's cannot come across with the rest
@@ -1748,7 +1773,7 @@ class BootstrapState:
                     def material_share(field: str, percent: int) -> int:
                         return sum(
                             int(row.get(field, 0)) * percent // 100
-                            for material_id, _ in recipe.materials
+                            for material_id in sorted(consumed)
                             for row in rows
                             if isinstance(row, dict) and row.get("id") == material_id
                             and type(row.get(field, 0)) is int

@@ -55,6 +55,42 @@ run the command.
 
 ### Fixed
 
+- **One Joker Λ covered a Recode's whole monster bill, at any level.** A tester,
+  on what it should do: *"Joker^ should be usable as a wildcard Component that
+  can replace any 1 other unit you might have. I'm not sure if this is working
+  as I don't have my Joker^ above level 50."* It was not working, in both
+  directions at once — and the level they were waiting to reach was never being
+  asked for.
+
+  The record states the rule twice. [Recode DNA](https://terrabattle.fandom.com/wiki/Recode_DNA)
+  lists "Two specific Monsters at level 50 or higher", and under them "Joker Λ
+  can be used as a replacement for **one** missing or under-leveled monster";
+  [Joker Λ](https://terrabattle.fandom.com/wiki/Joker_%CE%9B) says it from the
+  other side — "In order to be used as a replacement, Joker Λ must be at level
+  50 and one of the two material monsters must be under level 50 or not
+  recruited." This bundle tracked whether *any* monster fell short as a single
+  flag, so one Joker at level 1 satisfied a recipe the account held neither
+  monster for.
+
+  A Joker now stands in for exactly one monster and must have reached level 50
+  itself. A second shortfall, or a Joker below 50, is `NotEnoughMons` (4) like
+  any other — `NotEnoughMonsButCanUseJoker` (7) is an offer, and is only made
+  when it would be honoured.
+
+  The monster a Joker replaces also survives now. It was being consumed
+  alongside the one that was actually spent, so an under-level monster the
+  Joker stood in for was destroyed by the recode that did not use it, taking its
+  squad slot with it. It keeps its place and its Luck; the Joker is the material
+  in its stead, so the Joker's own fifth of Skill Boost and Luck is what carries
+  into the recoded unit.
+
+  Recoded units already have a Luck ceiling of 100 — every one of the 65 recipes
+  produces a Λ, and a Λ reaches the maximum whatever class it came from — which
+  is what the per-character ceilings released in 1.1.0 already say for all 65 of
+  them. Reported alongside the Joker; nothing needed changing for it.
+
+  No save changes: nothing already recoded is revisited.
+
 - **A "+" Pact levelled the first job and no other.** The second half of
   [#69](https://github.com/anzensan/project-liminal-gate/issues/69): *"when I
   pull a +Pact, only the additional levels appear to be added to the first job
