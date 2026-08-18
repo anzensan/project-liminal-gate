@@ -55,6 +55,29 @@ run the command.
 
 ### Fixed
 
+- **A "+" Pact levelled the first job and no other.** The second half of
+  [#69](https://github.com/anzensan/project-liminal-gate/issues/69): *"when I
+  pull a +Pact, only the additional levels appear to be added to the first job
+  (only)."* The duplicate gain itself was fixed in 1.1.0 to raise every job the
+  character has unlocked; the "+" that decorates it kept writing slot 0.
+
+  It carried both halves of the defect that fix removed. The extra levels landed
+  on the first slot whatever else was unlocked, and the reply was overwritten
+  with slot 0's level while still naming the *active* `jobID` — so a character
+  whose active job was its second was told that job had reached a level
+  belonging to a different one. Both grants now go through one
+  `_raise_unlocked_jobs`, since it is one rule: a duplicate raises the
+  character, and the character is all of its jobs.
+
+  This one had been reported by a test before it was reported by a tester.
+  `DuplicateJobLevelTest` failed about one run in five, and the fix applied on
+  2026-08-09 was to turn the "+" roll off for that class — the random gain
+  looked like the flake, when it was the roll landing where it should not. The
+  new `PlusPactJobLevelTest` forces the roll to 100% and asserts what it does to
+  a two-job roster row, which is the assertion the old guard was avoiding.
+
+  No save changes: levels already granted stay granted.
+
 - **The Companion box stopped at 250, and a full box locked every stage that
   could drop one.** Reported by a tester storing Metal Minions to strengthen
   Companions: at 250 the counter turned red — 251 out of 250 — and Metal Zone
