@@ -58,6 +58,26 @@ MATERIAL_LUCK_SHARE_PERCENT = 20
 #: unit and the same size as the Fate duplicate gain in `pact_draw_catalog`.
 OWNED_DESTINATION_LUCK_BONUS = 50
 
+#: The level a Joker Lambda must have reached before it may stand in for a
+#: monster, and the number of monsters it may stand in for.
+#:
+#: Both come from the same record as the proportions above, stated twice. The
+#: Recode DNA page lists among the requirements "Two specific Monsters at level
+#: 50 or higher", and under them "Joker Λ can be used as a replacement for
+#: **one** missing or under-leveled monster". Joker Λ's own page says it again
+#: from the other side: "Can be used in Recode DNA as a replacement for any one
+#: material monster. In order to be used as a replacement, Joker Λ must be at
+#: level 50 and one of the two material monsters must be under level 50 or not
+#: recruited."
+#:
+#: A flat 50 rather than whatever level the monster it replaces owed: that is
+#: what the record says, and it coincides with every bundled recipe anyway --
+#: each one asks level 50 of both its monsters. The two readings only part on a
+#: user-supplied catalog asking for something else, and there the recovered
+#: sentence is the one to keep.
+JOKER_SUBSTITUTE_LEVEL = 50
+JOKER_SUBSTITUTE_LIMIT = 1
+
 # recipe_id, source, destination, coins, ((item, count), ...), ((chr, level), ...)
 REBIRTH_RECIPE_ROWS: tuple[tuple[int, int, int, int, tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]], ...] = (
     (1, 2, 623, 30000, ((10, 15), (93, 5), (96, 1)), ((237, 50), (145, 50))),

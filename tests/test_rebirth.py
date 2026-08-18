@@ -8,8 +8,8 @@ from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
 from liminal_gate.luck_data import character_luck_cap
-from liminal_gate.rebirth_catalog import build_bundled_rebirth_policy, load_rebirth_catalog
-from liminal_gate.rebirth_recipe_data import OWNED_DESTINATION_LUCK_BONUS
+from liminal_gate.rebirth_catalog import BUNDLED_JOKER_CHARACTER_ID, build_bundled_rebirth_policy, load_rebirth_catalog
+from liminal_gate.rebirth_recipe_data import JOKER_SUBSTITUTE_LEVEL, OWNED_DESTINATION_LUCK_BONUS
 from tests.support import bootstrap_profile, post, start_server, stop_server, write_json
 
 
@@ -21,7 +21,7 @@ class RebirthTest(unittest.TestCase):
             profile = bootstrap_profile(); state = root / "state.json"; catalog = load_rebirth_catalog(catalog_path)
             server, thread = start_server(("127.0.0.1", 0), profile, BootstrapState(state), rebirth_catalog=catalog)
             try:
-                server.state.create_account("token", "account", {"chrdata": [{"id": 2, "jobLevels": [80.0]}, {"id": 7, "jobLevels": [50.0]}, {"id": 9, "jobLevels": [1.0]}], "itemList": [1], "coins": 2})
+                server.state.create_account("token", "account", {"chrdata": [{"id": 2, "jobLevels": [80.0]}, {"id": 7, "jobLevels": [50.0]}, {"id": 9, "jobLevels": [50.0]}], "itemList": [1], "coins": 2})
                 status, retry = post(server, "/gd/rebirth", "first", "rebirthID=1&useJoker=False")
                 self.assertEqual((200, True, 7), (status, retry["success"], retry["cmdError"]))
                 status, success = post(server, "/gd/rebirth", "second", "rebirthID=1&useJoker=True")
@@ -368,6 +368,107 @@ class RebirthMaterialConsumptionTest(unittest.TestCase):
         self.assertTrue(second["overlapped"], "the destination is now the copy the account holds")
         # 5.0 for the owned destination plus a fifth of each monster's 70.0.
         self.assertEqual(33, second["addedLuck"])
+
+
+class RebirthJokerSubstitutionTest(unittest.TestCase):
+    """The Joker stands in for one monster, and only from level 50.
+
+    "Joker Λ can be used as a replacement for one missing or under-leveled
+    monster", and, from its own page, "In order to be used as a replacement,
+    Joker Λ must be at level 50 and one of the two material monsters must be
+    under level 50 or not recruited." Neither half was enforced: one Joker at
+    any level covered however many monsters a recipe asked for.
+    """
+
+    def recode(self, material_levels: tuple[int | None, int | None], joker_level: int | None,
+               *, use_joker: bool, material_luck: int = 0, joker_luck: int = 0) -> dict:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            items = [0] * 181
+            for item_id, count in recipe.items.items():
+                items[item_id - 1] = count + 5
+            rows = [{"id": recipe.source_character_id, "jobID": 0, "jobLevels": [90.0, 0.0, 0.0],
+                     "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0, "buddy": 0}]
+            rows += [{"id": material_id, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
+                      "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": material_luck, "buddy": 0}
+                     for (material_id, _), level in zip(recipe.materials, material_levels)
+                     if level is not None]
+            if joker_level is not None:
+                rows.append({"id": BUNDLED_JOKER_CHARACTER_ID, "jobID": 0,
+                             "jobLevels": [float(joker_level), 0.0, 0.0], "jobSlots": [0.0, 0.0, 0.0],
+                             "skillBoost": 0, "luck": joker_luck, "buddy": 0})
+            state.create_account("token", "account", {
+                "coins": recipe.coins + 1000, "itemList": items, "summonList": [0] * 16,
+                "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
+                "teamMembers": [0] * 6, "teamMembers_VS": [0] * 18,
+                "chrdata": rows, "buddyInfo": {"list": [], "record": []},
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, payload = post(server, "/gd/rebirth", "recode",
+                                  f"rebirthID=1&useJoker={use_joker}")
+                return payload | {"roster": [row["id"] for row in state.userdata_for("token")["chrdata"]]}
+            finally:
+                stop_server(server, thread)
+
+    def test_a_joker_at_fifty_stands_in_for_the_one_missing_monster(self) -> None:
+        payload = self.recode((50, None), JOKER_SUBSTITUTE_LEVEL, use_joker=True)
+        self.assertNotIn("cmdError", payload, payload)
+        # The monster the account had and the Joker that replaced the one it
+        # did not are both spent, and the recoded unit is all that is left.
+        self.assertEqual([623], payload["roster"])
+
+    def test_the_offer_is_made_before_the_joker_is_spent(self) -> None:
+        """Code 7 is what the client re-submits against with `useJoker=True`."""
+        payload = self.recode((50, None), JOKER_SUBSTITUTE_LEVEL, use_joker=False)
+        self.assertEqual((True, 7), (payload["success"], payload["cmdError"]))
+        self.assertIn(BUNDLED_JOKER_CHARACTER_ID, payload["roster"])
+
+    def test_two_missing_monsters_are_beyond_one_joker(self) -> None:
+        """The defect: a single Joker used to cover a recipe's whole monster bill."""
+        payload = self.recode((None, None), JOKER_SUBSTITUTE_LEVEL, use_joker=True)
+        self.assertEqual((True, 4), (payload["success"], payload["cmdError"]))
+        # A refusal spends nothing, so the Joker is still there for a recipe
+        # the account can actually meet.
+        self.assertIn(BUNDLED_JOKER_CHARACTER_ID, payload["roster"])
+
+    def test_two_missing_monsters_are_never_offered_the_joker(self) -> None:
+        """An offer that would be refused must not be made in the first place."""
+        payload = self.recode((None, None), JOKER_SUBSTITUTE_LEVEL, use_joker=False)
+        self.assertEqual((True, 4), (payload["success"], payload["cmdError"]))
+
+    def test_a_joker_below_fifty_cannot_stand_in_and_is_not_offered(self) -> None:
+        under = JOKER_SUBSTITUTE_LEVEL - 1
+        self.assertEqual(4, self.recode((50, None), under, use_joker=True)["cmdError"])
+        self.assertEqual(4, self.recode((50, None), under, use_joker=False)["cmdError"])
+
+    def test_a_recipe_the_account_can_meet_never_touches_the_joker(self) -> None:
+        payload = self.recode((50, 50), JOKER_SUBSTITUTE_LEVEL, use_joker=True)
+        self.assertNotIn("cmdError", payload, payload)
+        self.assertEqual([623, BUNDLED_JOKER_CHARACTER_ID], sorted(payload["roster"]))
+
+    def test_the_under_level_monster_the_joker_replaced_survives_and_carries_nothing(self) -> None:
+        """It was not used, so it is not spent -- and its Luck stays with it.
+
+        The Joker is the material in its place, so the Joker's own fifth is the
+        one that comes across.
+        """
+        payload = self.recode(
+            (50, JOKER_SUBSTITUTE_LEVEL - 1), JOKER_SUBSTITUTE_LEVEL,
+            use_joker=True, material_luck=700, joker_luck=500,
+        )
+        self.assertNotIn("cmdError", payload, payload)
+        self.assertEqual([145, 623], sorted(payload["roster"]))
+        # 14.0 from the monster that was spent and 10.0 from the Joker; the
+        # under-level 145 keeps its own 70.0 and contributes none of it.
+        self.assertEqual(24, payload["addedLuck"])
 
 
 class RebirthMaxLuckTest(unittest.TestCase):
