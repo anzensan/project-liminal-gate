@@ -11,13 +11,20 @@ client's own Chapter1100 behaviour class carries a `ShinenSettings` and a
 which is why the two routes are modeled separately here rather than as one
 ten-stage chain.
 
-Section ordinal is *not* play order.  The embedded catalogue numbers the ten
-sections 1-10, but their titles run "battle 4, 3, 2, 1, 5" within each route,
-and the section titled "battle 1" is the only one of its five with an assumed
-level of 80 rather than 90 -- in both routes independently.  The battle number
-in the title is therefore taken as the sequence and the section ordinal as
-mere storage order.  That reading is Strongly inferred, not Confirmed: it rests
-on the title numbering plus the level agreement, not on a recovered gate.
+Play order is the section ordinal, ascending, within each route -- Confirmed
+by live traffic: a fresh account's very first `start_quest` for a route names
+its lowest section id.  The embedded catalogue's own generator names
+(`Battle_Shinen_1`.._4, `Battle_Mutou_1`.._4; see `native_encounter_importer`)
+number each section by difficulty tier, not by play order, and that numbering
+runs "4, 3, 2, 1" against the route's own section order -- the section titled
+"battle 1" is the only one of its five with an assumed level of 80 rather than
+90, in both routes independently, and it is the *fourth* section played, not
+the first.  An earlier reading of this project took the title number as the
+play sequence instead; that produced a frontier that rejected a route's own
+opening battle outright (409 `world_map_special_locked` on the very first
+entry), which is what live traffic caught.  The title/tier number is still the
+community record's own vocabulary -- see the Companion paragraph below -- so
+it is worth keeping straight from the play-order rank used here.
 
 Confirmed from the final client's embedded `BattleData`: the ten identities,
 25 stamina, zero entry Coins, `allowLucky=0`, the assumed levels, and the
@@ -31,19 +38,22 @@ The Companion payout is a bounded acceptance, not a reproduction.  The
 community record (Mutoh Λ (Quest) and Shin'en Λ (Quest), terrabattle.fandom.com)
 documents each battle's Companion reward as a single exclusive roll -- one
 Companion per clear, drawn from that battle's own candidate set -- and its
-per-battle candidate lists match this recovered `dropBuddies` manifest exactly:
-three candidates on battle 4 (the record's Metal, Glassy and Golden Minion Λ
-split), two on battles 2 and 3, one on battle 1, none on battle 5.  That
-agreement between an independent source and the recovered manifest is why the
+per-tier candidate lists match this recovered `dropBuddies` manifest exactly:
+three candidates on the record's "battle 4" (the record's Metal, Glassy and
+Golden Minion Λ split; played *first*, not fourth -- see the play-order note
+above), two on "battle 2" and "battle 3", one on "battle 1" (played fourth),
+none on "battle 5" (the route's final, fifth-played section).  That agreement
+between an independent source and the recovered manifest is why the
 settlement now accepts **at most one** reported Companion per clear, and only
 one the stage's own manifest names, minted at level 1.  The record's roll
-weights (5/10, 3/10, 2/10 on battle 4; the 20% battle-1 chance) and its
+weights (5/10, 3/10, 2/10 on "battle 4"; the 20% "battle 1" chance) and its
 story-progress/UTC-hour difficulty schedule are recorded in the reference
 ledger, not implemented: no settlement capture exists, so the odds are the
 client's to roll and this server's only to bound.  The record also documents a
-100%-if-unowned Mutoh Λ / Shin'en Λ *character* recruit on battle 4; character
-identities for the pair are not resolved against recovered master data, so a
-clear claiming a character remains refused.
+100%-if-unowned Mutoh Λ / Shin'en Λ *character* recruit on "battle 4" (the
+route's opening section); character identities for the pair are not resolved
+against recovered master data, so a clear claiming a character remains
+refused.
 """
 
 from __future__ import annotations
@@ -107,22 +117,24 @@ class WorldMapSpecialCatalog:
         return progress_chapter > UNLOCK_AFTER_CHAPTER
 
 
-# route -> battle number -> (section ordinal, assumed level, candidates).  The
-# section ordinals are the embedded storage order; see the docstring on why the
-# battle numbers rather than the ordinals drive progression.
+# route -> play-order rank (ascending section ordinal, Confirmed by live
+# traffic) -> (section id, assumed level, candidates).  This rank is *not* the
+# client's own difficulty/tier numbering recovered by
+# `native_encounter_importer` (`Battle_Shinen_1`.._4 etc.), which runs
+# "4, 3, 2, 1" against this order; see the docstring.
 _ROUTES: dict[str, dict[int, tuple[int, int, tuple[tuple[int, int], ...]]]] = {
     "shinen": {
-        1: (4, 80, ((137, 1),)),
-        2: (3, 90, ((213, 1), (96, 1))),
-        3: (2, 90, ((223, 1), (66, 1))),
-        4: (1, 90, ((129, 1), (267, 1), (140, 1))),
+        1: (1, 90, ((129, 1), (267, 1), (140, 1))),
+        2: (2, 90, ((223, 1), (66, 1))),
+        3: (3, 90, ((213, 1), (96, 1))),
+        4: (4, 80, ((137, 1),)),
         5: (5, 90, ()),
     },
     "mutoh": {
-        1: (9, 80, ((111, 1),)),
-        2: (8, 90, ((171, 1), (175, 1))),
-        3: (7, 90, ((120, 1), (125, 1))),
-        4: (6, 90, ((129, 1), (267, 1), (140, 1))),
+        1: (6, 90, ((129, 1), (267, 1), (140, 1))),
+        2: (7, 90, ((120, 1), (125, 1))),
+        3: (8, 90, ((171, 1), (175, 1))),
+        4: (9, 80, ((111, 1),)),
         5: (10, 90, ()),
     },
 }

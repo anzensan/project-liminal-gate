@@ -1027,12 +1027,17 @@ monster, Summon, or Luck result here and keeps the manifest for comparison
 against a future trace. Continue is likewise unavailable during these battles,
 matching the chapter's own notice that it cannot be continued after a game over.
 
-One caveat worth recording: the play order within a route is inferred, not
-confirmed. The client stores the ten stages under section ordinals whose titles
-run "battle 4, 3, 2, 1, 5", and this server follows the battle numbering in the
-titles rather than the ordinals. The reason is that the section titled "battle
-1" is, in each route independently, the only one of its five assumed at level 80
-instead of 90 — an ordinal ordering would put the easiest fight last.
+One caveat worth recording: the client stores the ten stages under section
+ordinals whose own titles run "battle 4, 3, 2, 1, 5" within each route — a
+difficulty-tier numbering, not a play order. Play order is the section
+ordinal, ascending, Confirmed by live traffic: a fresh account's very first
+`start_quest` for a route names its lowest section id. An earlier reading of
+this project took the title's battle number as the play sequence instead —
+reasoning that the section titled "battle 1" (the only one of its five assumed
+at level 80 rather than 90, in each route independently) had to be fought
+first — and that produced a frontier that rejected every route's own opening
+battle outright: a 409 on the very first entry, which live traffic caught. The
+level-80 tier is in fact the fourth section played, not the first.
 
 ### Selector and fidelity boundary
 
