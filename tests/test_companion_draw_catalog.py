@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from liminal_gate.companion_draw_catalog import _RARE_SLOT_CLASSES, build_bundled_companion_draw_policy, CompanionDrawCatalogError, load_companion_draw_catalog
+from liminal_gate.companion_draw_catalog import _NORMAL_SLOT_CLASSES, _RARE_SLOT_CLASSES, build_bundled_companion_draw_policy, CompanionDrawCatalogError, load_companion_draw_catalog
 from tests.support import write_json
 
 
@@ -171,9 +171,48 @@ class BundledCompanionDrawPolicyTest(unittest.TestCase):
         self.assertAlmostEqual(0.49 / 39, weights[6] / total, places=6)
         self.assertLess(max(weights.values()) / total, 0.02)
 
-    def test_normal_selection_stays_uniform_local_policy(self) -> None:
-        # No displayed-rate record was found for the Coin pool, so it keeps the
-        # uniform weight rather than borrowing the Rare pool's table. Recorded
-        # in the catalog as a known gap: uniform over a roster that now spans
-        # four classes returns A, the pool's top class, at 17.9%.
-        self.assertEqual({1}, {draw.weight for draw in self.catalog.normal_draws})
+    def test_normal_pool_groups_match_the_recorded_class_counts(self) -> None:
+        self.assertEqual(
+            {"a": 26, "b": 38, "c": 41, "d": 40},
+            {name: len(ids) for name, ids in _NORMAL_SLOT_CLASSES.items()},
+        )
+        grouped = [companion_id for ids in _NORMAL_SLOT_CLASSES.values() for companion_id in ids]
+        self.assertEqual(len(grouped), len(set(grouped)))
+        self.assertEqual(sorted(grouped), [draw.companion_id for draw in self.catalog.normal_draws])
+
+    def test_normal_selection_follows_the_chosen_class_shares(self) -> None:
+        # A 8%, B 12%, C 30%, D 50% -- chosen policy, not a record. No
+        # displayed rate for this pool survives.
+        weights = {draw.companion_id: draw.weight for draw in self.catalog.normal_draws}
+        total = sum(weights.values())
+        for name, share in (("a", 0.08), ("b", 0.12), ("c", 0.30), ("d", 0.50)):
+            drawn = sum(weights[companion_id] for companion_id in _NORMAL_SLOT_CLASSES[name])
+            self.assertAlmostEqual(share, drawn / total, places=6)
+
+    def test_normal_selection_is_even_within_a_class(self) -> None:
+        for ids in _NORMAL_SLOT_CLASSES.values():
+            weights = {draw.weight for draw in self.catalog.normal_draws if draw.companion_id in ids}
+            self.assertEqual(1, len(weights))
+
+    def test_energy_beats_coins_for_every_class_the_pools_share(self) -> None:
+        """The property the Normal share table exists to satisfy.
+
+        A and B are the same Companions in both pools, so a 2,000-Coin pull
+        must not out-draw a 3-Energy one for either class. Uniform selection
+        over the Normal roster failed this on A -- 0.690% against Truth's
+        0.536% -- which is the whole reason that pool carries a table. This
+        asserts the property rather than the numbers, so retuning either
+        table stays free as long as the ordering survives.
+        """
+        rare = {draw.companion_id: draw.weight for draw in self.catalog.rare_draws}
+        normal = {draw.companion_id: draw.weight for draw in self.catalog.normal_draws}
+        rare_total, normal_total = sum(rare.values()), sum(normal.values())
+        for name in ("a", "b"):
+            shared = set(_RARE_SLOT_CLASSES[name]) & set(_NORMAL_SLOT_CLASSES[name])
+            self.assertTrue(shared, name)
+            for companion_id in shared:
+                self.assertGreater(
+                    rare[companion_id] / rare_total,
+                    normal[companion_id] / normal_total,
+                    f"Companion {companion_id} ({name.upper()}) is likelier on Coins than on Energy",
+                )

@@ -176,27 +176,57 @@ _WEIGHT_SCALE = 1_000_000
 # A and B members are the shared tier the Rare comment above describes, so all
 # but one of them appear in both pools; Skullsplitter (72) is the lone B the
 # Fellowship page lists and the Truth page does not.
+_NORMAL_SLOT_CLASSES: dict[str, tuple[int, ...]] = {
+    "a": (
+        50, 51, 52, 53, 54, 55, 56, 57, 58, 118, 119, 120, 121, 176,
+        177, 178, 179, 216, 217, 218, 219, 220, 221, 222, 223, 224,
+    ),
+    "b": (
+        9, 15, 21, 27, 39, 40, 41, 72, 73, 74, 75, 90, 91, 92, 93, 94,
+        95, 96, 97, 98, 141, 142, 143, 144, 145, 146, 147, 148, 149,
+        166, 172, 173, 174, 175, 241, 242, 243, 244,
+    ),
+    "c": (
+        8, 14, 20, 26, 36, 37, 38, 68, 69, 70, 71, 83, 88, 163, 165,
+        168, 169, 170, 171, 189, 190, 191, 192, 193, 194, 195, 196,
+        197, 207, 208, 209, 210, 211, 212, 213, 214, 215, 237, 238,
+        239, 240,
+    ),
+    "d": (
+        87, 108, 109, 110, 111, 131, 132, 133, 134, 135, 136, 137, 138,
+        139, 151, 152, 153, 154, 155, 156, 157, 162, 164, 180, 181,
+        182, 183, 184, 185, 186, 187, 188, 225, 226, 227, 228, 233,
+        234, 235, 236,
+    ),
+}
+_NORMAL_SLOT_IDS = tuple(sorted(
+    companion_id for companion_ids in _NORMAL_SLOT_CLASSES.values() for companion_id in companion_ids
+))
+
+# Normal-pool class shares, in parts per million of one pull.  Unlike the Rare
+# table above these are not a record of anything: no displayed rate for this
+# pool survives, because the 2018-02-28 announcement and the Companions of
+# Truth page both cover the Rare pool only.
 #
-# This pool stays uniform, which is a weaker fit than it was when the roster
-# held only C and D.  No displayed-rate record survives for it -- the rate
-# announcement and the Companions of Truth page cover the Rare pool only -- and
-# inventing a four-class table would be a claim about retired odds this project
-# does not get to make.  The cost of staying uniform is now visible rather than
-# negligible: A, the pool's top class, comes back at 17.9% and D at 27.6%, where
-# a real Coin sink would almost certainly have leaned much harder toward D.
-# Recorded here as a known gap, not as a reconstruction of the retired rates.
-_NORMAL_SLOT_IDS = (
-    8, 9, 14, 15, 20, 21, 26, 27, 36, 37, 38, 39, 40, 41, 50, 51, 52, 53,
-    54, 55, 56, 57, 58, 68, 69, 70, 71, 72, 73, 74, 75, 83, 87, 88, 90, 91,
-    92, 93, 94, 95, 96, 97, 98, 108, 109, 110, 111, 118, 119, 120, 121,
-    131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145,
-    146, 147, 148, 149, 151, 152, 153, 154, 155, 156, 157, 162, 163, 164,
-    165, 166, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
-    180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193,
-    194, 195, 196, 197, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216,
-    217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 233, 234,
-    235, 236, 237, 238, 239, 240, 241, 242, 243, 244,
-)
+# What picks them is a property of the two pools rather than a guess at the
+# retired odds.  A and B are the *same* Companions in both, so the Coin pool
+# must not be a better source of one than the Energy pool is; a 2,000-Coin pull
+# outperforming a 3-Energy pull for an entire class is a thing no draw does.
+# Uniform selection failed exactly that test once the shared tier was restored:
+# spread evenly over 145 members it put a given A at 0.690% on Coins against
+# 0.536% on Energy, so Truth became the wrong place to chase every Buckler,
+# Chronicle and Mythril piece in the game.
+#
+# So the shared A and B tier is given 20% of a Fellowship pull, against the 79%
+# it carries on Truth, and each tier is split in the 30:49 the Rare record
+# states for its own bottom two classes -- A:B and again C:D.  That yields
+# A 8%, B 12%, C 30%, D 50%: D commonest, which is the shape every pool with a
+# surviving record has, and Truth ahead of Fellowship for both shared classes
+# (1.74x on A, 3.98x on B).  The round numbers are deliberate.  Every displayed
+# table this game is known to have shown used whole percents, and precision
+# here would advertise a confidence that does not exist.  The 20% is the one
+# free parameter; it lives in :mod:`liminal_gate.tuning` so an operator can
+# move it.
 
 
 @dataclass(frozen=True)
@@ -235,16 +265,20 @@ class BundledCompanionDrawPolicy:
         return self.ticket_item_id if kind in {1, 21} else None
 
 
-def _rare_weights(shares: Mapping[str, int]) -> dict[int, int]:
-    """Split each Rare class's displayed share evenly across its own members.
+def _class_weights(classes: Mapping[str, tuple[int, ...]], shares: Mapping[str, int]) -> dict[int, int]:
+    """Split each class's share evenly across its own members.
 
     The scale factor keeps the smallest share an integer with room to spare:
-    the narrowest split, Z across nineteen members, still lands near 1.6e9, so
-    the floor division loses parts per billion rather than anything a draw
-    could observe.
+    the narrowest split, the Rare pool's Z across nineteen members, still lands
+    near 1.6e9, so the floor division loses parts per billion rather than
+    anything a draw could observe.
+
+    An even split within a class is local policy in both pools, for different
+    reasons.  The Rare display gave a per-Companion rate this record does not
+    preserve; the Normal pool never had a published rate at all.
     """
     weights: dict[int, int] = {}
-    for name, companion_ids in _RARE_SLOT_CLASSES.items():
+    for name, companion_ids in classes.items():
         share = shares[name] * _WEIGHT_SCALE // len(companion_ids)
         for companion_id in companion_ids:
             weights[companion_id] = max(share, 1)
@@ -256,17 +290,18 @@ def build_bundled_companion_draw_policy(
 ) -> BundledCompanionDrawPolicy:
     """Return the guided-path local Companion draw policy.
 
-    Pool membership, per-Companion rarity, both ticket items, the displayed
-    three-Energy fallback, the Coin price, and the Companion box ceiling are
-    recovered from the final client.  Rare-pool selection follows the displayed
-    class shares documented above; the even split within a class, and the
-    Normal pool's uniform selection, are local policy rather than claims about
-    retired odds.
+    Per-Companion rarity, both ticket items, the displayed three-Energy
+    fallback, and the Companion box ceiling are recovered from the final
+    client; pool membership and the Coin price come from the two pool pages.
+    Rare-pool selection follows the displayed class shares documented above.
+    The Normal pool's shares, the even split within a class, and the Coin price
+    are local policy rather than claims about retired odds.
     """
-    rare_weights = _rare_weights(tuning.rare_class_share_ppm)
+    rare_weights = _class_weights(_RARE_SLOT_CLASSES, tuning.rare_class_share_ppm)
+    normal_weights = _class_weights(_NORMAL_SLOT_CLASSES, tuning.normal_class_share_ppm)
     return BundledCompanionDrawPolicy(
         BUNDLED_ITEM_SLOTS, BUNDLED_TICKET_ITEM_ID, BUNDLED_NORMAL_TICKET_ITEM_ID,
         BUNDLED_COIN_COST, BUNDLED_ENERGY_COST, BUNDLED_MAX_OWNED,
-        tuple(CompanionDraw(companion_id, 1) for companion_id in _NORMAL_SLOT_IDS),
+        tuple(CompanionDraw(companion_id, normal_weights[companion_id]) for companion_id in _NORMAL_SLOT_IDS),
         tuple(CompanionDraw(companion_id, rare_weights[companion_id]) for companion_id in _RARE_SLOT_IDS),
     )

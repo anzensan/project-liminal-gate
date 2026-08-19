@@ -93,9 +93,12 @@ provenance = "user-supplied"
 
 [companion]
 # The Rare Companion pool's displayed class rates: Z 3%, SS 8%, S 10%, A 30%,
-# B 49%. Same totalling rule as the Pact shares. The Normal pool stays uniform
-# and is deliberately not tunable, because no comparable record covers it.
+# B 49%. Same totalling rule as the Pact shares.
 # rare_class_share_ppm = { z = 30000, ss = 80000, s = 100000, a = 300000, b = 490000 }
+# The Normal Companion pool's class rates. No record of these survives, so
+# unlike the line above they are a chosen policy, picked so that the Coin pool
+# never beats the Energy pool for a class the two share.
+# normal_class_share_ppm = { a = 80000, b = 120000, c = 300000, d = 500000 }
 # The random strengthen EXP bonus, as [percent, weight] pairs. No production
 # odds for it survive, so these weights are a chosen policy.
 # strengthen_bonus_weights = [[0, 85], [25, 8], [50, 5], [100, 2]]
@@ -163,6 +166,7 @@ TRUTH_CLASSES = ("z", "ss", "s", "a_and_below")
 #: The Rare Companion pool's own classes, which are the displayed ones rather
 #: than the Pact's bands: the record gives this pool a per-class rate for each.
 RARE_CLASSES = ("z", "ss", "s", "a", "b")
+NORMAL_CLASSES = ("a", "b", "c", "d")
 
 #: Hunting has three tiers and Metal Zone seven zones. Both counts are the
 #: client's, so a document restating either must restate all of it.
@@ -247,6 +251,15 @@ class CompanionTuning:
     its second-largest by count, so a uniform draw inverts the two commonest
     outcomes.
 
+    ``normal_class_share_ppm`` has no record behind it at all; the rate
+    announcement and the Companions of Truth page cover the Rare pool only.
+    It is a chosen policy, and the thing it is chosen to satisfy is a property
+    of the two pools rather than a claim about retired odds: A and B are the
+    same Companions in both, so the Coin pool must not be a better source of
+    them than the Energy pool. Uniform selection failed that -- it put a given
+    A at 0.690% on Coins against 0.536% on Energy -- which is why this table
+    exists. See :mod:`liminal_gate.companion_draw_catalog` for the derivation.
+
     ``strengthen_bonus_weights`` are weaker still: no production odds for the
     random EXP bonus survive and the client's own calculation does not contain
     them, so the bundled weights are a named local policy that keeps all three
@@ -255,6 +268,8 @@ class CompanionTuning:
 
     #: ``class -> ppm share of one Rare Companion pull``.
     rare_class_share_ppm: dict[str, int]
+    #: ``class -> ppm share of one Normal Companion pull``.
+    normal_class_share_ppm: dict[str, int]
     #: ``(bonus percent, weight)`` pairs for the strengthen EXP bonus.
     strengthen_bonus_weights: tuple[tuple[int, int], ...]
 
@@ -331,6 +346,7 @@ DEFAULT_TUNING = Tuning(
     ),
     companion=CompanionTuning(
         rare_class_share_ppm={"z": 30_000, "ss": 80_000, "s": 100_000, "a": 300_000, "b": 490_000},
+        normal_class_share_ppm={"a": 80_000, "b": 120_000, "c": 300_000, "d": 500_000},
         strengthen_bonus_weights=((0, 85), (25, 8), (50, 5), (100, 2)),
     ),
     hunting=HuntingTuning(
@@ -462,11 +478,15 @@ def _duplicate_gains(value: object) -> dict[str, tuple[int, int]]:
 
 
 def _companion(value: object) -> CompanionTuning:
-    document = _section(value, {"rare_class_share_ppm", "strengthen_bonus_weights"}, "companion")
+    document = _section(value, {"rare_class_share_ppm", "normal_class_share_ppm", "strengthen_bonus_weights"}, "companion")
     fields: dict[str, object] = {}
     if "rare_class_share_ppm" in document:
         fields["rare_class_share_ppm"] = _shares(
             document["rare_class_share_ppm"], RARE_CLASSES, "rare_class_share_ppm",
+        )
+    if "normal_class_share_ppm" in document:
+        fields["normal_class_share_ppm"] = _shares(
+            document["normal_class_share_ppm"], NORMAL_CLASSES, "normal_class_share_ppm",
         )
     if "strengthen_bonus_weights" in document:
         fields["strengthen_bonus_weights"] = _bonus_weights(document["strengthen_bonus_weights"])
