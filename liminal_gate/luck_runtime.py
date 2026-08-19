@@ -44,6 +44,7 @@ from liminal_gate.luck_data import (
     team_luck,
 )
 from liminal_gate.luck_pool_data import pool_for
+from liminal_gate.party import active_party_members
 
 #: The six wire slots, empty-string for a slot that did not appear. The client
 #: reads a fixed-length array and treats an empty entry as no chest.
@@ -74,10 +75,14 @@ def party_team_luck(userdata: dict) -> int:
     average is taken over the characters' stored Luck alone. The effect is that
     a Companion-boosted team is treated as slightly unluckier than the client
     shows it, which errs toward fewer chests rather than more.
+
+    The average is over the squad on screen, which is what the client's own
+    Party Formation header averages; see `active_party_members` for why the
+    front of `teamMembers` is not that squad.
     """
     roster = userdata.get("chrdata")
-    party = userdata.get("teamMembers")
-    if not isinstance(roster, list) or not isinstance(party, list):
+    party = active_party_members(userdata)
+    if not isinstance(roster, list) or party is None:
         return 0
     luck_by_id = {
         row.get("id"): int(row.get("luck", 0))
@@ -85,7 +90,7 @@ def party_team_luck(userdata: dict) -> int:
         if isinstance(row, dict) and type(row.get("luck", 0)) is int
     }
     members = tuple(
-        luck_by_id.get(member, 0) for member in party[:6] if member
+        luck_by_id.get(member, 0) for member in party if member
     )
     return team_luck(members)
 
@@ -178,11 +183,17 @@ def roll_luck_up_table(
     decides which Lucky enemy a stage carries had already been discarded.
 
     A character at its ceiling stays there, and an empty slot stays zero.
+
+    The table is positional and the client renders it against the squad it is
+    fielding, so it has to be rolled against that same squad: rolled against the
+    front of `teamMembers` instead, a player on Squad 3 was shown a gain on the
+    character in slot 3 of the squad they were looking at while the headroom
+    behind it belonged to whoever sat in slot 3 of Squad 1.
     """
-    party = userdata.get("teamMembers")
-    if not isinstance(party, list):
+    party = active_party_members(userdata)
+    if party is None:
         return [0] * 6
-    members = list(party[:6]) + [0] * max(0, 6 - len(party[:6]))
+    members = list(party) + [0] * max(0, 6 - len(party))
     lucky = (
         roll_lucky_enemy_gain(lucky_chapter, *seed)
         if lucky_chapter in ALLOW_LUCKY_CHAPTERS else 0
@@ -218,14 +229,20 @@ def roll_luck_up_table(
 
 
 def apply_luck_up_table(userdata: dict, table: list[int]) -> None:
-    """Commit a rolled Luck gain to the roster, capped at each character's ceiling."""
+    """Commit a rolled Luck gain to the roster, capped at each character's ceiling.
+
+    The same squad the entry rolled the table against, and it is still the same
+    squad by the time this runs: a party save while a battle is open abandons
+    the battle (see `update_character_userdata`), so the clear that reaches here
+    is fielding what the start did.
+    """
     roster = userdata.get("chrdata")
-    party = userdata.get("teamMembers")
-    if not isinstance(roster, list) or not isinstance(party, list):
+    party = active_party_members(userdata)
+    if not isinstance(roster, list) or party is None:
         return
     gains = {
         member: gain
-        for member, gain in zip(party[:6], table)
+        for member, gain in zip(party, table)
         if member and gain
     }
     for row in roster:

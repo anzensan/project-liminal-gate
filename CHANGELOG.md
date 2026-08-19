@@ -55,6 +55,78 @@ run the command.
 
 ### Fixed
 
+- **Half of every Companions of Truth pull was Healing Wand or Regen Bangle.**
+  A tester counted it: *"most 10 pulls are like 5-6 of just those two items …
+  a statistically unlikely amount"*. A second confirmed the shape of it from
+  the other side — *"I did a few hundreds of pulls and the only B I got were
+  those. I thought that was the only two options in B frankly."* They were.
+
+  The Rare pool follows the displayed class shares, and B carries 49% of a
+  pull split evenly across its members. The bundled roster had two members in
+  B, so Healing Wand and Regen Bangle were 24.5% each: 4.9 of them in an
+  average ten-pull, which is what the count reported.
+
+  The roster was wrong because `SlotKind` is not a partition of the two
+  Companion pools, and it was read as one. Every A- and B-class Companion is
+  offered by *both* draws — the Companions of Fellowship page says so
+  outright — and those shared records carry neither `kind == 1` nor
+  `kind == 2`, so taking the Rare pool to be the `kind == 2` records returned
+  the Truth-exclusive members only. Z, SS and S came out exact at 19/13/50,
+  which is why the error survived review; A arrived 26 short and B 37 short.
+  The same 64 Companions were missing from the Coin pool, which had been
+  serving C and D alone, so the whole shared tier was unobtainable from either
+  draw.
+
+  Both rosters now come from the two pool pages rather than from the slot
+  field: Truth is 177 members (Z 19, SS 13, S 50, A 56, B 39) and Fellowship
+  is 145 (A 26, B 38, C 41, D 40), overlapping by the 63 the pages share.
+  Healing Wand and Regen Bangle fall from 24.5% to 1.26% each, and A-class
+  members from 1.0% to 0.54%. Existing boxes are untouched; only future pulls
+  change.
+
+  The Fellowship pool still selects uniformly, and that is now a weaker fit
+  than it was: no displayed-rate record survives for it, and uniform over a
+  roster spanning four classes returns A, its top class, at 17.9%. Recorded in
+  `companion_draw_catalog.py` as a known gap rather than reconstructed, since
+  inventing a four-class table would be a claim about retired odds nothing
+  supports.
+
+- **A Companions of Fellowship pull cost 3,000 Coins instead of 2,000.** Both
+  the price the client displays (`NormalBuddySlotCoins`, sent in the constants
+  block) and the price the draw route charges (`BUNDLED_COIN_COST`) are server
+  policy, and both were set above the figure the Companions of Fellowship page
+  records. They now read 2,000 and must stay equal to each other.
+
+- **Luck was paid to Squad 1 whichever squad you fought with.** Three testers
+  reported it from three directions: *"Luck gains in metal zones still dont
+  stick"*, *"Luck doesn't stick period — doesn't work on normal stages
+  either"*, and a screenshot of Squad 3 where the results screen had announced
+  a gain for one character and a different one had it afterwards — *"violet was
+  3.1 and went to 3.4 (the 0.3 bahl was supposed to have gotten), so maybe it's
+  a positioning thing"*. It was.
+
+  `teamMembers` is every squad the account keeps flattened into one array, and
+  `teamNo` names the one on screen. The Luck runtime read the first six
+  entries, which are Squad 1 no matter who is fighting. So a party fielded from
+  Squad 3 had its chest odds averaged from a squad that was not playing, its
+  growth rolled against the Luck and the class ceilings of characters that were
+  not there, and the gain paid to those characters instead. `luckUpTable` is
+  positional and the client applies it to the squad on screen, which is why a
+  character sitting in both squads at different slots took a gain announced for
+  someone else — the "positioning thing" the third tester saw.
+
+  Nothing about this was particular to the Metal Zones. It looked that way
+  because a Metal Zone run is what a player keeps a second squad for: the
+  levelling party is Squad 2 or 3 and the story party is Squad 1, so the same
+  account saw Luck stick on the story and never in the zones. An account that
+  has only ever had one squad was never affected, which is why the suite did
+  not catch it — every party in it was a single squad, the one shape where the
+  front of the array *is* the party.
+
+  All three Luck decisions now read the squad on screen, through the same
+  resolver the species and class gates and the EXP multiplier already used.
+  Luck already earned is not recomputed: what a wrong squad was paid, it keeps.
+
 - **One Joker Λ covered a Recode's whole monster bill, at any level.** A tester,
   on what it should do: *"Joker^ should be usable as a wildcard Component that
   can replace any 1 other unit you might have. I'm not sure if this is working

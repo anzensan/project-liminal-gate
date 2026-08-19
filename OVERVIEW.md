@@ -58,7 +58,7 @@ The package splits into tiers that flow strictly one direction:
 
 ## bootstrap_server.py (the ~5,000-line core) and its satellite modules
 
-Three layers live in their own modules and are re-imported by the server, so
+Four layers live in their own modules and are re-imported by the server, so
 `bootstrap_server.<name>` still resolves for every helper:
 
 - `bootstrap_profile.py` — `ProfileError`, the profile dataclasses,
@@ -67,6 +67,10 @@ Three layers live in their own modules and are re-imported by the server, so
   `_signed_json`, last-update helpers).
 - `bootstrap_parsers.py` — the request-body parsers (`_parse_*`, all pure
   `bytes -> parsed | None`).
+- `party.py` — `active_party_members`, the one reading of which six roster
+  members are being fielded. It is a leaf so `luck_runtime` can share it;
+  `teamMembers` is every squad flattened and has now been misread from both
+  ends, so nothing should resolve the party for itself.
 
 Inside `bootstrap_server.py` itself, three classes plus the remaining
 module-level helpers:

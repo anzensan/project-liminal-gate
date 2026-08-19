@@ -114,6 +114,66 @@ class TeamLuckReadTest(unittest.TestCase):
         self.assertEqual(0, party_team_luck({}))
 
 
+def three_squads(party_luck: dict[int, int], squads: list[list[int]], team_no: int) -> dict:
+    """A save keeping several squads, fielding one of them.
+
+    `teamMembers` is every squad flattened into one array and `teamNo` names the
+    one on screen; the six-entry saves above are the single-squad case, which is
+    the one shape where reading the front of the array happens to be right.
+    """
+    return {
+        "chrdata": [{"id": cid, "luck": luck} for cid, luck in party_luck.items()],
+        "teamMembers": [member for squad in squads for member in squad],
+        "teamNo": team_no,
+    }
+
+
+class FieldedSquadTest(unittest.TestCase):
+    """Every Luck decision belongs to the squad on screen.
+
+    Three testers reported Luck that did not stick -- one of them only in the
+    Metal Zones, one not at all, and one who watched a gain announced for the
+    character in one party slot appear on the character in another. All three
+    are this: the runtime read the first six entries of `teamMembers`, which
+    name Squad 1 no matter which squad is fighting.
+    """
+
+    BENCH, FIGHTER = 1, 2
+    #: Squad 1 benched, Squad 2 empty, Squad 3 on screen.
+    SQUADS = [[BENCH, 0, 0, 0, 0, 0], [0] * 6, [FIGHTER, 0, 0, 0, 0, 0]]
+
+    def save(self, bench: int, fighter: int) -> dict:
+        return three_squads({self.BENCH: bench, self.FIGHTER: fighter}, self.SQUADS, 3)
+
+    def test_the_chest_odds_read_the_squad_on_screen(self) -> None:
+        """Chest tiers follow team Luck, so a benched squad decided which
+        chests a battle it did not fight could pay out."""
+        self.assertEqual(400, party_team_luck(self.save(bench=0, fighter=400)))
+
+    def test_growth_is_rolled_against_the_squad_on_screen(self) -> None:
+        """The benched squad is at its ceiling and the fighting one is not, so
+        reading the wrong one leaves no headroom to gain into at all."""
+        save = self.save(bench=character_luck_cap(self.BENCH), fighter=0)
+        grew = any(
+            any(roll_luck_up_table(save, 40, f"r{n}", "d")) for n in range(40)
+        )
+        self.assertTrue(grew, "40 battles raised nothing for the squad on screen")
+
+    def test_a_gain_is_paid_to_the_squad_on_screen(self) -> None:
+        save = self.save(bench=0, fighter=0)
+        apply_luck_up_table(save, [3, 0, 0, 0, 0, 0])
+        paid = {row["id"]: row["luck"] for row in save["chrdata"]}
+        self.assertEqual({self.BENCH: 0, self.FIGHTER: 3}, paid)
+
+    def test_a_squad_number_naming_no_squad_falls_back_to_the_first(self) -> None:
+        """A malformed pairing is not a statement about the party; the same
+        reading `active_party_members` gives every other caller."""
+        save = three_squads({self.BENCH: 0, self.FIGHTER: 0}, self.SQUADS, 9)
+        apply_luck_up_table(save, [3, 0, 0, 0, 0, 0])
+        paid = {row["id"]: row["luck"] for row in save["chrdata"]}
+        self.assertEqual({self.BENCH: 3, self.FIGHTER: 0}, paid)
+
+
 class LuckGrowthTest(unittest.TestCase):
     def test_below_eight_stamina_nothing_grows(self) -> None:
         """Mistwalker's own rule, and it makes every Daily Quest ineligible."""
