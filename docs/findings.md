@@ -27,6 +27,24 @@ Private inputs, captures, account state, and original assets remain excluded.
   unchanged, and a `teamNo` naming no squad in its own array is read as the
   first rather than judged on all of them: a malformed pairing is not a
   statement about the party.
+- **Second reported symptom, same array, opposite mistake.** Three testers
+  reported Luck that would not stick: one only in the Metal Zones, one on every
+  family, and one who watched the results screen announce a gain for the
+  character in one party slot and found it on the character in another slot
+  afterwards. The Luck runtime read `teamMembers[:6]`, which is Squad 1 whoever
+  is fighting -- so reading the *front* of the array is the same fault as
+  reading the *whole* of it. All three Luck decisions were affected: the chest
+  odds averaged a squad that was not playing, the growth roll took its headroom
+  from characters that were not there, and the gain was paid to them. It was
+  invisible to a single-squad save, which is every save in the suite and every
+  save written before a second squad existed.
+- **Why it reads as a positioning bug to a player.** `luckUpTable` is
+  positional and the client applies it to the squad it is fielding
+  (`UITeamStateItem.UpdateForResult`, `Character.set_luck`), while the server
+  applied the same six numbers to Squad 1. A character in both squads at
+  different slots therefore took a gain the results screen had announced for
+  someone else, and the announced character kept nothing -- one battle showing
+  both halves of the fault at once.
 - **Worth stating, because it bounds the fix.** `start_quest` carries no party
   at all -- its fields are `stamina`, `coins`, `chapter`, `section`,
   `lastUpdate` -- so a server gate on party composition can only ever read the

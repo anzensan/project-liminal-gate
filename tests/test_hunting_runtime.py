@@ -89,6 +89,17 @@ class HuntingRuntimeTest(unittest.TestCase):
                     "max_items_total": 0, "item_maxima": {},
                 },
                 {
+                    # A Metal Zone above the eight-stamina gate, entered on the
+                    # ticket the client serializes for that family: zones 2--7
+                    # all have this shape, and it is the one the Luck reports
+                    # came from. Hidden, for the same reason 1201 is.
+                    "family": "metal_zone", "chapter": 3000, "section": 12,
+                    "stamina": 15, "coins": 0, "entry_item_id": 5, "entry_item_count": 1,
+                    "ticket_optional": True, "selector": "hidden",
+                    "unlock_chapter": 1, "unlock_section": 1, "max_coins": 0, "max_exp": 1000,
+                    "max_items_total": 0, "item_maxima": {},
+                },
+                {
                     "family": "tin", "chapter": LOCKED_STAGE[0], "section": LOCKED_STAGE[1],
                     "stamina": 1, "coins": 0, "entry_item_id": 0, "entry_item_count": 0,
                     "unlock_chapter": 30, "unlock_section": 1,
@@ -298,6 +309,59 @@ class HuntingRuntimeTest(unittest.TestCase):
         # Replaying the clear must not pay it twice.
         self.clear("retry-clear", 3004, 1)
         self.assertEqual(before + once, self.luck())
+
+    def field_third_squad(self) -> None:
+        """Keep three squads and field the third, the way a played save does.
+
+        `form_party` writes the six entries a save had before a second squad
+        existed, which is the one shape this fault is invisible in: the party
+        and the front of `teamMembers` are the same six slots there. Character
+        9003 parks in Squad 1 to catch a gain paid to the wrong squad, and it
+        holds the tickets a Metal Zone run spends.
+        """
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["chrdata"] = userdata["chrdata"] + [dict(self.character, id=9003)]
+            userdata["teamMembers"] = (
+                [9003, 0, 0, 0, 0, 0] + [0] * 6 + [9001, 0, 0, 0, 0, 0]
+            )
+            userdata["teamNo"] = 3
+            userdata["itemList"] = [0, 1, 0, 0, 30, 0, 0, 0]
+            self.server.state._persist_locked()
+
+    def metal_battle(self, tag: str) -> int:
+        """One ticketed Metal Zone run above the stamina gate."""
+        before = self.luck()
+        status, started = self.start_with_ticket(tag, 3000, 12, 15)
+        self.assertEqual((200, True), (status, started["success"]), started)
+        self.assertEqual(200, self.clear(f"{tag}-clear", 3000, 12)[0])
+        return self.luck() - before
+
+    def bench_luck(self) -> int:
+        """The Luck of the character parked in Squad 1, which never fights."""
+        return next(
+            int(row.get("luck", 0)) for row in self.userdata()["chrdata"]
+            if row["id"] == 9003
+        )
+
+    def test_a_metal_zone_run_grows_the_squad_that_fought_it(self) -> None:
+        """Three testers reported Luck that would not stick, one of them only in
+        the Metal Zones. The Luck runtime read the first six entries of
+        `teamMembers`, which is Squad 1 and not the party: a run fought with
+        Squad 3 rolled its growth against six characters that were not in it and
+        paid them, so the results screen announced a gain the roster never
+        took."""
+        self.field_third_squad()
+        gained = sum(self.metal_battle(f"mz{n}") for n in range(24))
+        self.assertGreater(gained, 0, "24 Metal Zone runs raised no Luck for Squad 3")
+        self.assertEqual(0, self.bench_luck(), "Luck was paid to a squad that never fought")
+
+    def test_the_squad_on_screen_is_the_one_a_story_stage_grows(self) -> None:
+        """Not a Metal Zone rule: the same array is read on every family."""
+        self.field_third_squad()
+        gained = sum(self.battle(f"sq{n}", 1201, 1, 15) for n in range(24))
+        self.assertGreater(gained, 0, "24 battles at 15 stamina raised no Luck for Squad 3")
+        self.assertEqual(0, self.bench_luck(), "Luck was paid to a squad that never fought")
 
     def test_stage_charges_stamina_settles_within_bounds_and_survives_restart(self) -> None:
         status, started = self.start("hunt-start", 1001, 1, 3)
