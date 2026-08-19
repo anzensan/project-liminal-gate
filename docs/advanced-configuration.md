@@ -1117,9 +1117,16 @@ duplicate_gains = { z = [6, 120], ss_s = [5, 100], a_and_below = [1, 50] }
 
 [companion]
 # The Rare Companion pool's displayed class rates: Z 3%, SS 8%, S 10%, A 30%,
-# B 49%. Same four-way total rule as the Pact shares above. The Normal pool
-# stays uniform and is not reachable: no comparable record covers it.
+# B 49%. Same four-way total rule as the Pact shares above.
 rare_class_share_ppm = { z = 30000, ss = 80000, s = 100000, a = 300000, b = 490000 }
+# The Normal Companion pool's class rates. No record of these survives, so
+# unlike the line above they are a chosen policy: the shared A/B tier is given
+# 20% of a Coin pull against the 79% it carries on Energy, and each tier is
+# split in the 30:49 the Rare record states for its own bottom two classes.
+# What the choice has to satisfy is that A and B are the *same* Companions in
+# both pools, so a 2,000-Coin pull must not out-draw a 3-Energy one for either
+# class. Raising the A and B shares here is what breaks that first.
+normal_class_share_ppm = { a = 80000, b = 120000, c = 300000, d = 500000 }
 # The strengthen EXP bonus, as [percent, weight] pairs. No production odds
 # survive and the client's own calculation does not contain them.
 strengthen_bonus_weights = [[0, 85], [25, 8], [50, 5], [100, 2]]

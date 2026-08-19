@@ -91,6 +91,25 @@ run the command.
   inventing a four-class table would be a claim about retired odds nothing
   supports.
 
+- **The Coin pool was a better source of A-class Companions than the Energy
+  pool.** A follow-on from the roster fix above rather than a separate report.
+  Restoring the shared A/B tier to the Companions of Fellowship pool left that
+  pool selecting uniformly over 145 members, which put a given A Companion at
+  0.690% on a 2,000-Coin pull against 0.536% on a 3-Energy one. A and B are the
+  same Companions in both pools, so that made Truth the wrong place to chase
+  every Buckler, Chronicle and Mythril piece in the game.
+
+  The Normal pool now carries class shares of its own: A 8%, B 12%, C 30%,
+  D 50%. No displayed rate for it survives — the 2018-02-28 announcement and
+  the Companions of Truth page cover the Rare pool only — so unlike the Rare
+  table this one is chosen policy, and what chooses it is a property of the two
+  pools rather than a guess at retired odds. The shared tier is given 20% of a
+  Coin pull against the 79% it carries on Energy, and each tier is split in the
+  30:49 the Rare record states for its own bottom two classes. Energy now beats
+  Coins for all 63 shared Companions — 1.74x on A, 3.98x on B — which is
+  asserted as a property, so retuning either table stays free as long as the
+  ordering holds. The table is tunable as `companion.normal_class_share_ppm`.
+
 - **A Companions of Fellowship pull cost 3,000 Coins instead of 2,000.** Both
   the price the client displays (`NormalBuddySlotCoins`, sent in the constants
   block) and the price the draw route charges (`BUNDLED_COIN_COST`) are server

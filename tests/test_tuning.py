@@ -171,13 +171,36 @@ class TunedCompanionPolicyTest(unittest.TestCase):
         self.assertEqual(set(bundled), set(tuned))
         self.assertNotEqual(bundled, tuned)
 
-    def test_the_normal_pool_stays_uniform_because_no_record_covers_it(self) -> None:
-        loaded = replace(
+    def test_the_two_share_tables_are_independent(self) -> None:
+        """One pool's table must not move the other's weights.
+
+        They answer to different things: the Rare shares restate a displayed
+        record, the Normal ones are a chosen policy. An operator retuning
+        either should not silently reshape the other pool.
+        """
+        bundled = build_bundled_companion_draw_policy()
+        rare_only = build_bundled_companion_draw_policy(replace(
             DEFAULT_TUNING.companion,
             rare_class_share_ppm={"z": 1, "ss": 1, "s": 1, "a": 1, "b": 999_996},
+        ))
+        normal_only = build_bundled_companion_draw_policy(replace(
+            DEFAULT_TUNING.companion,
+            normal_class_share_ppm={"a": 1, "b": 1, "c": 1, "d": 999_997},
+        ))
+        self.assertEqual(bundled.normal_draws, rare_only.normal_draws)
+        self.assertNotEqual(bundled.rare_draws, rare_only.rare_draws)
+        self.assertEqual(bundled.rare_draws, normal_only.rare_draws)
+        self.assertNotEqual(bundled.normal_draws, normal_only.normal_draws)
+
+    def test_the_normal_shares_must_name_the_coin_pool_classes(self) -> None:
+        """The Coin pool tops out at A, so its table names no S and above."""
+        path, directory = _tuning(
+            "[companion]\nnormal_class_share_ppm = { a = 500000, b = 500000 }\n",
         )
-        policy = build_bundled_companion_draw_policy(loaded)
-        self.assertEqual({1}, {draw.weight for draw in policy.normal_draws})
+        self.addCleanup(directory.cleanup)
+        with self.assertRaises(TuningError) as caught:
+            load_tuning(path)
+        self.assertIn("a, b, c, d", str(caught.exception))
 
     def test_strengthen_bonus_weights_are_carried(self) -> None:
         policy = build_bundled_companion_strengthen_policy(
