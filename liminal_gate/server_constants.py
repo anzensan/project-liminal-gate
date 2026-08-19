@@ -183,7 +183,12 @@ def build_server_constants(
         # 0x400 = 1024 (`0x19DE2B4`). A `maxCharacterCount` key was sent here
         # until 2026-08-17 and was read by nothing; the roster ceiling the
         # client actually applies has always been its own 1024.
-        "NormalBuddySlotCoins": 3000,
+        # The Companions of Fellowship pull price. The client displays
+        # whatever this says, so it is policy rather than recovery; 2,000
+        # is the figure the Companions of Fellowship page records, and it
+        # must stay equal to `BUNDLED_COIN_COST`, which the draw route
+        # charges. A tester paid 3,000 here until 2026-08-18.
+        "NormalBuddySlotCoins": 2000,
         "RareBuddySlotEnergy": 3,
         # The Companion box, and the key name is the client's rather than the
         # field's: `SetServerConstants` looks up `BuddyBoxMax` (`0x19D53F4`)

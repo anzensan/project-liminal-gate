@@ -243,8 +243,9 @@ class CompanionTuning:
     shares: the rates the service displayed in-game from 2018-02-28, as the
     community record transcribes them, with no APK table to cross-validate.
     Weighting matters more here than it looks, because the pool is lopsided the
-    opposite way from the rates -- half its members are S and only two are B,
-    so a uniform draw inverts the two commonest outcomes.
+    opposite way from the rates -- B is its commonest class by share but only
+    its second-largest by count, so a uniform draw inverts the two commonest
+    outcomes.
 
     ``strengthen_bonus_weights`` are weaker still: no production odds for the
     random EXP bonus survive and the client's own calculation does not contain

@@ -84,20 +84,34 @@ BUNDLED_ENERGY_COST = 3
 BUNDLED_MAX_OWNED = 1000
 # `UIBarSlot.NormalSlotItemId`: the Fellowship Ticket pays for the Coin-priced
 # Normal pool on both the character and the Companion page, while Item 112
-# above pays only for the Companion Rare pool.  The Coin price is the same
-# `NormalBuddySlotCoins` this bundle already sends in the constants block.
+# above pays only for the Companion Rare pool.
 BUNDLED_NORMAL_TICKET_ITEM_ID = 81
-BUNDLED_COIN_COST = 3000
-# `SlotKind.Rare` (`kind == 2`) members of the final client's BuddyDatabase:
-# 114 of its 497 records, grouped here by the `BuddyData.rarity` each record
-# carries.  Both fields are recovered from the same master object, and grouping
-# the roster by class rather than listing it flat is what makes the two-way
-# check structural: the per-class counts below are the counts the community
-# record states for the pool, so a transcription error in either the membership
-# or the rarity shows up as a group of the wrong size.
+# The Coin price the Companions of Fellowship page records, and the same
+# `NormalBuddySlotCoins` this bundle sends in the constants block.  The client
+# displays whatever the server sends, so this is a policy value rather than a
+# recovered one; it is set to the historical figure deliberately.
+BUNDLED_COIN_COST = 2000
+# Companions of Truth membership: 177 of BuddyDatabase's 497 records, grouped
+# by the `BuddyData.rarity` each record carries.  Grouping the roster by class
+# rather than listing it flat is what makes the check structural: the per-class
+# counts below are the counts the community record states for the pool, so a
+# transcription error in either the membership or the rarity shows up as a
+# group of the wrong size.
 #
 # `Rarity` is the same enum the character side uses -- D 2, C 3, B 4, A 5,
 # S 6, SS 7, Z 8 -- so these keys mean the classes the client displays.
+#
+# `SlotKind` is not a partition of the two pools, and reading it as one is what
+# an earlier revision of this table got wrong.  Every A- and B-class Companion
+# is offered by *both* draws -- the Companions of Fellowship page says so
+# outright ("All A and B Class Companions may also be found in the Companions
+# of Truth") -- and those shared records carry neither `kind == 1` nor
+# `kind == 2`.  Recovering the pool as the `kind == 2` records alone therefore
+# returned the Truth-exclusive members only: Z, SS and S came out exact at
+# 19/13/50, while A arrived 26 short and B arrived 37 short, leaving Healing
+# Wand and Regen Bangle to split the whole 49% B share at 24.5% each.  Both
+# pools below now take their membership from the two pool pages rather than
+# from the client's slot field.
 _RARE_SLOT_CLASSES: dict[str, tuple[int, ...]] = {
     "z": (
         303, 304, 305, 306, 307, 371, 372, 373, 374, 377, 378, 379,
@@ -113,12 +127,15 @@ _RARE_SLOT_CLASSES: dict[str, tuple[int, ...]] = {
         230, 231, 232, 246, 247, 248, 249, 253, 259,
     ),
     "a": (
-        2, 7, 11, 12, 17, 18, 23, 24, 29, 30, 32, 33, 34, 35, 48, 84,
-        85, 86, 100, 102, 104, 106, 112, 114, 115, 116, 117, 126, 167,
-        252,
+        2, 7, 11, 12, 17, 18, 23, 24, 29, 30, 32, 33, 34, 35, 48, 50,
+        51, 52, 53, 54, 55, 56, 57, 58, 84, 85, 86, 100, 102, 104, 106,
+        112, 114, 115, 116, 117, 118, 119, 120, 121, 126, 167, 176,
+        177, 178, 179, 216, 217, 218, 219, 220, 221, 222, 223, 224, 252,
     ),
     "b": (
-        1, 6,
+        1, 6, 9, 15, 21, 27, 39, 40, 41, 73, 74, 75, 90, 91, 92, 93,
+        94, 95, 96, 97, 98, 141, 142, 143, 144, 145, 146, 147, 148,
+        149, 166, 172, 173, 174, 175, 241, 242, 243, 244,
     ),
 }
 _RARE_SLOT_IDS = tuple(sorted(
@@ -139,9 +156,10 @@ _RARE_SLOT_IDS = tuple(sorted(
 # the source supports, and it is the same choice the Pact shares document.
 #
 # Weighting matters more here than the flat weight it replaces suggests: the
-# pool is lopsided the opposite way from the rates.  Half its members are S and
-# only two are B, so a uniform draw returns Z at 16.7% against a displayed 3%
-# and B at 1.8% against a displayed 49% -- inverting the two commonest outcomes.
+# pool is lopsided the opposite way from the rates.  Its 39 B members are its
+# commonest class by share but only its second-largest by count, so a uniform
+# draw returns Z at 10.7% against a displayed 3% and B at 22.0% against a
+# displayed 49% -- inverting the two commonest outcomes.
 _RARE_CLASS_SHARE_PPM = {
     "z": 30_000,
     "ss": 80_000,
@@ -152,22 +170,32 @@ _RARE_CLASS_SHARE_PPM = {
 _WEIGHT_SCALE = 1_000_000
 
 
-# `SlotKind.Normal` (`kind == 1`) members of the same BuddyDatabase: 81 of its
-# 497 records, split 41 C and 40 D on the rarity scale the Rare groups above
-# use.  This is the pool the Coin-priced Companion draw and its Fellowship
-# Ticket variant pull from; membership is recovered, and this pool stays
-# uniform deliberately.  No displayed-rate record was found for it -- the
-# Companions of Truth page documents the Rare pool only -- and a two-class pool
-# that a uniform draw already splits near evenly is not worth inventing a table
-# for.  Weighting Rare and not Normal is the same asymmetry the Pact policy
-# carries between Truth and Fellowship, for the same reason.
+# Companions of Fellowship membership: 145 records, split 26 A, 38 B, 41 C and
+# 40 D on the rarity scale the Rare groups above use.  This is the pool the
+# Coin-priced Companion draw and its Fellowship Ticket variant pull from.  The
+# A and B members are the shared tier the Rare comment above describes, so all
+# but one of them appear in both pools; Skullsplitter (72) is the lone B the
+# Fellowship page lists and the Truth page does not.
+#
+# This pool stays uniform, which is a weaker fit than it was when the roster
+# held only C and D.  No displayed-rate record survives for it -- the rate
+# announcement and the Companions of Truth page cover the Rare pool only -- and
+# inventing a four-class table would be a claim about retired odds this project
+# does not get to make.  The cost of staying uniform is now visible rather than
+# negligible: A, the pool's top class, comes back at 17.9% and D at 27.6%, where
+# a real Coin sink would almost certainly have leaned much harder toward D.
+# Recorded here as a known gap, not as a reconstruction of the retired rates.
 _NORMAL_SLOT_IDS = (
-    8, 14, 20, 26, 36, 37, 38, 68, 69, 70, 71, 83, 87, 88, 108, 109, 110,
-    111, 131, 132, 133, 134, 135, 136, 137, 138, 139, 151, 152, 153, 154,
-    155, 156, 157, 162, 163, 164, 165, 168, 169, 170, 171, 180, 181, 182,
-    183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196,
-    197, 207, 208, 209, 210, 211, 212, 213, 214, 215, 225, 226, 227, 228,
-    233, 234, 235, 236, 237, 238, 239, 240,
+    8, 9, 14, 15, 20, 21, 26, 27, 36, 37, 38, 39, 40, 41, 50, 51, 52, 53,
+    54, 55, 56, 57, 58, 68, 69, 70, 71, 72, 73, 74, 75, 83, 87, 88, 90, 91,
+    92, 93, 94, 95, 96, 97, 98, 108, 109, 110, 111, 118, 119, 120, 121,
+    131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145,
+    146, 147, 148, 149, 151, 152, 153, 154, 155, 156, 157, 162, 163, 164,
+    165, 166, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+    180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193,
+    194, 195, 196, 197, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216,
+    217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 233, 234,
+    235, 236, 237, 238, 239, 240, 241, 242, 243, 244,
 )
 
 
