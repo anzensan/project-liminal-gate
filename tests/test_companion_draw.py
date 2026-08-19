@@ -109,7 +109,8 @@ class BundledCompanionDrawRuntimeTest(unittest.TestCase):
             state = BootstrapState(Path(directory) / "state.json")
             catalog = build_bundled_companion_draw_policy()
             state.create_account("token", "account", {
-                "coins": 6000, "energy": 0, "freeEnergy": 0, "itemList": [0] * 181,
+                # Exactly two Fellowship pulls at the recorded 2,000 Coins.
+                "coins": 4000, "energy": 0, "freeEnergy": 0, "itemList": [0] * 181,
                 "chrdata": [], "buddyInfo": {"list": [], "record": []},
             })
             server, thread = start_server(("127.0.0.1", 0), profile, state, companion_draw_catalog=catalog)

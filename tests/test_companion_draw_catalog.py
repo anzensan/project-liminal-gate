@@ -70,31 +70,52 @@ class CompanionDrawCatalogKindTest(unittest.TestCase):
 
 
 class BundledCompanionDrawPolicyTest(unittest.TestCase):
-    """The bundled pools must match the recovered slot-kind membership."""
+    """The bundled pools must match the two recorded pool rosters."""
 
     def setUp(self) -> None:
         self.catalog = build_bundled_companion_draw_policy()
 
-    def test_declares_the_recovered_rare_slot_pool(self) -> None:
-        # 114 of BuddyDatabase's 497 records carry SlotKind.Rare.
-        self.assertEqual(114, len(self.catalog.rare_draws))
+    def test_declares_the_recorded_rare_slot_pool(self) -> None:
+        # The Companions of Truth roster: 177 of BuddyDatabase's 497 records.
+        self.assertEqual(177, len(self.catalog.rare_draws))
         ids = [draw.companion_id for draw in self.catalog.rare_draws]
         self.assertEqual(sorted(set(ids)), ids)
         self.assertTrue(all(companion_id > 0 for companion_id in ids))
 
-    def test_declares_the_recovered_normal_slot_pool(self) -> None:
-        # 81 more carry SlotKind.Normal, the pool the Coin pull and the
-        # Fellowship Ticket variant draw from. The two pools are disjoint.
-        self.assertEqual(81, len(self.catalog.normal_draws))
+    def test_declares_the_recorded_normal_slot_pool(self) -> None:
+        # The Companions of Fellowship roster: 145 records, the pool the Coin
+        # pull and the Fellowship Ticket variant draw from.
+        self.assertEqual(145, len(self.catalog.normal_draws))
         ids = [draw.companion_id for draw in self.catalog.normal_draws]
         self.assertEqual(sorted(set(ids)), ids)
-        self.assertFalse({draw.companion_id for draw in self.catalog.normal_draws} & {draw.companion_id for draw in self.catalog.rare_draws})
+
+    def test_the_two_pools_share_their_a_and_b_tier(self) -> None:
+        # The pools are not disjoint, and reading `SlotKind` as though they
+        # were is what stranded 63 Companions in neither pool. The Companions
+        # of Fellowship page states the rule the slot field does not: "All A
+        # and B Class Companions may also be found in the Companions of
+        # Truth."
+        normal = {draw.companion_id for draw in self.catalog.normal_draws}
+        rare = {draw.companion_id for draw in self.catalog.rare_draws}
+        a_and_b = set(_RARE_SLOT_CLASSES["a"]) | set(_RARE_SLOT_CLASSES["b"])
+        self.assertEqual(63, len(normal & rare))
+        # Everything the pools share is an A or a B. C and D stay Fellowship
+        # -only; S upward stay Truth-only.
+        self.assertEqual(normal & rare, normal & a_and_b)
+        # 41 C, 40 D, and Skullsplitter -- the one B the Fellowship page lists
+        # and the Truth page does not -- are what Truth never offers.
+        self.assertEqual(82, len(normal - rare))
+        self.assertIn(72, normal)
+        self.assertNotIn(72, rare)
+        # The Truth-only half of the shared tier: the "+" upgrade targets the
+        # Fellowship page does not list.
+        self.assertEqual(32, len(a_and_b - normal))
 
     def test_carries_the_recovered_costs_and_ceiling(self) -> None:
         self.assertEqual(181, self.catalog.item_slots)
         self.assertEqual(112, self.catalog.ticket_item_id)
         self.assertEqual(81, self.catalog.normal_ticket_item_id)
-        self.assertEqual(3000, self.catalog.coin_cost)
+        self.assertEqual(2000, self.catalog.coin_cost)
         self.assertEqual(3, self.catalog.energy_cost)
         self.assertEqual(1000, self.catalog.max_owned)
 
@@ -103,16 +124,19 @@ class BundledCompanionDrawPolicyTest(unittest.TestCase):
         self.assertEqual(self.catalog.normal_draws, self.catalog.draws_for_kind(20))
         self.assertEqual(self.catalog.rare_draws, self.catalog.draws_for_kind(1))
         self.assertEqual(self.catalog.rare_draws, self.catalog.draws_for_kind(21))
-        self.assertEqual([("coins", 3000), ("coins", 3000), ("energy", 3), ("energy", 3)], [self.catalog.cost_for_kind(kind) for kind in (0, 20, 1, 21)])
+        self.assertEqual([("coins", 2000), ("coins", 2000), ("energy", 3), ("energy", 3)], [self.catalog.cost_for_kind(kind) for kind in (0, 20, 1, 21)])
         self.assertEqual([81, 81, 112, 112], [self.catalog.ticket_item_for_kind(kind) for kind in (0, 20, 1, 21)])
         self.assertEqual(((), None, None), (self.catalog.draws_for_kind(10), self.catalog.cost_for_kind(10), self.catalog.ticket_item_for_kind(10)))
 
-    def test_rare_pool_groups_match_the_recovered_class_counts(self) -> None:
-        # The community record and the recovered `BuddyData.rarity` field agree
-        # on this split, which is what lets the bundle carry the map at all. A
-        # group of the wrong size means one of the two was transcribed wrong.
+    def test_rare_pool_groups_match_the_recorded_class_counts(self) -> None:
+        # The counts the Companions of Truth page states, class by class. A
+        # group of the wrong size means the membership or the rarity was
+        # transcribed wrong. A and B read 30 and 2 until 2026-08-18, because
+        # the roster was recovered from `SlotKind` as though the two pools
+        # partitioned the database; B holding two members handed Healing Wand
+        # and Regen Bangle 24.5% of every pull each.
         self.assertEqual(
-            {"z": 19, "ss": 13, "s": 50, "a": 30, "b": 2},
+            {"z": 19, "ss": 13, "s": 50, "a": 56, "b": 39},
             {name: len(ids) for name, ids in _RARE_SLOT_CLASSES.items()},
         )
         grouped = [companion_id for ids in _RARE_SLOT_CLASSES.values() for companion_id in ids]
@@ -121,8 +145,8 @@ class BundledCompanionDrawPolicyTest(unittest.TestCase):
 
     def test_rare_selection_follows_the_displayed_class_shares(self) -> None:
         # Z 3%, SS 8%, S 10%, A 30%, B 49% -- the rates the service displayed
-        # in-game. Uniform selection over this pool would instead return 16.7%
-        # Z and 1.8% B, inverting the two commonest outcomes.
+        # in-game. Uniform selection over this pool would instead return 10.7%
+        # Z and 22.0% B, inverting the two commonest outcomes.
         weights = {draw.companion_id: draw.weight for draw in self.catalog.rare_draws}
         total = sum(weights.values())
         for name, share in (("z", 0.03), ("ss", 0.08), ("s", 0.10), ("a", 0.30), ("b", 0.49)):
@@ -136,7 +160,20 @@ class BundledCompanionDrawPolicyTest(unittest.TestCase):
             weights = {draw.weight for draw in self.catalog.rare_draws if draw.companion_id in ids}
             self.assertEqual(1, len(weights))
 
+    def test_no_rare_companion_dominates_its_class(self) -> None:
+        # The share a class carries is split across its members, so no single
+        # Companion may exceed its class share divided by the smallest class.
+        # B at 49% over two members put Healing Wand at 24.5% of every pull --
+        # about five of every ten-pull -- which is what testers reported.
+        weights = {draw.companion_id: draw.weight for draw in self.catalog.rare_draws}
+        total = sum(weights.values())
+        self.assertAlmostEqual(0.49 / 39, weights[1] / total, places=6)
+        self.assertAlmostEqual(0.49 / 39, weights[6] / total, places=6)
+        self.assertLess(max(weights.values()) / total, 0.02)
+
     def test_normal_selection_stays_uniform_local_policy(self) -> None:
         # No displayed-rate record was found for the Coin pool, so it keeps the
-        # uniform weight rather than borrowing the Rare pool's table.
+        # uniform weight rather than borrowing the Rare pool's table. Recorded
+        # in the catalog as a known gap: uniform over a roster that now spans
+        # four classes returns A, the pool's top class, at 17.9%.
         self.assertEqual({1}, {draw.weight for draw in self.catalog.normal_draws})
