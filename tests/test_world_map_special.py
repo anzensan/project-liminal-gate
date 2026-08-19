@@ -32,8 +32,11 @@ def progress_code(chapter: int, section: int = 1) -> int:
 # Chapter 35 Section 1 is the earliest progress the native map gate admits.
 UNLOCKED = progress_code(UNLOCK_AFTER_CHAPTER + 1)
 LOCKED = progress_code(UNLOCK_AFTER_CHAPTER)
-# The route openers: Shin'en battle 1 is section 4, Mutoh battle 1 is section 9.
-SHINEN_FIRST, MUTOH_FIRST = 4, 9
+# The route openers: play order is the section ordinal, ascending (Confirmed
+# by live traffic), so Shin'en's opener is section 1 and Mutoh's is section 6.
+# The client's own "battle 1" title tier -- level 80 -- is the *fourth*
+# section played in each route, not the first; see world_map_special.py.
+SHINEN_FIRST, MUTOH_FIRST = 1, 6
 
 
 class WorldMapSpecialCatalogTest(unittest.TestCase):
@@ -55,22 +58,24 @@ class WorldMapSpecialCatalogTest(unittest.TestCase):
             self.assertEqual([1, 2, 3, 4, 5], battles)
             self.assertEqual(5, self.catalog.final_battle(route))
 
-    def test_each_routes_opener_is_the_level_80_section(self) -> None:
-        # The evidence for reading the title's battle number as play order: in
-        # both routes independently, the section titled "battle 1" is the only
-        # one of five whose assumed level is 80 rather than 90.
+    def test_the_level_80_tier_is_the_fourth_battle_played_not_the_opener(self) -> None:
+        # Confirmed by live traffic (a fresh account's first `start_quest` for
+        # a route names its lowest section id): play order is the section
+        # ordinal, ascending, not the client's own difficulty-tier numbering
+        # (`Battle_Shinen_1`.._4 etc.), which runs "4, 3, 2, 1" against it. The
+        # tier titled "battle 1" is level 80 and is therefore played fourth.
         for route in self.catalog.routes():
             stages = {stage.battle: stage for stage in self.catalog.stages if stage.route == route}
-            self.assertEqual(80, stages[1].level)
-            self.assertEqual([90, 90, 90, 90], [stages[n].level for n in (2, 3, 4, 5)])
+            self.assertEqual(80, stages[4].level)
+            self.assertEqual([90, 90, 90, 90], [stages[n].level for n in (1, 2, 3, 5)])
 
-    def test_section_ordinal_is_storage_order_not_play_order(self) -> None:
+    def test_section_ordinal_is_play_order(self) -> None:
         by_route = {
             route: [stage.section for stage in self.catalog.stages if stage.route == route]
             for route in self.catalog.routes()
         }
-        self.assertEqual([4, 3, 2, 1, 5], by_route["shinen"])
-        self.assertEqual([9, 8, 7, 6, 10], by_route["mutoh"])
+        self.assertEqual([1, 2, 3, 4, 5], by_route["shinen"])
+        self.assertEqual([6, 7, 8, 9, 10], by_route["mutoh"])
 
     def test_companion_candidates_are_retained_exactly(self) -> None:
         by_section = {stage.section: stage.companion_candidates for stage in self.catalog.stages}
@@ -233,15 +238,16 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual(UNLOCKED, self.userdata()["progressCode"])
 
     def test_a_manifest_companion_is_accepted_and_minted_at_level_one(self) -> None:
-        # Section 4's manifest names Companion 137; the community record
-        # documents one exclusive Companion roll per clear, so a single
-        # reported manifest Companion settles into the box at level 1.
+        # Section 1's manifest names Companion 129 (among its three); the
+        # community record documents one exclusive Companion roll per clear,
+        # so a single reported manifest Companion settles into the box at
+        # level 1.
         self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
-        status, cleared = self.clear("wms-clear", SHINEN_FIRST, buddies=[137])
+        status, cleared = self.clear("wms-clear", SHINEN_FIRST, buddies=[129])
         self.assertEqual((200, True), (status, cleared["success"]))
         self.assertEqual("free_roam", self.phase())
         minted = cleared["buddyInfo"]["list"]
-        self.assertEqual([(137, 1)], [(row["bid"], row["lv"]) for row in minted])
+        self.assertEqual([(129, 1)], [(row["bid"], row["lv"]) for row in minted])
 
     def test_a_companion_outside_the_manifest_is_refused(self) -> None:
         # Companion 128 is a Metal Zone drop, not a Chapter-1100 candidate.
@@ -255,8 +261,8 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         # outside the bound even when both IDs are in the manifest.
         self.assertEqual(200, self.start("first", SHINEN_FIRST)[0])
         self.assertEqual(200, self.clear("first-clear", SHINEN_FIRST)[0])
-        self.assertEqual(200, self.start("second", 3)[0])
-        status, _ = self.clear("second-clear", 3, buddies=[223, 66])
+        self.assertEqual(200, self.start("second", 2)[0])
+        status, _ = self.clear("second-clear", 2, buddies=[223, 66])
         self.assertEqual(409, status)
         self.assertEqual("world_map_special_active", self.phase())
 
@@ -323,20 +329,20 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual("world_map_special_active", self.phase())
 
     def test_the_route_advances_one_battle_at_a_time(self) -> None:
-        # Battle 2 of the Shin'en route is section 3; it is locked until
-        # battle 1 (section 4) has been cleared.
-        self.assertEqual(409, self.start("early", 3)[0])
+        # Battle 2 of the Shin'en route is section 2; it is locked until
+        # battle 1 (section 1) has been cleared.
+        self.assertEqual(409, self.start("early", 2)[0])
         self.assertEqual(200, self.start("first", SHINEN_FIRST)[0])
         self.assertEqual(200, self.clear("first-clear", SHINEN_FIRST)[0])
         self.assertEqual(2, self.frontier()["shinen"])
-        self.assertEqual(200, self.start("second", 3)[0])
+        self.assertEqual(200, self.start("second", 2)[0])
 
     def test_the_two_routes_advance_independently(self) -> None:
         self.assertEqual(200, self.start("shinen", SHINEN_FIRST)[0])
         self.assertEqual(200, self.clear("shinen-clear", SHINEN_FIRST)[0])
         self.assertEqual({"shinen": 2, "mutoh": 1}, self.frontier())
         # The Mutoh route is still at its own opener, not carried along.
-        self.assertEqual(409, self.start("mutoh-early", 8)[0])
+        self.assertEqual(409, self.start("mutoh-early", 7)[0])
         self.assertEqual(200, self.start("mutoh", MUTOH_FIRST)[0])
 
     def test_a_cleared_battle_stays_repeatable(self) -> None:
@@ -350,11 +356,11 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
     def test_the_frontier_and_active_battle_survive_a_restart(self) -> None:
         self.assertEqual(200, self.start("first", SHINEN_FIRST)[0])
         self.assertEqual(200, self.clear("first-clear", SHINEN_FIRST)[0])
-        self.assertEqual(200, self.start("second", 3)[0])
+        self.assertEqual(200, self.start("second", 2)[0])
         self.restart()
         self.assertEqual("world_map_special_active", self.phase())
         snapshot = self.userdata()
-        status, cleared = self.clear("second-clear", 3, snapshot=snapshot)
+        status, cleared = self.clear("second-clear", 2, snapshot=snapshot)
         self.assertEqual((200, True), (status, cleared["success"]))
         self.assertEqual(3, self.frontier()["shinen"])
         self.restart()
