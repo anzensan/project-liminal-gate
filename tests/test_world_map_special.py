@@ -201,6 +201,20 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         # A repeatable Road pays no preservation Energy; see `archive_economy`.
         self.assertEqual(2, self.userdata()["freeEnergy"])
 
+    def test_give_up_releases_an_active_chapter_1100_battle(self) -> None:
+        """The same minimal chrdata save that abandons a story or Hunting run
+        must also abandon a World Map Special one, not answer 409.
+        """
+        self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
+        self.assertEqual("world_map_special_active", self.phase())
+
+        status, given_up = self.post("/gd/userdata", "wms-give-up", [
+            ("chrdata", json.dumps([self.character])), ("lastUpdate", "1"),
+        ])
+        self.assertEqual((200, True), (status, given_up["success"]))
+        self.assertEqual("free_roam", self.phase())
+        self.assertIsNone(self.account().get("active_world_map_special"))
+
     def test_a_chapter_1100_battle_grows_luck(self) -> None:
         """25 stamina is well past Mistwalker's eight-stamina gate, and this
         handler rolled no table at all until the Luck family gap was closed.

@@ -55,6 +55,17 @@ run the command.
 
 ### Fixed
 
+- **Give Up during a Chapter-1100 World Map Special battle answered 409
+  instead of releasing it.** The observed abandon signal is the same minimal
+  `chrdata`+`lastUpdate` save an ordinary character-screen close sends, and
+  `allows_ordinary_userdata_write` treated it as a valid battle exit for the
+  story and Hunting phases but not for a World Map Special one — even though
+  `update_character_userdata`, the handler that actually releases the battle,
+  was already written to abandon all three. The save never reached it, so the
+  account was left answering `tutorial_state_conflict` on every subsequent
+  request until the client was force-closed. World Map Special now sits in
+  that phase set alongside the other two.
+
 - **Half of every Companions of Truth pull was Healing Wand or Regen Bangle.**
   A tester counted it: *"most 10 pulls are like 5-6 of just those two items …
   a statistically unlikely amount"*. A second confirmed the shape of it from

@@ -1156,6 +1156,7 @@ class BootstrapState:
             account = self.accounts.get(self.tokens.get(token))
             return account is not None and account.get("tutorial_phase") in {
                 "free_roam", "generic_story_active", "hunting_active",
+                "world_map_special_active",
             }
 
     def userdata_for(
