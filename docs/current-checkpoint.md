@@ -1,6 +1,6 @@
 # Current Checkpoint
 
-Date: 2026-08-12
+Date: 2026-08-22
 
 Mode: public-release implementation hardening and private on-device packaging.
 
@@ -10,6 +10,18 @@ physical device without a client-visible failure.
 Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
+
+Latest Chapter-1100 Give Up correction: Issue 73's new-build event record
+reached an active Shin'en or Mutoh battle and then sent the client-shaped
+`POST /gd/userdata` form containing only `chrdata,lastUpdate`; the server
+returned `409 tutorial_state_conflict` while the account remained in
+`world_map_special_active`. The generic active-battle exit correctly knew that
+phase, but the earlier parser-admission predicate omitted it, so the otherwise
+valid two-field write never reached the exit. Chapter-1100 now admits that
+ordinary roster write, releases the active battle in the existing durable
+transaction, and keeps exact replay, restart, and a fresh route re-entry
+covered by focused real-HTTP testing. An original-client retest is pending;
+the report supplies field names but not a privacy-reviewed request body.
 
 Latest Lucia entry correction: a tester reports that Lucia the Explorer II
 returns Network Error on entry. The reviewed BattleData answers the proposed

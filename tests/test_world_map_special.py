@@ -409,6 +409,21 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
         self.assertEqual((200, True, 1), (status, refused["success"], refused["cmdError"]))
         self.assertEqual("free_roam", self.phase())
 
+    def test_give_up_character_save_releases_the_active_battle_and_survives_restart(self) -> None:
+        """The observed two-field Give Up save must release Chapter 1100 too."""
+        self.assertEqual(200, self.start("wms-start", SHINEN_FIRST)[0])
+        give_up = [("chrdata", json.dumps([self.character])), ("lastUpdate", "1")]
+
+        status, saved = self.post("/gd/userdata", "wms-give-up", give_up)
+        self.assertEqual((200, True), (status, saved["success"]))
+        self.assertEqual("free_roam", self.phase())
+        self.assertIsNone(self.account().get("active_world_map_special"))
+
+        self.assertEqual((status, saved), self.post("/gd/userdata", "wms-give-up", give_up))
+        self.restart()
+        self.assertEqual("free_roam", self.phase())
+        self.assertEqual(200, self.start("wms-reenter", SHINEN_FIRST)[0])
+
     def test_starting_a_different_battle_releases_the_one_left_open(self) -> None:
         """The client runs one battle, so this is the player having left it.
 

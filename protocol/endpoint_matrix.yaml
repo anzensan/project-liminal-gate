@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-12"
+updated: "2026-08-22"
 canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -35,6 +35,12 @@ capabilities:
     routes: [start_quest, clear_quest, unlock_metal_zone]
     status: local_policy
     note: "structurally valid active-battle outcomes are trusted by default; --outcome-strict audits catalog maxima, including the locally bounded Puppet Show aggregate raised from a guessed 60 to the highest reported stock result of 74; Pixel 7 Pro confirmed Crystal Road reports 280 Coins and 5400/5625 EXP, while full historical reward distributions remain unknown"
+    transport_tests: true
+    restart_tests: true
+  - family: world_map_special_chapter_1100
+    routes: [start_quest, clear_quest, userdata]
+    status: local_policy
+    note: "Chapter-1100 Shin'en and Mutoh use section ordinal play order; a client-shaped chrdata,lastUpdate Give Up write releases an active battle durably, with replay/restart/re-entry transport coverage. Original-client retest remains pending because Issue 73 reports only the form fields."
     transport_tests: true
     restart_tests: true
   - family: pacts_and_companions
