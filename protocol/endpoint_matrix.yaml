@@ -52,9 +52,9 @@ capabilities:
   - family: event_luck_treasure_chests
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "An event start_quest is served by the event branch of _select_mutation and now receives the launcher's own chest pool resolver, so Strikes Back, Special Quests, Descent Quests, the Tower and the Eidolon quests roll chests instead of six empty slots; contents remain operator or interpolated pools, never a recovered table."
+    note: "An event start_quest is served by the event branch of _select_mutation and now receives the launcher's own chest pool resolver, so Strikes Back, Special Quests, Descent Quests, the Tower and the Eidolon quests roll chests instead of six empty slots. The forty-two Strikes Back quests are answered from the community record's own chest template; every other event stage still draws operator or interpolated pools."
     transport_tests: true
-    restart_tests: false
+    restart_tests: true
   - family: pacts_and_companions
     routes: [do_slot, do_buddy_slot, sell_buddy, sell_buddies, buddy_strengthen, buddy_evolve, userdata]
     status: local_policy

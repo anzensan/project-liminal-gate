@@ -23,7 +23,11 @@ from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from liminal_gate.luck_data import LUCK_TENTHS_MAX
 from liminal_gate.luck_pool_catalog import LuckPoolCatalog
-from liminal_gate.luck_runtime import chest_items
+from liminal_gate.luck_pool_data import pool_for
+from liminal_gate.luck_pool_interpolation import build_luck_pools
+from liminal_gate.luck_runtime import (
+    chest_characters, chest_companions, chest_items,
+)
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, get, request, start_server, stop_server
@@ -1435,6 +1439,95 @@ class EventStartChestTest(_CounterDescentRangeHarness, unittest.TestCase):
         userdata = self.account()["userdata"]
         self.assertIn(199, {row["id"] for row in userdata["chrdata"]})
         self.assertIn(128, {row["bid"] for row in userdata["buddyInfo"]["list"]})
+
+
+class StrikesBackRecordedChestTest(_CounterDescentRangeHarness, unittest.TestCase):
+    """Issue 76's actual ask, over the real HTTP and durable path.
+
+    The family Companions a player remembers these quests for sit in one tier
+    of one quest: Luck 100 of Strikes Back III. This serves the bundled pools
+    the launcher builds -- no operator catalog -- so what it proves is that the
+    recovered record reaches a clear and sticks.
+    """
+
+    #: 8-Bit Golem Strikes Back III. Its recruit is the character a physical
+    #: client's own duplicate result identified, which is what makes this
+    #: family the one to assert against.
+    CHAPTER, SECTION = 8006, 3
+
+    def start_server(self) -> None:
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0),
+            self.profile,
+            BootstrapState(self.state_path),
+            event_catalog=self.catalog,
+            stamina=True,
+            luck_pool_catalog=build_luck_pools(None, interpolate=True),
+        )
+
+    def setUp(self) -> None:
+        super().setUp()
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["progressCode"] = 0x01000000 | (12 << 6) | 1
+            userdata["chrdata"] = [
+                dict(character(member), luck=LUCK_TENTHS_MAX)
+                for member in (3, 4, 5, 6, 7, 8)
+            ]
+            userdata["teamMembers"] = [3, 4, 5, 6, 7, 8]
+            userdata["buddyInfo"] = {"list": [], "record": []}
+            userdata["nextCompanionInventoryId"] = 1
+            self.server.state._persist_locked()
+
+    def test_a_full_luck_quest_three_clear_delivers_the_family_companions(self) -> None:
+        stage = self.catalog.by_identity()[(self.CHAPTER, self.SECTION)]
+        body = (
+            f"stamina={stage.stamina}&coins=0&chapter={self.CHAPTER}"
+            f"&section={self.SECTION}&lastUpdate=1"
+        ).encode()
+        status, started = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=sb-start", body,
+        )
+        self.assertEqual(200, status, started)
+        # Luck 100 is guaranteed at the ceiling, and the recovered pool for
+        # this tier is the only place the family's own Companion drops.
+        chest = started["luckResult"]
+        self.assertIn(
+            chest[5], pool_for(self.CHAPTER, self.SECTION, "Luck 100"),
+        )
+
+        inventory = list(self.account()["userdata"]["itemList"])
+        for item_id, count in chest_items(chest).items():
+            inventory[item_id - 1] += count
+        # Composed once: the chest grants a character, so re-composing it after
+        # settlement would submit a different `chrdata` and stop being a replay.
+        clear = self.clear_body(
+            chapter=self.CHAPTER, section=self.SECTION, inventory=inventory,
+        )
+        status, settled = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=sb-clear", clear,
+        )
+        self.assertEqual(200, status, settled)
+
+        userdata = self.account()["userdata"]
+        held = {row["id"] for row in userdata["chrdata"]}
+        companions = {row["bid"] for row in userdata["buddyInfo"]["list"]}
+        for reward in chest_characters(chest):
+            self.assertIn(reward, held)
+        for reward in chest_companions(chest):
+            self.assertIn(reward, companions)
+        self.assertTrue(
+            chest_characters(chest) or chest_companions(chest),
+            "the recovered tiers awarded neither form",
+        )
+
+        self.restart()
+        self.assertEqual(
+            (status, settled),
+            self.post(
+                f"/gd/clear_quest?otk={self.token}&requestID=sb-clear", clear,
+            ),
+        )
 
 
 class CollabSpecialRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):

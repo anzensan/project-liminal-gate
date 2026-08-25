@@ -7517,7 +7517,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--daily-quests", action="store_true", help="enable the fourteen recovered Daily Quest stages with bounded local settlement")
     parser.add_argument("--secondary-worlds", action="store_true", help="enable the BreaSoul and Five Emperors secondary world maps with bounded local settlement")
-    parser.add_argument("--no-interpolated-luck-pools", action="store_true", help="roll chests only for the thirty story stages the community record documents, instead of also donating a nearby documented chapter's pools to the rest")
+    parser.add_argument("--no-interpolated-luck-pools", action="store_true", help="roll chests only for the stages the community record documents -- thirty-one core story and the forty-two Strikes Back quests -- instead of also donating a nearby documented chapter's pools to the rest")
     parser.add_argument("--luck-pool-catalog", type=Path, help="operator-supplied Luck Treasure Chest pools for stages the community record does not document; see liminal_gate/luck_pool_catalog.py")
     parser.add_argument("--cavern-forest", action="store_true", help="enable Orbling Cavern and Cryptid Forest, the two standing World 1 areas, with bounded local settlement")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
@@ -7775,7 +7775,7 @@ def build_server(
                 hunts = HuntingCatalog(areas, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
             else:
                 hunts = replace(hunts, stages=hunts.stages + areas)
-        # Interpolation is on unless refused: the record covers thirty story
+        # Interpolation is on unless refused: the record covers seventy-three
         # stages and the rest of the game would otherwise never show a chest.
         # It only ever answers where the record is silent.
         luck_pools = build_luck_pools(

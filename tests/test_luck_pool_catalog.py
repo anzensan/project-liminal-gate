@@ -1,6 +1,6 @@
 """An operator's own chest pools, for the stages the record does not document.
 
-The bundled table covers thirty story stages and every other stage yields six
+The bundled table covers seventy-three stages and every other stage yields six
 empty slots, because the contents were server-side and no capture survives.
 This is the sanctioned way past that: opt-in, operator-supplied, and named in
 the server's own startup output, so the bundled table stays exactly as sourced.
@@ -18,7 +18,11 @@ from liminal_gate.luck_pool_catalog import (
     LuckPoolCatalogError,
     load_luck_pool_catalog,
 )
-from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, pool_for
+from liminal_gate.luck_pool_data import (
+    LUCK_CHEST_POOLS,
+    STRIKES_BACK_CHEST_POOLS,
+    pool_for,
+)
 from liminal_gate.luck_pool_interpolation import build_luck_pools, donor_chapters
 from liminal_gate.luck_runtime import roll_luck_result
 
@@ -194,7 +198,7 @@ if __name__ == "__main__":
 class InterpolatedLuckPoolTest(unittest.TestCase):
     """Donated pools for the stages the record does not document.
 
-    On by default, because the record covers thirty story stages and the rest of
+    On by default, because the record covers seventy-three stages and the rest of
     the game would otherwise never show a chest. What it chooses is placement,
     not contents: every reward it can produce is one the record documents for a
     chapter adjacent to the one being played.
@@ -204,7 +208,7 @@ class InterpolatedLuckPoolTest(unittest.TestCase):
         self.pools = build_luck_pools()
 
     def test_a_documented_stage_is_never_touched(self) -> None:
-        """The thirty sourced stages stay exactly as sourced."""
+        """The sourced story stages stay exactly as sourced."""
         for (chapter, section), tiers in LUCK_CHEST_POOLS.items():
             for tier, pool in tiers.items():
                 with self.subTest(stage=(chapter, section), tier=tier):
@@ -227,6 +231,38 @@ class InterpolatedLuckPoolTest(unittest.TestCase):
         # Past the last documented chapter there is only one side to take.
         self.assertEqual((36,), donor_chapters(42))
         self.assertEqual((1,), donor_chapters(1))
+
+    def test_only_a_story_chapter_ever_donates(self) -> None:
+        """Bracketing is a claim about chapter numbers being a progression.
+
+        They are inside the story and are not outside it. Reading the recovered
+        Strikes Back chapters as donors would seat 8000 immediately above
+        Chapter 36 -- handing every 2000-series event a merge of Chapter 36 and
+        Spinetrich Kino, and giving the Tower, which brackets between nothing
+        and 8017, a chest drawn purely from Strikes Back.
+        """
+        for chapter in (2006, 2017, 8006, 9010, 9100, 42):
+            with self.subTest(chapter=chapter):
+                self.assertTrue(
+                    all(donor <= 36 for donor in donor_chapters(chapter)),
+                    donor_chapters(chapter),
+                )
+
+    def test_a_documented_strikes_back_stage_is_answered_from_the_record(self) -> None:
+        """The recovered half is documented, so interpolation must not reach it
+        -- including for the two tiers it deliberately leaves empty."""
+        for (chapter, section), tiers in STRIKES_BACK_CHEST_POOLS.items():
+            with self.subTest(stage=(chapter, section)):
+                for tier in CHEST_TIERS:
+                    self.assertEqual(
+                        tiers.get(tier.name, ()),
+                        self.pools.pool_for(chapter, section, tier.name),
+                    )
+
+    def test_the_undocumented_strikes_back_section_still_gains_a_pool(self) -> None:
+        """Chapters 8000--8007's fourth section has no recorded table, so it
+        keeps the donation it had before the recovery."""
+        self.assertTrue(self.pools.pool_for(8006, 4, "Luck 100"))
 
     def test_every_donated_reward_appears_in_the_record(self) -> None:
         """The whole claim: placement is chosen, contents are not."""

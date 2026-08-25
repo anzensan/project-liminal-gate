@@ -11,7 +11,13 @@ from liminal_gate.luck_data import (
     LUCKY_RUNNER_GAIN_TENTHS,
     character_luck_cap,
 )
-from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, has_documented_pool
+from liminal_gate.luck_pool_data import (
+    LUCK_CHEST_POOLS,
+    STRIKES_BACK_CHEST_POOLS,
+    STRIKES_BACK_FAMILY_REWARDS,
+    has_documented_pool,
+    pool_for,
+)
 from liminal_gate.luck_runtime import (
     apply_luck_up_table,
     chest_coins,
@@ -86,6 +92,99 @@ class ChestRollTest(unittest.TestCase):
     def test_every_roll_returns_exactly_six_slots(self) -> None:
         for tenths in (0, 400, 850, LUCK_TENTHS_MAX):
             self.assertEqual(6, len(roll_luck_result(1, 1, tenths, "r", "d")))
+
+
+class StrikesBackChestRecordTest(unittest.TestCase):
+    """The fourteen families recovered from the record's own chest template.
+
+    The template is the reason this half was missed twice: a Strikes Back page
+    holds one invocation where a story page holds a table, so both earlier
+    scrapes -- one searching the heading, one searching the table's header row
+    -- read fourteen documented families as undocumented.
+    """
+
+    #: The record's three quests are sections 1--3, at the 5/10/15 stamina
+    #: `_counter_descent_stamina` serves.
+    SECTIONS = (1, 2, 3)
+
+    def test_every_family_documents_its_three_quests(self) -> None:
+        for chapter, *_ in STRIKES_BACK_FAMILY_REWARDS:
+            for section in self.SECTIONS:
+                self.assertTrue(
+                    has_documented_pool(chapter, section), f"{chapter}-{section}",
+                )
+        self.assertEqual(
+            len(STRIKES_BACK_FAMILY_REWARDS) * len(self.SECTIONS),
+            len(STRIKES_BACK_CHEST_POOLS),
+        )
+
+    def test_the_named_companions_climb_the_record_ladder(self) -> None:
+        """Where each Companion appears is the whole answer to Issue 76.
+
+        Quest I pays the recruit and Metal Minion at both named tiers; quest II
+        adds the second-form Companion at Luck 100; quest III moves that one
+        down to Luck 80 and pays the family's own Companion, its second form
+        and the guest one together at Luck 100. That last tier is the only
+        place three of the four ever drop.
+        """
+        chapter, recruit, omicron, omicron2, other = STRIKES_BACK_FAMILY_REWARDS[6]
+        self.assertEqual(8006, chapter)
+        self.assertEqual((f"M{recruit}", "O128"), pool_for(chapter, 1, "Luck 100"))
+        self.assertEqual(
+            (f"M{recruit}", f"O{omicron2}", "O128"), pool_for(chapter, 2, "Luck 100"),
+        )
+        self.assertEqual(
+            (f"M{recruit}", f"O{omicron2}", "O128"), pool_for(chapter, 3, "Luck 80"),
+        )
+        self.assertEqual(
+            (f"M{recruit}", f"O{omicron}", f"O{omicron2}", f"O{other}", "O128"),
+            pool_for(chapter, 3, "Luck 100"),
+        )
+        for tier in ("Luck 80", "Luck 100"):
+            self.assertNotIn(f"O{omicron}", pool_for(chapter, 1, tier))
+            self.assertNotIn(f"O{omicron}", pool_for(chapter, 2, tier))
+
+    def test_the_recorded_but_unencodable_tiers_stay_empty(self) -> None:
+        """A and B pay a count of the run's rotating event item.
+
+        Both halves are unrecoverable -- a slot carries one reward and no
+        count, and the event item rotated across eight Animata items over the
+        event's runs -- so the tiers are left empty rather than filled with a
+        guessed item at a figure the record actually states. Pinned so that
+        filling them later is a decision rather than a drift.
+        """
+        for chapter, *_ in STRIKES_BACK_FAMILY_REWARDS:
+            for section in self.SECTIONS:
+                self.assertEqual((), pool_for(chapter, section, "A"))
+                self.assertEqual((), pool_for(chapter, section, "B"))
+                self.assertTrue(pool_for(chapter, section, "C"))
+
+    def test_the_undocumented_fourth_section_is_not_given_a_table(self) -> None:
+        """Chapters 8000--8007 serve a fourth 15-stamina section the record
+        documents no quest for, and a section the record never covered is not
+        one it covered identically to the third."""
+        for chapter in range(8000, 8008):
+            self.assertFalse(has_documented_pool(chapter, 4), chapter)
+
+    def test_every_recovered_reward_is_a_well_formed_slot(self) -> None:
+        for (chapter, section), tiers in STRIKES_BACK_CHEST_POOLS.items():
+            for tier, pool in tiers.items():
+                self.assertEqual(
+                    len(pool), len(set(pool)), f"{chapter}-{section} {tier} repeats",
+                )
+                for reward in pool:
+                    self.assertRegex(reward, r"^[CIOM][1-9][0-9]*$")
+
+    def test_a_full_luck_party_reaches_the_family_companions(self) -> None:
+        """Quest III at 100.0 Luck fills the tier those Companions live in."""
+        chapter, recruit, omicron, _omicron2, _other = STRIKES_BACK_FAMILY_REWARDS[6]
+        drawn = {
+            roll_luck_result(chapter, 3, LUCK_TENTHS_MAX, f"r{attempt}", "d")[5]
+            for attempt in range(40)
+        }
+        self.assertNotIn("", drawn)
+        self.assertLessEqual(drawn, set(pool_for(chapter, 3, "Luck 100")))
+        self.assertIn(f"O{omicron}", drawn)
 
 
 class ChestWireTest(unittest.TestCase):
