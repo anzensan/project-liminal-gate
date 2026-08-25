@@ -13,6 +13,7 @@ from liminal_gate.luck_data import (
     character_luck_cap,
 )
 from liminal_gate.luck_pool_catalog import LuckPoolCatalog
+from liminal_gate.trading_post_data import TRADING_POST_WEEKS
 from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_pool_data import (
     LUCK_CHEST_POOLS,
@@ -35,6 +36,7 @@ from liminal_gate.luck_pool_event_data import (
     EIDOLON_THIRD_QUEST_REWARDS,
     SPECIES_TYPE_ITEMS,
     STRIKES_BACK_CHEST_POOLS,
+    STRIKES_BACK_EVENT_ITEM,
     STRIKES_BACK_FAMILY_REWARDS,
 )
 from liminal_gate.luck_runtime import (
@@ -201,20 +203,29 @@ class StrikesBackChestRecordTest(unittest.TestCase):
             self.assertNotIn(f"O{omicron}", pool_for(chapter, 1, tier))
             self.assertNotIn(f"O{omicron}", pool_for(chapter, 2, tier))
 
-    def test_the_recorded_but_unencodable_tiers_stay_empty(self) -> None:
-        """A and B pay a count of the run's rotating event item.
+    def test_the_event_item_tiers_pay_animata_core(self) -> None:
+        """A and B pay the event item, which in this build is one item.
 
-        Both halves are unrecoverable -- a slot carries one reward and no
-        count, and the event item rotated across eight Animata items over the
-        event's runs -- so the tiers are left empty rather than filled with a
-        guessed item at a figure the record actually states. Pinned so that
-        filling them later is a decision rather than a drift.
+        The tables were written while it rotated across eight Animata items.
+        Version 5.5.0 replaced all of them with Animata Core in every drop
+        table, and the reviewed build is 5.5.7 -- so for the build served here
+        the two tiers name item 181 and nothing else. The count the record
+        states does not survive a wire form that carries one reward per slot,
+        and is not invented; see the module for why.
         """
+        self.assertEqual("I181", STRIKES_BACK_EVENT_ITEM)
         for chapter, *_ in STRIKES_BACK_FAMILY_REWARDS:
             for section in self.SECTIONS:
-                self.assertEqual((), pool_for(chapter, section, "A"))
-                self.assertEqual((), pool_for(chapter, section, "B"))
+                self.assertEqual((STRIKES_BACK_EVENT_ITEM,), pool_for(chapter, section, "A"))
+                self.assertEqual((STRIKES_BACK_EVENT_ITEM,), pool_for(chapter, section, "B"))
                 self.assertTrue(pool_for(chapter, section, "C"))
+
+    def test_the_event_item_is_the_one_the_trading_post_is_priced_in(self) -> None:
+        """The corroboration, and it is this project's own recovery rather than
+        the record: the Trading Post prices every trade in the same item these
+        quests pay, which is what makes them the place it is farmed."""
+        priced_in = {row[5] for week in TRADING_POST_WEEKS for row in week}
+        self.assertEqual({int(STRIKES_BACK_EVENT_ITEM[1:])}, priced_in)
 
     def test_the_undocumented_fourth_section_is_not_given_a_table(self) -> None:
         """Chapters 8000--8007 serve a fourth 15-stamina section the record
