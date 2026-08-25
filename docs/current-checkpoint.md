@@ -11,6 +11,19 @@ Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
 
+Latest chest refusal correction: the Luck page carries the record's own list
+of eleven quests that hold no Luck Treasure Chest, and turning event chests on
+had begun contradicting four of them -- Hunting the Jade Dragon, Mobius Final
+Fantasy, The Captive Golem and Vengeful Heart are event-catalog stages, so they
+started paying donated Chapter-36 chests the record says they never had. The
+list is now enforced ahead of both the bundled pools and interpolation. It also
+settles a contradiction inside the record: The Hunt For Joker is on the
+chestless list and also carries the Daily Quest chest template on its own page,
+which is the boilerplate every Daily Quest page carries rather than a statement
+about that quest, so the mechanic's own page wins. An explicit
+`--luck-pool-catalog` still overrides the refusal, because naming a stage there
+is an operator deciding to go past the record.
+
 Latest Strikes Back chest recovery: Issue 76's remaining half. The community
 record does document these chests, through a wiki *template* rather than an
 inline table -- a Strikes Back page carries one invocation naming the family's

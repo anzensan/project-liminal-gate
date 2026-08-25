@@ -4,6 +4,7 @@ import unittest
 
 from liminal_gate.luck_data import (
     ALLOW_LUCKY_CHAPTERS,
+    CHEST_TIERS,
     LUCK_CAP_BY_CHARACTER,
     LUCK_TENTHS_MAX,
     LUCKY_ORBLING_GAIN_TENTHS,
@@ -11,12 +12,16 @@ from liminal_gate.luck_data import (
     LUCKY_RUNNER_GAIN_TENTHS,
     character_luck_cap,
 )
+from liminal_gate.luck_pool_catalog import LuckPoolCatalog
+from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_pool_data import (
     LUCK_CHEST_POOLS,
+    NO_CHEST_CHAPTERS,
     STRIKES_BACK_CHEST_POOLS,
     STRIKES_BACK_FAMILY_REWARDS,
     has_documented_pool,
     pool_for,
+    refuses_chest,
 )
 from liminal_gate.luck_runtime import (
     apply_luck_up_table,
@@ -92,6 +97,44 @@ class ChestRollTest(unittest.TestCase):
     def test_every_roll_returns_exactly_six_slots(self) -> None:
         for tenths in (0, 400, 850, LUCK_TENTHS_MAX):
             self.assertEqual(6, len(roll_luck_result(1, 1, tenths, "r", "d")))
+
+
+class NoChestQuestTest(unittest.TestCase):
+    """The record's own list of quests that carry no chest at all.
+
+    A quest here is different from an undocumented one. An undocumented stage
+    is a gap the record leaves and interpolation may fill; a listed one is the
+    record stating an absence.
+    """
+
+    def test_the_listed_chapters_never_roll_a_chest(self) -> None:
+        pools = build_luck_pools(None, interpolate=True)
+        for chapter in NO_CHEST_CHAPTERS:
+            with self.subTest(chapter=chapter):
+                self.assertTrue(refuses_chest(chapter))
+                self.assertFalse(has_documented_pool(chapter, 1))
+                for tier in CHEST_TIERS:
+                    self.assertEqual((), pool_for(chapter, 1, tier.name))
+                    self.assertEqual((), pools.pool_for(chapter, 1, tier.name))
+                self.assertEqual(
+                    [""] * len(CHEST_TIERS),
+                    roll_luck_result(chapter, 1, LUCK_TENTHS_MAX, "r", "d", catalog=pools),
+                )
+
+    def test_the_four_event_chapters_interpolation_had_reached(self) -> None:
+        """Jade Dragon, Mobius, Captive Golem and Vengeful Heart are event
+        stages, so once event starts rolled against interpolated pools they
+        began paying chests the record says they never had."""
+        for chapter in (2004, 2005, 2008, 2014):
+            self.assertIn(chapter, NO_CHEST_CHAPTERS)
+
+    def test_an_operator_catalog_still_overrides_the_refusal(self) -> None:
+        """Naming a stage in that file is an operator deciding to go past the
+        record, and this list is the record."""
+        catalog = LuckPoolCatalog({(7010, 1): {"A": ("C100",)}})
+        layered = build_luck_pools(catalog, interpolate=True)
+        self.assertEqual(("C100",), layered.pool_for(7010, 1, "A"))
+        self.assertEqual((), layered.pool_for(7010, 2, "A"))
 
 
 class StrikesBackChestRecordTest(unittest.TestCase):
