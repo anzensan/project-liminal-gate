@@ -17,11 +17,17 @@ from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_pool_data import (
     LUCK_CHEST_POOLS,
     NO_CHEST_CHAPTERS,
-    STRIKES_BACK_CHEST_POOLS,
-    STRIKES_BACK_FAMILY_REWARDS,
     has_documented_pool,
     pool_for,
     refuses_chest,
+)
+from liminal_gate.luck_pool_event_data import (
+    EIDOLON_CHEST_POOLS,
+    EIDOLON_SINGLE_QUEST_REWARDS,
+    EIDOLON_THIRD_QUEST_REWARDS,
+    SPECIES_TYPE_ITEMS,
+    STRIKES_BACK_CHEST_POOLS,
+    STRIKES_BACK_FAMILY_REWARDS,
 )
 from liminal_gate.luck_runtime import (
     apply_luck_up_table,
@@ -228,6 +234,71 @@ class StrikesBackChestRecordTest(unittest.TestCase):
         self.assertNotIn("", drawn)
         self.assertLessEqual(drawn, set(pool_for(chapter, 3, "Luck 100")))
         self.assertIn(f"O{omicron}", drawn)
+
+
+class EidolonChestRecordTest(unittest.TestCase):
+    """The twelve Eidolons, through the record's own Eidolon template.
+
+    The template switches on a `stages` count, and that count is exactly the
+    section this archive serves: the client's BattleData gives a three-stage
+    Eidolon sections 1--3 with a battle in section 3 alone. Twelve families,
+    twelve agreements.
+    """
+
+    def test_every_eidolon_documents_the_section_the_archive_serves(self) -> None:
+        served = {
+            (chapter, 3) for chapter, *_ in EIDOLON_THIRD_QUEST_REWARDS
+        } | {(row[0], 1) for row in EIDOLON_SINGLE_QUEST_REWARDS}
+        self.assertEqual(served, set(EIDOLON_CHEST_POOLS))
+        self.assertEqual(12, len(EIDOLON_CHEST_POOLS))
+        for chapter, section in served:
+            self.assertTrue(has_documented_pool(chapter, section), (chapter, section))
+
+    def test_the_unserved_first_and_second_quests_get_no_pool(self) -> None:
+        """Their tables are on the page and no battle is behind them, so there
+        is no stage for those pools to attach to."""
+        for chapter, *_ in EIDOLON_THIRD_QUEST_REWARDS:
+            for section in (1, 2):
+                self.assertFalse(has_documented_pool(chapter, section), (chapter, section))
+
+    def test_the_third_quest_pays_the_eidolons_own_rewards(self) -> None:
+        chapter, item, companion, omicron, unique1, unique2 = EIDOLON_THIRD_QUEST_REWARDS[0]
+        self.assertEqual(4100, chapter)
+        self.assertEqual((unique1, unique2), pool_for(chapter, 3, "D"))
+        self.assertEqual(("C1500", item, companion), pool_for(chapter, 3, "Luck 80"))
+        self.assertEqual((item, unique1, unique2, omicron), pool_for(chapter, 3, "Luck 100"))
+
+    def test_the_species_tier_drops_the_material_the_record_excludes(self) -> None:
+        """"Species-type items (except Oxsecian)" is the record naming a class
+        and then removing one member of it by name."""
+        expected = set(SPECIES_TYPE_ITEMS) - {"I83"}
+        self.assertEqual(len(SPECIES_TYPE_ITEMS) - 1, len(expected))
+        for (chapter, section) in EIDOLON_CHEST_POOLS:
+            for tier in ("A", "B"):
+                pool = pool_for(chapter, section, tier)
+                coins = [slot for slot in pool if slot.startswith("C")]
+                self.assertEqual(1, len(coins), f"{chapter}-{section} {tier}")
+                self.assertEqual(expected, set(pool) - set(coins), f"{chapter}-{section} {tier}")
+
+    def test_the_unnamed_selene_rewards_are_left_out(self) -> None:
+        """Selene's page carries the template's own `Companion` placeholder
+        where its second Companion and its Omicron belong. Two of the five
+        rewards its Luck 100 chest lists are therefore unknown, and inventing
+        either would be inventing the reward the record declined to name."""
+        chapter = EIDOLON_SINGLE_QUEST_REWARDS[3][0]
+        self.assertEqual(4111, chapter)
+        self.assertEqual(("O482", "M1239", "O483"), pool_for(chapter, 1, "Luck 100"))
+        self.assertNotIn("", pool_for(chapter, 1, "Luck 80"))
+
+
+class ArchiveSpecialChestRecordTest(unittest.TestCase):
+    def test_the_sarah_quest_pays_the_character_its_manifest_names(self) -> None:
+        """The join is confirmed from the client, not the title: the chest's
+        recruit resolves to 1288, the character chapter 2018's own recovered
+        manifest associates with the event."""
+        self.assertTrue(has_documented_pool(2018, 1))
+        self.assertEqual(("M1288", "O128", "O129"), pool_for(2018, 1, "Luck 100"))
+        self.assertIn("M1288", pool_for(2018, 1, "D"))
 
 
 class ChestWireTest(unittest.TestCase):
