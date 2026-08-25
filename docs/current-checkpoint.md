@@ -11,6 +11,21 @@ Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
 
+Latest event Luck Treasure Chest correction: Issue 76 reports that no Strikes
+Back clear ever showed a Luck reward, at 81.0 average party Luck and on three
+separate families. An event `start_quest` is served by the event branch of
+`_select_mutation`, which matches the event catalog before the story dispatch
+below it ever runs, and that branch was never handed `luck_pool_catalog`. Every
+event stage therefore rolled against the bundled record alone, which documents
+thirty-one core-story stages and nothing else, so all 177 of them -- Strikes
+Back, Special Quests, Descent Quests, the Tower and the Eidolon quests --
+returned six empty slots however lucky the party was. The clear half had always
+been ready, folding chest Coins into the wallet it expects and granting what the
+chest authored, which is why nothing failed loudly. The branch now forwards the
+resolver the launcher built. What a chest holds is unchanged and still not
+recovered: an operator's `--luck-pool-catalog` first, then the donated pools of
+the nearest documented chapter, which for the 8000-series is Chapter 36.
+
 Latest 8-Bit Golem Lambda duplicate correction: a physical-client result in
 Strikes Back Chapter 8006 announces +1.0 Luck for a repeated 8-Bit Golem Lambda
 recruit, while three repeats left its durable Luck unchanged. The Counter

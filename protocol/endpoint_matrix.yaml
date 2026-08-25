@@ -49,6 +49,12 @@ capabilities:
     note: "Chapter 8006 8-Bit Golem Lambda duplicate settlement preserves the physical-client-announced +1.0 Luck, with replay/restart transport coverage; other Strikes Back duplicate contracts remain unmodeled."
     transport_tests: true
     restart_tests: true
+  - family: event_luck_treasure_chests
+    routes: [start_quest, clear_quest]
+    status: local_policy
+    note: "An event start_quest is served by the event branch of _select_mutation and now receives the launcher's own chest pool resolver, so Strikes Back, Special Quests, Descent Quests, the Tower and the Eidolon quests roll chests instead of six empty slots; contents remain operator or interpolated pools, never a recovered table."
+    transport_tests: true
+    restart_tests: false
   - family: pacts_and_companions
     routes: [do_slot, do_buddy_slot, sell_buddy, sell_buddies, buddy_strengthen, buddy_evolve, userdata]
     status: local_policy
