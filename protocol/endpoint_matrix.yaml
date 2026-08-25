@@ -43,6 +43,12 @@ capabilities:
     note: "Chapter-1100 Shin'en and Mutoh use section ordinal play order; a client-shaped chrdata,lastUpdate Give Up write releases an active battle durably, with replay/restart/re-entry transport coverage. Original-client retest remains pending because Issue 73 reports only the form fields."
     transport_tests: true
     restart_tests: true
+  - family: strikes_back_chapter_8006_duplicate
+    routes: [start_quest, clear_quest]
+    status: local_policy
+    note: "Chapter 8006 8-Bit Golem Lambda duplicate settlement preserves the physical-client-announced +1.0 Luck, with replay/restart transport coverage; other Strikes Back duplicate contracts remain unmodeled."
+    transport_tests: true
+    restart_tests: true
   - family: pacts_and_companions
     routes: [do_slot, do_buddy_slot, sell_buddy, sell_buddies, buddy_strengthen, buddy_evolve, userdata]
     status: local_policy

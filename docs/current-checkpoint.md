@@ -11,6 +11,16 @@ Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
 
+Latest 8-Bit Golem Lambda duplicate correction: a physical-client result in
+Strikes Back Chapter 8006 announces +1.0 Luck for a repeated 8-Bit Golem Lambda
+recruit, while three repeats left its durable Luck unchanged. The Counter
+Descent policy had no character-grant contract, so settlement could preserve the
+client's roster but could not apply the client-announced delta. Chapter 8006
+now identifies character 897 and commits the observed +10-tenths increment
+before replying; focused real-HTTP coverage proves the value and exact replay
+survive a restart. The screenshot establishes this family and value only; the
+other Strikes Back families remain unmodeled until their result evidence exists.
+
 Latest Chapter-1100 Give Up correction: Issue 73's new-build event record
 reached an active Shin'en or Mutoh battle and then sent the client-shaped
 `POST /gd/userdata` form containing only `chrdata,lastUpdate`; the server
