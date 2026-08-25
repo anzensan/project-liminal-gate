@@ -54,10 +54,14 @@ master data carries double-space typos, and the wiki disagrees with it over
 Latin `O` versus Greek Omicron), and every recruit matched is flagged
 `is_lambda` in the client's own catalog. Forty-two stages are now answered from
 the record, which puts the family Companions back where it says they were: one
-tier, of one quest, at 100.0 Luck. Tiers A and B stay empty because they pay a
-count of the run's rotating event item and a slot carries neither. Only a story
-chapter may donate to an undocumented stage, so the recovered chapters do not
-become interpolation donors for the Tower or the 2000-series archive.
+tier, of one quest, at 100.0 Luck. Tiers A and B pay the event item, which for
+this build is Animata Core alone: the record states it was created to replace
+the rotating Animata items in every drop table at Version 5.5.0, the reviewed
+build is 5.5.7, and this project's own recovered Trading Post prices every
+trade in that same item. The count the record states does not survive a wire
+form carrying one reward per slot and is not invented. Only a story chapter may
+donate to an undocumented stage, so the recovered chapters do not become
+interpolation donors for the Tower or the 2000-series archive.
 
 Latest event Luck Treasure Chest correction: Issue 76 reports that no Strikes
 Back clear ever showed a Luck reward, at 81.0 average party Luck and on three

@@ -95,18 +95,39 @@ SPECIES_TYPE_ITEMS_EXCEPT_OXSECIAN: tuple[str, ...] = tuple(
 #: own catalog. Chapter 8006 is a third: 897 is the character a physical
 #: client's duplicate result independently identified.
 #:
-#: **Two tiers of every one of these stages are recorded and not encodable, so
-#: each row is incomplete.** A and B pay a *quantity* of the run's event item
-#: -- 8 or 18 Animata items at A, 20 or 60 at B, rising through the later
-#: quests -- and neither half of that survives the trip. A slot in this wire
-#: form is one reward with no count, and "the run's event item" was not one
-#: item: the record's own schedule shows it rotating across eight Animata
-#: items over the event's twenty-odd runs, and nothing in the archive fixes
-#: which one a family carries. Encoding a single copy of a guessed item would
-#: misstate a figure the record does state, which is worse than leaving the
-#: tier empty. C is different and is filled: it names two item *classes* with
-#: no quantity at all, so one copy is the record read literally rather than a
-#: figure thrown away.
+#: **A and B pay the event item, and in the build this project serves that is
+#: one item rather than eight.** The tables say "8 Animata items", "18 Animata
+#: items", rising to 100 and 260 at the later quests, and they were written
+#: while the event item rotated: the same pages' schedules show it moving
+#: across eight Animata items over the event's twenty-odd runs, so for most of
+#: the game's life "the Animata item" named no particular item.
+#:
+#: Version 5.5.0 ended that. The record states outright that Animata Core "was
+#: created to replace the rotating Animata items in all drop tables", and names
+#: the Strikes Back quests as one of the three families that pay it in quantity.
+#: The reviewed build here is 5.5.7, which is after that change, so in *this*
+#: build the item those two chests pay is Animata Core and nothing else.
+#:
+#: A third source agrees, and it is this project's own: the Trading Post table
+#: recovered in :mod:`liminal_gate.trading_post_data` prices every trade in
+#: item 181 at 2,500 to 5,000 a piece. That economy only closes if the quests
+#: that pay Core in quantity are the ones farmed for it, which is exactly what
+#: the record says these are. Two independent recoveries agreeing on the same
+#: item is stronger evidence than either alone.
+#:
+#: **The count does not survive, and is not invented.** A slot in this wire
+#: form is one reward: `chest_items` reads a repeated slot as a second copy,
+#: and the client's own `UILuckTreasureBox` carries a name label, an icon and
+#: no count field at all. A quantity would have to be smuggled into a string
+#: the client parses, and a response field the client's parser does not expect
+#: is what freezes it with no dialog. So the chest pays one Core where the
+#: record says eight or two hundred and sixty. That is a floor, and a small one
+#: against the 18 to 520 the quest's own drop pays -- which is client-rolled
+#: and unaffected by any of this.
+STRIKES_BACK_EVENT_ITEM: str = 'I181'
+
+#: Tier C names two item *classes* with no quantity at all, so one copy is the
+#: record read literally rather than a figure thrown away.
 STRIKES_BACK_CHEST_ITEMS: tuple[str, ...] = WEAPON_TYPE_ITEMS + ATTRIBUTE_TYPE_ITEMS
 
 #: The Companion the template names bare in every family's Luck 80 and Luck 100
@@ -155,18 +176,24 @@ def _strikes_back_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
     for chapter, recruit, omicron, omicron2, other in STRIKES_BACK_FAMILY_REWARDS:
         character = f'M{recruit}'
         pools[(chapter, 1)] = {
+            "A": (STRIKES_BACK_EVENT_ITEM,),
+            "B": (STRIKES_BACK_EVENT_ITEM,),
             "C": STRIKES_BACK_CHEST_ITEMS,
             "D": (character,),
             "Luck 80": (character, _METAL_MINION),
             "Luck 100": (character, _METAL_MINION),
         }
         pools[(chapter, 2)] = {
+            "A": (STRIKES_BACK_EVENT_ITEM,),
+            "B": (STRIKES_BACK_EVENT_ITEM,),
             "C": STRIKES_BACK_CHEST_ITEMS,
             "D": (character,),
             "Luck 80": (character, _METAL_MINION),
             "Luck 100": (character, f'O{omicron2}', _METAL_MINION),
         }
         pools[(chapter, 3)] = {
+            "A": (STRIKES_BACK_EVENT_ITEM,),
+            "B": (STRIKES_BACK_EVENT_ITEM,),
             "C": STRIKES_BACK_CHEST_ITEMS,
             "D": (character,),
             "Luck 80": (character, f'O{omicron2}', _METAL_MINION),
