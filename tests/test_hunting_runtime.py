@@ -10,7 +10,21 @@ from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import SPECIES_LIMIT_ERROR_CODE, BootstrapState
 from liminal_gate.event_flag_data import music_event_flags
-from liminal_gate.hunting_catalog import build_bundled_hunting_policy, load_hunting_catalog
+from liminal_gate.daily_quest_data import (
+    DAILY_QUEST_EPOCH_DAY,
+    DAILY_QUEST_ROTATION,
+    build_bundled_daily_quest_stages,
+    daily_quest_rotation,
+)
+from liminal_gate.hunting_catalog import (
+    HuntingCatalog, build_bundled_hunting_policy, load_hunting_catalog,
+)
+from liminal_gate.luck_data import CHEST_TIERS, LUCK_TENTHS_MAX
+from liminal_gate.luck_pool_data import pool_for
+from liminal_gate.luck_pool_interpolation import build_luck_pools
+from liminal_gate.luck_runtime import (
+    chest_characters, chest_coins, chest_companions, chest_items,
+)
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, get, post, start_server, stop_server
@@ -1174,6 +1188,149 @@ class BundledMetalZoneFullBoxTest(unittest.TestCase):
         self.assertEqual(200, self.start("start")[0])
         status, refused = self.clear("clear", [130])
         self.assertEqual((409, "invalid_local_hunting_companions"), (status, refused["error"]))
+
+
+class DailyQuestChestTest(unittest.TestCase):
+    """A Daily Quest chest, through the handler that authors it.
+
+    The Hunting handler authored no chest at all, on the record's own list
+    naming the Hunting and Metal zones. That list is real and is enforced --
+    but the same record documents a chest for ten Daily Quests and for both
+    secondary world maps, and this handler serves those too.
+
+    Driven at the handler rather than over HTTP because a Daily Quest is
+    rotation-gated: only two of the fourteen are open on any UTC day, and one
+    day in the forty-one-day cycle offers neither of the quests the record
+    documents. `now` is chosen from the recovered rotation instead, so the test
+    is fixed rather than dependent on the day it runs. The secondary worlds,
+    which take the same path with no such gate, carry the HTTP coverage.
+    """
+
+    #: Tropical Haze: the one quest whose additions reach a tier other than
+    #: Luck 80, so its chest exercises both halves of the template.
+    CHAPTER, SECTION = 6007, 1
+    PARTY = (9001, 9002, 9003, 9004, 9005, 9006)
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.state = BootstrapState(self.state_path)
+        self.addCleanup(self.state.close)
+        roster = [
+            {"id": member, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+             "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+             # The client's ceiling, so both named chests are certain.
+             "luck": LUCK_TENTHS_MAX}
+            for member in self.PARTY
+        ]
+        self.state.create_account("token", "account", {
+            "coins": 100, "energy": 40, "freeEnergy": 2, "worldMapNo": 0,
+            "progressCode": 0x01000000 | (25 << 6) | 1, "chrdata": roster,
+            "teamMembers": list(self.PARTY), "teamNo": 1,
+            "itemList": [0] * ITEM_SLOTS, "summonList": [0, 0],
+            "buddyInfo": {"list": [], "record": []}, "nextCompanionInventoryId": 1,
+        })
+        with self.state.lock:
+            account = self.state.accounts["account"]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            self.state._persist_locked()
+        self.catalog = HuntingCatalog(
+            build_bundled_daily_quest_stages(), ITEM_SLOTS, MAX_ITEM_STACK,
+        )
+
+    def a_day_offering(self, label: str) -> float:
+        """A `now` inside the recovered rotation on which this quest is open."""
+        for offset in range(len(DAILY_QUEST_ROTATION)):
+            day = DAILY_QUEST_EPOCH_DAY + offset
+            if label in daily_quest_rotation(day):
+                return day * 86_400.0 + 3600.0
+        raise AssertionError(f"{label} is not in the recovered rotation")
+
+    def userdata(self) -> dict:
+        return self.state.accounts["account"]["userdata"]
+
+    def test_a_documented_daily_quest_authors_and_settles_its_chest(self) -> None:
+        stage = self.catalog.by_identity()[(self.CHAPTER, self.SECTION)]
+        now = self.a_day_offering(stage.identity_label())
+        body = urlencode([
+            ("stamina", str(stage.stamina)), ("coins", "0"),
+            ("chapter", str(self.CHAPTER)), ("section", str(self.SECTION)),
+            ("lastUpdate", "1"),
+        ]).encode()
+        result, started = self.state.apply_hunting_start(
+            "token", "dq-start", body, self.catalog, now=now,
+        )
+        self.assertEqual("success", result)
+        chest = started["luckResult"]
+        self.assertEqual(6, len(chest))
+        for tier, slot in zip(CHEST_TIERS, chest):
+            if slot:
+                self.assertIn(slot, pool_for(self.CHAPTER, self.SECTION, tier.name))
+        # Both named tiers are guaranteed at the ceiling and this quest
+        # documents both, so neither may come back empty.
+        self.assertNotEqual("", chest[4])
+        self.assertNotEqual("", chest[5])
+
+        userdata = self.userdata()
+        before = int(userdata["coins"])
+        inventory = list(userdata["itemList"])
+        for item_id, count in chest_items(chest).items():
+            inventory[item_id - 1] += count
+        clear = urlencode([
+            ("progressCode", str(userdata["progressCode"])), ("worldMapNo", "0"),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                # The client folds the chest's Coins into what it reports.
+                "coins": before + chest_coins(chest),
+            })),
+            ("chrdata", json.dumps(userdata["chrdata"])),
+            ("itemList", json.dumps(inventory)),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": self.CHAPTER, "section": self.SECTION, "coins": 0, "exp": 0,
+                "items": {}, "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0] * 6,
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ]).encode()
+        result, settled = self.state.apply_hunting_clear(
+            "token", "dq-clear", clear, self.catalog, now=now,
+        )
+        self.assertEqual("success", result, settled)
+
+        userdata = self.userdata()
+        self.assertEqual(inventory, userdata["itemList"])
+        self.assertEqual(before + chest_coins(chest), userdata["coins"])
+        held = {row["id"] for row in userdata["chrdata"]}
+        owned = {row["bid"] for row in userdata["buddyInfo"]["list"]}
+        for reward in chest_characters(chest):
+            self.assertIn(reward, held)
+        for reward in chest_companions(chest):
+            self.assertIn(reward, owned)
+        self.assertEqual([], self.state.accounts["account"]["active_luck_result"])
+
+    def test_the_chestless_quest_authors_nothing(self) -> None:
+        """The Hunt For Joker is on the record's own no-chest list, and its own
+        page carries the Daily Quest chest template every such page carries. A
+        page-level template is boilerplate; the mechanic's own page naming the
+        quest is a statement."""
+        stage = self.catalog.by_identity()[(6012, 1)]
+        now = self.a_day_offering(stage.identity_label())
+        body = urlencode([
+            ("stamina", str(stage.stamina)), ("coins", "0"),
+            ("chapter", "6012"), ("section", "1"), ("lastUpdate", "1"),
+        ]).encode()
+        result, started = self.state.apply_hunting_start(
+            "token", "joker-start", body, self.catalog, now=now,
+        )
+        self.assertEqual("success", result)
+        self.assertNotIn("luckResult", started)
+        # Retained as six empty slots, the shape the story entry retains, so
+        # settlement reads the same absence either way.
+        self.assertFalse(any(self.state.accounts["account"]["active_luck_result"]))
 
 
 class RoadSpeciesLimitTest(unittest.TestCase):

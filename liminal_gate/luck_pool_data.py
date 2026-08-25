@@ -8,18 +8,17 @@ scraped with page and revision provenance. Every row of that scrape carries
 
 Two consequences are deliberate and should not be quietly fixed later:
 
-* **Only seventy-three stages have a pool at all** -- thirty-one core-story
-  stages and the forty-two Strikes Back quests recovered from the record's own
-  template further down. Every other stage in the game has none, and a stage
-  with no pool yields no chest rather than a guessed one.
+* **One hundred and twenty-six stages have a pool** -- thirty-one core-story
+  stages here, and ninety-five event and side-world stages in
+  :mod:`liminal_gate.luck_pool_event_data`. Every other stage in the game has
+  none, and a stage with no pool yields no chest rather than a guessed one.
   This is a floor on what the feature does, not a claim that other stages had no
   chests -- almost certainly they did, and the record simply does not cover them.
-  The record does cover more than is here: the same template family also
-  documents the Daily Quests, the Eidolon quests, and five standing Special
-  Quests, and those remain unrecovered.
   An operator who wants to go past that floor supplies their own pools through
   :mod:`liminal_gate.luck_pool_catalog` and `--luck-pool-catalog`, which leaves
   this table exactly as sourced and says so in the server's startup output.
+* **Fourteen chapters carry no chest at all**, and that is the record stating
+  an absence rather than leaving a gap. See `NO_CHEST_CHAPTERS`.
 * **Sixty-five of the ninety-nine dropped rewards have since been recovered**,
   and nineteen of the thirty-one stages still lose at least one. Chapter 25-7,
   added after the first scrape missed its unheaded table, is not among them --
@@ -63,7 +62,10 @@ from __future__ import annotations
 
 from liminal_gate.luck_pool_event_data import (
     ARCHIVE_SPECIAL_CHEST_POOLS,
+    BREASOUL_CHEST_POOLS,
+    DAILY_QUEST_CHEST_POOLS,
     EIDOLON_CHEST_POOLS,
+    FIVE_EMPERORS_CHEST_POOLS,
     STRIKES_BACK_CHEST_POOLS,
 )
 
@@ -124,6 +126,9 @@ DOCUMENTED_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     **STRIKES_BACK_CHEST_POOLS,
     **EIDOLON_CHEST_POOLS,
     **ARCHIVE_SPECIAL_CHEST_POOLS,
+    **DAILY_QUEST_CHEST_POOLS,
+    **BREASOUL_CHEST_POOLS,
+    **FIVE_EMPERORS_CHEST_POOLS,
 }
 
 

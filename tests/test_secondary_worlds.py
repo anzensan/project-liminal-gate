@@ -33,6 +33,12 @@ from liminal_gate.secondary_world_data import (
     world_max_chapters,
 )
 from liminal_gate.server_constants import build_server_constants
+from liminal_gate.bootstrap_server import release_abandoned_battle
+from liminal_gate.luck_data import CHEST_TIERS, LUCK_TENTHS_MAX
+from liminal_gate.luck_pool_data import pool_for
+from liminal_gate.luck_runtime import (
+    chest_characters, chest_coins, chest_companions, chest_items,
+)
 from tests.support import bootstrap_profile, get, post, start_server, stop_server
 
 
@@ -595,6 +601,155 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
         served = self.read_userdata()["worldProgressCode"]
         self.assertEqual((100, 1), unpack_world_progress(served["1"]))
         self.assertEqual((110, 1), unpack_world_progress(served["2"]))
+
+
+class SecondaryWorldChestTest(unittest.TestCase):
+    """A side-world Luck chest, over real HTTP and through the durable path.
+
+    These maps take the Hunting handler, which authored no chest at all. The
+    record's own list of chestless quests names the Hunting and Metal zones and
+    does not name either map -- it documents both, stage by stage -- and this
+    is the coverage for the handler now honouring that. The Daily Quests take
+    the same path and are rotation-gated, so their test drives the handler
+    directly instead.
+    """
+
+    #: Agartha, the Five Emperors' fifth normal descent. Its chest is the one
+    #: with a reward in every tier the record fills.
+    CHAPTER, SECTION, STAMINA = 114, 1, 15
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.state_path = Path(self.temporary_directory.name) / "state.json"
+        self.token, self.account_id = "chest-token", "chest-account"
+        # A party at the client's Luck ceiling, so both named chests are
+        # certain. The transaction tests above field one character with no Luck
+        # at all, which is why they see no chest and need not fold one in.
+        self.party = [
+            {"id": member, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
+             "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
+             "luck": LUCK_TENTHS_MAX}
+            for member in (9001, 9002, 9003, 9004, 9005, 9006)
+        ]
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(self.state_path),
+            hunting_catalog=catalog(), secondary_worlds=True,
+        )
+        self.addCleanup(stop_server, self.server, self.thread)
+        self.server.state.create_account(self.token, self.account_id, {
+            "coins": 100, "energy": 40, "freeEnergy": 20, "worldMapNo": 0,
+            "progressCode": (1 << 24) | progress(30, 1), "chrdata": self.party,
+            "teamMembers": [row["id"] for row in self.party],
+            "itemList": [0] * BUNDLED_ITEM_SLOTS, "summonList": [0, 0],
+            "buddyInfo": {"list": [], "record": []}, "nextCompanionInventoryId": 1,
+        })
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["tutorial_phase"] = "free_roam"
+            account["initial_userdata_served"] = True
+            self.server.state._persist_locked()
+
+    def post(self, route: str, request_id: str, fields: list) -> tuple:
+        return post(
+            self.server, route, request_id, urlencode(fields), token=self.token,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    def account(self) -> dict:
+        return json.loads(self.state_path.read_text(encoding="utf-8"))["accounts"][self.account_id]
+
+    def userdata(self) -> dict:
+        return self.account()["userdata"]
+
+    def world_cursor(self, world: int) -> int:
+        held = self.account().get("world_progress", {})
+        return held.get(str(world), self.userdata()["progressCode"])
+
+    def enter_world(self, request_id: str, world: int) -> tuple:
+        return self.post("/gd/userdata", request_id, [
+            ("progressCode", str(self.world_cursor(world))),
+            ("worldMapNo", str(world)), ("lastUpdate", "1"),
+        ])
+
+    def start(self, request_id: str, chapter: int, section: int, stamina: int) -> tuple:
+        return self.post("/gd/start_quest", request_id, [
+            ("stamina", str(stamina)), ("coins", "0"), ("chapter", str(chapter)),
+            ("section", str(section)), ("lastUpdate", "1"),
+        ])
+
+    def chest_clear(self, request_id: str, chest: list[str]) -> tuple:
+        """A clear that folds the chest in the way the client folds it."""
+        userdata = self.userdata()
+        inventory = list(userdata["itemList"])
+        for item_id, count in chest_items(chest).items():
+            inventory[item_id - 1] += count
+        return self.post("/gd/clear_quest", request_id, [
+            ("progressCode", str(self.world_cursor(FIVE_EMPERORS_WORLD))),
+            ("worldMapNo", str(FIVE_EMPERORS_WORLD)),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"] + chest_coins(chest),
+            })),
+            ("chrdata", json.dumps(userdata["chrdata"])),
+            ("itemList", json.dumps(inventory)),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": self.CHAPTER, "section": self.SECTION, "coins": 0, "exp": 0,
+                "items": {}, "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0] * 6,
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+
+    def test_a_five_emperors_clear_delivers_its_documented_chest(self) -> None:
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        status, started = self.start("start", self.CHAPTER, self.SECTION, self.STAMINA)
+        self.assertEqual(200, status, started)
+        chest = started["luckResult"]
+        for tier, slot in zip(CHEST_TIERS, chest):
+            if slot:
+                self.assertIn(slot, pool_for(self.CHAPTER, self.SECTION, tier.name))
+        # This stage documents both named tiers, and both are guaranteed at the
+        # client's Luck ceiling.
+        self.assertNotEqual("", chest[4])
+        self.assertNotEqual("", chest[5])
+
+        before = int(self.userdata()["coins"])
+        status, settled = self.chest_clear("clear", chest)
+        self.assertEqual(200, status, settled)
+        userdata = self.userdata()
+        self.assertEqual(before + chest_coins(chest), userdata["coins"])
+        held = {row["id"] for row in userdata["chrdata"]}
+        owned = {row["bid"] for row in userdata["buddyInfo"]["list"]}
+        for reward in chest_characters(chest):
+            self.assertIn(reward, held)
+        for reward in chest_companions(chest):
+            self.assertIn(reward, owned)
+        for item_id, count in chest_items(chest).items():
+            self.assertGreaterEqual(userdata["itemList"][item_id - 1], count)
+
+    def test_releasing_a_side_world_battle_drops_its_chest(self) -> None:
+        """A released battle's chest belongs to no one.
+
+        `remember_released_story` carries the chest into the released
+        core-story record and clears it there, and it answers only for a
+        core-story battle. Every other phase has nowhere to carry one to, so a
+        chest left behind would be settled by whatever battle came next.
+        """
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        status, started = self.start("start", self.CHAPTER, self.SECTION, self.STAMINA)
+        self.assertEqual(200, status, started)
+        self.assertTrue(any(started["luckResult"]))
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            self.assertEqual(started["luckResult"], account["active_luck_result"])
+            self.assertTrue(release_abandoned_battle(account))
+            self.assertFalse(any(account["active_luck_result"]))
+            self.assertFalse(any(account["active_luck_up"]))
+            # Nothing was carried anywhere: this was not a core-story battle.
+            self.assertIsNone(account.get("released_generic_story"))
 
 
 class TutorialMapWriteTest(unittest.TestCase):

@@ -1,7 +1,8 @@
 """Chest pools for the stages the record does not document, by donation.
 
-The community record documents thirty-one story stages and the forty-two
-Strikes Back quests. Without this, every other stage rolls six empty slots --
+The community record documents one hundred and twenty-six stages: thirty-one
+in the core story, and ninety-five across the events and the two side worlds.
+Without this, every other stage rolls six empty slots --
 honest, and it leaves a feature the game clearly had almost entirely inert: a
 player at Chapter 10 with real Luck never sees a chest, because nobody wrote
 that page.
@@ -22,7 +23,7 @@ pays 50 where the trend through Chapters 4 to 36 would predict far more -- and
 fitting one would replace a sourced value with a derived one.
 
 **A documented stage is never touched.** Interpolation only answers where the
-record is silent, so the seventy-three sourced stages keep their exact pools and
+record is silent, so every sourced stage keeps its exact pool and
 remain distinguishable from everything else. An explicit `--luck-pool-catalog`
 still overrides both.
 
@@ -147,3 +148,16 @@ def build_luck_pools(
     if catalog is None and not interpolate:
         return None
     return LayeredLuckPools(catalog, InterpolatedLuckPools() if interpolate else None)
+
+
+def without_interpolation(pools: object) -> object | None:
+    """The same resolver with donation removed: the record, plus an operator's own.
+
+    The Hunting path authors a chest only where the record documents one. Every
+    family it serves is either named on the record's chestless list or covered
+    by it stage for stage, so a donated pool there would not be filling a
+    silence -- it would be answering over a source that already spoke. An
+    operator's explicit catalog survives, because `LuckPoolCatalog.pool_for`
+    defers to the record for every stage it does not name.
+    """
+    return pools.catalog if isinstance(pools, LayeredLuckPools) else pools

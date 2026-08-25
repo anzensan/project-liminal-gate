@@ -22,7 +22,15 @@ from liminal_gate.luck_pool_data import (
     refuses_chest,
 )
 from liminal_gate.luck_pool_event_data import (
+    ATTRIBUTE_TYPE_ITEMS,
+    BREASOUL_CHEST_POOLS,
+    DAILY_QUEST_CHEST_EXTRAS,
+    DAILY_QUEST_CHEST_POOLS,
+    DAILY_QUEST_COMPANIONS,
+    DAILY_QUEST_MONSTERS,
     EIDOLON_CHEST_POOLS,
+    FIVE_EMPERORS_CHEST_POOLS,
+    WEAPON_TYPE_ITEMS,
     EIDOLON_SINGLE_QUEST_REWARDS,
     EIDOLON_THIRD_QUEST_REWARDS,
     SPECIES_TYPE_ITEMS,
@@ -299,6 +307,107 @@ class ArchiveSpecialChestRecordTest(unittest.TestCase):
         self.assertTrue(has_documented_pool(2018, 1))
         self.assertEqual(("M1288", "O128", "O129"), pool_for(2018, 1, "Luck 100"))
         self.assertIn("M1288", pool_for(2018, 1, "D"))
+
+
+class DailyQuestChestRecordTest(unittest.TestCase):
+    """Ten of the fourteen Daily Quest stages, through their shared template."""
+
+    def test_the_documented_quests_are_the_ten_with_a_page(self) -> None:
+        """Particle Hoarder Horde and both Yamamoto Puzzle Quests have no chest
+        page. The Hunt For Joker has one and is excluded anyway, by the Luck
+        page's own list."""
+        self.assertEqual(
+            {(chapter, 1) for chapter in
+             (6000, 6001, 6002, 6003, 6005, 6006, 6007, 6008, 6009, 6010)},
+            set(DAILY_QUEST_CHEST_POOLS),
+        )
+        for chapter in (6004, 6011, 6012):
+            self.assertFalse(has_documented_pool(chapter, 1), chapter)
+
+    def test_every_quest_shares_the_template_base(self) -> None:
+        materials = set(SPECIES_TYPE_ITEMS + WEAPON_TYPE_ITEMS + ATTRIBUTE_TYPE_ITEMS)
+        for (chapter, section) in DAILY_QUEST_CHEST_POOLS:
+            with self.subTest(chapter=chapter):
+                self.assertEqual(materials, set(pool_for(chapter, section, "A")))
+                self.assertEqual(materials, set(pool_for(chapter, section, "B")))
+                self.assertLessEqual(
+                    set(DAILY_QUEST_MONSTERS), set(pool_for(chapter, section, "C")),
+                )
+                self.assertLessEqual(
+                    set(DAILY_QUEST_COMPANIONS), set(pool_for(chapter, section, "Luck 100")),
+                )
+
+    def test_the_one_quest_whose_additions_reach_another_tier(self) -> None:
+        """Tropical Haze adds its three tickets to D as well as to Luck 80;
+        every other quest adds to Luck 80 alone."""
+        tickets = ("I50", "I81", "I112")
+        for reward in tickets:
+            self.assertIn(reward, pool_for(6007, 1, "D"))
+            self.assertIn(reward, pool_for(6007, 1, "Luck 80"))
+        for chapter in DAILY_QUEST_CHEST_EXTRAS:
+            if chapter == 6007:
+                continue
+            with self.subTest(chapter=chapter):
+                self.assertEqual(
+                    set(DAILY_QUEST_COMPANIONS), set(pool_for(chapter, 1, "D")),
+                )
+
+    def test_the_additions_agree_with_the_recovered_enemy_records(self) -> None:
+        """Independent corroboration: these sets were recovered from the
+        client's own enemy records rather than from the record, and the
+        record's chest table names the same four in each case."""
+        self.assertLessEqual(
+            {"I55", "I56", "I53", "I54"}, set(pool_for(6002, 1, "Luck 80")),
+        )
+        self.assertLessEqual(
+            {"I26", "I27", "I28", "I29"}, set(pool_for(6005, 1, "Luck 80")),
+        )
+        self.assertLessEqual(
+            {"I18", "I19", "I20", "I21"}, set(pool_for(6008, 1, "Luck 80")),
+        )
+        self.assertLessEqual(
+            {"I118", "I119", "I120", "I121"}, set(pool_for(6009, 1, "Luck 80")),
+        )
+
+
+class SideWorldChestRecordTest(unittest.TestCase):
+    """The two secondary world maps, documented per stage rather than by template."""
+
+    def test_breasoul_covers_every_section_the_client_declares(self) -> None:
+        """The page's parts come to 4, 5, 5, 5 and 1, which is exactly the
+        section count of chapters 100 to 104."""
+        expected = {
+            (chapter, section)
+            for chapter, count in ((100, 4), (101, 5), (102, 5), (103, 5), (104, 1))
+            for section in range(1, count + 1)
+        }
+        self.assertEqual(expected, set(BREASOUL_CHEST_POOLS))
+        self.assertEqual(20, len(BREASOUL_CHEST_POOLS))
+
+    def test_the_breasoul_finale_pays_its_own_boss(self) -> None:
+        self.assertIn("M1158", pool_for(104, 1, "Luck 100"))
+
+    def test_the_five_emperors_cover_both_modes(self) -> None:
+        self.assertEqual(
+            {(chapter, 1) for chapter in range(110, 120)},
+            set(FIVE_EMPERORS_CHEST_POOLS),
+        )
+
+    def test_the_page_order_agrees_with_the_recovered_drop_manifests(self) -> None:
+        """The five normal descents name the same first-clear Companion the
+        client's own `dropBuddies` gives chapters 110--114, and the five hard
+        ones the same for 115--119. Asserted on the two the record spells out
+        in its Luck chests as well as its reward list."""
+        self.assertIn("O464", pool_for(110, 1, "Luck 80"))   # Shining Mirror, Garuda
+        self.assertIn("O464", pool_for(115, 1, "C"))         # and again in hard Garuda
+
+    def test_every_side_world_reward_is_a_well_formed_slot(self) -> None:
+        for pools in (BREASOUL_CHEST_POOLS, FIVE_EMPERORS_CHEST_POOLS):
+            for (chapter, section), tiers in pools.items():
+                for tier, pool in tiers.items():
+                    self.assertEqual(len(pool), len(set(pool)), f"{chapter}-{section} {tier}")
+                    for reward in pool:
+                        self.assertRegex(reward, r"^[CIOM][1-9][0-9]*$")
 
 
 class ChestWireTest(unittest.TestCase):

@@ -1,6 +1,6 @@
 """An operator's own chest pools, for the stages the record does not document.
 
-The bundled table covers seventy-three stages and every other stage yields six
+The bundled table covers a hundred and twenty-six stages and the rest yield six
 empty slots, because the contents were server-side and no capture survives.
 This is the sanctioned way past that: opt-in, operator-supplied, and named in
 the server's own startup output, so the bundled table stays exactly as sourced.
@@ -198,7 +198,7 @@ if __name__ == "__main__":
 class InterpolatedLuckPoolTest(unittest.TestCase):
     """Donated pools for the stages the record does not document.
 
-    On by default, because the record covers seventy-three stages and the rest of
+    On by default, because the record covers a hundred and twenty-six stages and
     the game would otherwise never show a chest. What it chooses is placement,
     not contents: every reward it can produce is one the record documents for a
     chapter adjacent to the one being played.

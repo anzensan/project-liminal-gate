@@ -11,6 +11,24 @@ Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
 
+Latest Huntland and side-world chest recovery: the same template search that
+found Strikes Back and the Eidolons also covers ten Daily Quests, both
+secondary world maps and one archived Special Quest, which brings the record's
+coverage from thirty-one stages to a hundred and twenty-six. Three of those
+families are served by the Hunting handler, which authored no chest at all on
+the strength of the record's own chestless list naming the Hunting and Metal
+zones. That list is real and is enforced; it simply does not name the Daily
+Quests or either map, both of which the record documents stage by stage. The
+handler now authors a chest where the record documents one, folds its Coins and
+items into the settlement the client reports, and grants the Companion and
+character forms the client has no field to report back. Donation is removed on
+that path deliberately: every family it serves is either excluded by the record
+or covered by it, so a donated pool there would answer over a source that
+already spoke. Two joins were confirmed against the client rather than the
+titles -- The Death of Shay and Arionne's parts match chapters 100--104 section
+for section, and all ten Ultimate Five sections name the Companion the
+recovered `dropBuddies` manifests give chapters 110--119.
+
 Latest chest refusal correction: the Luck page carries the record's own list
 of eleven quests that hold no Luck Treasure Chest, and turning event chests on
 had begun contradicting four of them -- Hunting the Jade Dragon, Mobius Final
