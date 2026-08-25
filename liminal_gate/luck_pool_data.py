@@ -246,11 +246,62 @@ DOCUMENTED_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
 }
 
 
+#: **Community record, and the one statement here that refuses rather than
+#: pays.** The Luck page names eleven quests that carry no Luck Treasure Chest
+#: at all. It is a *primary* claim about the feature, on the page that
+#: documents the feature, and it outranks a per-quest page: `The Hunt For
+#: Joker` appears on this list and also carries the Daily Quest chest template
+#: on its own page, which is the boilerplate every Daily Quest page carries
+#: rather than a statement about that quest.
+#:
+#: Most of these were already silent because their family authors no chest.
+#: Four were not: Hunting the Jade Dragon, Mobius Final Fantasy, The Captive
+#: Golem and Vengeful Heart are event-catalog stages, and once event starts
+#: began rolling against the interpolated pools they started paying chests the
+#: record says they never had. That is what this list corrects.
+#:
+#: Keyed by chapter because every listed quest excludes all of its sections.
+NO_CHEST_CHAPTERS: frozenset[int] = frozenset({
+    1001,   # Pudding Time -- Hunting Zone
+    1002,   # Tin Parade -- Hunting Zone
+    1004,   # Puppet Show -- Hunting Zone
+    1200,   # Dragon Road
+    2004,   # Hunting the Jade Dragon
+    2005,   # Mobius Final Fantasy, and Mobius Final Fantasy Strike
+    2008,   # The Captive Golem
+    2014,   # Vengeful Heart -- recorded here as `vengeful_vision_archive`
+    3000,   # Metal Zones
+    3002,   # Attack of the Coin Creeps -- Hunting Zone
+    3004,   # Crystal Road -- listed on its own and as a Hunting Zone
+    6012,   # The Hunt For Joker
+    7000,   # Orbling Cavern
+    7010,   # Cryptid Forest
+})
+
+
+def refuses_chest(chapter: int) -> bool:
+    """Whether the record says this chapter carries no chest at all.
+
+    Distinct from having no documented pool. An undocumented stage is a gap the
+    record leaves and interpolation may fill; a listed one is the record
+    stating an absence, so nothing derived fills it.
+
+    An explicit `--luck-pool-catalog` still overrides it, for the same reason
+    it overrides everything else here: naming a stage in that file is an
+    operator deciding to go past the record, and this list is the record.
+    """
+    return chapter in NO_CHEST_CHAPTERS
+
+
 def pool_for(chapter: int, section: int, tier: str) -> tuple[str, ...]:
     """Return one stage-and-tier reward pool, empty when undocumented."""
+    if refuses_chest(chapter):
+        return ()
     return DOCUMENTED_CHEST_POOLS.get((chapter, section), {}).get(tier, ())
 
 
 def has_documented_pool(chapter: int, section: int) -> bool:
     """Whether this stage has any documented chest contents at all."""
+    if refuses_chest(chapter):
+        return False
     return bool(DOCUMENTED_CHEST_POOLS.get((chapter, section)))

@@ -45,7 +45,7 @@ from functools import lru_cache
 
 from liminal_gate.luck_data import CHEST_TIERS
 from liminal_gate.luck_pool_data import (
-    DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, pool_for,
+    DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, pool_for, refuses_chest,
 )
 
 
@@ -107,6 +107,10 @@ class InterpolatedLuckPools:
     """Answers for undocumented stages; defers to the record everywhere else."""
 
     def pool_for(self, chapter: int, section: int, tier: str) -> tuple[str, ...]:
+        if refuses_chest(chapter):
+            # The record naming a quest as chestless is a statement, and a
+            # donated pool is exactly the kind of derived answer it forbids.
+            return ()
         documented = pool_for(chapter, section, tier)
         if documented or (chapter, section) in DOCUMENTED_CHEST_POOLS:
             # Either the record answers, or it answers this stage and left this

@@ -55,6 +55,12 @@ capabilities:
     note: "An event start_quest is served by the event branch of _select_mutation and now receives the launcher's own chest pool resolver, so Strikes Back, Special Quests, Descent Quests, the Tower and the Eidolon quests roll chests instead of six empty slots. The forty-two Strikes Back quests are answered from the community record's own chest template; every other event stage still draws operator or interpolated pools."
     transport_tests: true
     restart_tests: true
+  - family: luck_chest_refusals
+    routes: [start_quest]
+    status: local_policy
+    note: "The Luck page's own list of eleven chestless quests is enforced ahead of the bundled pools and interpolation, which is what stops Hunting the Jade Dragon, Mobius Final Fantasy, The Captive Golem and Vengeful Heart from paying donated chests once event starts began rolling. An explicit --luck-pool-catalog still overrides it."
+    transport_tests: false
+    restart_tests: false
   - family: pacts_and_companions
     routes: [do_slot, do_buddy_slot, sell_buddy, sell_buddies, buddy_strengthen, buddy_evolve, userdata]
     status: local_policy
