@@ -3656,6 +3656,10 @@ class BootstrapState:
                 "energyAppStore", "energy", "energyAndApp", "freeEnergy",
                 "energyGooglePlay", "coins",
             )
+            durable_character_ids = {
+                row.get("id") for row in userdata.get("chrdata", [])
+                if isinstance(row, dict) and type(row.get("id")) is int
+            }
             canonical_valuables = {
                 field: expected_coins if field == "coins" else int(userdata.get(field, 0))
                 for field in wallet_fields
@@ -3705,11 +3709,26 @@ class BootstrapState:
             announced: dict[int, int] = {}
             if event:
                 by_id = {row.get("id"): row for row in userdata["chrdata"] if isinstance(row, dict)}
+                reported_characters = set(clear["battle_result"]["monsters"])
                 for character_id in stage.character_ids:
+                    if (
+                        stage.reported_character_rewards
+                        and character_id not in reported_characters
+                    ):
+                        continue
                     if character_id not in by_id:
                         row = _granted_character_row(character_id)
                         userdata["chrdata"].append(row); by_id[character_id] = row
                         announced[character_id] = 1
+                    elif (
+                        character_id in durable_character_ids
+                        and stage.duplicate_grant_luck
+                    ):
+                        row = by_id[character_id]
+                        row["luck"] = min(
+                            int(row.get("luck", 0)) + stage.duplicate_grant_luck,
+                            character_luck_cap(character_id),
+                        )
             # The chest's own Companions and characters. Granted after the
             # roster merge for the same reason the Luck gain below is: a stale
             # client's `chrdata` must not overwrite what this clear awarded.

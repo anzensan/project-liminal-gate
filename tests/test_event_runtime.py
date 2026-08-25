@@ -1066,6 +1066,7 @@ class _CounterDescentRangeHarness:
         summons: list[int] | None = None,
         inventory: list[int] | None = None,
         buddies: list[int] | None = None,
+        monsters: list[int] | None = None,
     ) -> bytes:
         """Compose a clear the way the surviving client composes one.
 
@@ -1102,7 +1103,7 @@ class _CounterDescentRangeHarness:
                 "items": reported,
                 "exp": experience,
                 "section": section,
-                "monsters": [],
+                "monsters": monsters or [],
                 "summons": summons or [],
                 "luckynum": 0,
                 "chapter": chapter,
@@ -1117,6 +1118,51 @@ class _CounterDescentRangeHarness:
 
 class CounterDescentRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):
     """The standard Strikes Back slice uses the real HTTP and durable path."""
+
+    def test_8_bit_golem_lambda_duplicate_keeps_the_client_announced_luck(self) -> None:
+        """Chapter 8006's observed duplicate result announces +1.0 Luck."""
+        stage = self.catalog.by_identity()[(8006, 1)]
+        self.assertEqual(((897,), 10), (stage.character_ids, stage.duplicate_grant_luck))
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            # Chapter 8006 opens after Chapter 11, so Chapter 12 is the first
+            # progress value the local permanent gate admits.
+            userdata["progressCode"] = 0x01000000 | (12 << 6) | 1
+            userdata["chrdata"] = [character(897)]
+            self.server.state._persist_locked()
+
+        start = (
+            f"stamina={stage.stamina}&coins=0&chapter=8006&section=1&lastUpdate=1"
+        ).encode()
+        self.assertEqual(
+            200,
+            self.post(f"/gd/start_quest?otk={self.token}&requestID=start", start)[0],
+        )
+        no_recruit = self.clear_body(chapter=8006, section=1)
+        status, settled = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=no-recruit", no_recruit,
+        )
+        self.assertEqual(200, status, settled)
+        self.assertEqual(0, self.account()["userdata"]["chrdata"][0].get("luck", 0))
+
+        self.assertEqual(
+            200,
+            self.post(f"/gd/start_quest?otk={self.token}&requestID=reported-start", start)[0],
+        )
+        clear = self.clear_body(chapter=8006, section=1, monsters=[897])
+        status, settled = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=clear", clear,
+        )
+        self.assertEqual(200, status, settled)
+        self.assertEqual(10, settled["chrdata"][0]["luck"])
+        self.assertEqual(10, self.account()["userdata"]["chrdata"][0]["luck"])
+
+        self.restart()
+        self.assertEqual(
+            (status, settled),
+            self.post(f"/gd/clear_quest?otk={self.token}&requestID=clear", clear),
+        )
+        self.assertEqual(10, self.account()["userdata"]["chrdata"][0]["luck"])
 
     def test_visibility_charge_projected_clear_and_restart_replay(self) -> None:
         status, server_status = self.get(

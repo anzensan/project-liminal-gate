@@ -93,6 +93,12 @@ class EventStage:
     #: ticket-bearing Metal start; zero means this stage has no item gate.
     entry_item_id: int = 0
     entry_item_count: int = 0
+    #: A duplicate character grant's durable Luck increment, in the client's
+    #: tenths.  Zero means the event has no observed duplicate-Luck contract.
+    duplicate_grant_luck: int = 0
+    #: Unlike the normal server-authored archive grants, this event's character
+    #: contract is asserted only when the client reports the recruit at clear.
+    reported_character_rewards: bool = False
 
     def identity_label(self) -> str:
         return f"{self.chapter}-{self.section}"
@@ -407,10 +413,17 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
             stamina=stamina,
             coins=0,
             clear_coins=0,
-            character_ids=(),
+            # The client-visible 8-Bit Golem Lambda duplicate result announces
+            # +1.0 Luck.  The report identifies the Chapter 8006 family and
+            # the matching final-client name table resolves its character as
+            # 897; the other Counter Descent families remain unmodeled until
+            # their own result evidence exists.
+            character_ids=(897,) if chapter == 8006 else (),
             selector="descent_hunting",
             unlock_after_chapter=unlock_after_chapter,
             projected_rewards=True,
+            duplicate_grant_luck=10 if chapter == 8006 else 0,
+            reported_character_rewards=chapter == 8006,
         )
         for event_id, flag, chapter, unlock_after_chapter, _character_ids in manifests
         for section, stamina in enumerate(
