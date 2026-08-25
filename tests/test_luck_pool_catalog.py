@@ -18,10 +18,10 @@ from liminal_gate.luck_pool_catalog import (
     LuckPoolCatalogError,
     load_luck_pool_catalog,
 )
-from liminal_gate.luck_pool_data import (
-    LUCK_CHEST_POOLS,
+from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, pool_for
+from liminal_gate.luck_pool_event_data import (
+    EIDOLON_CHEST_POOLS,
     STRIKES_BACK_CHEST_POOLS,
-    pool_for,
 )
 from liminal_gate.luck_pool_interpolation import build_luck_pools, donor_chapters
 from liminal_gate.luck_runtime import roll_luck_result

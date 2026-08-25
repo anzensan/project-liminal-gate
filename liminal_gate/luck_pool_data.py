@@ -61,6 +61,12 @@ whose endpoints *are* sourced.
 
 from __future__ import annotations
 
+from liminal_gate.luck_pool_event_data import (
+    ARCHIVE_SPECIAL_CHEST_POOLS,
+    EIDOLON_CHEST_POOLS,
+    STRIKES_BACK_CHEST_POOLS,
+)
+
 #: The core story's pools, keyed by ``(chapter, section)`` and then by chest
 #: tier. Entries marked ``# incomplete`` lost at least one reward the record
 #: lists but the scrape could not resolve.
@@ -109,140 +115,15 @@ LUCK_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     (36, 10): {"A": ('C650', 'I2', 'I89', 'I105', 'I3', 'I6',), "B": ('C650', 'I10', 'I1', 'I89', 'I105', 'I91', 'I5', 'I2',), "C": ('C1300', 'I89', 'I8', 'I90', 'I4', 'I2', 'I106',), "D": ('C1950', 'I137', 'M68',), "Luck 80": ('C1300', 'M63', 'M68', 'M202', 'O128',), "Luck 100": ('C1300', 'I137', 'M63', 'M68', 'O128', 'O129',)},
 }
 
-#: **Community record, and the reason the story table above reads as the whole
-#: of it.** The fourteen Strikes Back families document their chests through a
-#: wiki *template* rather than an inline table: each page carries only
-#:
-#:     {{Luck Treasure Chests/Strikes Back
-#:     |monster = 8-Bit Golem
-#:     |omicron = 8-Bit Golem O
-#:     |omicron2 = 8-Bit Golem OII
-#:     |other omicron = S'naip OII
-#:     }}
-#:
-#: and the template expands that into the three per-quest tables. Both earlier
-#: scrapes searched the rendered shapes a story page uses -- the
-#: `=== Luck Treasure Chests ===` heading, then the table's own
-#: `!Chest !! Possible Rewards` header row -- and a page whose chest section
-#: holds one template invocation has neither. Fourteen families were therefore
-#: read as undocumented by a search that was looking at the right pages.
-#:
-#: Every family passes the same four names and no page overrides a single tier,
-#: so the pools are generated here from those names exactly as the record
-#: generates its own tables. Transcribing forty-two expanded tables by hand
-#: would introduce a class of error the source does not have.
-#:
-#: All fifty-six names resolved by exact match against the operator's own
-#: decoded `ChrDatabase` and Companion tables, after collapsing whitespace --
-#: the master data itself carries double-space typos (`Marilith  Kino L`,
-#: `Bahamut Kino  OII`), and the wiki and the master data disagree over Latin
-#: `O` versus Greek Omicron in the Companion suffixes. The fourteen recruits
-#: are a second, structural check on that join: the record names each one
-#: `<monster> L`, and every ID matched is flagged `is_lambda` in the client's
-#: own catalog. Chapter 8006 is a third: 897 is the character a physical
-#: client's duplicate result independently identified.
-#:
-#: **Two tiers of every one of these stages are recorded and not encodable, so
-#: each row is incomplete.** A and B pay a *quantity* of the run's event item
-#: -- 8 or 18 Animata items at A, 20 or 60 at B, rising through the later
-#: quests -- and neither half of that survives the trip. A slot in this wire
-#: form is one reward with no count, and "the run's event item" was not one
-#: item: the record's own schedule shows it rotating across eight Animata
-#: items over the event's twenty-odd runs, and nothing in the archive fixes
-#: which one a family carries. Encoding a single copy of a guessed item would
-#: misstate a figure the record does state, which is worse than leaving the
-#: tier empty. C is different and is filled: it names two item *classes* with
-#: no quantity at all, so one copy is the record read literally rather than a
-#: figure thrown away.
-STRIKES_BACK_CHEST_ITEMS: tuple[str, ...] = (
-    # Category:Weapon-type items -- Terra Swordsteel, Spearbronze, Bowstring, Staffwood.
-    'I9', 'I10', 'I11', 'I12',
-    # Category:Attribute-type items -- the ten Rings.
-    'I13', 'I14', 'I15', 'I16', 'I17', 'I46', 'I122', 'I123', 'I164', 'I165',
-)
-
-#: The Companion the template names bare in every family's Luck 80 and Luck 100
-#: chest. `Metal Minion L` (129) and `LL` (130) are separate Companions the
-#: record does not name here, so only the base one is granted.
-_METAL_MINION = 'O128'
-
-#: ``(chapter, recruit, omicron, omicron2, other omicron)`` -- the four names
-#: each family hands the record's template, resolved to IDs. The wiki revision
-#: each row was read at is in the trailing comment.
-STRIKES_BACK_FAMILY_REWARDS: tuple[tuple[int, int, int, int, int], ...] = (
-    (8000, 853, 282, 317, 310),   # Spinetrich Kino, Sh'berdan OII (rev 83438)
-    (8001, 855, 283, 340, 325),   # Kraken Kino, Zavison OII (rev 83437)
-    (8002, 859, 285, 318, 330),   # Slugosaur Kino, Myne OII (rev 83423)
-    (8003, 857, 284, 336, 332),   # Tiamat Kino, Mizell OII (rev 83454)
-    (8004, 899, 288, 321, 315),   # 8-Bit Orbling, Burbaba OII (rev 83439)
-    (8005, 895, 286, 319, 316),   # 8-Bit Spinetrich, Kem OII (rev 83422)
-    (8006, 897, 287, 320, 322),   # 8-Bit Golem, S'naip OII (rev 83453)
-    (8007, 901, 289, 335, 314),   # 8-Bit Hiso Alien, Amina OII (rev 83466)
-    (8012, 965, 297, 298, 351),   # Lich Kino, Sha'plar OII (rev 83455)
-    (8013, 967, 299, 300, 349),   # Marilith Kino, Bahl OII (rev 83467)
-    (8014, 969, 301, 302, 341),   # Mechanic Kino, Eileen OII (rev 83479)
-    (8015, 992, 391, 392, 343),   # Odin Kino, Okklitot OII (rev 83481)
-    (8016, 1014, 400, 401, 337),  # Bahamut Kino, Daiana OII (rev 83468)
-    (8017, 1016, 402, 403, 353),  # Leviathan Kino, A'merpact OII (rev 83480)
-)
-
-
-def _strikes_back_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
-    """Expand the record's own template into a pool per stage and tier.
-
-    The three quests a family documents are its sections 1, 2 and 3, matched by
-    the stamina the record states for each -- 5, 10 and 15, which is exactly
-    what `_counter_descent_stamina` serves. Chapters 8000--8007 carry a fourth
-    section at 15 stamina that the record documents no quest for; it is left
-    out rather than given the third quest's table, because a section the record
-    never covered is not a section it covered identically.
-
-    The ladder through the three quests is the record's, and it is the whole
-    reason the Companions a player remembers these quests for are hard to
-    reach: the second `OII` Companion appears only at Luck 100 of quest II,
-    and the family's own `O`, its `OII` and the guest `OII` appear together
-    only at Luck 100 of quest III -- one tier, of one quest, at 100.0 Luck.
-    """
-    pools: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {}
-    for chapter, recruit, omicron, omicron2, other in STRIKES_BACK_FAMILY_REWARDS:
-        character = f'M{recruit}'
-        pools[(chapter, 1)] = {
-            "C": STRIKES_BACK_CHEST_ITEMS,
-            "D": (character,),
-            "Luck 80": (character, _METAL_MINION),
-            "Luck 100": (character, _METAL_MINION),
-        }
-        pools[(chapter, 2)] = {
-            "C": STRIKES_BACK_CHEST_ITEMS,
-            "D": (character,),
-            "Luck 80": (character, _METAL_MINION),
-            "Luck 100": (character, f'O{omicron2}', _METAL_MINION),
-        }
-        pools[(chapter, 3)] = {
-            "C": STRIKES_BACK_CHEST_ITEMS,
-            "D": (character,),
-            "Luck 80": (character, f'O{omicron2}', _METAL_MINION),
-            "Luck 100": (
-                character, f'O{omicron}', f'O{omicron2}', f'O{other}', _METAL_MINION,
-            ),
-        }
-    return pools
-
-
-#: The Strikes Back half, expanded. Kept separate from `LUCK_CHEST_POOLS`
-#: because only the story table may donate to an undocumented stage: chapter
-#: numbers are a progression inside the story and an address space outside it,
-#: so "the nearest documented chapter" means something for Chapter 10 and
-#: nothing for Chapter 8006. See `luck_pool_interpolation.donor_chapters`.
-STRIKES_BACK_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = (
-    _strikes_back_pools()
-)
-
-#: Every stage the record documents, from both halves. Nothing keyed here is
-#: interpolated, and a tier absent from a stage that appears here is the record
-#: paying nothing rather than a gap to fill.
+#: Every stage the record documents: the core story above, and the event and
+#: side-world families in :mod:`liminal_gate.luck_pool_event_data`. Nothing
+#: keyed here is interpolated, and a tier absent from a stage that appears here
+#: is the record paying nothing rather than a gap to fill.
 DOCUMENTED_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
-    **LUCK_CHEST_POOLS, **STRIKES_BACK_CHEST_POOLS,
+    **LUCK_CHEST_POOLS,
+    **STRIKES_BACK_CHEST_POOLS,
+    **EIDOLON_CHEST_POOLS,
+    **ARCHIVE_SPECIAL_CHEST_POOLS,
 }
 
 
