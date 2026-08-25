@@ -21,6 +21,9 @@ from liminal_gate.event_catalog import (
 )
 from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
+from liminal_gate.luck_data import LUCK_TENTHS_MAX
+from liminal_gate.luck_pool_catalog import LuckPoolCatalog
+from liminal_gate.luck_runtime import chest_items
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from liminal_gate.tuning import DEFAULT_TUNING
 from tests.support import bootstrap_profile, get, request, start_server, stop_server
@@ -1341,6 +1344,97 @@ class CounterDescentRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):
                 clear,
             ),
         )
+
+
+class EventStartChestTest(_CounterDescentRangeHarness, unittest.TestCase):
+    """An event start has to receive the pool resolver the launcher built.
+
+    An event start is served by `_select_mutation`, which matches the event
+    catalog before the story dispatch below it ever runs, and that branch was
+    never given `luck_pool_catalog`. The clear half had always been ready --
+    it folds `chest_coins` into the wallet it expects and grants what
+    `_award_chest_grants` reads -- so nothing failed loudly. The start simply
+    rolled against the bundled record, which documents core story and nothing
+    else, and every event stage in the game returned six empty slots however
+    lucky the party was. That is Issue 76: a Strikes Back clear at 81.0 Luck
+    showing no chest at all.
+
+    The pools here are the operator's own rather than the interpolated ones, so
+    the assertion pins the resolver reaching the handler and not the contents
+    of a donated chapter.
+    """
+
+    #: One reward per guaranteed tier, so the slots are decided by the tier
+    #: gates in `luck_data` rather than by which member a seed selects. C and D
+    #: are declared empty for the same reason: they are the two tiers that stay
+    #: probabilistic at the client's Luck ceiling.
+    CHEST_STAGE = (8006, 1)
+    OPERATOR_POOLS = {
+        "A": ("I11",), "B": ("I12",), "C": (), "D": (),
+        "Luck 80": ("O128",), "Luck 100": ("M199",),
+    }
+
+    def start_server(self) -> None:
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0),
+            self.profile,
+            BootstrapState(self.state_path),
+            event_catalog=self.catalog,
+            stamina=True,
+            luck_pool_catalog=LuckPoolCatalog({self.CHEST_STAGE: dict(self.OPERATOR_POOLS)}),
+        )
+
+    def setUp(self) -> None:
+        super().setUp()
+        chapter, section = self.CHEST_STAGE
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            # Chapter 8006 opens after Chapter 11, and a party at the client's
+            # Luck ceiling makes both named tiers certain.
+            userdata["progressCode"] = 0x01000000 | (12 << 6) | 1
+            userdata["chrdata"] = [
+                dict(character(member), luck=LUCK_TENTHS_MAX)
+                for member in (3, 4, 5, 6, 7, 8)
+            ]
+            userdata["teamMembers"] = [3, 4, 5, 6, 7, 8]
+            self.server.state._persist_locked()
+
+    def start(self, request_id: str) -> dict:
+        chapter, section = self.CHEST_STAGE
+        stage = self.catalog.by_identity()[self.CHEST_STAGE]
+        body = (
+            f"stamina={stage.stamina}&coins=0&chapter={chapter}"
+            f"&section={section}&lastUpdate=1"
+        ).encode()
+        status, started = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID={request_id}", body,
+        )
+        self.assertEqual(200, status, started)
+        return started
+
+    def test_a_strikes_back_start_receives_the_operator_pools(self) -> None:
+        started = self.start("chest-start")
+        self.assertEqual(
+            ["I11", "I12", "", "", "O128", "M199"], started["luckResult"],
+        )
+
+    def test_the_chest_a_strikes_back_start_authored_is_delivered_at_clear(self) -> None:
+        chest = self.start("chest-start")["luckResult"]
+        chapter, section = self.CHEST_STAGE
+        # The client folds a chest's items into the inventory it submits, which
+        # is why that form needs no server-side grant and this one does not
+        # report them as battle drops.
+        inventory = list(self.account()["userdata"]["itemList"])
+        for item_id, count in chest_items(chest).items():
+            inventory[item_id - 1] += count
+        status, settled = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=chest-clear",
+            self.clear_body(chapter=chapter, section=section, inventory=inventory),
+        )
+        self.assertEqual(200, status, settled)
+        userdata = self.account()["userdata"]
+        self.assertIn(199, {row["id"] for row in userdata["chrdata"]})
+        self.assertIn(128, {row["bid"] for row in userdata["buddyInfo"]["list"]})
 
 
 class CollabSpecialRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):

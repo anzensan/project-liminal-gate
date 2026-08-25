@@ -4793,6 +4793,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 dispatch.result, dispatch.payload = state.apply_generic_story_start(
                     token, request_id, body, self.server.event_catalog,
                     stamina=self.server.stamina,
+                    # An event start is served here rather than by the story
+                    # dispatch below, so the pool resolver has to be handed over
+                    # here too. Omitted, every event stage rolled against the
+                    # record alone, which documents core story only -- so Strikes
+                    # Back, the Tower, Special Quests and the rest returned six
+                    # empty slots however lucky the party was.
+                    luck_pool_catalog=self.server.luck_pool_catalog,
                 )
                 dispatch.kind, dispatch.transitions = "event_start", ()
             return dispatch
