@@ -1,8 +1,8 @@
 """An operator's own Luck Treasure Chest pools, for the stages the record misses.
 
-The bundled pools in :mod:`liminal_gate.luck_pool_data` cover thirty-one core
-story stages and the forty-two Strikes Back quests, because that is what the
-community record covers. Every other stage
+The bundled pools cover one hundred and twenty-six stages -- thirty-one in the
+core story, and ninety-five across the events and the two side worlds -- because
+that is what the community record covers. Every other stage
 yields six empty slots. Almost certainly the retired service put chests on those
 stages too; the table that decided their contents was server-side and no capture
 of it survives, so the bundle states the absence rather than guessing at it.

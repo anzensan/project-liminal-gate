@@ -53,6 +53,12 @@ capabilities:
     routes: [start_quest, clear_quest]
     status: local_policy
     note: "An event start_quest is served by the event branch of _select_mutation and now receives the launcher's own chest pool resolver, so Strikes Back, Special Quests, Descent Quests, the Tower and the Eidolon quests roll chests instead of six empty slots. Fifty-five event stages are answered from the community record's own chest templates -- forty-two Strikes Back quests, twelve Eidolons and A Chance Encounter With Sarah; every other event stage still draws operator or interpolated pools."
+  - family: hunting_luck_treasure_chests
+    routes: [start_quest, clear_quest]
+    status: local_policy
+    note: "The Hunting handler authors a chest for the forty stages the record documents on this path -- ten Daily Quests, twenty BreaSoul sections and ten Five Emperors descents -- folding its Coins and items into the settlement the client reports and granting the Companion and character forms the client has no field to report back. Donation is deliberately removed here, so a family the record excludes or never covered still yields six empty slots; an operator's explicit catalog still applies. A released battle drops its chest rather than passing it to the next one."
+    transport_tests: true
+    restart_tests: false
     transport_tests: true
     restart_tests: true
   - family: luck_chest_refusals

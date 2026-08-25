@@ -199,7 +199,7 @@ from liminal_gate.luck_runtime import (
     roll_luck_result,
     roll_luck_up_table,
 )
-from liminal_gate.luck_pool_interpolation import build_luck_pools
+from liminal_gate.luck_pool_interpolation import build_luck_pools, without_interpolation
 from liminal_gate.luck_pool_catalog import LuckPoolCatalog, LuckPoolCatalogError, load_luck_pool_catalog
 # `active_party_members` used to live in this file; it moved so that
 # `luck_runtime` could read the fielded squad without importing the server.
@@ -2706,6 +2706,7 @@ class BootstrapState:
     def apply_hunting_start(
         self, token: str, request_id: str, body: bytes, catalog: HuntingCatalog,
         now: float | None = None, *, stamina: bool = False,
+        luck_pool_catalog: LuckPoolCatalog | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Authorise and charge one cataloged local Hunting entry."""
         now = time.time() if now is None else now
@@ -2849,15 +2850,27 @@ class BootstrapState:
                 # would otherwise repeat stale at clear; `_projected_hunting_items`
                 # accepts either count, so both orders settle.
                 payload = _canonical_payload(payload | {"itemList": list(items)})
-            if any(luck_up):
-                # No chest is authored: the community record's own no-chest list
-                # names the Hunting and Metal zones, and `luckResult` is sent
-                # only as the empty six slots that accompany a gain, which is
-                # the same shape an ordinary story stage with no documented pool
-                # already sends.
+            # The record's own no-chest list names the Hunting and Metal zones,
+            # and it also documents a chest for ten Daily Quests and for both
+            # secondary world maps -- all of which this handler serves. So the
+            # chest is rolled here, and `luck_pool_catalog` carries the record
+            # and an operator's own pools with donation removed: on this path a
+            # donated pool would not be filling a silence, it would be
+            # answering over a source that already spoke. A family the record
+            # excludes or never covered still yields six empty slots, which is
+            # the shape a gain has always been sent with.
+            luck_slots = roll_luck_result(
+                stage.chapter, stage.section, party_team_luck(userdata),
+                request_id, digest, catalog=luck_pool_catalog,
+            )
+            if any(luck_slots) or any(luck_up):
                 payload = _canonical_payload(payload | {
-                    "luckResult": [EMPTY_SLOT] * 6, "luckUpTable": list(luck_up),
+                    "luckResult": list(luck_slots), "luckUpTable": list(luck_up),
                 })
+            # Retained for the same reason the story entry retains it: the
+            # client folds the chest into the balances it reports at clear, so
+            # settlement has to know what this entry handed out.
+            account["active_luck_result"] = list(luck_slots)
             account["active_luck_up"] = list(luck_up)
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -2901,7 +2914,16 @@ class BootstrapState:
             if stage is None:
                 return "hunting_clear_stage_conflict", None
             # A Hunting battle settles rewards; it never moves story progress.
-            expected_coins = int(userdata.get("coins", 0)) + result["coins"]
+            # The chest this entry authored is folded in for the same reason the
+            # story clear folds it: the client adds its Coins and items to the
+            # balances it submits, so a settlement that does not expect them
+            # reads a legitimate chest as an over-claim and refuses a won
+            # battle.
+            authored_chest = account.get("active_luck_result")
+            authored_chest = authored_chest if isinstance(authored_chest, list) else []
+            expected_coins = (
+                int(userdata.get("coins", 0)) + result["coins"] + chest_coins(authored_chest)
+            )
             # `progressCode` means whatever the world the clear reports makes it
             # mean. A battle fought on a secondary map carries that map's cursor
             # -- `GetWorldProgressCode` again -- so comparing it against the
@@ -2973,6 +2995,13 @@ class BootstrapState:
             if outcome_strict and not hunting_settlement_within_bounds(stage, result):
                 return "invalid_local_hunting_bounds", None
             gains = {int(item_id): count for item_id, count in result["items"].items()}
+            # The chest's items reach the inventory the same way the battle's
+            # drops do, so they are projected together. They are deliberately
+            # not added to `result`: the reward ceilings `outcome_strict` audits
+            # bound what the *battle* may report, and a chest this server
+            # authored is not the client making a claim.
+            for item_id, count in chest_items(authored_chest).items():
+                gains[item_id] = gains.get(item_id, 0) + count
             projected_items = _projected_hunting_items(
                 userdata.get("itemList"), clear["itemList"], gains, stage,
                 account.get("active_hunt_ticket_spent"), catalog.item_slots,
@@ -3040,6 +3069,11 @@ class BootstrapState:
                 apply_luck_up_table(userdata, active_luck_up)
             if result["monsters"]:
                 announced |= _apply_monster_recruits(userdata, result["monsters"])
+            # After the roster merge, like the story clear's own grant: a stale
+            # client's `chrdata` must not overwrite what this chest awarded.
+            # The Companion and character forms have no field for the client to
+            # report back through, so the server grants what it authored.
+            announced |= _award_chest_grants(userdata, authored_chest)
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
                 if award_daily_quest_energy(
@@ -3054,6 +3088,7 @@ class BootstrapState:
                     _synchronize_wallet_projection(userdata)
             cleared_quests = _record_quest_clear(userdata, identity, now)
             account["tutorial_phase"] = "free_roam"
+            account["active_luck_result"] = []
             account["active_luck_up"] = []
             account["active_hunt"] = None
             account["active_hunt_ticket_spent"] = None
@@ -5054,6 +5089,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return state.apply_hunting_start(
                 token, request_id, body, self.server.hunting_catalog,
                 stamina=self.server.stamina,
+                # Donation removed on purpose; see `without_interpolation`.
+                luck_pool_catalog=without_interpolation(self.server.luck_pool_catalog),
             )
         if kind == "start" and (
             self.server.event_catalog is not None
@@ -5619,6 +5656,12 @@ def release_abandoned_battle(account: dict[str, Any]) -> bool:
     if account.get("tutorial_phase") not in ACTIVE_BATTLE_PHASES:
         return False
     remember_released_story(account)
+    # `remember_released_story` carries these into the released core-story
+    # record and clears them there. Every other phase has nowhere to carry them
+    # to, and a chest left behind would be settled by whatever battle came
+    # next, so it is dropped here rather than inherited.
+    account["active_luck_result"] = []
+    account["active_luck_up"] = []
     account["tutorial_phase"] = "free_roam"
     account["active_generic_story"] = None
     account["active_hunt"] = None
@@ -7517,7 +7560,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hunting", action="store_true", help="enable the bundled local Pudding/Tin/Coin Creeps/Puppet Hunting policy")
     parser.add_argument("--daily-quests", action="store_true", help="enable the fourteen recovered Daily Quest stages with bounded local settlement")
     parser.add_argument("--secondary-worlds", action="store_true", help="enable the BreaSoul and Five Emperors secondary world maps with bounded local settlement")
-    parser.add_argument("--no-interpolated-luck-pools", action="store_true", help="roll chests only for the stages the community record documents -- thirty-one core story and the forty-two Strikes Back quests -- instead of also donating a nearby documented chapter's pools to the rest")
+    parser.add_argument("--no-interpolated-luck-pools", action="store_true", help="roll chests only for the one hundred and twenty-six stages the community record documents, instead of also donating a nearby documented chapter's pools to the rest")
     parser.add_argument("--luck-pool-catalog", type=Path, help="operator-supplied Luck Treasure Chest pools for stages the community record does not document; see liminal_gate/luck_pool_catalog.py")
     parser.add_argument("--cavern-forest", action="store_true", help="enable Orbling Cavern and Cryptid Forest, the two standing World 1 areas, with bounded local settlement")
     parser.add_argument("--jobs", action="store_true", help="enable the bundled local job-unlock cost policy")
@@ -7775,8 +7818,8 @@ def build_server(
                 hunts = HuntingCatalog(areas, BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK)
             else:
                 hunts = replace(hunts, stages=hunts.stages + areas)
-        # Interpolation is on unless refused: the record covers seventy-three
-        # stages and the rest of the game would otherwise never show a chest.
+        # Interpolation is on unless refused: the record covers a hundred and
+        # twenty-six stages and the rest of the game would otherwise show none.
         # It only ever answers where the record is silent.
         luck_pools = build_luck_pools(
             None if args.luck_pool_catalog is None else load_luck_pool_catalog(args.luck_pool_catalog),

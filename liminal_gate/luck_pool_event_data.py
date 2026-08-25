@@ -279,3 +279,152 @@ ARCHIVE_SPECIAL_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] =
         "Luck 100": ('M1288', 'O128', 'O129'),
     },  # incomplete
 }
+
+
+#: **Community record, through `Template:Luck Treasure Chests/Daily Quest`.**
+#: Every Daily Quest page invokes one template that supplies the same base
+#: table and takes per-quest additions, so the base is carried once here and
+#: the additions per chapter.
+#:
+#: Ten of the fourteen Daily Quest stages are covered. Particle Hoarder Horde
+#: and both Yamamoto Puzzle Quests have no chest page at all. The Hunt For
+#: Joker has one and is excluded anyway: it is named on the Luck page's own
+#: list of chestless quests, and a page-level template every Daily Quest page
+#: carries does not outrank the mechanic's own page naming the quest. See
+#: `luck_pool_data.NO_CHEST_CHAPTERS`.
+#:
+#: The per-quest additions corroborate constants this project already
+#: recovered from the client's enemy records rather than from the record:
+#: Crystal Roundelay's four power-ups, Rarity Rumble's four Ores, Tearjerker
+#: Time's four Tears and Hidden Stars' four Stars are the same sets
+#: :mod:`liminal_gate.daily_quest_data` bounds a clear by.
+
+#: The nine monsters every Daily Quest's C chest may hold, alongside the
+#: weapon-type items: Kraken, Lich, Marilith, Tiamat, Celestial Dragon, Onyx
+#: Dragon, Vajra, Cryowisp and Pyrowisp. `Vajra` is both an item and a
+#: character, and the record disambiguates it in the page text.
+DAILY_QUEST_MONSTERS: tuple[str, ...] = (
+    'M165', 'M163', 'M164', 'M166', 'M237', 'M238', 'M239', 'M149', 'M150',
+)
+
+#: The eight second-form Companions every Daily Quest's D, Luck 80 and Luck
+#: 100 chests share: A'merpact, Andelucia, Okklitot, Grace, Korin, Mizell,
+#: Lacuma and Ra'prow, each in its `OII` form.
+DAILY_QUEST_COMPANIONS: tuple[str, ...] = (
+    'O353', 'O323', 'O343', 'O384', 'O339', 'O332', 'O345', 'O355',
+)
+
+#: Chapter -> the tiers that quest adds to the shared base, with the wiki
+#: revision each was read at.
+DAILY_QUEST_CHEST_EXTRAS: dict[int, dict[str, tuple[str, ...]]] = {
+    # Metal Runner Rampage (rev 79814): the Helixes, the three Holes, Ether and Elixir.
+    6000: {"Luck 80": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99')},
+    # Puppet Pandemonium (rev 79815).
+    6001: {"Luck 80": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99')},
+    # Crystal Roundelay (rev 79810): the four power-ups Crystal Road also accepts.
+    6002: {"Luck 80": ('I55', 'I56', 'I53', 'I54')},
+    # Hedgehog Hullabaloo (rev 79811).
+    6003: {"Luck 80": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99')},
+    # Rarity Rumble (rev 79816): the four Ores its enemy records name.
+    6005: {"Luck 80": ('I26', 'I27', 'I28', 'I29')},
+    # Sweet Temptation (rev 79817).
+    6006: {"Luck 80": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99')},
+    # Tropical Haze (rev 80043): the only quest that adds to a tier other than
+    # Luck 80, and it adds the same three tickets to both.
+    6007: {"D": ('I50', 'I81', 'I112'), "Luck 80": ('I50', 'I81', 'I112')},
+    # Tearjerker Time (rev 79818): the four Tears.
+    6008: {"Luck 80": ('I18', 'I19', 'I20', 'I21')},
+    # Hidden Stars (rev 79812): the four Stars.
+    6009: {"Luck 80": ('I118', 'I119', 'I120', 'I121')},
+    # Lucky Orbling (rev 79813).
+    6010: {"Luck 80": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99')},
+}
+
+
+def _daily_quest_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
+    """Compose the shared base with each quest's own additions."""
+    materials = SPECIES_TYPE_ITEMS + WEAPON_TYPE_ITEMS + ATTRIBUTE_TYPE_ITEMS
+    base = {
+        "A": materials,
+        "B": materials,
+        "C": DAILY_QUEST_MONSTERS + WEAPON_TYPE_ITEMS,
+        "D": DAILY_QUEST_COMPANIONS,
+        "Luck 80": DAILY_QUEST_COMPANIONS,
+        "Luck 100": DAILY_QUEST_COMPANIONS,
+    }
+    return {
+        (chapter, 1): {
+            tier: _present(*pool, *extras.get(tier, ()))
+            for tier, pool in base.items()
+        }
+        for chapter, extras in DAILY_QUEST_CHEST_EXTRAS.items()
+    }
+
+
+DAILY_QUEST_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = (
+    _daily_quest_pools()
+)
+
+
+#: **Community record.** The two secondary world maps, which the record
+#: documents per stage rather than through a template, so these are
+#: transcribed tables rather than composed ones.
+#:
+#: `The Death of Shay and Arionne` is the BreaSoul map. The identification is
+#: structural on both sides: the page describes a scenario with its own World
+#: Map and five chapters opening after Chapter 25, the client's
+#: `IsWorld1ChangeEnable` opens BreaSoul at section 26-1, and the page's parts
+#: come to 4, 5, 5, 5 and 1 -- the exact section counts of chapters 100 to 104.
+#: Its author is Yasumi Matsuno, which is what the client's own map flag
+#: `sp_matsuno` is named for.
+#:
+#: One table on that page sits outside any quest's rewards block, after Chapter
+#: 2's fifth part already has one. It is an editor's leftover rather than a
+#: twenty-first stage, so each part takes the first table that follows it and
+#: the orphan is dropped.
+BREASOUL_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
+    # Ch 1: The Rusty Swordsman
+    (100, 1): {"A": ('I8',), "B": ('C500',), "Luck 80": ('C1000',), "Luck 100": ('O129',)},
+    (100, 2): {"A": ('I8',), "B": ('I7',), "D": ('I169',), "Luck 80": ('I119',), "Luck 100": ('O129',)},
+    (100, 3): {"A": ('I4',), "B": ('I90',), "Luck 80": ('I119',), "Luck 100": ('I169',)},
+    (100, 4): {"A": ('I1',), "B": ('I92',), "Luck 80": ('I119',), "Luck 100": ('C1000',)},
+    # Ch 2: Heading North
+    (101, 1): {"A": ('C500',), "B": ('I92',), "C": ('I8',), "D": ('I118',), "Luck 80": ('O128',), "Luck 100": ('O128',)},
+    (101, 2): {"A": ('I9', 'I90'), "B": ('I1', 'I4'), "C": ('C1000',), "D": ('I119',), "Luck 80": ('C1000', 'O128'), "Luck 100": ('C1000',)},
+    (101, 3): {"A": ('C500',), "B": ('I6',), "Luck 80": ('O128',), "Luck 100": ('C1000',)},
+    (101, 4): {"A": ('I4',), "B": ('I83',), "Luck 80": ('C1000',), "Luck 100": ('O129',)},
+    (101, 5): {"A": ('C500',), "B": ('I83',), "C": ('C1000',), "Luck 80": ('O129',), "Luck 100": ('I169',)},
+    # Ch 3: The Western Sorceress
+    (102, 1): {"A": ('I83',), "B": ('C500',), "Luck 80": ('C1000',), "Luck 100": ('C1000',)},
+    (102, 2): {"A": ('C500', 'I4', 'I89'), "B": ('C500', 'I2'), "C": ('C1000', 'I82'), "D": ('I119',), "Luck 80": ('C1000', 'O128'), "Luck 100": ('C1000', 'O128')},
+    (102, 3): {"A": ('C500',), "B": ('I2',), "D": ('O129',), "Luck 80": ('C1000',), "Luck 100": ('C1000',)},
+    (102, 4): {"A": ('C500',), "B": ('I89',), "C": ('I46',), "D": ('O128',), "Luck 80": ('C1000',), "Luck 100": ('O128',)},
+    (102, 5): {"A": ('I4',), "B": ('I92',), "C": ('C1000',), "Luck 80": ('I119',), "Luck 100": ('C1000',)},
+    # Ch 4: The Executioner
+    (103, 1): {"A": ('C500',), "B": ('C500',), "C": ('I1',), "Luck 80": ('C1000',), "Luck 100": ('O128',)},
+    (103, 2): {"A": ('C500',), "B": ('C500',), "C": ('C1000',), "D": ('O129',), "Luck 80": ('O129',), "Luck 100": ('O128',)},
+    (103, 3): {"A": ('C500',), "B": ('I6',), "C": ('I7',), "Luck 80": ('I118',), "Luck 100": ('O129',)},
+    (103, 4): {"A": ('I6', 'I46'), "B": ('C500', 'I91'), "C": ('C1000', 'I46'), "D": ('I171',), "Luck 80": ('I118',), "Luck 100": ('I169', 'O129')},
+    (103, 5): {"A": ('I8',), "B": ('C500',), "Luck 80": ('I119',), "Luck 100": ('I170',)},
+    # Ch 5: Murderous Angel Morgana
+    (104, 1): {"A": ('C500', 'I1', 'I2', 'I4', 'I8', 'I7', 'I90', 'I83', 'I46'), "B": ('C500', 'I9', 'I12', 'I7', 'I90', 'I89'), "C": ('C1000', 'I12'), "D": ('I169',), "Luck 80": ('C1000', 'I119', 'I118', 'O128', 'O129'), "Luck 100": ('M1158', 'I169', 'I170')},
+}
+
+#: `Ultimate Five` is the Five Emperors map, and the page's order is confirmed
+#: against the client rather than assumed. The five normal-mode sections name
+#: the same first-clear Companion the recovered `dropBuddies` manifest gives
+#: chapters 110 to 114, and the five hard-mode sections the same for 115 to
+#: 119 -- ten agreements, including both members of every two-candidate
+#: manifest.
+FIVE_EMPERORS_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
+    (110, 1): {"A": ('I106', 'I3'), "B": ('I7',), "D": ('O434', 'C2000'), "Luck 80": ('O465', 'O464'), "Luck 100": ('O465', 'O130')},  # Garuda
+    (111, 1): {"A": ('I90', 'I8', 'I122'), "B": ('I4', 'I6', 'I122'), "C": ('O128',), "D": ('C2000', 'O475'), "Luck 80": ('O463', 'O129'), "Luck 100": ('O463', 'O475')},  # Gatekeeper
+    (112, 1): {"A": ('I90',), "B": ('I7',), "C": ('C1250',), "D": ('O474',), "Luck 80": ('C2000',), "Luck 100": ('O461',)},  # Quyat
+    (113, 1): {"A": ('I1',), "B": ('I106',), "C": ('O466',), "Luck 80": ('O466',), "Luck 100": ('O467',)},  # Apostolos
+    (114, 1): {"A": ('I8', 'I2', 'I82', 'I90'), "B": ('C750', 'I105', 'I3', 'I11'), "C": ('C1250', 'O128', 'O48'), "D": ('I161', 'I162'), "Luck 80": ('C2000', 'O68', 'O129'), "Luck 100": ('I161', 'I162', 'O68', 'O130')},  # Agartha
+    (115, 1): {"C": ('O464',), "D": ('O477',), "Luck 80": ('O476', 'O477', 'O465'), "Luck 100": ('O476', 'O477')},  # Garuda, hard
+    (116, 1): {"A": ('I83',), "B": ('I83',), "D": ('C3000',), "Luck 80": ('O129',), "Luck 100": ('O477',)},  # Gatekeeper, hard
+    (117, 1): {"A": ('I123', 'I106', 'I105', 'I89', 'I7', 'I6'), "B": ('C1000', 'I2', 'I105', 'I89', 'I7', 'I91', 'I4'), "C": ('C2000', 'O128'), "D": ('C3000',), "Luck 80": ('O476', 'O129', 'O461'), "Luck 100": ('O476', 'O477')},  # Quyat, hard
+    (118, 1): {"D": ('C3000',), "Luck 80": ('O476',), "Luck 100": ('O130',)},  # Apostolos, hard
+    (119, 1): {"A": ('I2', 'I8'), "B": ('I9', 'I12'), "Luck 80": ('O72',), "Luck 100": ('I163', 'O72')},  # Agartha, hard
+}
