@@ -11,6 +11,23 @@ Evidence note: Chapter 2-1 remains the deepest point backed by preserved request
 traces. The playthrough and the traces answer different questions -- whether the
 game is finishable, and whether the wire shapes are exact -- so both are kept.
 
+Latest Strikes Back chest recovery: Issue 76's remaining half. The community
+record does document these chests, through a wiki *template* rather than an
+inline table -- a Strikes Back page carries one invocation naming the family's
+recruit and its three Companions, and the template expands it into the three
+per-quest tables. Both earlier scrapes searched the rendered shapes a story
+page uses, so fourteen documented families were read as undocumented by a
+search looking straight at them. All fifty-six names resolved by exact match
+against the operator's own decoded tables once whitespace was collapsed (the
+master data carries double-space typos, and the wiki disagrees with it over
+Latin `O` versus Greek Omicron), and every recruit matched is flagged
+`is_lambda` in the client's own catalog. Forty-two stages are now answered from
+the record, which puts the family Companions back where it says they were: one
+tier, of one quest, at 100.0 Luck. Tiers A and B stay empty because they pay a
+count of the run's rotating event item and a slot carries neither. Only a story
+chapter may donate to an undocumented stage, so the recovered chapters do not
+become interpolation donors for the Tower or the 2000-series archive.
+
 Latest event Luck Treasure Chest correction: Issue 76 reports that no Strikes
 Back clear ever showed a Luck reward, at 81.0 average party Luck and on three
 separate families. An event `start_quest` is served by the event branch of

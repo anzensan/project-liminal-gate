@@ -806,9 +806,10 @@ def parse_args() -> argparse.Namespace:
         "--no-interpolated-luck-pools",
         action="store_true",
         help=(
-            "roll chests only for the thirty story stages the community record "
-            "documents, instead of also donating a nearby documented chapter's "
-            "pools to the rest"
+            "roll chests only for the stages the community record documents -- "
+            "thirty-one core story and the forty-two Strikes Back quests -- "
+            "instead of also donating a nearby documented chapter's pools to "
+            "the rest"
         ),
     )
     parser.add_argument(
@@ -954,17 +955,18 @@ def main() -> int:
         )
         if args.no_interpolated_luck_pools and luck_pool_catalog is None:
             print(
-                "Luck Treasure Chests: the thirty story stages the community "
+                "Luck Treasure Chests: the seventy-three stages the community "
                 "record documents; every other stage rolls six empty slots"
             )
         elif luck_pool_catalog is None:
-            # Said plainly on every start. The thirty documented stages are the
+            # Said plainly on every start. The documented stages are the
             # record's; the rest are this project's arrangement of it, and a
             # running server should not let the two look alike.
             print(
-                "Luck Treasure Chests: thirty story stages from the community "
-                "record, and the rest donated from the nearest documented "
-                "chapter (--no-interpolated-luck-pools to disable)"
+                "Luck Treasure Chests: seventy-three stages from the community "
+                "record -- core story and Strikes Back -- and the rest donated "
+                "from the nearest documented story chapter "
+                "(--no-interpolated-luck-pools to disable)"
             )
         else:
             # Named deliberately. These pools are the operator's own, not

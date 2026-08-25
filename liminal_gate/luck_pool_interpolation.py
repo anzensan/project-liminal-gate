@@ -1,9 +1,10 @@
 """Chest pools for the stages the record does not document, by donation.
 
-The community record documents thirty story stages. Without this, every other
-stage rolls six empty slots -- honest, and it leaves a feature the game clearly
-had almost entirely inert: a player at Chapter 10 with real Luck never sees a
-chest, because nobody wrote that page.
+The community record documents thirty-one story stages and the forty-two
+Strikes Back quests. Without this, every other stage rolls six empty slots --
+honest, and it leaves a feature the game clearly had almost entirely inert: a
+player at Chapter 10 with real Luck never sees a chest, because nobody wrote
+that page.
 
 This fills the rest, and it is **on by default**. `--no-interpolated-luck-pools`
 turns it off and restores the record-only behaviour.
@@ -21,9 +22,13 @@ pays 50 where the trend through Chapters 4 to 36 would predict far more -- and
 fitting one would replace a sourced value with a derived one.
 
 **A documented stage is never touched.** Interpolation only answers where the
-record is silent, so the thirty sourced stages keep their exact pools and remain
-distinguishable from everything else. An explicit `--luck-pool-catalog` still
-overrides both.
+record is silent, so the seventy-three sourced stages keep their exact pools and
+remain distinguishable from everything else. An explicit `--luck-pool-catalog`
+still overrides both.
+
+**Only a story chapter donates.** See `_documented_chapters`: bracketing is a
+statement about chapter numbers being a progression, which they are inside the
+story and are not outside it.
 
 **This is not recovered data and nothing here pretends otherwise.** The retired
 service owned the real table and no capture of it survives, so the odds a player
@@ -39,11 +44,25 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from liminal_gate.luck_data import CHEST_TIERS
-from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, pool_for
+from liminal_gate.luck_pool_data import (
+    DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, pool_for,
+)
 
 
 @lru_cache(maxsize=1)
 def _documented_chapters() -> tuple[int, ...]:
+    """The chapters eligible to donate, which is the core story and only it.
+
+    `LUCK_CHEST_POOLS` rather than `DOCUMENTED_CHEST_POOLS` on purpose. Chapter
+    numbers are a progression inside the story and an address space outside it,
+    so bracketing works for Chapter 10 and is meaningless across the boundary:
+    reading the Strikes Back chapters as donors would put 8000 immediately
+    "above" Chapter 36, hand every event chapter in the 2000s a merge of
+    Chapter 36 and Spinetrich Kino, and give the Tower -- which brackets
+    between nothing and 8017 -- a chest drawn purely from Strikes Back. Every
+    stage the record does document is still answered from the record, because
+    `pool_for` reads both halves; this decides only who may fill a silence.
+    """
     return tuple(sorted({chapter for chapter, _section in LUCK_CHEST_POOLS}))
 
 
@@ -89,7 +108,7 @@ class InterpolatedLuckPools:
 
     def pool_for(self, chapter: int, section: int, tier: str) -> tuple[str, ...]:
         documented = pool_for(chapter, section, tier)
-        if documented or (chapter, section) in LUCK_CHEST_POOLS:
+        if documented or (chapter, section) in DOCUMENTED_CHEST_POOLS:
             # Either the record answers, or it answers this stage and left this
             # tier empty on purpose. Both are the record speaking; neither is a
             # gap to fill.
