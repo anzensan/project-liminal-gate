@@ -120,6 +120,61 @@ class RefusedWriteShapeTest(unittest.TestCase):
         self.assertEqual({}, refused_write_shapes(b"\xffbinary"))
 
 
+class DroppedRowEventTest(unittest.TestCase):
+    """A row the roster does not claim is dropped, and the log has to say so.
+
+    Dropping is what lets an account repair itself after a recode leaves the
+    client naming a character it no longer owns. The same shape is also what a
+    genuine roster desync looks like, and silence is the failure mode there.
+    """
+
+    def test_an_unowned_row_is_dropped_and_named_in_the_log(self) -> None:
+        profile = load_profile(Path(__file__).resolve().parents[1] / "profiles" / "legacy-client-bootstrap.json")
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "events.jsonl"
+            state = BootstrapState(Path(directory) / "state.json")
+            state.create_account("token", "account", {
+                "coins": 0, "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
+                "chrdata": [{"id": 3, "jobID": 0, "jobLevels": [10.0], "jobSlots": []}],
+                "teamMembers": [3, 9998, 0, 0, 0, 0], "teamMembers_VS": [0] * 18,
+                "buddyInfo": {"list": [], "record": []},
+            })
+            with state.lock:
+                state.accounts["account"]["tutorial_phase"] = "free_roam"
+                state.accounts["account"]["initial_userdata_served"] = True
+                state._persist_locked()
+            server = BootstrapServer(("127.0.0.1", 0), profile, state, event_log=log)
+            thread = serve(server)
+            try:
+                connection = HTTPConnection(*server.server_address)
+                # What the client posts once its team screen has minted a
+                # stand-in for the slot naming 9998 and marked it dirty.
+                connection.request("POST", "/gd/userdata?otk=token&requestID=drop", body=urlencode({
+                    "chrdata": json.dumps([
+                        {"id": 3, "jobID": 0, "jobLevels": [10.0], "jobSlots": []},
+                        {"id": 9998, "jobID": 0, "jobLevels": [1.0], "jobSlots": []},
+                    ]),
+                    "teamMembers": json.dumps([3, 0, 0, 0, 0, 0]),
+                    "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": "[]",
+                    "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
+                }))
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                settled = state.userdata_for("token")
+            finally:
+                server.shutdown(); thread.join(); server.server_close()
+            events = [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+        # The party edit the player was making is what had to survive.
+        self.assertEqual((200, True), (response.status, payload["success"]))
+        assert settled is not None
+        self.assertEqual([3], [row["id"] for row in settled["chrdata"]])
+        self.assertEqual([3, 0, 0, 0, 0, 0], settled["teamMembers"])
+        dropped = next(event for event in events if "dropped_unowned_rows" in event)
+        self.assertEqual([9998], dropped["dropped_unowned_rows"])
+        self.assertEqual(200, dropped["status"])
+
+
 class RefusedWriteEventTest(unittest.TestCase):
     """The shape has to reach the log the operator actually reads."""
 
