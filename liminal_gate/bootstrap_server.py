@@ -1698,6 +1698,40 @@ class BootstrapState:
                 # answer this -- so it is answered as the recipe simply not
                 # being available, which is what code 6 already means here.
                 payload = {"success": False, "errorCode": 6}
+            elif _in_any_squad(data, recipe.source_character_id):
+                # **This gate is invented, not recovered.** Every other refusal
+                # on this route reconstructs something the retired service or
+                # the client is known to have done; this one is a deliberate
+                # deviation, and the case against it is that the original
+                # almost certainly allowed the recode. `AppServerUtil`'s
+                # `RebirthErrorCode` has no value for "in a party" -- it runs
+                # `NotEnoughLevel`, `NotEnoughCoins`, `NotEnoughItems`,
+                # `NotEnoughMons`, `MonsterUsed`, `InvalidRebirthID`,
+                # `NotEnoughMonsButCanUseJoker` and stops -- and
+                # `UIChrSelectWindow.GetFilteredList` (ARM64 `0xEF4BEC`)
+                # filters the recode picker on `HasRebirthInfo` alone. The
+                # release picker in the same method (`Mode.Bye`) is the one
+                # that skips `IsInAnyTeam`, and the recode picker never got it.
+                #
+                # It is here because the alternative is worse and cannot be
+                # fixed from this side. The recode answer is read by
+                # `AppServerUtil.<Rebirth>...<>m__0` (`0xFBCD00`), which takes
+                # `buddyInfo` and `chrdata` and nothing else, and the main
+                # squads are rebuilt only by `LoadUserdataFromJson` --
+                # reachable solely from `GetUserData`/`GetUserDataAfterClose`,
+                # both called only by `LoginAndUpdate`. So the client keeps
+                # naming a character this recode just consumed, its team screen
+                # resolves that slot through `GetCharacterByID(id, create:
+                # true)`, and a level 1 stand-in with no Skill Boost or Luck is
+                # minted into the player's own roster until they relaunch.
+                # Nothing this server can put in any response prevents that.
+                #
+                # The condition mirrors `GameManager.IsInAnyTeam` (`0xD9EB94`)
+                # exactly: every *main* squad, six slots each, versus squads
+                # not consulted. A recode source has to reach level 80 in every
+                # job, so it is usually a character the account fields -- this
+                # is the common path, not a corner of one.
+                payload = {"success": False, "errorCode": 6}
             elif not isinstance(source.get("jobLevels"), list) or any(type(value) not in {int, float} or int(value) & 0xFFF < 80 for value in source["jobLevels"] if int(value) != 0):
                 payload = {"success": False, "errorCode": 1}
             elif type(data.get("coins", 0)) is not int or data.get("coins", 0) < recipe.coins:
@@ -1719,7 +1753,28 @@ class BootstrapState:
                     return next((row for row in rows if isinstance(row, dict) and row.get("id") == character_id), None)
 
                 def at_level(row: dict[str, Any] | None, level: int) -> bool:
-                    return row is not None and isinstance(row.get("jobLevels"), list) and max((int(value) & 0xFFF for value in row["jobLevels"]), default=0) >= level
+                    if row is None or _in_any_squad(data, row.get("id")):
+                        # A character a squad fields is not available as
+                        # material, for the same reason the source may not be
+                        # recoded while fielded: consuming it takes it off the
+                        # roster while the client goes on naming it, and the
+                        # client mints a level 1 stand-in for the slot. The
+                        # client marks this itself -- `UIRebirthMonItem.SetItem`
+                        # (ARM64 `0xF67E38`) tints an `IsInAnyTeam` monster and
+                        # labels it with UI string 469 -- so this should be the
+                        # belt to that display's braces rather than something a
+                        # player meets. It is here because leaving the rule to
+                        # the client is exactly what left the source ungated.
+                        #
+                        # Unavailable is spelled as *not satisfying its slot*,
+                        # which puts it through the machinery already built for
+                        # a monster the account holds below level: the Joker may
+                        # stand in for it, and if it does, the fielded monster
+                        # is not consumed, keeps its squad slot, and carries
+                        # none of its Skill Boost or Luck across. Failing that,
+                        # the account is short a monster and hears so.
+                        return False
+                    return isinstance(row.get("jobLevels"), list) and max((int(value) & 0xFFF for value in row["jobLevels"]), default=0) >= level
 
                 missing = tuple(material_id for material_id, level in recipe.materials if not at_level(roster_row(material_id), level))
                 joker = roster_row(catalog.joker_character_id)
@@ -1820,18 +1875,20 @@ class BootstrapState:
                     new_rows.append(destination); new_rows.sort(key=lambda row: int(row["id"]))
                     new_items = copy.deepcopy(items)
                     for item_id, count in recipe.items.items(): new_items[item_id - 1] -= count
-                    # Every character that leaves the roster leaves party
-                    # slots naming someone the account no longer owns, and
-                    # every later party save would be refused for exactly
-                    # that reason. The rebirthed unit takes the source's own
-                    # slot, unless the destination was already owned, in
-                    # which case the slot empties rather than duplicating; a
-                    # consumed monster has no successor, so its slots simply
-                    # empty. The client keeps monsters out of squads before
-                    # it will offer the recode, so the second of these
-                    # should never have anything to do -- but a consumed
-                    # character still named by a squad is the exact damage
-                    # this route has already done once.
+                    # The *versus* squads are what these still have to do.
+                    # The refusals above read `teamMembers` only, because
+                    # `IsInAnyTeam` does, so a character reaching here can
+                    # still be sitting in `teamMembers_VS` -- and a versus
+                    # slot naming a character the roster no longer holds
+                    # refuses a party save exactly as a main one does. The
+                    # main-squad half of each call is a no-op now and stays:
+                    # the next route that takes a character off the roster
+                    # should find this rule here rather than rediscover it,
+                    # which cost a real account every party save it tried. The
+                    # rebirthed unit takes the source's own slot unless the
+                    # destination was already owned, in which case the slot
+                    # empties rather than naming it twice; a consumed monster
+                    # has no successor, so its slots simply empty.
                     _retarget_party(data, recipe.source_character_id, 0 if overlapped else recipe.destination_character_id)
                     for consumed_id in sorted(consumed):
                         _retarget_party(data, consumed_id, 0)
@@ -2565,8 +2622,14 @@ class BootstrapState:
         self, token: str, request_id: str, body: bytes, characters: list[dict[str, Any]] | None,
         party: dict[str, Any] | None = None, companions: list[dict[str, Any]] | None = None,
         companion_equipment_catalog: CompanionEquipmentCatalog | None = None,
+        dropped_unowned: list[int] | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
-        """Persist a client-authored free-roam roster or party layout locally."""
+        """Persist a client-authored free-roam roster or party layout locally.
+
+        `dropped_unowned` collects the ids of any submitted roster rows naming
+        a character the account does not own, so the caller can put them in the
+        event log; see the loop that fills it.
+        """
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
             if account is None:
@@ -2622,7 +2685,35 @@ class BootstrapState:
                     character_id = character["id"]
                     index = candidate_indices.get(character_id)
                     if index is None:
-                        return "unsupported_userdata_write", None
+                        # A row naming a character the account does not own is
+                        # dropped rather than refusing the save, which is the
+                        # rule the party half beneath this already follows and
+                        # for the same reason: the client mints such a row
+                        # itself and cannot be told to stop.  A squad slot left
+                        # naming a recoded-away character resolves through
+                        # `GetCharacterByID(id, create: true)`, which builds a
+                        # fresh `Character`, `Init`s it to level 1, and *adds
+                        # it to the client's own roster dictionary*; the team
+                        # screen then marks it dirty (`UITeamStatusWindow`),
+                        # and `SendDirtyData` posts it here.  Refusing meant
+                        # the whole save died -- the party edit that would have
+                        # cleared the slot with it -- so the player could not
+                        # repair it from the client at all, only by relaunching.
+                        #
+                        # This does not widen what a write may do.  A submitted
+                        # row is only ever merged over `candidate_rows[index]`,
+                        # so an unknown id could never add a roster row; it
+                        # could only kill the request.  Dropping and refusing
+                        # grant exactly the same thing, which is nothing.
+                        #
+                        # It is recorded because silence is the failure mode
+                        # here: an unowned row is also what a genuine
+                        # grant/roster desync looks like, and that is worth
+                        # seeing in `/local/events` rather than inferring from
+                        # a tester's screenshot.
+                        if dropped_unowned is not None:
+                            dropped_unowned.append(character_id)
+                        continue
                     held = candidate_rows[index]
                     candidate_rows[index] = _preserved_progress(
                         held, copy.deepcopy(held) | copy.deepcopy(character),
@@ -4986,24 +5077,29 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             )
             else None
         )
+        # Filled by whichever roster form is settled below, and folded into
+        # this request's log line so a dropped row is visible rather than
+        # merely harmless.  See the drop in `update_character_userdata`.
+        dropped_unowned: list[int] = []
         if party_companion_write is not None:
             characters, party, companions = party_companion_write
             dispatch.result, dispatch.payload = state.update_character_userdata(
                 token, request_id, body, characters, party, companions,
-                self.server.companion_equipment_catalog,
+                self.server.companion_equipment_catalog, dropped_unowned,
             )
             dispatch.kind, dispatch.transitions = "party_userdata", ()
         elif equip_write is not None:
             characters, companions = equip_write
             dispatch.result, dispatch.payload = state.update_character_userdata(
                 token, request_id, body, characters, None, companions,
-                self.server.companion_equipment_catalog,
+                self.server.companion_equipment_catalog, dropped_unowned,
             )
             dispatch.kind, dispatch.transitions = "companion_userdata", ()
         elif party_write is not None:
             characters, party = party_write
             dispatch.result, dispatch.payload = state.update_character_userdata(
                 token, request_id, body, characters, party,
+                dropped_unowned=dropped_unowned,
             )
             dispatch.kind, dispatch.transitions = "party_userdata", ()
         elif party_layout_write is not None:
@@ -5014,6 +5110,7 @@ class BootstrapHandler(BaseHTTPRequestHandler):
         elif character_write is not None:
             dispatch.result, dispatch.payload = state.update_character_userdata(
                 token, request_id, body, character_write,
+                dropped_unowned=dropped_unowned,
             )
             dispatch.kind, dispatch.transitions = "character_userdata", ()
         elif companion_write is not None:
@@ -5021,6 +5118,9 @@ class BootstrapHandler(BaseHTTPRequestHandler):
                 token, request_id, body, companion_write,
             )
             dispatch.kind, dispatch.transitions = "companion_userdata", ()
+        if dropped_unowned:
+            self._event_details = dict(getattr(self, "_event_details", None) or {})
+            self._event_details["dropped_unowned_rows"] = sorted(dropped_unowned)
 
         # Tutorial structural writes deliberately override a matching free-roam
         # parser until the account reaches the ordinary userdata boundary.
@@ -7093,6 +7193,26 @@ def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identit
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
     return _companion_info(rows)
+
+
+def _in_any_squad(userdata: dict[str, Any], character_id: int) -> bool:
+    """Whether any main squad fields this character, as the client counts it.
+
+    `GameManager.IsInAnyTeam` (ARM64 `0xD9EB94`) walks `teamID` from 1 to the
+    account's squad count and `memberID` across the six slots of each,
+    comparing `TeamMember.chrID`.  It reads `GetTeamMember`, never
+    `GetTeamMember_VS`, so the versus squads are not part of the answer and
+    `teamMembers_VS` is not read here either.
+
+    `teamMembers` is every squad flattened, so the whole array is the right
+    thing to walk -- this is the one question about the party that is *not*
+    about the squad on screen, and `active_party_members` would answer a
+    different one.  See :mod:`liminal_gate.party`.
+    """
+    members = userdata.get("teamMembers")
+    if not isinstance(members, list):
+        return False
+    return any(type(member) is int and member == character_id for member in members)
 
 
 def _retarget_party(userdata: dict[str, Any], removed_id: int, replacement_id: int) -> None:

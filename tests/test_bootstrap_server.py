@@ -1849,17 +1849,27 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         self.assertEqual(10, persisted["chrdata"][2]["jobLevels"][0])
         self.assertFalse(persisted["chrdata"][2]["isNew"])
 
-        rejected_body = urlencode({
+        # A row naming a character the account does not own is dropped and the
+        # rest of the save still lands. Refusing the whole write was the sharper
+        # answer and the wrong one: the client mints exactly such a row for a
+        # squad slot naming a recoded-away character, so the party edit that
+        # would have cleared the slot died with it and nothing but a relaunch
+        # repaired the account. The roster is untouched either way, which is
+        # what this test is really about.
+        unowned_body = urlencode({
             "chrdata": json.dumps([{"id": 9998, "isNew": False}]),
-            "teamMembers": json.dumps([3, 25, 9001, 0, 0, 0]),
+            "teamMembers": json.dumps([3, 25, 0, 0, 0, 0]),
             "teamMembers_VS": json.dumps([0] * 18), "teamBuddies_VS": json.dumps([0] * 18),
             "teamNo": "1", "teamNo_VS": "1", "summonId": "1", "lastUpdate": "1",
         })
-        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=bad-party", rejected_body)
-        self.assertEqual((501, "unsupported_userdata_write"), (status, payload["error"]))
+        status, payload = self.post(f"/gd/userdata?otk={token}&requestID=bad-party", unowned_body)
+        self.assertEqual((200, True), (status, payload["success"]))
         persisted = self.server.state.userdata_for(token)
         assert persisted is not None
         self.assertEqual([3, 25, 9001], [row["id"] for row in persisted["chrdata"]])
+        self.assertNotIn(9998, [row["id"] for row in persisted["chrdata"]])
+        # The party half of the same save is what the player was trying to do.
+        self.assertEqual([3, 25, 0, 0, 0, 0], persisted["teamMembers"])
 
         self.restart()
         status, userdata = self.request(f"/gd/userdata?otk={token}&requestID=after-party-delta")

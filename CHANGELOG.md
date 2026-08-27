@@ -55,6 +55,45 @@ run the command.
 
 ### Fixed
 
+- **Recoding a character you were fielding left a level 1 copy of them stuck in
+  your squad, and then refused every save that tried to remove it.** A tester
+  described the whole shape of it: *"the character won't be removed, but they
+  are reset back to level 1 with 0 SB and luck and as soon as you remove that
+  character from all teams, they will disappear."*
+
+  The stand-in is the client's own. The recode answer is read by
+  `AppServerUtil.<Rebirth>...<>m__0` (ARM64 `0xFBCD00`), which takes
+  `buddyInfo` and `chrdata` and nothing else, and the main squads are rebuilt
+  only inside `LoadUserdataFromJson` — reachable from `GetUserData` and
+  `GetUserDataAfterClose`, both called only by `LoginAndUpdate`. So the client
+  goes on naming the character the recode just consumed until the next launch,
+  its team screen resolves that slot through `GetCharacterByID(id, create:
+  true)`, and a fresh level 1 `Character` with no Skill Boost or Luck is minted
+  straight into the player's roster. **No response this server can send
+  prevents or repairs that**, which is why the recode is refused instead.
+
+  A character any main squad fields can no longer be recoded, used as a
+  material, or spent as the substituting Joker. This is a **deliberate
+  deviation**: `RebirthErrorCode` has no value for "in a party" and
+  `UIChrSelectWindow.GetFilteredList` filters the recode picker on
+  `HasRebirthInfo` alone, so the retired service almost certainly allowed this
+  and produced the same stand-in. The release picker in that same method is the
+  one that skips `IsInAnyTeam`; the recode picker never got it. Bench the
+  character and the recode proceeds exactly as before. Versus squads are not
+  refused, because `IsInAnyTeam` does not read them and `LoadChrData` repairs
+  them from the answer.
+
+  The second half was worse than the stand-in. The team screen marks what it
+  draws dirty, so `SendDirtyData` posted the stand-in's row back, and a
+  submitted roster row naming a character the account does not own refused the
+  *whole* save — including the party edit that would have cleared the slot. An
+  account that had already hit this could not repair itself from the client at
+  all. Such a row is now dropped and the rest of the save lands, which is the
+  rule the party half already followed and for the same reason. It grants
+  nothing: a submitted row is only ever merged over a row the roster already
+  holds. The dropped ids are recorded in the event log, because the same shape
+  is what a genuine roster desync looks like.
+
 - **Half of every Companions of Truth pull was Healing Wand or Regen Bangle.**
   A tester counted it: *"most 10 pulls are like 5-6 of just those two items …
   a statistically unlikely amount"*. A second confirmed the shape of it from

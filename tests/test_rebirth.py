@@ -69,9 +69,24 @@ class BundledRebirthPolicyRuntimeTest(unittest.TestCase):
 
 
 class RebirthPartyConsistencyTest(unittest.TestCase):
-    """Rebirth must not leave the party naming a character it removed."""
+    """Rebirth must not leave a squad naming a character it removed.
 
-    def scenario(self, already_own_destination: bool) -> tuple[dict, int, dict]:
+    It cannot be repaired after the fact, which is why the main squads are
+    refused outright. The recode answer is read by `<Rebirth>...<>m__0`
+    (ARM64 `0xFBCD00`) for `buddyInfo` and `chrdata` and nothing else, and
+    `teamMembers` is rebuilt only by `LoadUserdataFromJson`, i.e. at login --
+    so between the recode and the next launch the client goes on naming a
+    character it no longer owns, resolves the slot through
+    `GetCharacterByID(id, create: true)`, and mints a level 1 stand-in into
+    its own roster.
+
+    The versus squads are not refused, because `GameManager.IsInAnyTeam`
+    (`0xD9EB94`) does not read them -- `LoadChrData` ends at
+    `CorrectTeamMemeber_VS`, so those the client does repair on the answer.
+    Their slots are retargeted here so the save stays consistent meanwhile.
+    """
+
+    def scenario(self, already_own_destination: bool, fielded: str = "versus") -> tuple[dict, int, dict]:
         catalog = build_bundled_rebirth_policy()
         recipe = catalog.recipes[1]
         with tempfile.TemporaryDirectory() as directory:
@@ -87,7 +102,8 @@ class RebirthPartyConsistencyTest(unittest.TestCase):
             state.create_account("token", "account", {
                 "coins": recipe.coins + 1000, "itemList": items, "summonList": [0] * 16,
                 "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
-                "teamMembers": [recipe.source_character_id, 0, 0, 0, 0, 0],
+                "teamMembers": ([recipe.source_character_id, 0, 0, 0, 0, 0]
+                                if fielded == "main" else [0] * 6),
                 "teamMembers_VS": [recipe.source_character_id] + [0] * 17,
                 "chrdata": [{"id": i, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
                              "jobSlots": [], "skillBoost": 0, "luck": 0} for i, level in rows],
@@ -113,10 +129,9 @@ class RebirthPartyConsistencyTest(unittest.TestCase):
                 stop_server(server, thread)
             return rebirthed, status, userdata
 
-    def test_the_rebirthed_unit_keeps_its_party_slot(self) -> None:
+    def test_the_rebirthed_unit_keeps_its_versus_slot(self) -> None:
         rebirthed, status, userdata = self.scenario(already_own_destination=False)
         self.assertFalse(rebirthed["overlapped"])
-        self.assertEqual([623, 0, 0, 0, 0, 0], userdata["teamMembers"])
         self.assertEqual(623, userdata["teamMembers_VS"][0])
         # Without this the account could not save the party the server gave it.
         self.assertEqual(200, status)
@@ -125,9 +140,25 @@ class RebirthPartyConsistencyTest(unittest.TestCase):
         rebirthed, status, userdata = self.scenario(already_own_destination=True)
         self.assertTrue(rebirthed["overlapped"], "the destination was already owned")
         # Naming the destination twice would make the party non-unique.
-        self.assertEqual([0, 0, 0, 0, 0, 0], userdata["teamMembers"])
         self.assertEqual(0, userdata["teamMembers_VS"][0])
         self.assertEqual(200, status)
+
+    def test_a_source_a_main_squad_fields_is_refused_and_costs_nothing(self) -> None:
+        rebirthed, _, userdata = self.scenario(already_own_destination=False, fielded="main")
+        # `InvalidRebirthID` is the nearest the client has: no `RebirthErrorCode`
+        # says "in a party", so this is answered as the recode simply not being
+        # available -- the same reading the 100 Luck ceiling already gets.
+        self.assertEqual(6, rebirthed["cmdError"])
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        # Nothing was taken: the source is still owned, still fielded, and the
+        # monsters and Coins are all still there.
+        self.assertIn(recipe.source_character_id, [row["id"] for row in userdata["chrdata"]])
+        self.assertNotIn(recipe.destination_character_id, [row["id"] for row in userdata["chrdata"]])
+        self.assertEqual([recipe.source_character_id, 0, 0, 0, 0, 0], userdata["teamMembers"])
+        for material_id, _ in recipe.materials:
+            self.assertIn(material_id, [row["id"] for row in userdata["chrdata"]])
+        self.assertEqual(recipe.coins + 1000, userdata["coins"])
 
 
 class RebirthOverlapPreservesProgressTest(unittest.TestCase):
@@ -311,10 +342,14 @@ class RebirthMaterialConsumptionTest(unittest.TestCase):
         state.create_account("token", "account", {
             "coins": recipe.coins * 4 + 1000, "itemList": items, "summonList": [0] * 16,
             "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
-            # A monster parked in a squad cannot reach a recode through the
-            # client, but a consumed character a squad still names is the exact
-            # damage this route has done before, so the slot must empty.
-            "teamMembers": [recipe.materials[0][0], 0, 0, 0, 0, 0], "teamMembers_VS": [0] * 18,
+            # A monster a *main* squad fields is refused outright now (see
+            # `RebirthMaterialAvailabilityTest`), because nothing can correct
+            # the client's `teamMembers` before its next launch. A versus squad
+            # can still be fielding one, `LoadChrData` repairs those, and the
+            # slot must still empty here -- a consumed character a squad goes
+            # on naming is the exact damage this route has done before.
+            "teamMembers": [0] * 6,
+            "teamMembers_VS": [recipe.materials[0][0]] + [0] * 17,
             "chrdata": rows, "buddyInfo": {"list": [], "record": []},
         })
         with state.lock:
@@ -337,7 +372,71 @@ class RebirthMaterialConsumptionTest(unittest.TestCase):
             finally:
                 stop_server(server, thread)
         self.assertEqual([recipe.destination_character_id], [row["id"] for row in userdata["chrdata"]])
-        self.assertEqual([0] * 6, userdata["teamMembers"])
+        self.assertEqual([0] * 18, userdata["teamMembers_VS"])
+
+    def test_a_material_a_main_squad_fields_is_not_available(self) -> None:
+        """A fielded monster cannot be spent, for the reason a fielded source cannot.
+
+        The client marks this itself -- `UIRebirthMonItem.SetItem` tints an
+        `IsInAnyTeam` monster and labels it -- so a player should not meet this.
+        Leaving the rule to the client is what left the source ungated.
+        """
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            self.account(state, recipe)
+            with state.lock:
+                userdata = state.accounts["account"]["userdata"]
+                userdata["teamMembers"] = [recipe.materials[0][0], 0, 0, 0, 0, 0]
+                userdata["teamMembers_VS"] = [0] * 18
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, payload = post(server, "/gd/rebirth", "recode", "rebirthID=1&useJoker=False")
+                settled = state.userdata_for("token")
+            finally:
+                stop_server(server, thread)
+        # Unavailable is spelled as a monster the account is short of, which is
+        # the one message the client has for it and the truth of the matter.
+        self.assertEqual(4, payload["cmdError"])
+        self.assertIn(recipe.source_character_id, [row["id"] for row in settled["chrdata"]])
+        self.assertIn(recipe.materials[0][0], [row["id"] for row in settled["chrdata"]])
+        self.assertEqual([recipe.materials[0][0], 0, 0, 0, 0, 0], settled["teamMembers"])
+
+    def test_a_joker_a_main_squad_fields_cannot_stand_in(self) -> None:
+        catalog = build_bundled_rebirth_policy()
+        recipe = catalog.recipes[1]
+        with tempfile.TemporaryDirectory() as directory:
+            state = BootstrapState(Path(directory) / "state.json")
+            # The account is short the second monster and holds a Joker that
+            # could cover it -- but the Joker is fielded, so it cannot be spent.
+            self.account(state, recipe, extra_rows=[
+                {"id": BUNDLED_JOKER_CHARACTER_ID, "jobID": 0,
+                 "jobLevels": [float(JOKER_SUBSTITUTE_LEVEL), 0.0, 0.0],
+                 "jobSlots": [0.0, 0.0, 0.0], "skillBoost": 0, "luck": 0, "buddy": 0},
+            ])
+            with state.lock:
+                userdata = state.accounts["account"]["userdata"]
+                userdata["chrdata"] = [
+                    row for row in userdata["chrdata"]
+                    if row["id"] != recipe.materials[1][0]
+                ]
+                userdata["teamMembers"] = [BUNDLED_JOKER_CHARACTER_ID, 0, 0, 0, 0, 0]
+                userdata["teamMembers_VS"] = [0] * 18
+                state._persist_locked()
+            server, thread = start_server(("127.0.0.1", 0), bootstrap_profile(), state,
+                                          rebirth_catalog=catalog)
+            try:
+                _, payload = post(server, "/gd/rebirth", "recode", "rebirthID=1&useJoker=True")
+                settled = state.userdata_for("token")
+            finally:
+                stop_server(server, thread)
+        # Not `NotEnoughMonsButCanUseJoker`: that is an offer, and this one
+        # could not be honoured.
+        self.assertEqual(4, payload["cmdError"])
+        self.assertIn(BUNDLED_JOKER_CHARACTER_ID, [row["id"] for row in settled["chrdata"]])
 
     def test_the_same_recipe_runs_again_once_the_monsters_are_raised_again(self) -> None:
         """The bar made this impossible, so the documented loop was unreachable."""
@@ -659,7 +758,8 @@ class RebirthCompanionConsistencyTest(unittest.TestCase):
             state.create_account("token", "account", {
                 "coins": recipe.coins + 1000, "itemList": items, "summonList": [0] * 16,
                 "progressCode": 0x01000000 | (9 << 6) | 1, "worldMapNo": 0,
-                "teamMembers": [recipe.source_character_id, 0, 0, 0, 0, 0],
+                # A fielded source is refused, so this one is benched.
+                "teamMembers": [0] * 6,
                 "teamMembers_VS": [0] * 18,
                 "chrdata": [{"id": i, "jobID": 0, "jobLevels": [float(level), 0.0, 0.0],
                              "jobSlots": [], "skillBoost": 0, "luck": 0, "buddy": buddy}

@@ -2387,3 +2387,82 @@ is told about.
 **Not yet validated on hardware.** The 250 ceiling is confirmed by the report
 and by the client's own default; the 1000 the client is now told has not yet
 been played to.
+
+## 2026-08-27: the level 1 stand-in a Recode leaves in your squad, and the save it then refused
+
+**Reported symptom.** A tester, on recoding a character that was in a team
+setup: *"the character won't be removed, but they are reset back to level 1
+with 0 SB and luck and as soon as you remove that character from all teams,
+they will disappear."* They read it as a missing check — *"the game is supposed
+to stop you from Recoding the Character"* — and feared for the whole roster:
+*"at worst, you end up corrupting your entire save."*
+
+**The premise is wrong: the game never stopped you either.**
+`UIChrSelectWindow.GetFilteredList` (ARM64 `0xEF4BEC`) is the one place the
+client filters who may be picked, and it filters per mode: `Bye` (release)
+skips `IsInAnyTeam`, `ChrSelect` and `Kidnap` skip `IsInTeam`, `AddJob` skips a
+character with no locked job, and **`DNA` — the recode picker — skips only
+`!HasRebirthInfo()`**. There is no team check on the recode source anywhere,
+and `AppServerUtil.RebirthErrorCode` has no value for it either: it runs
+`NotEnoughLevel`, `NotEnoughCoins`, `NotEnoughItems`, `NotEnoughMons`,
+`MonsterUsed`, `InvalidRebirthID`, `NotEnoughMonsButCanUseJoker` and stops. The
+release screen has that guard; the recode screen never did. That is almost
+certainly where the belief comes from.
+
+**Where the stand-in comes from.** The server was already correct — the recode
+retargets the source's slot across every squad, and the reporting scenario
+reproduces that. The client is simply never told:
+
+- The recode answer is read by
+  `AppServerUtil.<Rebirth>c__Iterator12.<Rebirth>c__AnonStorey62.<>m__0`
+  (`0xFBCD00`), which reads `buddyInfo` and `chrdata` and nothing else.
+- `LoadChrData` (`0xDB5A04`) ends at `CorrectTeamMemeber_VS`. The main squads'
+  `CorrectTeamMemeber` (`0x19DBFD4`) has exactly one caller,
+  `LoadUserdataFromJson` (`0xDB6010`) — which is itself reached only from
+  `AppServerUtil.LoadUserData(path)` (dead, no callers) and
+  `<GetUserData>c__Iterator50.<>m__0`. Both `GetUserData` (`0xDB9B88`) and
+  `GetUserDataAfterClose` (`0xDB9BF4`) have exactly one caller each:
+  `LoginAndUpdate`. **The full userdata document is parsed once per session, at
+  login, and at no other moment.**
+- So the client keeps naming the consumed character. `TeamMember.GetCharacter`
+  (`0x116711C`) resolves the slot through `UserData.GetCharacterByID(id,
+  create: true)` (`0x19D99F4`), which finds the id absent from the owned
+  dictionary, looks it up in `ChrDatabase`, constructs a `Character`, `Init`s
+  it — `str wzr, [x19, #0x10]` clears the flags word — and *adds it to the
+  owned dictionary*. That is the stand-in, exactly as described: level 1, no
+  Skill Boost, no Luck, gone once nothing references it.
+
+**What it actually cost, which was not the roster.** `UITeamStatusWindow`
+marks what it draws dirty, `SendDirtyData` collects every dirty `Character`,
+and `update_character_userdata` refused any submitted row naming a character
+the account does not own — so the party edit that would have cleared the slot
+died with the row it carried. Reproduced over HTTP: the save carrying the
+stand-in answered `501 unsupported_userdata_write`, the same save without it
+answered 200. Nothing available from the client repaired it; only a relaunch
+did. The 2026-08-17 fix taught the *party* half to tolerate a stale id for
+precisely this reason and left the roster half refusing.
+
+**What changed, and one half of it is invented.** A character any main squad
+fields may no longer be recoded, used as a material, or spent as the
+substituting Joker. This is a deliberate deviation, recorded as one: the
+evidence above says the retired service allowed it and produced the same
+stand-in. It is here because nothing this server can say prevents the
+stand-in, and because a recode source must reach level 80 in every job — so
+being fielded is the common case, not a corner of one. A fielded source is
+answered `InvalidRebirthID`, the reading the 100 Luck ceiling already gets; a
+fielded material is answered through the existing shortfall path, so the Joker
+may stand in for it and the fielded monster is then not consumed. Versus squads
+are not refused: `GameManager.IsInAnyTeam` (`0xD9EB94`) walks `GetTeamMember`
+only, and `LoadChrData` repairs those from the answer.
+
+The second half is reconstruction, not invention. A submitted roster row naming
+a character the account does not own is now dropped and the rest of the save
+lands. It grants nothing — a submitted row is only ever merged over a row the
+roster already holds, so an unknown id could never add one; refusing and
+dropping permit exactly the same thing. The dropped ids go to the event log,
+because the same shape is what a genuine roster desync would look like.
+
+**Not yet validated on hardware.** Regression tests cover the refused source,
+the refused material, the refused Joker, the versus slot that still follows the
+recode, the dropped row, and the party save that now lands. No tester has
+re-run a recode against this build.
