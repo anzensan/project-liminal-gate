@@ -3224,6 +3224,7 @@ class BootstrapState:
     def apply_world_map_special_start(
         self, token: str, request_id: str, body: bytes, catalog: WorldMapSpecialCatalog,
         now: float | None = None, *, stamina: bool = False,
+        luck_pool_catalog: Any = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """Start one Chapter-1100 battle behind the native Chapter-34 map gate."""
         now = time.time() if now is None else now
@@ -3286,14 +3287,39 @@ class BootstrapState:
             # `_continue_coins_charged`.
             # Chapter 1100 charges 25 stamina, which clears the battle-end gate
             # comfortably; its recovered `allowLucky` is 0, so it carries no
-            # Lucky-enemy source.  Its chests stay refused as labeled local
-            # policy, so as on Hunting only the empty slots accompany a gain.
+            # Lucky-enemy source.
+            #
+            # It used to send six empty slots and call that local policy, and a
+            # tester reported the consequence: "I just completed some special
+            # battles (Shin'en HM, Mutoh HM ...) and there were no luck-based
+            # chests at the end of the fights." That was this handler being left
+            # behind rather than a decision -- Chapter 1100 is *not* on the
+            # record's own chestless list, which names the Hunting and Metal
+            # zones and eleven quests, and none of them is a map special. So the
+            # chest is rolled here as it is on the story and Hunting paths.
+            #
+            # Donation is left switched on, unlike the Hunting start's
+            # `without_interpolation`. That call is about what the record covers,
+            # and the two routes differ: every family the Hunting handler serves
+            # is either named chestless or documented stage for stage, while
+            # Chapter 1100 is documented by neither -- so a donated chapter here
+            # fills a silence rather than answering over the record. If the two
+            # routes' own tables are ever recovered, `LayeredLuckPools` prefers
+            # them over the donation with no change needed here.
+            luck_slots = roll_luck_result(
+                stage.chapter, stage.section, party_team_luck(userdata),
+                request_id, digest, catalog=luck_pool_catalog,
+            )
             luck_up = roll_luck_up_table(userdata, stage.stamina, request_id, digest)
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
-            if any(luck_up):
+            if any(luck_slots) or any(luck_up):
                 payload = _canonical_payload(payload | {
-                    "luckResult": [EMPTY_SLOT] * 6, "luckUpTable": list(luck_up),
+                    "luckResult": list(luck_slots), "luckUpTable": list(luck_up),
                 })
+            # Retained for the reason the story and Hunting entries retain it:
+            # the client folds the chest into the balances it reports at clear,
+            # so the settlement has to know what this entry handed out.
+            account["active_luck_result"] = list(luck_slots)
             account["active_luck_up"] = list(luck_up)
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
@@ -3340,8 +3366,20 @@ class BootstrapState:
                 return "tutorial_state_conflict", None
             result = clear["battle_result"]
             # The Coin channel is settled like Hunting's: the wallet the client
-            # reports back is its pre-clear balance plus what the battle paid.
-            expected_coins = int(userdata.get("coins", 0)) + result["coins"]
+            # reports back is its pre-clear balance plus what the battle paid,
+            # plus the chest this entry authored. The chest half is not
+            # decoration: the client adds its Coins to the balance it submits,
+            # so a settlement that does not expect them reads a legitimate chest
+            # as an over-claim and refuses a battle the player won.
+            #
+            # The chest's *items* need nothing here. `_preserved_counts` below
+            # takes the larger of the durable and reported counts per slot, and
+            # the client reports its base plus the chest, so they land already.
+            authored_chest = account.get("active_luck_result")
+            authored_chest = authored_chest if isinstance(authored_chest, list) else []
+            expected_coins = (
+                int(userdata.get("coins", 0)) + result["coins"] + chest_coins(authored_chest)
+            )
             if (
                 clear["progressCode"] != int(userdata.get("progressCode", 0))
                 or clear["worldMapNo"] != int(userdata.get("worldMapNo", 0))
@@ -3384,6 +3422,15 @@ class BootstrapState:
             active_luck_up = account.get("active_luck_up")
             if isinstance(active_luck_up, list):
                 apply_luck_up_table(userdata, active_luck_up)
+            # After the roster merge too, like the story and Hunting clears: a
+            # stale client's `chrdata` must not overwrite what this chest
+            # awarded. The Companion and character forms have no field for the
+            # client to report either one back through, so the server grants
+            # what it authored -- which is also why granting one cannot collide
+            # with the `world_map_special_companions_within_bounds` check above.
+            # That check bounds `battle_result.buddies`, the battle's own drop,
+            # and a chest never appears in it.
+            announced = _award_chest_grants(userdata, authored_chest)
             frontier = self._world_map_special_progress(account, catalog)
             if stage.battle == frontier[stage.route] and stage.battle < catalog.final_battle(stage.route):
                 frontier[stage.route] = stage.battle + 1
@@ -3391,6 +3438,7 @@ class BootstrapState:
             userdata["lastupdate"] = 1.0
             cleared_quests = _record_quest_clear(userdata, identity, time.time())
             account["tutorial_phase"] = "free_roam"
+            account["active_luck_result"] = []
             account["active_luck_up"] = []
             account["active_world_map_special"] = None
             account["active_battle_continue_coins"] = 0
@@ -3407,7 +3455,10 @@ class BootstrapState:
                 # never refills at a boundary, so this is always the entry's own
                 # post-spend origin.
                 "refillStartTime": float(userdata.get("refillStartTime", 0.0)),
-                "chrdata": copy.deepcopy(userdata.get("chrdata", [])),
+                # Announced rather than copied, so a character the chest just
+                # granted reaches the result screen as new: the client reads
+                # `isNew` and `levelAdded` off the roster it is handed back.
+                "chrdata": _announced_roster(userdata.get("chrdata", []), announced),
                 "itemList": copy.deepcopy(userdata.get("itemList", [])),
                 # Restated here too; see `_record_quest_clear`.
                 "questClearDate": copy.deepcopy(cleared_quests),
@@ -5174,6 +5225,8 @@ class BootstrapHandler(BaseHTTPRequestHandler):
             return state.apply_world_map_special_start(
                 token, request_id, body, self.server.world_map_special_catalog,
                 stamina=self.server.stamina,
+                # Donation kept, unlike the Hunting start below; see the roll.
+                luck_pool_catalog=self.server.luck_pool_catalog,
             )
         if kind == "clear" and _identity_chapter(
             _cleared_identity(body)

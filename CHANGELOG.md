@@ -55,6 +55,45 @@ run the command.
 
 ### Fixed
 
+- **Shin'en and Mutoh paid no Luck Treasure Chest at all, and the three Dragon
+  Kings paid the wrong one.** Both halves of issue 77's remainder, both
+  reported by the same tester: *"I just completed some special battles (Shin'en
+  HM, Mutoh HM, and the 3 Dragons King Descended), and there were no luck-based
+  chests"*, then, once the Dragon Kings had one, *"Can we have informations
+  about luck chest rates 80 and 100? This does not necessarily seem to match
+  the data from the Terra Battle sources here."*
+
+  The Chapter 1100 World Map Specials are their own handler, and it was the one
+  the last round did not reach: it never rolled a chest, sending six empty slots
+  under a comment calling that local policy. It was not policy — Chapter 1100 is
+  not on the record's own chestless list, which names the Hunting and Metal
+  zones and eleven quests and no map special. It rolls one now, the clear
+  expects the Coins it paid, and the Companion and character forms are granted
+  by the server as they are everywhere else. Donation is left switched on here,
+  unlike the Hunting entry, because Chapter 1100 is documented by neither the
+  chestless list nor a recovered table — so a nearby chapter fills a silence
+  rather than answering over the record.
+
+  The Dragon Kings were a different gap. Chapters 2009–2011 had no recovered
+  chest table and were being paid a donated Chapter 36 chest, which is why
+  their Luck 80 and Luck 100 bore no relation to their own pages. Seven
+  2000-series quests are now recovered from the record: the three Dragon Kings,
+  the Bahamut, Leviathan and Odin descents, and Lucia the Explorer. Their pages
+  carry plain tables under a plain heading — no template is involved, so the
+  blind spot that hid Strikes Back is not the reason these were missing; they
+  were never in scope. Every name on all seven resolved exactly, and the joins
+  are confirmed rather than taken from the page titles: the three descents pay
+  the character ids their own recovered manifests already name, and the two
+  Lucias in the master data are separated by this project's own recovered
+  recode recipe rather than by guesswork.
+
+  Five chapters are deliberately still donated. The Last Story and Yamamoto's
+  Puzzle Quest carry no chest section; Final Fantasy XV and Royal Rings
+  Descended carry one table per section with nothing joining a caption to a
+  section ordinal — the anchor Lucia's numbered tables do have; and chapter
+  2017 has no identified wiki page at all. A table filed under the wrong
+  section is worse than a donated one.
+
 - **Recoding a character you were fielding left a level 1 copy of them stuck in
   your squad, and then refused every save that tried to remove it.** A tester
   described the whole shape of it: *"the character won't be removed, but they

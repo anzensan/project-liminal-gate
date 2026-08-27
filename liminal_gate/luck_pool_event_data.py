@@ -308,6 +308,204 @@ ARCHIVE_SPECIAL_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] =
 }
 
 
+#: **Community record, page by page.** The 2000-series archive quests each
+#: carry a plain chest table on their own page -- a `wikitable` under a
+#: `Luck Treasure Chests` heading, the same rendered shape a story chapter
+#: uses. No template is involved, so the scrape that missed the Strikes Back
+#: families missed these for a different reason: they were never in scope.
+#:
+#: A tester reading three of them against what this server served is what
+#: found it. On issue 77, after the Dragon King chests began appearing:
+#: "Can we have informations about luck chest rates 80 and 100? This does not
+#: necessarily seem to match the data from the Terra Battle sources here" --
+#: and it did not, because chapters 2009 to 2011 had no recovered table and
+#: were being served a *donated* Chapter 36 chest.
+#:
+#: Keyed by chapter, then one table per section. A chapter whose page carries a
+#: single table gives one entry and it answers for every section: the record
+#: documents the quest rather than the section, and expanding it is reading
+#: what the page says rather than inventing a difference it does not draw.
+#:
+#: Three of the seven join by the recruit their own chest names, resolved
+#: against the client's master data rather than by the page title: 2000's is
+#: character 148, 2001's is 144, 2002's is 151, which are exactly the ids
+#: `event_manifest_data` already associates with `bahamut_descent`,
+#: `leviathan_descent` and `odin_descent`. Two independent derivations agreeing
+#: is the strongest evidence either one has.
+#:
+#: **Deliberately absent, and why.**
+#:
+#: - `The Last Story` (2003) and `Yamamoto's Puzzle Quest` (2007) carry no
+#:   chest section at all.
+#: - `Final Fantasy XV` (2015) and `Royal Rings Descended` (2016) carry one
+#:   table per section -- Gladiolus/Ignis/Prompto, and The Sun King/The Moon
+#:   King -- but nothing joins a caption to a section ordinal. Their names hold
+#:   no ordinal, the event catalog's `character_ids` sit on the chapter rather
+#:   than the section, and the recovered encounter symbols name enemies rather
+#:   than quests. Lucia's four tables are included precisely because its page
+#:   *does* number them (`Ⅱ`, `Ⅲ`, `Ⅳ`), which is the anchor those two lack.
+#:   A table filed under the wrong section is worse than a donated one.
+#: - Chapter 2017 has no identified page: `mechtula_story_archive` is this
+#:   project's own name for it and the wiki has no article containing the word.
+#:   Identifying it is the banner-art route, not a search.
+#:
+#: Every page marks its own list incomplete, and every name on all seven
+#: resolved exactly against `names.json` -- no unresolved rewards, and no
+#: reward dropped. Two resolutions were not automatic and neither was guessed:
+#:
+#: - `Bahamut`, `Leviathan` and `Odin` each name both a character and a
+#:   Companion. The record's own icon breaks the tie towards the character, and
+#:   `event_manifest_data` then agrees with all three ids independently.
+#: - `Lucia` names *two* characters in the master data, 718 and 769, so no icon
+#:   could separate them. Recipe 19 of `rebirth_recipe_data` settles it: it
+#:   recodes 718 into 719 (`Lucia Λ`) using characters 763 and 764 and items
+#:   107, 108 and 109 -- which is, item for item and monster for monster, the
+#:   recode box the wiki's own `Lucia Λ` page carries (Leonidas, Storm Witch,
+#:   30,000 Coins, five each of Lantern, Compass and Ancient Map). 718 is
+#:   therefore the Lucia this quest recruits. The same chest corroborates the
+#:   join from the other side: its Luck 80 pays Leonidas, Compass and Lantern,
+#:   which are that recode's own materials.
+_ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] = {
+    # Bahamut Descended, rev 84016.
+    2000: (
+        {
+            "A": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('C500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M148', 'O8', 'O128',),
+            "Luck 100": ('M148', 'O8',),
+        },
+    ),
+    # Leviathan Descended, rev 84021.
+    2001: (
+        {
+            "A": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('C500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M144', 'O14', 'O128',),
+            "Luck 100": ('M144', 'O14',),
+        },
+    ),
+    # Odin Descended, rev 84025.
+    2002: (
+        {
+            "A": ('C250', 'I9', 'I10', 'I11', 'I12',),
+            "B": ('C250', 'I9', 'I10', 'I11', 'I12',),
+            "C": ('C500', 'I9', 'I10', 'I11', 'I12',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M151', 'O37', 'O128',),
+            "Luck 100": ('M151', 'O37',),
+        },
+    ),
+    # Lucia the Explorer, rev 84031.
+    2006: (
+        {  # Lucia the Explorer
+            "A": ('I164', 'I122', 'I7', 'I3', 'I110', 'I15',),
+            "B": ('I13', 'I110', 'I122',),
+            "C": ('I110',),
+            "D": ('M718',),
+            "Luck 80": ('O128',),
+            "Luck 100": ('I109', 'I107', 'O128',),
+        },
+        {  # Lucia the Explorer Ⅱ
+            "A": ('I111', 'I12',),
+            "B": ('I1', 'I82', 'I12',),
+            "C": ('C1500',),
+            "D": ('C2000', 'M718',),
+            "Luck 80": ('I108', 'I107', 'M763', 'O128',),
+            "Luck 100": ('I108',),
+        },
+        {  # Lucia the Explorer Ⅲ
+            "A": ('I89', 'I91', 'I12', 'I108', 'I17',),
+            "B": ('C1000', 'I105', 'I17', 'I12', 'I108',),
+            "C": ('C2000', 'O128',),
+            "D": ('M718',),
+            "Luck 80": ('I108', 'M764', 'O129',),
+            "Luck 100": ('I109', 'O356', 'O357', 'M718', 'M764', 'C2500',),
+        },
+        {  # Lucia the Explorer Ⅳ
+            "A": ('C1500', 'I12', 'I17',),
+            "B": ('C1500', 'I12', 'I17',),
+            "C": ('C2500', 'O128',),
+            "D": ('C3000', 'M718',),
+            "Luck 80": ('I109', 'I108', 'I107', 'M763', 'M764',),
+            "Luck 100": ('O356', 'O357', 'M718', 'M763', 'M764',),
+        },
+    ),
+    # The Primordial Dragon King, rev 84013.
+    2009: (
+        {
+            "A": ('C3000', 'I89', 'I90', 'I9', 'I10', 'I11',),
+            "B": ('C6000', 'I89', 'I90', 'I9', 'I10', 'I11',),
+            "C": ('C9000', 'I116', 'I117',),
+            "D": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99',),
+            "Luck 80": ('C9000', 'M887', 'O103',),
+            "Luck 100": ('O105', 'O324', 'O327', 'O399',),
+        },
+    ),
+    # The Resplendent Dragon King, rev 84014.
+    2010: (
+        {
+            "A": ('C3000', 'I89', 'I90', 'I12', 'I15', 'I122',),
+            "B": ('C6000', 'I89', 'I90', 'I12', 'I15', 'I122',),
+            "C": ('C9000', 'I116', 'I117',),
+            "D": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99',),
+            "Luck 80": ('C9000', 'M889', 'O99',),
+            "Luck 100": ('O101', 'O328', 'O331', 'O398',),
+        },
+    ),
+    # The Inexorable Dragon King, rev 84015.
+    2011: (
+        {
+            "A": ('C3000', 'I89', 'I90', 'I12', 'I16', 'I123',),
+            "B": ('C6000', 'I89', 'I90', 'I12', 'I16', 'I123',),
+            "C": ('C9000', 'I116', 'I117',),
+            "D": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99',),
+            "Luck 80": ('C9000', 'M888', 'O130',),
+            "Luck 100": ('O268', 'O326', 'O329', 'O330',),
+        },
+    ),
+}
+
+#: The chapters above and how many sections each serves, so a single-table
+#: quest expands across its own sections rather than answering only section 1.
+#:
+#: Read off the generated event catalog rather than assumed: those stage counts
+#: come from the client's own BattleData, and they are what decide how far a
+#: single-table quest's pool reaches. A count too low leaves a section donating
+#: while its neighbours pay the record; too high adds a stage the client never
+#: serves, which nothing would ever roll. `_archive_quest_pools` refuses a
+#: table count that is neither one nor the section count, so the two cannot
+#: drift silently apart.
+_ARCHIVE_QUEST_SECTIONS: dict[int, int] = {
+    2000: 4, 2001: 4, 2002: 4, 2006: 4, 2009: 1, 2010: 1, 2011: 1,
+}
+
+
+def _archive_quest_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
+    """Expand each archive quest's page tables across the sections it serves."""
+    pools: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {}
+    for chapter, tables in _ARCHIVE_QUEST_CHEST_TABLES.items():
+        sections = _ARCHIVE_QUEST_SECTIONS[chapter]
+        if len(tables) not in (1, sections):
+            raise ValueError(
+                f"chapter {chapter} carries {len(tables)} chest tables for "
+                f"{sections} sections; one per section or one for the quest"
+            )
+        for section in range(1, sections + 1):
+            pools[(chapter, section)] = dict(
+                tables[0] if len(tables) == 1 else tables[section - 1]
+            )
+    return pools
+
+
+ARCHIVE_QUEST_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = (
+    _archive_quest_pools()
+)
+
+
 #: **Community record, through `Template:Luck Treasure Chests/Daily Quest`.**
 #: Every Daily Quest page invokes one template that supplies the same base
 #: table and takes per-quest additions, so the base is carried once here and

@@ -22,7 +22,9 @@ from liminal_gate.luck_pool_data import (
     pool_for,
     refuses_chest,
 )
+from liminal_gate.rebirth_recipe_data import REBIRTH_RECIPE_ROWS
 from liminal_gate.luck_pool_event_data import (
+    ARCHIVE_QUEST_CHEST_POOLS,
     ATTRIBUTE_TYPE_ITEMS,
     BREASOUL_CHEST_POOLS,
     DAILY_QUEST_CHEST_EXTRAS,
@@ -318,6 +320,75 @@ class ArchiveSpecialChestRecordTest(unittest.TestCase):
         self.assertTrue(has_documented_pool(2018, 1))
         self.assertEqual(("M1288", "O128", "O129"), pool_for(2018, 1, "Luck 100"))
         self.assertIn("M1288", pool_for(2018, 1, "D"))
+
+
+class ArchiveQuestChestRecordTest(unittest.TestCase):
+    """The 2000-series quests whose own page carries a plain chest table.
+
+    Reported on issue 77 by a tester who read three of them against the wiki:
+    "Can we have informations about luck chest rates 80 and 100? This does not
+    necessarily seem to match the data from the Terra Battle sources here."
+    They did not match because these chapters had no recovered table and were
+    being served a donated Chapter 36 chest.
+    """
+
+    def test_the_seven_recovered_chapters_cover_every_section_they_serve(self) -> None:
+        expected = {(chapter, section) for chapter in (2000, 2001, 2002, 2006)
+                    for section in (1, 2, 3, 4)}
+        expected |= {(chapter, 1) for chapter in (2009, 2010, 2011)}
+        self.assertEqual(expected, set(ARCHIVE_QUEST_CHEST_POOLS))
+
+    def test_a_single_table_answers_for_every_section_of_its_quest(self) -> None:
+        """The record documents the quest, not the section, where it gives one
+        table. Expanding it reads the page; inventing a per-section difference
+        it does not draw would not."""
+        for section in (2, 3, 4):
+            self.assertEqual(
+                pool_for(2000, 1, "Luck 100"), pool_for(2000, section, "Luck 100"),
+            )
+
+    def test_the_three_descents_pay_the_character_their_manifest_names(self) -> None:
+        """The join is confirmed from the client rather than the page title:
+        each chest's own recruit is the id `event_manifest_data` already
+        associates with that event."""
+        for chapter, character_id in ((2000, "M148"), (2001, "M144"), (2002, "M151")):
+            with self.subTest(chapter=chapter):
+                self.assertIn(character_id, pool_for(chapter, 1, "Luck 80"))
+                self.assertIn(character_id, pool_for(chapter, 1, "Luck 100"))
+
+    def test_the_dragon_kings_pay_their_own_tiers_not_a_donated_chapter(self) -> None:
+        """What the reporting tester was reading. Chapter 36's donated Luck 100
+        was the same eight rewards for all three; each pays its own now."""
+        hundreds = [pool_for(chapter, 1, "Luck 100") for chapter in (2009, 2010, 2011)]
+        self.assertEqual(3, len({frozenset(pool) for pool in hundreds}))
+        # Primordial: Axion Dragon Z, Edg'low OII, Schweiz OII, Scarlet OIII.
+        self.assertEqual(("O105", "O324", "O327", "O399"), hundreds[0])
+        # Every one of the three pays 9,000 Coins and a Lambda at Luck 80.
+        for chapter, recruit in ((2009, "M887"), (2010, "M889"), (2011, "M888")):
+            with self.subTest(chapter=chapter):
+                self.assertIn("C9000", pool_for(chapter, 1, "Luck 80"))
+                self.assertIn(recruit, pool_for(chapter, 1, "Luck 80"))
+
+    def test_lucia_is_the_character_her_own_recode_recipe_names(self) -> None:
+        """Two characters are named `Lucia` and no icon separates them. Recipe
+        19 recodes 718 into Lucia Lambda using the monsters and items the
+        wiki's own recode box lists, so 718 is the one this quest recruits --
+        and the same chest pays that recode's materials at Luck 80."""
+        recipe = next(row for row in REBIRTH_RECIPE_ROWS if row[0] == 19)
+        self.assertEqual((718, 719), (recipe[1], recipe[2]))
+        for section in (1, 2, 3, 4):
+            self.assertIn("M718", pool_for(2006, section, "D"))
+        self.assertIn("M763", pool_for(2006, 2, "Luck 80"))
+        self.assertIn("I108", pool_for(2006, 2, "Luck 80"))
+
+    def test_the_chapters_without_a_provable_join_are_left_undocumented(self) -> None:
+        """2003 and 2007 carry no chest section at all; 2015 and 2016 carry one
+        table per section with nothing joining a caption to a section ordinal;
+        2017 has no identified page. A table filed under the wrong section is
+        worse than a donated one."""
+        for chapter in (2003, 2007, 2015, 2016, 2017):
+            with self.subTest(chapter=chapter):
+                self.assertFalse(has_documented_pool(chapter, 1), chapter)
 
 
 class DailyQuestChestRecordTest(unittest.TestCase):

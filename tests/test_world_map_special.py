@@ -16,6 +16,9 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.luck_data import LUCK_TENTHS_MAX
+from liminal_gate.luck_pool_interpolation import build_luck_pools
+from liminal_gate.luck_runtime import chest_coins, chest_items
 from liminal_gate.world_map_special import (
     UNLOCK_AFTER_CHAPTER,
     WORLD_MAP_SPECIAL_CHAPTER,
@@ -90,7 +93,14 @@ class WorldMapSpecialCatalogTest(unittest.TestCase):
         self.assertTrue(self.catalog.unlocked_at(UNLOCK_AFTER_CHAPTER + 1))
 
 
-class WorldMapSpecialRuntimeTest(unittest.TestCase):
+class WorldMapSpecialHarness(unittest.TestCase):
+    """Account, server and request helpers shared by the Chapter-1100 suites.
+
+    Holds no tests of its own so a suite that changes how the server is
+    built -- the chest suite supplies a luck-pool catalog -- inherits the
+    harness without re-running every other suite's assertions against it.
+    """
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
@@ -185,6 +195,7 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
         ])
 
+class WorldMapSpecialRuntimeTest(WorldMapSpecialHarness):
     def test_entry_charges_the_meter_and_clear_leaves_core_progress_alone(self) -> None:
         before = self.userdata()["progressCode"]
         status, started = self.start("wms-start", SHINEN_FIRST)
@@ -443,3 +454,96 @@ class WorldMapSpecialRuntimeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorldMapSpecialLuckChestTest(WorldMapSpecialHarness):
+    """Chapter 1100 pays a Luck Treasure Chest like every other battle route.
+
+    Reported by a tester on issue 77: "I just completed some special battles
+    (Shin'en HM, Mutoh HM, and the 3 Dragons King Descended), and there were no
+    luck-based chests at the end of the fights." The Dragon Kings were an event
+    handler that had one; these two were this handler, which rolled none at all.
+
+    Chapter 1100 is not on the record's own chestless list, and the record does
+    not document its tables either, so a donated chapter fills the silence --
+    which is why this server is built with interpolation on, as the shipped one
+    is.
+    """
+
+    def start_server(self) -> None:
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
+            stamina=True, luck_pool_catalog=build_luck_pools(None, interpolate=True),
+        )
+
+    def setUp(self) -> None:
+        super().setUp()
+        # Luck 100 is guaranteed at the ceiling, so the richest tier is certain
+        # to be dealt rather than left to the roll.
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["chrdata"] = [dict(self.character, luck=LUCK_TENTHS_MAX)]
+            userdata["teamMembers"] = [9001, 0, 0, 0, 0, 0]
+            userdata["buddyInfo"] = {"list": [], "record": []}
+            userdata["nextCompanionInventoryId"] = 1
+            self.server.state._persist_locked()
+
+    def test_the_entry_deals_a_chest_and_the_clear_expects_what_it_paid(self) -> None:
+        status, started = self.start("chest-start", SHINEN_FIRST)
+        self.assertEqual((200, True), (status, started["success"]))
+        chest = started["luckResult"]
+        self.assertEqual(6, len(chest), "one slot per tier, in the client's order")
+        self.assertTrue(any(slot for slot in chest), f"no chest was dealt: {chest}")
+        # Kept for the clear, because the client folds it into what it reports.
+        self.assertEqual(chest, self.account()["active_luck_result"])
+
+        # The client reports its pre-clear balance plus the battle *and* the
+        # chest, while the battle itself paid nothing. Before this the chest
+        # half was unexpected and a won battle was refused as a wallet conflict.
+        held = self.userdata()
+        paid = chest_coins(chest)
+        status, cleared = self.clear(
+            "chest-clear", SHINEN_FIRST, coins=0,
+            snapshot=dict(held, coins=held["coins"] + paid),
+            roster=[dict(self.character, luck=LUCK_TENTHS_MAX)],
+        )
+        self.assertEqual((200, True), (status, cleared["success"]))
+        self.assertEqual(held["coins"] + paid, self.userdata()["coins"])
+        self.assertEqual([], self.account()["active_luck_result"])
+
+    def test_the_chest_grants_the_forms_the_client_cannot_report(self) -> None:
+        """Companions and characters have no field in the clear body at all.
+
+        So the server grants what it authored, and the roster it answers with
+        announces a granted character as new.
+        """
+        status, started = self.start("grant-start", SHINEN_FIRST)
+        self.assertEqual(200, status)
+        chest = started["luckResult"]
+        companions = [int(slot[1:]) for slot in chest if slot.startswith("O")]
+        characters = [int(slot[1:]) for slot in chest if slot.startswith("M")]
+
+        held = self.userdata()
+        status, cleared = self.clear(
+            "grant-clear", SHINEN_FIRST, coins=0,
+            snapshot=dict(held, coins=held["coins"] + chest_coins(chest)),
+            roster=[dict(self.character, luck=LUCK_TENTHS_MAX)],
+        )
+        self.assertEqual((200, True), (status, cleared["success"]))
+        owned = self.userdata()["buddyInfo"]["list"]
+        for companion_id in companions:
+            self.assertIn(
+                companion_id, [row["bid"] for row in owned],
+                "a Companion the chest named must reach the box",
+            )
+        roster = {row["id"] for row in self.userdata()["chrdata"]}
+        announced = {row["id"] for row in cleared["chrdata"] if row.get("isNew")}
+        for character_id in characters:
+            self.assertIn(character_id, roster)
+            self.assertIn(character_id, announced)
+        # The chest's items arrive through the client's own report, which
+        # `_preserved_counts` accepts because it takes the larger count.
+        self.assertTrue(
+            all(count >= 1 for count in chest_items(chest).values()),
+            "an item slot is one copy",
+        )
