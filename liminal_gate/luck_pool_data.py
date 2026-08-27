@@ -61,6 +61,7 @@ whose endpoints *are* sourced.
 from __future__ import annotations
 
 from liminal_gate.luck_pool_event_data import (
+    ARCHIVE_QUEST_CHEST_POOLS,
     ARCHIVE_SPECIAL_CHEST_POOLS,
     BREASOUL_CHEST_POOLS,
     DAILY_QUEST_CHEST_POOLS,
@@ -126,6 +127,7 @@ DOCUMENTED_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     **STRIKES_BACK_CHEST_POOLS,
     **EIDOLON_CHEST_POOLS,
     **ARCHIVE_SPECIAL_CHEST_POOLS,
+    **ARCHIVE_QUEST_CHEST_POOLS,
     **DAILY_QUEST_CHEST_POOLS,
     **BREASOUL_CHEST_POOLS,
     **FIVE_EMPERORS_CHEST_POOLS,
