@@ -2526,3 +2526,48 @@ unchanged, which is the control.
 surviving a battle that also drops one, the answer carrying the box in both
 cases, and the recovered drop level; the reporting tester has not re-run a
 Daily Quest against this build.
+
+## 2026-08-27: the empty chest a chestless quest answered with
+
+**Reported symptom.** A tester on issue 77: *"Yamamoto's puzzle quest also
+seems to be giving luck chests, even though the appropriate screen doesn't
+appear (there are sounds effects and you have to tap through it)."*
+
+**The quest named is not the one doing it.** Chapter 6011 answers with neither
+`luckResult` nor `luckUpTable`, verified over HTTP: it has no documented pool,
+the Huntland route removes donation, it is not an `allowLucky` chapter, and
+Daily Quests cost no stamina, so `roll_luck_up_table` returned zero on all 200
+seeds tried. A chest sequence playing there is the client's own and nothing
+this server sends starts it.
+
+**The shape the report describes is real elsewhere, and was ours.** The entry
+sent both fields whenever either had something:
+
+    if any(luck_slots) or any(luck_up):
+        payload |= {"luckResult": ..., "luckUpTable": ...}
+
+so a chestless stage that granted Luck shipped six empty slots. Cryptid Forest
+is the standing case and not a rare one: the record's own chestless list names
+it, it is an `allowLucky` chapter, and a below-cap party gained Luck on 60 of
+60 sampled entries. Every one of those answered "here is a chest" with nothing
+in it -- the same category of placeholder as the empty `buddyInfo` that emptied
+the client's Companion box for a session.
+
+**Why the safety argument is empirical rather than disassembled.** Static
+resolution cannot say which client method reads either field. Il2cpp string
+literals in this binary resolve through a metadata index rather than an
+address: the `stringliteral.json` addresses sit past the end of the `.so`, in
+`.bss`, and neither a BL scan nor an ADRP/LDR page scan finds a single
+reference to `luckResult`, `luckUpTable` or a control literal. That is the same
+wall recorded for the roster write, where the wire proved the cheaper oracle.
+
+What the wire already says is enough. `luckResult` is *routinely* absent today
+-- most of the game documents no pool, so most entries have always answered
+without the field, across every tester, with no report of a lost Luck display
+or a hang. An absent `luckResult` is therefore the well-tested case. The only
+new shape is a gain travelling without one, and the two are independent keys in
+a body whose endpoint callbacks guard their reads.
+
+**What changed.** The two fields are sent on their own terms. A regression test
+enters Cryptid Forest twelve times and asserts that no answer carries a chest
+while at least one carries the gain; it fails without the change.

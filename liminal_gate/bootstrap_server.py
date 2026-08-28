@@ -190,7 +190,6 @@ from liminal_gate.secondary_world_data import (
     unpack_world_progress,
 )
 from liminal_gate.luck_runtime import (
-    EMPTY_SLOT,
     apply_luck_up_table,
     chest_characters,
     chest_coins,
@@ -2955,10 +2954,27 @@ class BootstrapState:
                 stage.chapter, stage.section, party_team_luck(userdata),
                 request_id, digest, catalog=luck_pool_catalog,
             )
-            if any(luck_slots) or any(luck_up):
-                payload = _canonical_payload(payload | {
-                    "luckResult": list(luck_slots), "luckUpTable": list(luck_up),
-                })
+            # Each field is sent on its own terms. Six empty slots is not a
+            # chest, and saying "here is a chest" with nothing in it is the
+            # same shape of mistake the empty `buddyInfo` was: a placeholder in
+            # a field the client acts on. Every chestless stage that grants
+            # Luck used to ship one -- Cryptid Forest does it on every entry
+            # with a below-cap party -- and a tester reported the shape of it
+            # on issue 77: "the appropriate screen doesn't appear (there are
+            # sounds effects and you have to tap through it)".
+            #
+            # An absent `luckResult` is the well-tested case rather than a new
+            # one: most of the game documents no pool, so most entries have
+            # always answered without the field. What is new is a gain
+            # travelling without it, and the two are independent keys. Static
+            # resolution cannot confirm which client method reads either --
+            # il2cpp string literals resolve through a metadata index rather
+            # than an address here, which is recorded in `findings.md` -- so
+            # this rests on the field already being routinely absent.
+            if any(luck_slots):
+                payload = _canonical_payload(payload | {"luckResult": list(luck_slots)})
+            if any(luck_up):
+                payload = _canonical_payload(payload | {"luckUpTable": list(luck_up)})
             # Retained for the same reason the story entry retains it: the
             # client folds the chest into the balances it reports at clear, so
             # settlement has to know what this entry handed out.
@@ -3333,10 +3349,27 @@ class BootstrapState:
             )
             luck_up = roll_luck_up_table(userdata, stage.stamina, request_id, digest)
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
-            if any(luck_slots) or any(luck_up):
-                payload = _canonical_payload(payload | {
-                    "luckResult": list(luck_slots), "luckUpTable": list(luck_up),
-                })
+            # Each field is sent on its own terms. Six empty slots is not a
+            # chest, and saying "here is a chest" with nothing in it is the
+            # same shape of mistake the empty `buddyInfo` was: a placeholder in
+            # a field the client acts on. Every chestless stage that grants
+            # Luck used to ship one -- Cryptid Forest does it on every entry
+            # with a below-cap party -- and a tester reported the shape of it
+            # on issue 77: "the appropriate screen doesn't appear (there are
+            # sounds effects and you have to tap through it)".
+            #
+            # An absent `luckResult` is the well-tested case rather than a new
+            # one: most of the game documents no pool, so most entries have
+            # always answered without the field. What is new is a gain
+            # travelling without it, and the two are independent keys. Static
+            # resolution cannot confirm which client method reads either --
+            # il2cpp string literals resolve through a metadata index rather
+            # than an address here, which is recorded in `findings.md` -- so
+            # this rests on the field already being routinely absent.
+            if any(luck_slots):
+                payload = _canonical_payload(payload | {"luckResult": list(luck_slots)})
+            if any(luck_up):
+                payload = _canonical_payload(payload | {"luckUpTable": list(luck_up)})
             # Retained for the reason the story and Hunting entries retain it:
             # the client folds the chest into the balances it reports at clear,
             # so the settlement has to know what this entry handed out.
@@ -3683,8 +3716,26 @@ class BootstrapState:
                 userdata, stamina_cost, request_id, body_hash,
                 lucky_chapter=stage.chapter,
             )
-            if any(luck_slots) or any(luck_up):
+            # Each field is sent on its own terms. Six empty slots is not a
+            # chest, and saying "here is a chest" with nothing in it is the
+            # same shape of mistake the empty `buddyInfo` was: a placeholder in
+            # a field the client acts on. Every chestless stage that grants
+            # Luck used to ship one -- Cryptid Forest does it on every entry
+            # with a below-cap party -- and a tester reported the shape of it
+            # on issue 77: "the appropriate screen doesn't appear (there are
+            # sounds effects and you have to tap through it)".
+            #
+            # An absent `luckResult` is the well-tested case rather than a new
+            # one: most of the game documents no pool, so most entries have
+            # always answered without the field. What is new is a gain
+            # travelling without it, and the two are independent keys. Static
+            # resolution cannot confirm which client method reads either --
+            # il2cpp string literals resolve through a metadata index rather
+            # than an address here, which is recorded in `findings.md` -- so
+            # this rests on the field already being routinely absent.
+            if any(luck_slots):
                 payload["luckResult"] = list(luck_slots)
+            if any(luck_up):
                 payload["luckUpTable"] = list(luck_up)
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity

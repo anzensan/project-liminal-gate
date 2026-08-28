@@ -284,6 +284,62 @@ class EventRuntimeTest(unittest.TestCase):
             finally:
                 stop_server(server, thread)
 
+    def test_a_chestless_stage_answers_with_a_gain_and_no_chest(self) -> None:
+        """Six empty slots is not a chest, and this route used to send them.
+
+        7010 Cryptid Forest is named on the record's own chestless list and is
+        an `allowLucky` chapter, so a below-cap party gains Luck on an entry
+        that can never carry a chest. The answer used to pair the gain with an
+        all-empty `luckResult`, which a tester saw as a chest sequence with no
+        screen: "there are sounds effects and you have to tap through it".
+
+        An absent `luckResult` is the well-tested shape rather than a new one:
+        most of the game documents no pool, so most entries have always
+        answered without it.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            token = "token"
+            state = BootstrapState(path)
+            state.create_account(token, "account", {
+                "coins": 0, "energy": 100, "freeEnergy": 0, "progressCode": 16777346,
+                "worldMapNo": 0, "chrdata": [character(3)], "itemList": [], "summonList": [],
+                "teamMembers": [3, 0, 0, 0, 0, 0],
+            })
+            state.accounts["account"]["tutorial_phase"] = "free_roam"
+            state._persist_locked()
+            catalog = EventCatalog((EventStage("test", "sp_test", 7010, 1, 5, 0, 0, ()),))
+            server = BootstrapServer(
+                ("127.0.0.1", 0), bootstrap_profile(), state, event_catalog=catalog,
+                luck_pool_catalog=build_luck_pools(None, interpolate=True),
+            )
+            thread = serve(server)
+            try:
+                seen = []
+                for attempt in range(12):
+                    connection = HTTPConnection(*server.server_address)
+                    connection.request(
+                        "POST", f"/gd/start_quest?otk={token}&requestID=chestless-{attempt}",
+                        body=b"stamina=5&coins=0&chapter=7010&section=1&lastUpdate=1",
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    )
+                    payload = json.loads(connection.getresponse().read())
+                    connection.close()
+                    seen.append(payload)
+                    self.assertNotIn(
+                        "luckResult", payload,
+                        "a chestless stage must never answer with a chest",
+                    )
+                    state.accounts["account"]["tutorial_phase"] = "free_roam"
+                    state.accounts["account"]["active_generic_story"] = None
+                    state._persist_locked()
+                self.assertTrue(
+                    any("luckUpTable" in payload for payload in seen),
+                    "and the Lucky-enemy gain must still reach the client",
+                )
+            finally:
+                stop_server(server, thread)
+
     def test_a_flagged_event_chapter_grows_luck_below_the_stamina_gate(self) -> None:
         """2006 Lucia and 7010 Cryptid Forest are `allowLucky` and reach the
         client through the generic-story handler rather than the Hunting one,
