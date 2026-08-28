@@ -16,7 +16,9 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.companion_master_data import companion_drop_level
 from liminal_gate.luck_data import LUCK_TENTHS_MAX
+from liminal_gate.luck_pool_catalog import LuckPoolCatalog
 from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_runtime import chest_coins, chest_items
 from liminal_gate.world_map_special import (
@@ -546,4 +548,94 @@ class WorldMapSpecialLuckChestTest(WorldMapSpecialHarness):
         self.assertTrue(
             all(count >= 1 for count in chest_items(chest).values()),
             "an item slot is one copy",
+        )
+
+
+class WorldMapSpecialChestGrantTest(WorldMapSpecialHarness):
+    """What a chest actually delivers, against a pinned pool.
+
+    The donated pool this route rolls against does not put a Companion in every
+    chest, so these use an operator catalog instead: the subject is what happens
+    to a Companion the chest names, not which one the roll picks.
+    """
+
+    #: Luck 80 and Luck 100 are both certain at the ceiling. 128 is Metal
+    #: Minion, which this stage's own drop manifest does *not* name -- so a
+    #: Companion in the box that the battle could not have dropped came from
+    #: the chest and nowhere else.
+    CHEST_COMPANION = 128
+    CHEST_CHARACTER = 202
+
+    def start_server(self) -> None:
+        pinned = LuckPoolCatalog({(WORLD_MAP_SPECIAL_CHAPTER, SHINEN_FIRST): {
+            "Luck 80": (f"O{self.CHEST_COMPANION}",),
+            "Luck 100": (f"M{self.CHEST_CHARACTER}",),
+        }})
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
+            stamina=True, luck_pool_catalog=build_luck_pools(pinned, interpolate=True),
+        )
+
+    def setUp(self) -> None:
+        super().setUp()
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["chrdata"] = [dict(self.character, luck=LUCK_TENTHS_MAX)]
+            userdata["teamMembers"] = [9001, 0, 0, 0, 0, 0]
+            userdata["buddyInfo"] = {"list": [], "record": []}
+            userdata["nextCompanionInventoryId"] = 1
+            self.server.state._persist_locked()
+
+    def settle(self, tag: str, buddies: list | None = None) -> tuple[dict, dict]:
+        status, started = self.start(f"{tag}-start", SHINEN_FIRST)
+        self.assertEqual(200, status, started)
+        chest = started["luckResult"]
+        self.assertEqual(f"O{self.CHEST_COMPANION}", chest[4], chest)
+        held = self.userdata()
+        status, cleared = self.clear(
+            f"{tag}-clear", SHINEN_FIRST, coins=0, buddies=buddies,
+            snapshot=dict(held, coins=held["coins"] + chest_coins(chest)),
+            roster=[dict(self.character, luck=LUCK_TENTHS_MAX)],
+        )
+        self.assertEqual((200, True), (status, cleared["success"]))
+        return chest, cleared
+
+    def test_a_battle_drop_and_a_chest_grant_both_survive(self) -> None:
+        """The defect a tester found: "Luck chests now appear on daily quests at
+        least, but rewards don't stick around."
+
+        The battle-drop projection is built before the chest is granted, so
+        assigning it over `buddyInfo` at the end of the settlement threw away
+        every Companion the chest had just paid. Both must land, and the answer
+        must carry the box that holds both -- `UserData.LoadBuddyInfo` replaces
+        the client's box with what arrives, so reporting the pre-chest
+        projection takes the chest's Companions back out of the client, and the
+        next Companion write then persists their absence.
+        """
+        # 129 is on this stage's own `dropBuddies` manifest, so the battle may
+        # report it and the two sources stay distinguishable in the box.
+        _, cleared = self.settle("both", buddies=[129])
+        owned = [row["bid"] for row in self.userdata()["buddyInfo"]["list"]]
+        self.assertIn(129, owned, "the battle's own drop must survive")
+        self.assertIn(self.CHEST_COMPANION, owned, "the chest's grant must survive")
+        answered = [row["bid"] for row in cleared["buddyInfo"]["list"]]
+        self.assertEqual(sorted(owned), sorted(answered), "the client is told what it owns")
+
+    def test_a_chest_only_grant_is_still_reported_to_the_client(self) -> None:
+        """No battle drop, so the old contract sent no box at all -- and the
+        client went on owning nothing the chest had paid."""
+        _, cleared = self.settle("report")
+        self.assertIn("buddyInfo", cleared)
+        answered = [row["bid"] for row in cleared["buddyInfo"]["list"]]
+        self.assertEqual([self.CHEST_COMPANION], answered)
+
+    def test_the_chest_companion_arrives_at_its_own_drop_level(self) -> None:
+        """Metal Minion is a level 1 dropper; an OII Companion is a level 30
+        one, which is the client's own `BuddyData.DropLevel` either way."""
+        self.settle("level")
+        owned = self.userdata()["buddyInfo"]["list"]
+        self.assertEqual(
+            [companion_drop_level(row["bid"]) for row in owned],
+            [row["lv"] for row in owned],
+            owned,
         )

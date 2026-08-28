@@ -2466,3 +2466,63 @@ because the same shape is what a genuine roster desync would look like.
 the refused material, the refused Joker, the versus slot that still follows the
 recode, the dropped row, and the party save that now lands. No tester has
 re-run a recode against this build.
+
+## 2026-08-27: the chest Companions a clear threw away, and the level the client had right
+
+**Reported symptom.** One tester, two sentences, on issue 77 after the Daily
+Quest chests began appearing: *"Luck chests now appear on daily quests at
+least, but rewards don't stick around"*, and *"for some reason the rewarded OII
+companions are shown as being rewarded level 30, even though they should only
+be level 1."* Two unrelated defects behind them.
+
+**The grant was overwritten, then not reported.** Each of the three settlements
+that authors a chest builds the battle's own Companion-drop projection early,
+grants the chest late, and then assigns the projection over `buddyInfo`:
+
+- the Hunting clear computed `companions` before `_award_chest_grants` ran and
+  assigned it afterwards, so a Daily Quest or side-world battle that dropped a
+  Companion *and* paid a chest kept only the drop -- durably, in the save;
+- the Chapter-1100 clear had the same shape, introduced with its chest roll a
+  day earlier;
+- the generic story clear applied them in the right order but answered with the
+  pre-chest projection.
+
+The second half is the one that reaches a player who never sees a battle drop.
+`UserData.LoadBuddyInfo` (ARM64 `0xDB5C50`) calls `ResetBuddyList` before
+reading, so the box the answer carries *replaces* the client's -- an answer
+without the chest's Companions takes them back out of the client for the rest
+of the session, and the client's next Companion write then persists their
+absence. The rule this project already had for the Rebirth answer applies to
+every settlement: answer with the account's own state. The chest grant is now
+the last writer to `buddyInfo`, and the answer carries `userdata["buddyInfo"]`
+whenever either source granted.
+
+**The level was recovered, where it had been inferred.** `BuddyData.DropLevel`
+is a field of the same master record the Companion sale values already come
+from, and it is exact: of 497 records, 446 carry 1 and 51 carry 30. The 51 are
+exactly the ΟⅡ Companions -- Spinetrich Kino Ο drops at 1 and Spinetrich Kino
+ΟⅡ at 30, and their `MaxLevel` is 80 where a level 1 dropper's is 1 or 20.
+
+This server minted every dropped Companion at a literal 1, and the comment
+saying why is worth keeping as a lesson: "`EnemyData` records which Companion
+an enemy drops and at what rate, and no level, so this follows the one
+recovered drop manifest that does state it -- Metal Zone's two Companions, both
+level 1. Strongly inferred." Every word about `EnemyData` is true. The
+inference was drawn without asking whether a *different* master record held the
+field, and one did. The tester saw the seam from the outside: the client reads
+`DropLevel` for its result screen, so the reward said 30 and the box held 1.
+
+Three of the 51 names are written with a Latin `O` rather than a Greek Omicron
+in the master data -- the same transcription hazard the Strikes Back recovery
+met. The table keys on ids, so it is unaffected.
+
+**What changed.** `companion_master_data.companion_drop_level` is the one rule,
+and the four sites that reached for a literal 1 now go through it: the chest
+grant, the Cryptid Forest and secondary-world manifests, and the story-outcome
+generator's default. The Metal Zone literals were already right and are
+unchanged, which is the control.
+
+**Not yet validated on hardware.** Regression tests cover a chest Companion
+surviving a battle that also drops one, the answer carrying the box in both
+cases, and the recovered drop level; the reporting tester has not re-run a
+Daily Quest against this build.

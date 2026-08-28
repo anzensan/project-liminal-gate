@@ -97,6 +97,8 @@ its world through `ChapterInterface.GetWorldNoByChapter` and then reads
 
 from __future__ import annotations
 
+from liminal_gate.companion_master_data import companion_drop_level
+
 from liminal_gate.hunting_catalog import HuntingStage
 
 #: The client's own map flags. `sp_matsuno` opens the BreaSoul map; the Five
@@ -157,8 +159,6 @@ _FIVE_EMPERORS_ROWS: tuple[tuple[int, int, tuple[int, ...]], ...] = (
     (119, 20, (468, 49)),
 )
 
-#: A dropped Companion arrives at level 1, as Chapter 1100's do.
-_COMPANION_DROP_LEVEL = 1
 
 
 def build_bundled_breasoul_stages() -> tuple[HuntingStage, ...]:
@@ -200,7 +200,9 @@ def build_bundled_five_emperors_stages() -> tuple[HuntingStage, ...]:
             # a clear naming both candidates of a two-candidate descent is
             # refused rather than paying twice.
             max_companions_total=1,
-            companion_drop_levels={companion: _COMPANION_DROP_LEVEL for companion in candidates},
+            companion_drop_levels={
+                companion: companion_drop_level(companion) for companion in candidates
+            },
             selector="hidden",
         )
         for chapter, stamina, candidates in _FIVE_EMPERORS_ROWS

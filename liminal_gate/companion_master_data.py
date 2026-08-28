@@ -100,3 +100,55 @@ COMPANION_MASTER_ROWS: tuple[tuple[int, int], ...] = (
     (486, 50000), (487, 50000), (488, 1), (489, 1), (490, 1), (491, 1),
     (492, 1), (493, 1), (494, 1), (495, 1), (496, 1), (497, 1),
 )
+
+
+#: The level a dropped Companion arrives at, for the Companions that do not
+#: arrive at level 1.
+#:
+#: **Recovered, where it used to be inferred.** `BuddyData.DropLevel` is a
+#: field of the same master record `COMPANION_MASTER_ROWS` above is read from,
+#: and it is exact: 446 of the 497 records carry 1 and the other 51 carry 30.
+#: The project had been minting every dropped Companion at 1 on the reasoning
+#: that `EnemyData` records which Companion an enemy drops and at what rate but
+#: no level, so the only recovered manifest that stated one -- Metal Zone's two
+#: Companions, both level 1 -- had to stand for all of them. That reasoning was
+#: sound about `EnemyData` and looked past `BuddyData`, which states it per
+#: Companion.
+#:
+#: **The 51 are exactly the ΟⅡ Companions**, and nothing else: their base Ο
+#: form drops at 1 (Spinetrich Kino Ο is 1, Spinetrich Kino ΟⅡ is 30), and
+#: their `MaxLevel` is 80 where a level-1 dropper's is 1 or 20. Three of the
+#: names are written with a Latin `O` rather than a Greek Omicron in the master
+#: data, which is the same transcription hazard the Strikes Back recovery met;
+#: the ids are what this table keys on, so it is unaffected.
+#:
+#: A tester found it from the other side, on issue 77: "for some reason the
+#: rewarded OII companions are shown as being rewarded level 30, even though
+#: they should only be level 1". The client was right and this server was
+#: wrong -- it displays the Companion's own `DropLevel`, and the box it was
+#: then handed held a level 1 copy of the same Companion.
+COMPANIONS_DROPPED_AT_LEVEL_30: frozenset[int] = frozenset({
+    298, 300, 302, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317,
+    318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330,
+    331, 332, 334, 335, 336, 337, 338, 339, 340, 341, 343, 345, 347,
+    349, 351, 353, 355, 357, 384, 392, 401, 403, 451, 453, 455,
+})
+
+#: What every other Companion drops at, and the value the 51 above are the
+#: exception to.
+DEFAULT_COMPANION_DROP_LEVEL = 1
+#: The level the 51 arrive at.
+OMICRON_TWO_COMPANION_DROP_LEVEL = 30
+
+
+def companion_drop_level(companion_id: int) -> int:
+    """The level this Companion arrives at when something drops or grants it.
+
+    One rule in one place, because four call sites had reached for a literal 1
+    and every one of them was wrong for the same 51 Companions.
+    """
+    return (
+        OMICRON_TWO_COMPANION_DROP_LEVEL
+        if companion_id in COMPANIONS_DROPPED_AT_LEVEL_30
+        else DEFAULT_COMPANION_DROP_LEVEL
+    )

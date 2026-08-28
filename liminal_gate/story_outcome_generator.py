@@ -80,7 +80,11 @@ from pathlib import Path
 from typing import Any
 
 from liminal_gate.character_catalog_importer import CharacterCatalogImportError, SOURCE_PROFILE, load_master_trees, sha256_file
-from liminal_gate.companion_master_data import COMPANION_MASTER_ROWS
+from liminal_gate.companion_master_data import (
+    COMPANION_MASTER_ROWS,
+    DEFAULT_COMPANION_DROP_LEVEL,
+    companion_drop_level,
+)
 from liminal_gate.hunting_catalog import BUNDLED_ITEM_SLOTS, BUNDLED_MAX_STACK
 from liminal_gate.server_constants import build_server_constants
 from liminal_gate.story_outcome_catalog import StoryOutcomeCatalogError, load_story_outcome_catalog
@@ -93,12 +97,19 @@ SCHEMA_VERSION = 1
 #: block the client is sent so the catalog's capacity and the client's agree.
 MAX_COMPANIONS = int(build_server_constants()["BuddyBoxMax"])
 
-#: The level a dropped Companion arrives at.  ``EnemyData`` records which
-#: Companion an enemy drops and at what rate, and no level, so this follows the
-#: one recovered drop manifest that does state it -- Metal Zone's two
-#: Companions, both level 1 (:mod:`liminal_gate.hunting_catalog`).  Strongly
-#: inferred; a ``--baseline`` entry overrides it per Companion.
-DEFAULT_COMPANION_DROP_LEVEL = 1
+#: The level a dropped Companion arrives at, per Companion.
+#:
+#: This was a flat 1, inferred: ``EnemyData`` records which Companion an enemy
+#: drops and at what rate and no level, so the one recovered drop manifest that
+#: did state a level -- Metal Zone's two Companions, both level 1 -- stood for
+#: all of them. The inference was sound about ``EnemyData`` and looked past
+#: ``BuddyData``, whose own ``DropLevel`` field states it exactly: 446 of the
+#: 497 records carry 1 and the 51 ΟⅡ Companions carry 30. See
+#: :mod:`liminal_gate.companion_master_data`. A ``--baseline`` entry still
+#: overrides it per Companion.
+#:
+#: `DEFAULT_COMPANION_DROP_LEVEL` is re-exported from there and still names
+#: what a Companion with no exception drops at.
 
 #: Ordinary story chapters.  Anything else BattleData carries -- archived
 #: events, Hunting -- is emitted too, so an operator running this catalog
@@ -752,7 +763,7 @@ def build_catalog(
         "character_ids": character_ids,
         **capacities,
         "companion_masters": [
-            {"companion_id": companion_id, "drop_level": baseline_levels.get(companion_id, DEFAULT_COMPANION_DROP_LEVEL)}
+            {"companion_id": companion_id, "drop_level": baseline_levels.get(companion_id, companion_drop_level(companion_id))}
             for companion_id in sorted(used_companions | set(baseline_levels))
         ],
         "stages": stages,
