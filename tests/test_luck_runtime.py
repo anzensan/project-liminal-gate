@@ -117,6 +117,40 @@ class ChestRollTest(unittest.TestCase):
             self.assertEqual(6, len(roll_luck_result(1, 1, tenths, "r", "d")))
 
 
+class EmptyChestIsNotSentTest(unittest.TestCase):
+    """A chestless stage that grants Luck must not answer with a chest.
+
+    Six empty slots is not a chest. Sending them said "here is a chest" with
+    nothing in it, which is the shape the empty `buddyInfo` placeholder already
+    cost this project once, and a tester described the result on issue 77: "the
+    appropriate screen doesn't appear (there are sounds effects and you have to
+    tap through it)".
+
+    Cryptid Forest is the standing case: the record names it chestless, it is
+    an `allowLucky` chapter, and a below-cap party gains Luck on every entry.
+    """
+
+    def test_the_two_fields_travel_on_their_own_terms(self) -> None:
+        pools = build_luck_pools(None, interpolate=True)
+        party = userdata({9001: 0})
+        chest = roll_luck_result(RUNNER_CHAPTER, 1, 0, "r", "d", catalog=pools)
+        gain = roll_luck_up_table(party, 5, "r", "d", lucky_chapter=RUNNER_CHAPTER)
+        self.assertFalse(any(chest), "Cryptid Forest is on the record's chestless list")
+        self.assertTrue(any(gain), "and its Lucky enemy raises a below-cap party")
+        # Which is the pairing the settlement must be able to answer with: a
+        # gain, and no chest at all.
+
+    def test_a_documented_stage_still_answers_with_both(self) -> None:
+        """The control: where there is a chest *and* a gain, nothing changed."""
+        pools = build_luck_pools(None, interpolate=True)
+        stage = next(
+            key for key, tiers in LUCK_CHEST_POOLS.items()
+            if tiers.get("Luck 80") and tiers.get("Luck 100")
+        )
+        chest = roll_luck_result(*stage, LUCK_TENTHS_MAX, "r", "d", catalog=pools)
+        self.assertTrue(any(chest))
+
+
 class NoChestQuestTest(unittest.TestCase):
     """The record's own list of quests that carry no chest at all.
 

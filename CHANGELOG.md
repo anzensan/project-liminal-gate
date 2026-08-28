@@ -55,6 +55,31 @@ run the command.
 
 ### Fixed
 
+- **A quest with no chest still answered with one, empty.** A tester on issue
+  77: *"there are sounds effects and you have to tap through it"* for a chest
+  screen that never appears. The entry sent `luckResult` and `luckUpTable`
+  together whenever *either* had something, so every chestless stage that
+  granted Luck shipped six empty slots — "here is a chest" with nothing in it,
+  the same shape of placeholder the empty `buddyInfo` was. Cryptid Forest does
+  it on every entry with a below-cap party: the record names it chestless and
+  it is an `allowLucky` chapter, so the gain always fires and the chest never
+  can. The two fields now travel on their own terms.
+
+  An absent `luckResult` is the well-tested shape rather than a new one — most
+  of the game documents no pool, so most entries have always answered without
+  it. What is new is a gain travelling alone, and the two are independent keys.
+  This could not be settled statically: il2cpp string literals resolve through
+  a metadata index rather than an address in this binary, so no scan finds
+  which client method reads either field, and the argument rests on the field
+  already being routinely absent.
+
+  **This does not explain the Yamamoto's Puzzle Quest report.** Chapter 6011
+  has no documented pool, donation is off on the Huntland route, it is not an
+  `allowLucky` chapter, and Daily Quests cost no stamina — so no Luck ever
+  rolls there and the entry answers with neither field, verified over HTTP. A
+  chest sequence playing on that quest is the client's own, and nothing this
+  server sends starts or stops it.
+
 - **A Luck chest's Companions did not survive the battle that paid them, and
   the ones that did arrived at the wrong level.** Both from the same tester on
   issue 77: *"Luck chests now appear on daily quests at least, but rewards
