@@ -543,14 +543,20 @@ function check() {
 // serialisation, then unwraps the markers in the finished text.
 const MARK = "__liminal_gate_float__:";
 
-function markFloats(value, key) {
-  if (Array.isArray(value)) return value.map((item) => markFloats(item, key));
+// `questClearDate` is keyed by stage ("6000-1"), not by a field name, and
+// every value under it is a timestamp the client reads as a double
+// (`GetQuestClearDate`), so the whole object is float-typed rather than any
+// one key in it. This is what save_validation._validate_floats checks.
+const FLOAT_OBJECTS = new Set(["questClearDate"]);
+
+function markFloats(value, key, floatTyped = false) {
+  if (Array.isArray(value)) return value.map((item) => markFloats(item, key, floatTyped));
   if (value && typeof value === "object") {
     const copy = {};
-    for (const [name, item] of Object.entries(value)) copy[name] = markFloats(item, name);
+    for (const [name, item] of Object.entries(value)) copy[name] = markFloats(item, name, FLOAT_OBJECTS.has(key));
     return copy;
   }
-  if (typeof value === "number" && FLOAT_KEYS.has(key) && Number.isInteger(value)) return `${MARK}${value}`;
+  if (typeof value === "number" && Number.isInteger(value) && (floatTyped || FLOAT_KEYS.has(key))) return `${MARK}${value}`;
   return value;
 }
 

@@ -178,6 +178,14 @@ run the command.
   at or above its drop level keeps what it earned, and a box holding a row this
   cannot read is left whole for the validation layer to name.
 
+- **The save editor's export was refused for any save with a cleared stage.**
+  Build-computer tool; no restart or rebuild. Every timestamp under
+  `questClearDate` is read by the client as a decimal, and `account_state
+  validate` has refused a whole number there since that was learned — but the
+  editor only re-emitted the decimals it knew by field name, and this object
+  is keyed by stage, so `1787850526.0` left the page as `1787850526` and
+  `apply` refused the file. Any save that had cleared a stage could not be
+  edited; a fresh one could. The object is now float-typed as a whole.
 - **A quest with no chest still answered with one, empty.** A tester on issue
   77: *"there are sounds effects and you have to tap through it"* for a chest
   screen that never appears. The entry sent `luckResult` and `luckUpTable`
