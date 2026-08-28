@@ -84,6 +84,8 @@ pays it.
 
 from __future__ import annotations
 
+from liminal_gate.companion_master_data import companion_drop_level
+
 from liminal_gate.event_flag_data import event_flags_for
 from liminal_gate.hunting_catalog import HuntingStage
 
@@ -108,8 +110,6 @@ _EXP_CEILING = 920_000
 #: of 1 against the 7,500 to 50,000 their neighbours carry.
 _CAVERN_COMPANIONS = {1: 294, 2: 296}
 
-#: A dropped copy arrives at level 1, as every other bundled Companion drop does.
-_COMPANION_DROP_LEVEL = 1
 
 #: **Confirmed.** Section to the job materials its Kirin hands the engine.
 #: `Chapter7010.Init_KR_KIRIN` (`0x1433628`) builds `[150, 151]` and
@@ -154,7 +154,7 @@ def build_bundled_orbling_cavern_stages() -> tuple[HuntingStage, ...]:
             # total say the same thing. Both are stated rather than left to be
             # inferred from a one-entry manifest.
             max_companions_total=1,
-            companion_drop_levels={companion: _COMPANION_DROP_LEVEL},
+            companion_drop_levels={companion: companion_drop_level(companion)},
             selector="hidden",
         )
         for section, companion in sorted(_CAVERN_COMPANIONS.items())

@@ -122,6 +122,7 @@ from liminal_gate.stamina_meter import (
     spend_stamina,
 )
 from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogError, build_bundled_companion_policy, load_companion_catalog
+from liminal_gate.companion_master_data import companion_drop_level
 from liminal_gate.companion_equipment_catalog import (
     CompanionEquipmentCatalog,
     CompanionEquipmentCatalogError,
@@ -3164,6 +3165,17 @@ class BootstrapState:
             # client's `chrdata` must not overwrite what this chest awarded.
             # The Companion and character forms have no field for the client to
             # report back through, so the server grants what it authored.
+            #
+            # The battle's own Companion drop is applied *first*, so this grant
+            # appends to the box that already holds it. Applying the projection
+            # afterwards is what threw the chest's Companions away: it was built
+            # before this line ran, so assigning it over `buddyInfo` at the end
+            # of the settlement silently dropped every Companion a chest paid
+            # whenever the same battle also dropped one. A tester reported the
+            # result on issue 77 -- "Luck chests now appear on daily quests at
+            # least, but rewards don't stick around."
+            if companions is not None:
+                userdata["buddyInfo"] = companions
             announced |= _award_chest_grants(userdata, authored_chest)
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
@@ -3211,12 +3223,21 @@ class BootstrapState:
                 # generic story clear does; see `_record_quest_clear`.
                 "questClearDate": copy.deepcopy(cleared_quests),
             })
-            # Only a settlement that actually granted Companions touches the box
-            # or reports it, so the four item and Coin families keep the exact
-            # response they were verified with.
-            if result["buddies"]:
-                userdata["buddyInfo"] = companions
-                payload = _canonical_payload(payload | {"buddyInfo": copy.deepcopy(companions)})
+            # Only a settlement that actually granted Companions reports the
+            # box, so the four item and Coin families keep the exact response
+            # they were verified with. A chest counts as granting: the box is
+            # the account's own rather than the battle-drop projection, because
+            # the chest appended to it after that projection was built, and
+            # `UserData.LoadBuddyInfo` *replaces* the client's box with what
+            # arrives -- so answering with the pre-chest projection would take
+            # the chest's Companions back out of the client for the session,
+            # and the client's next Companion write would then persist their
+            # absence. Answer with the account's own state, as the Companion
+            # sale and strengthen routes do.
+            if result["buddies"] or chest_companions(authored_chest):
+                payload = _canonical_payload(payload | {
+                    "buddyInfo": copy.deepcopy(userdata.get("buddyInfo", {"list": [], "record": []})),
+                })
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -3430,6 +3451,12 @@ class BootstrapState:
             # with the `world_map_special_companions_within_bounds` check above.
             # That check bounds `battle_result.buddies`, the battle's own drop,
             # and a chest never appears in it.
+            #
+            # The battle's own drop is applied first so this appends to the box
+            # that already holds it; see the Hunting clear for what applying the
+            # projection afterwards costs.
+            if companions is not None:
+                userdata["buddyInfo"] = companions
             announced = _award_chest_grants(userdata, authored_chest)
             frontier = self._world_map_special_progress(account, catalog)
             if stage.battle == frontier[stage.route] and stage.battle < catalog.final_battle(stage.route):
@@ -3463,11 +3490,15 @@ class BootstrapState:
                 # Restated here too; see `_record_quest_clear`.
                 "questClearDate": copy.deepcopy(cleared_quests),
             })
-            # Only a settlement that actually granted a Companion touches the
-            # box or reports it, matching the Hunting clear's contract.
-            if companions is not None:
-                userdata["buddyInfo"] = companions
-                payload = _canonical_payload(payload | {"buddyInfo": copy.deepcopy(companions)})
+            # Only a settlement that actually granted a Companion reports the
+            # box, matching the Hunting clear's contract -- and for the same
+            # reason it answers with the account's own box rather than the
+            # battle-drop projection, which no longer holds what the chest
+            # appended to it.
+            if companions is not None or chest_companions(authored_chest):
+                payload = _canonical_payload(payload | {
+                    "buddyInfo": copy.deepcopy(userdata.get("buddyInfo", {"list": [], "record": []})),
+                })
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
             return "success", payload
@@ -3946,8 +3977,15 @@ class BootstrapState:
                 # trip through the title screen.
                 "questClearDate": copy.deepcopy(cleared_quests),
             }
-            if buddy_info is not None:
-                payload["buddyInfo"] = copy.deepcopy(buddy_info)
+            # The account's own box, not `buddy_info`: that projection was
+            # built before `_award_chest_grants` appended to it, and
+            # `LoadBuddyInfo` replaces rather than merges, so answering with it
+            # would hand the client a box the chest's Companions are missing
+            # from. Reported on issue 77 as rewards that "don't stick around".
+            if buddy_info is not None or chest_companions(authored_chest):
+                payload["buddyInfo"] = copy.deepcopy(
+                    userdata.get("buddyInfo", {"list": [], "record": []}),
+                )
             account["tutorial_phase"] = "free_roam"
             account["active_generic_story"] = None
             account["active_battle_continue_coins"] = 0
@@ -6187,8 +6225,6 @@ _WORLD_MAP_SPECIAL_COMPANION_BOX = 1000
 
 #: The client's own Companion box capacity, which a chest may not push past.
 _CHEST_COMPANION_BOX = 1000
-#: A chest-dropped Companion arrives at level 1, as every other drop does.
-_CHEST_COMPANION_DROP_LEVEL = 1
 
 
 def _award_chest_grants(userdata: dict[str, Any], slots: list[str]) -> dict[int, int]:
@@ -6238,8 +6274,13 @@ def _award_chest_grants(userdata: dict[str, Any], slots: list[str]) -> dict[int,
             # the alternative strands a won battle over a reward the player
             # cannot make room for in the middle of settlement.
             break
+        # The Companion's own recovered `BuddyData.DropLevel`, not a literal
+        # 1: the ΟⅡ Companions drop at 30, and a chest that names one is
+        # exactly where a player meets that. The client reads the same field
+        # for its result screen, so a hardcoded 1 here put a level 30 reward on
+        # screen and a level 1 copy in the box.
         owned.append({
-            "bid": companion_id, "lv": _CHEST_COMPANION_DROP_LEVEL, "date": 0.0,
+            "bid": companion_id, "lv": companion_drop_level(companion_id), "date": 0.0,
             "iid": next_id, "exp": 0, "flag": 0, "chrID": 0,
         })
         next_id += 1

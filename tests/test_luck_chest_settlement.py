@@ -26,6 +26,10 @@ from urllib.parse import urlencode
 from unittest.mock import patch
 
 from liminal_gate.bootstrap_server import BootstrapState, _award_chest_grants
+from liminal_gate.companion_master_data import (
+    COMPANIONS_DROPPED_AT_LEVEL_30,
+    companion_drop_level,
+)
 from liminal_gate.luck_runtime import chest_characters, chest_coins, chest_companions, chest_items
 from liminal_gate.story_catalog import load_story_catalog
 from tests.support import bootstrap_profile, request, start_server, stop_server
@@ -87,6 +91,32 @@ class ChestGrantUnitTest(unittest.TestCase):
         userdata: dict = {}
         self.assertEqual({}, _award_chest_grants(userdata, ["C50", "I11"]))
         self.assertEqual({}, userdata)
+
+
+class CompanionDropLevelTest(unittest.TestCase):
+    """`BuddyData.DropLevel`, recovered where it had been inferred.
+
+    A tester on issue 77: "for some reason the rewarded OII companions are
+    shown as being rewarded level 30, even though they should only be level 1."
+    The client was right. It renders the Companion's own `DropLevel`, and this
+    server was minting every dropped Companion at a literal 1 -- so the result
+    screen said 30 and the box held a level 1 copy of the same Companion.
+    """
+
+    def test_the_exceptions_are_exactly_the_omicron_two_companions(self) -> None:
+        """446 of the 497 master records carry 1 and 51 carry 30, and the 51
+        are the OII forms -- their base form drops at 1."""
+        self.assertEqual(51, len(COMPANIONS_DROPPED_AT_LEVEL_30))
+        # Spinetrich Kino O drops at 1; Spinetrich Kino OII drops at 30.
+        self.assertEqual(1, companion_drop_level(282))
+        self.assertEqual(30, companion_drop_level(317))
+        # Metal Minion and its two Lambda forms are level 1 droppers, which is
+        # the one manifest the old inference was built on.
+        for companion_id in (128, 129, 130):
+            self.assertEqual(1, companion_drop_level(companion_id))
+
+    def test_an_unknown_companion_falls_back_to_level_one(self) -> None:
+        self.assertEqual(1, companion_drop_level(999999))
 
 
 class ChestSettlementTest(unittest.TestCase):
@@ -202,8 +232,29 @@ class ChestSettlementTest(unittest.TestCase):
         status, _ = self.clear(chest)
         self.assertEqual(200, status)
         self.assertEqual(list(expected), [row["bid"] for row in self.box()["list"]])
-        self.assertTrue(all(row["lv"] == 1 for row in self.box()["list"]))
+        self.assertEqual(
+            [companion_drop_level(row["bid"]) for row in self.box()["list"]],
+            [row["lv"] for row in self.box()["list"]],
+            "each arrives at its own recovered BuddyData.DropLevel",
+        )
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
+
+    def test_the_answer_carries_the_box_the_chest_just_filled(self) -> None:
+        """`UserData.LoadBuddyInfo` resets the client's box and refills it from
+        what arrives, so a settlement that grants a Companion and answers with
+        a box that does not hold it takes the grant straight back out of the
+        client -- and the next Companion write persists the absence. Reported
+        on issue 77 as rewards that "don't stick around"."""
+        chest = self.start()
+        expected = chest_companions(chest)
+        self.assertTrue(expected, "this stage's tiers must name a Companion")
+        status, cleared = self.clear(chest)
+        self.assertEqual(200, status)
+        self.assertIn("buddyInfo", cleared)
+        self.assertEqual(
+            [row["bid"] for row in self.box()["list"]],
+            [row["bid"] for row in cleared["buddyInfo"]["list"]],
+        )
 
     def test_the_book_is_rebuilt_alongside_the_owned_list(self) -> None:
         """This stage's tiers name the same Companion twice, so the book must

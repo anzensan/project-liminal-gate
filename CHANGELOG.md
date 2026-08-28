@@ -55,6 +55,39 @@ run the command.
 
 ### Fixed
 
+- **A Luck chest's Companions did not survive the battle that paid them, and
+  the ones that did arrived at the wrong level.** Both from the same tester on
+  issue 77: *"Luck chests now appear on daily quests at least, but rewards
+  don't stick around"*, and *"for some reason the rewarded OII companions are
+  shown as being rewarded level 30, even though they should only be level 1."*
+
+  The first is an ordering defect in all three settlements. The battle's own
+  Companion-drop projection was built *before* the chest was granted and then
+  assigned over `buddyInfo` at the end of the clear, so every Companion a chest
+  paid was thrown away whenever the same battle also dropped one. Even when it
+  did not, the answer carried that projection rather than the account's own
+  box — and `UserData.LoadBuddyInfo` resets the client's box and refills it
+  from what arrives, so the client was handed a box the chest's Companions were
+  missing from and its next Companion write persisted their absence. The chest
+  grant is now the last writer, and the answer carries the account's own box
+  whenever either source granted, which is what the Companion sale and
+  strengthen routes already do.
+
+  The second was ours, not the client's — the client was right. `BuddyData`
+  carries a `DropLevel` per Companion, and it is exact: 446 of the 497 master
+  records say 1 and the other 51 say 30. The 51 are precisely the ΟⅡ
+  Companions, whose base Ο form drops at 1. This server had been minting every
+  dropped Companion at a literal 1, on the reasoning that `EnemyData` records
+  which Companion drops and at what rate but no level — sound about `EnemyData`
+  and looking straight past `BuddyData`. So the result screen showed the
+  client's 30 and the box held a level 1 copy. Recovered into
+  `companion_master_data.companion_drop_level` and used by every drop site.
+
+  The story drop channel reads its levels from the generated story-outcome
+  catalog, so that half needs the catalog regenerating to pick the ΟⅡ levels
+  up; the chest, Huntland, side-world and Chapter-1100 channels take effect on
+  restart.
+
 - **Shin'en and Mutoh paid no Luck Treasure Chest at all, and the three Dragon
   Kings paid the wrong one.** Both halves of issue 77's remainder, both
   reported by the same tester: *"I just completed some special battles (Shin'en
