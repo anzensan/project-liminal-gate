@@ -58,6 +58,29 @@ run the command.
   simultaneous play. [Play on an iPhone or iPad](docs/ios-client.md) covers
   the DNS, firewall, and certificate steps, and what each failure looks like.
 
+- **The save editor edits the Companion box, and fills the wallet in one
+  click.** `tools/save-editor.html` is a build-computer tool, so this needs
+  neither a server restart nor an APK rebuild; on-device testers reach it
+  through `on_device_state export` and `import` as before.
+
+  Any Companion master can be added by ID or name, at any level up to its
+  cap, held more than once, re-levelled, or removed; "Add one of each" grants
+  every master the account does not hold. The editor now loads the Companion
+  names a name file carries, and one button fills Coins, Energy and free
+  Energy to the client's own ceilings.
+
+  A Companion's level is not a free field: the server recomputes `lv` from
+  `exp` against the master's curve on every strengthen, so a level typed in
+  without its EXP reverted the first time the Companion was used as a base.
+  The page carries the curve, rendered from the server's own progression data
+  by `liminal_gate.save_editor_tables`, and writes the pair together; a test
+  holds the page's copy, the module, and `bootstrap_server` to the same
+  numbers. Every edit rebuilds `buddyInfo.record` and keeps
+  `nextCompanionInventoryId` ahead of the box the way the server's grant
+  paths do, and removing a Companion frees the character carrying it, so the
+  two-sided link that refuses every later party save cannot be left half
+  attached.
+
 ### Fixed
 
 - **Only one Strikes Back family kept the Luck a repeated Λ recruit announces,

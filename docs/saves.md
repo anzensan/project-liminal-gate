@@ -164,14 +164,24 @@ a server holds the save. To see what it would say without changing anything:
 python3 -m liminal_gate.account_state validate edited-save.json
 ```
 
+The editor covers the wallet (Coins, Energy, free Energy — with one button that
+fills all three to the client's own ceilings), story progress, the character
+roster, the Companion box, and the item inventory. Any Companion master can be
+added by ID or, with a name file, by name; a blank level means the Companion's
+own cap, and "Add one of each" grants every master the account does not hold.
+
 **Edit through the tool rather than by hand in a text editor.** A save is not
-plain data, and the two ways it usually breaks are invisible in the JSON: a
+plain data, and the ways it usually breaks are invisible in the JSON: a
 character's `jobLevels` is a *packed* number whose low bits are the level and
 whose upper bits are its progression, so writing a plain `90` sets the level and
-destroys everything else in the field; and several numbers must stay decimals,
+destroys everything else in the field; several numbers must stay decimals,
 because the client reads them with an accessor that fails on a whole number and
-takes the whole response down with it. The editor handles both. A text editor will
-not warn you about either, and the damage shows up later, somewhere else.
+takes the whole response down with it; and a Companion's level is recomputed
+from its EXP on the server the next time it is strengthened, so a level typed
+in without the matching EXP silently reverts. The editor handles all three — it
+carries the server's own Companion progression curve and writes level and EXP
+together. A text editor will not warn you about any of them, and the damage
+shows up later, somewhere else.
 
 If a value you changed was one the server had already answered a request with, add
 `--clear-replay-cache` so a repeat of that request cannot return the old answer.
