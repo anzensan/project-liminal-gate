@@ -8,6 +8,11 @@ identities are applied when the catalog is loaded, exactly as the class limits
 and the Descent menu already are, so a catalog generated before this still
 draws the cards the final client drew.
 
+One fix does need the *story-outcome* catalog regenerated, which is a different
+file and a different derivation: it carries the level each Companion drops at,
+so a copy generated before the ΟⅡ recovery keeps minting 26 of them at level 1.
+See the Companion level entry under Fixed.
+
 The setup and documentation changes at the end need neither a restart nor a
 rebuild: they are build-computer behaviour, and take effect the next time you
 run the command.
@@ -54,6 +59,48 @@ run the command.
   the DNS, firewall, and certificate steps, and what each failure looks like.
 
 ### Fixed
+
+- **The ΟⅡ Companions were still arriving at level 1, and a level 1 one has a
+  skill that never fires.** The same tester on issue 77, after the last round:
+  *"Previously pulled Companions were restored, but now display at level 1 and,
+  for some reason, also have their skills at 0% trigger chance?"*
+
+  Those are one symptom, not two. `BuddyData.GetParamAtLevel` gives every stat
+  as `min + (max - min) * ((level - 1) / (MaxLevel - 1)) ** Coeff`, so level 1
+  is the interpolation's own origin and each stat sits at its floor — and all
+  51 ΟⅡ Companions carry a `BOOSTmin` of 0 against a `BOOSTmax` of 100. At
+  level 30 such a Companion triggers 25.6% of the time; at level 1 it triggers
+  0%, exactly. Its sale is the same loss from the other side, 450 Coins against
+  13,500 — which is the figure the same tester used to confirm, from their own
+  memory of selling them, that 30 is the right level after all.
+
+  Two things kept producing level 1 copies after `DropLevel` was recovered.
+
+  The **story drop channel** reads its levels from the generated story-outcome
+  catalog rather than from code, and that catalog is derived from the
+  operator's own APK. A catalog generated before the recovery keeps declaring
+  26 ΟⅡ Companions at level 1 — the ones the Eidolon quests drop — and goes on
+  minting them there. **Regenerate your story-outcome catalog**, or rerun the
+  guided setup, which derives it. The chest, Huntland, side-world and
+  Chapter-1100 channels take their levels from code and were already correct.
+
+  The **experience beside the level** was never restated. Every mint site wrote
+  a literal `exp` of 0, which was consistent only while every grant was a level
+  1 grant. A Companion granted at level 30 holding 0 experience is a claim this
+  server's own strengthen route disagrees with: it derives the level back out
+  of the experience, so the first fusion recomputed a level 30 ΟⅡ Companion
+  down to about level 6. The client mints the same way this now does —
+  `Buddy.SetLevel` sets the level and then takes the experience from
+  `GetParamAtLevel(level).EXP` — and `companion_progression_data` is now the
+  one implementation of that curve, read by both the four grant sites and the
+  strengthen route that reads a level back out of it.
+
+  Copies already sitting below their drop level are repaired on load, because
+  nothing a player can do from the client repairs one: a Companion's level only
+  rises, and it does not rise from a fusion the missing experience already
+  sank. The repair raises a floor and restates the experience with it. A copy
+  at or above its drop level keeps what it earned, and a box holding a row this
+  cannot read is left whole for the validation layer to name.
 
 - **A quest with no chest still answered with one, empty.** A tester on issue
   77: *"there are sounds effects and you have to tap through it"* for a chest

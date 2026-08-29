@@ -16,6 +16,8 @@ establishes.
 
 from __future__ import annotations
 
+import math
+
 # companion_id, base_exp, max_level, exp_max, exp_coeff, same_bonus_bias
 COMPANION_PROGRESSION_ROWS: tuple[tuple[int, int, int, int, float, int], ...] = (
     (1, 671, 30, 2000000, 2.0999999046325684, 1),
@@ -516,3 +518,59 @@ COMPANION_PROGRESSION_ROWS: tuple[tuple[int, int, int, int, float, int], ...] = 
     (496, 1, 1, 0, 2.0999999046325684, 1),
     (497, 1, 1, 0, 2.0999999046325684, 1),
 )
+
+
+#: The constant the client divides a level span by, and it is a literal rather
+#: than ``max_level - 1``.  ``BuddyData.GetParamAtLevel`` (ARM64 ``0xD026C4``)
+#: interpolates the five combat stats over ``(level - 1) / (MaxLevel - 1)`` but
+#: computes ``BuddyParam.EXP`` from a separate ratio against a hardcoded 98.0,
+#: which is the span of the highest ``MaxLevel`` any Companion carries.  A
+#: Companion whose own ceiling is lower therefore never reaches the top of this
+#: curve, which is the client's own arrangement and not an error here.
+_EXP_LEVEL_SPAN = 98.0
+
+
+def companion_exp_at(exp_max: int, exp_coeff: float, level: int) -> int:
+    """The experience a Companion holds at ``level``, on the client's curve.
+
+    ``BuddyParam.EXP`` is ``EXPmax * ((level - 1) / 98) ** EXPcoeff``, floored.
+    Level 1 is the origin and holds nothing.
+
+    This is the whole of the relationship between a Companion's level and its
+    experience, and both directions of it depend on this being one function:
+    the strengthen route adds experience and reads the level back out, and a
+    grant states a level and must state the experience that agrees with it.
+    """
+    if level <= 1:
+        return 0
+    return math.floor(exp_max * ((level - 1) / _EXP_LEVEL_SPAN) ** exp_coeff)
+
+
+_PROGRESSION_BY_ID: dict[int, tuple[int, int, int, int, float, int]] = {
+    row[0]: row for row in COMPANION_PROGRESSION_ROWS
+}
+
+
+def companion_granted_exp(companion_id: int, level: int) -> int:
+    """The experience a Companion granted at ``level`` arrives holding.
+
+    **A grant states both halves or it states neither.**  Every mint site used
+    to write a literal ``exp`` of 0 beside whatever level it had decided on,
+    which was consistent only while every grant was a level 1 grant.  It stopped
+    being consistent when the ΟⅡ Companions began arriving at their recovered
+    ``DropLevel`` of 30: level 30 on this curve is 1,550,568 experience, so a
+    Companion arrived claiming a level its experience did not support.  The
+    client tolerates that -- ``Buddy``'s JSON constructor reads ``lv`` and
+    ``exp`` as independent keys and displays the level it was handed -- but this
+    server's own strengthen route derives the level back out of the experience,
+    so the first fusion of such a Companion recomputed it down to about level 6.
+
+    The client mints at a level the same way: ``Buddy.SetLevel`` (``0xD02414``)
+    sets the level and then takes the experience from
+    ``GetParamAtLevel(level).EXP`` rather than leaving it where it was.
+
+    A Companion with no progression row arrives at the origin, which is what a
+    level it has no curve for is worth.
+    """
+    row = _PROGRESSION_BY_ID.get(companion_id)
+    return 0 if row is None else companion_exp_at(row[3], row[4], level)

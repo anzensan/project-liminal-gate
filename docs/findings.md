@@ -2571,3 +2571,85 @@ a body whose endpoint callbacks guard their reads.
 **What changed.** The two fields are sent on their own terms. A regression test
 enters Cryptid Forest twelve times and asserts that no answer carries a chest
 while at least one carries the gain; it fails without the change.
+
+## 2026-08-29: the level a Companion holds, and the experience that has to agree with it
+
+**Reported symptom.** The same tester on issue 77, one round after
+`BuddyData.DropLevel` was recovered: *"Previously pulled Companions were
+restored, but now display at level 1 and, for some reason, also have their
+skills at 0% trigger chance?"* -- and, in the same comment, a retraction of the
+earlier complaint: *"Looks like I was wrong, OII companions are supposed to
+recruit at lvl30. I recall selling them as a way to earn Coins, and they would
+sell for 13500, which is what they come out to at level 30."*
+
+**The retraction is an independent confirmation.** A Companion sale pays
+`BaseCOIN` times level. Every ΟⅡ Companion's `BaseCOIN` is 450, and 450 x 30 is
+13,500 exactly. A player's memory of a sale price and a field read out of the
+master data arrive at the same number from opposite directions.
+
+**The two complaints are one symptom.** `BuddyData.GetParamAtLevel` (ARM64
+`0xD026C4`) interpolates each of the five combat stats as
+`min + (max - min) * ((level - 1) / (MaxLevel - 1)) ** Coeff`. Level 1 is the
+interpolation's own origin, so every stat sits at its declared floor -- and all
+51 ΟⅡ Companions carry `BOOSTmin` 0 against a `BOOSTmax` of 100. `BOOST` is the
+skill trigger chance. A level 30 ΟⅡ Companion fires 25.6% of the time and a
+level 1 one fires 0%, exactly, so "level 1" and "0% trigger chance" are the
+same observation reported twice. 137 of the 497 masters carry `BOOSTmin` 0, so
+this is not peculiar to the ΟⅡ forms; they are simply the ones a player is
+handed below their intended level.
+
+**Two channels kept minting level 1 copies after the recovery.**
+
+The first was a generated file, and the recovery could not reach it. The story
+drop channel takes its levels from `story-outcomes.json`, which is derived from
+the operator's own APK and cannot be bundled. A catalog generated before the
+recovery declares 26 ΟⅡ Companions at level 1 -- exactly the ones the Eidolon
+quests 4100--4111 drop -- and `_outcome_buddy_info` reads that field. The code
+fix and the file were never going to agree without regenerating it. The lesson
+is narrower than "regenerate your catalogs": a recovered fact that is *also*
+cached in a derived artifact has two homes, and fixing the rule fixes one of
+them. Regenerating against the same inputs changed 26 `drop_level` values and
+nothing else in the document, which is the control that says so.
+
+The second was ours and had been latent since the recovery. Every mint site
+wrote `"lv": <a level>` beside a literal `"exp": 0`, a pairing that was
+consistent only while every grant was a level 1 grant. It stopped being
+consistent the moment a Companion arrived at 30: on that curve level 30 stands
+on 1,550,568 experience. The client tolerates the disagreement -- `Buddy`'s
+JSON constructor (`0xD012F8`) reads `lv` and `exp` as independent keys and
+displays the level it is handed -- but this server's own strengthen route
+derives the level back *out* of the experience, so the first fusion of a
+chest-granted ΟⅡ Companion recomputed it down to about level 6. Nobody had
+reported that yet; it was found by reading the grant beside the route that
+consumes it.
+
+The client does not mint that way, and says so plainly: `Buddy.SetLevel`
+(`0xD02414`) sets the level and then takes the experience from
+`GetParamAtLevel(level).EXP` rather than leaving it where it was. That field is
+computed on a curve of its own -- `EXPmax * ((level - 1) / 98) ** EXPcoeff`,
+against a hardcoded 98.0 rather than the Companion's own `MaxLevel - 1`, which
+is the span of the highest ceiling any Companion carries.
+
+**What changed.**
+
+- `companion_progression_data.companion_exp_at` is the one implementation of
+  that curve, and both directions of the level/experience relationship read it:
+  the four grant sites that state a level, and the strengthen route that
+  derives one back. Two copies drifting apart is how this happened.
+- The four grant sites -- the chest, the Huntland and side-world manifests, the
+  inbox present, and the story outcome -- state the experience their level
+  stands on. The two sites that mint at a literal level 1, the Pact draw and
+  the Trading Post, are unchanged: 0 is correct at the origin, and neither is a
+  drop.
+- `_migrate_companion_drop_level` repairs the copies already in saves, because
+  nothing a player can do from the client repairs one -- a Companion's level
+  only rises, and it does not rise from a fusion whose missing experience
+  already sank it. `lv` below `companion_drop_level` is unreachable by any
+  other route, which is what makes the repair safe rather than merely
+  plausible. A copy at or above its drop level keeps what it earned, and a box
+  holding one unreadable row is left whole for the validation layer to name.
+
+**Not yet validated on hardware.** Regression tests cover the level 30 arrival
+holding a level 30 stake, that stake surviving a fusion, the two curve
+implementations agreeing, and the repair's four cases; the reporting tester has
+not re-run against this build.

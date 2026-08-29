@@ -24,6 +24,8 @@ from liminal_gate.story_outcome_generator import (
 # table, because the generator omits any Companion this release does not know.
 BOMBORG, ELECTROTICK, TEKSURA = 95, 92, 94
 COMPANION_A, COMPANION_B = 111, 226
+#: Spinetrich Kino ΟⅡ, one of the 51 that drop at 30 rather than 1.
+OMICRON_TWO_COMPANION = 317
 UNKNOWN_COMPANION = 60000
 APK_SHA256 = "a" * 64
 
@@ -277,6 +279,24 @@ class BuildCatalogTest(unittest.TestCase):
                 {"companion_id": COMPANION_A, "drop_level": DEFAULT_COMPANION_DROP_LEVEL},
                 {"companion_id": COMPANION_B, "drop_level": DEFAULT_COMPANION_DROP_LEVEL},
             ],
+            catalog["companion_masters"],
+        )
+
+    def test_an_omicron_two_dropper_is_declared_at_thirty(self) -> None:
+        """The half of the ΟⅡ recovery that reaches a player through a
+        generated file rather than through code.
+
+        `COMPANION_A` and `COMPANION_B` are both level 1 droppers, so this
+        generator's ΟⅡ path had no coverage, and a catalog generated before
+        the recovery keeps declaring 30 of them at 1 until it is regenerated --
+        which is how issue 77's level 1 Companions outlived the fix.
+        """
+        self.battledata["chapters"][0]["sections"][2]["dropBuddies"] = [  # type: ignore[index]
+            _code(OMICRON_TWO_COMPANION, 1)
+        ]
+        catalog = self._build()[0]
+        self.assertIn(
+            {"companion_id": OMICRON_TWO_COMPANION, "drop_level": 30},
             catalog["companion_masters"],
         )
 

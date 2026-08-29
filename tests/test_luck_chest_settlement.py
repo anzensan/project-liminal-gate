@@ -30,6 +30,7 @@ from liminal_gate.companion_master_data import (
     COMPANIONS_DROPPED_AT_LEVEL_30,
     companion_drop_level,
 )
+from liminal_gate.companion_progression_data import companion_granted_exp
 from liminal_gate.luck_runtime import chest_characters, chest_coins, chest_companions, chest_items
 from liminal_gate.story_catalog import load_story_catalog
 from tests.support import bootstrap_profile, request, start_server, stop_server
@@ -73,6 +74,23 @@ class ChestGrantUnitTest(unittest.TestCase):
         announced = _award_chest_grants(userdata, ["M199"])
         self.assertEqual({}, announced)
         self.assertEqual([held], userdata["chrdata"])
+
+    def test_an_omicron_two_arrives_at_thirty_holding_a_level_thirty_stake(self) -> None:
+        """The two halves of one arrival, which used to disagree.
+
+        `FORCED_CHEST` names only level 1 droppers, so the settlement test
+        above cannot tell a correct experience from the literal 0 that used to
+        be written beside every level. Spinetrich Kino ΟⅡ can: it drops at 30,
+        and level 30 on its curve stands on 1,550,568 experience. A copy
+        holding 0 instead reads back as level 1 the first time the strengthen
+        route restates it.
+        """
+        userdata = {"chrdata": [], "buddyInfo": {"list": [], "record": []}}
+        _award_chest_grants(userdata, ["O317"])
+        granted = userdata["buddyInfo"]["list"][0]
+        self.assertEqual((317, 30), (granted["bid"], granted["lv"]))
+        self.assertEqual(companion_granted_exp(317, 30), granted["exp"])
+        self.assertNotEqual(0, granted["exp"])
 
     def test_a_full_box_drops_the_remainder_rather_than_refusing(self) -> None:
         """Refusing would strand a won battle over a reward the player cannot
@@ -236,6 +254,12 @@ class ChestSettlementTest(unittest.TestCase):
             [companion_drop_level(row["bid"]) for row in self.box()["list"]],
             [row["lv"] for row in self.box()["list"]],
             "each arrives at its own recovered BuddyData.DropLevel",
+        )
+        self.assertEqual(
+            [companion_granted_exp(row["bid"], row["lv"]) for row in self.box()["list"]],
+            [row["exp"] for row in self.box()["list"]],
+            "and holds the experience that level stands on, or the strengthen "
+            "route restates it downwards on the first fusion",
         )
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
 
