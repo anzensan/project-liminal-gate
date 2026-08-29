@@ -123,6 +123,7 @@ from liminal_gate.stamina_meter import (
 )
 from liminal_gate.companion_catalog import CompanionCatalog, CompanionCatalogError, build_bundled_companion_policy, load_companion_catalog
 from liminal_gate.companion_master_data import companion_drop_level
+from liminal_gate.companion_progression_data import companion_exp_at, companion_granted_exp
 from liminal_gate.companion_equipment_catalog import (
     CompanionEquipmentCatalog,
     CompanionEquipmentCatalogError,
@@ -596,6 +597,66 @@ def _migrate_companion_record(account: dict[str, Any]) -> None:
         userdata["buddyInfo"] = rebuilt
 
 
+def _migrate_companion_drop_level(account: dict[str, Any]) -> None:
+    """Raise a Companion this server minted below the level it drops at.
+
+    The ΟⅡ Companions arrive at `BuddyData.DropLevel` 30, and this server minted
+    every dropped Companion at a literal 1 until that field was recovered.  The
+    saves written in the meantime hold the level 1 copies, and nothing a player
+    can do from the client repairs one: a Companion's level only ever rises, and
+    it does not rise from a fusion, because the strengthen route derives it from
+    experience the copy never had.
+
+    What the player sees is the whole of the loss.  `GetParamAtLevel` gives a
+    Companion its stats as `min + (max - min) * ((level - 1) / (MaxLevel - 1)) **
+    Coeff`, so level 1 is the interpolation's own origin and every stat sits at
+    its floor -- and all 51 of these carry `BOOSTmin` 0 against a `BOOSTmax` of
+    100.  A level 1 ΟⅡ Companion therefore has a skill that triggers 0% of the
+    time where a level 30 one triggers 25.6%, which is how a tester found it on
+    issue 77.  Its sale is the same story from the other side: a sale pays base
+    Coins times level, so the copy is worth 450 where it should be 13,500.
+
+    `lv` below `companion_drop_level` is unreachable by any other route, which
+    is what makes this safe to repair rather than merely plausible: a grant now
+    states the drop level, and nothing lowers one afterwards.  A Companion at or
+    above its drop level is left exactly as it is, so a strengthened copy keeps
+    what it earned.  The experience is restated with the level for the reason
+    `companion_granted_exp` exists -- a save carrying one without the other is
+    the defect, not the fix.
+    """
+    userdata = account.get("userdata")
+    if not isinstance(userdata, dict):
+        return
+    info = userdata.get("buddyInfo")
+    owned = info.get("list") if isinstance(info, dict) else None
+    if not isinstance(owned, list):
+        return
+    if any(
+        not isinstance(companion, dict) or type(companion.get("bid")) is not int
+        or type(companion.get("iid")) is not int or type(companion.get("lv")) is not int
+        or type(companion.get("exp")) is not int
+        for companion in owned
+    ):
+        # The whole box or none of it, for `_migrate_companion_record`'s reason:
+        # a list this cannot read is one `_companion_info` cannot reproject
+        # either, so repairing the readable rows would leave the book derived
+        # from a list that no longer matches it. A save in that state is for the
+        # validation layer to name, not for a repair to guess at.
+        return
+    repaired = False
+    for companion in owned:
+        level = companion_drop_level(companion["bid"])
+        if companion["lv"] >= level:
+            continue
+        companion["lv"] = level
+        companion["exp"] = max(companion["exp"], companion_granted_exp(companion["bid"], level))
+        repaired = True
+    if repaired:
+        # `record` is the best copy held per Companion and is derived from the
+        # owned list, so raising a level can change which copy that is.
+        userdata["buddyInfo"] = _companion_info(owned)
+
+
 def _migrate_rebirth_job_slots(account: dict[str, Any]) -> None:
     """Clear slot data a Rebirth copied onto jobs its character does not have.
 
@@ -748,6 +809,7 @@ def _parse_state_document(document: object) -> tuple[
         _migrate_tutorial_inventory(account)
         _migrate_wallet_projection(account)
         _migrate_companion_record(account)
+        _migrate_companion_drop_level(account)
         _migrate_companion_equipment(account)
         _migrate_rebirth_job_slots(account)
     # Absent in saves written before per-client routing; an empty map simply
@@ -6330,9 +6392,10 @@ def _award_chest_grants(userdata: dict[str, Any], slots: list[str]) -> dict[int,
         # exactly where a player meets that. The client reads the same field
         # for its result screen, so a hardcoded 1 here put a level 30 reward on
         # screen and a level 1 copy in the box.
+        level = companion_drop_level(companion_id)
         owned.append({
-            "bid": companion_id, "lv": companion_drop_level(companion_id), "date": 0.0,
-            "iid": next_id, "exp": 0, "flag": 0, "chrID": 0,
+            "bid": companion_id, "lv": level, "date": 0.0, "iid": next_id,
+            "exp": companion_granted_exp(companion_id, level), "flag": 0, "chrID": 0,
         })
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
@@ -6387,7 +6450,7 @@ def _granted_hunting_companions(
             return None
         if granted >= room:
             continue
-        rows.append({"bid": companion_id, "lv": level, "date": 0.0, "iid": next_id, "exp": 0, "flag": 0, "chrID": 0})
+        rows.append({"bid": companion_id, "lv": level, "date": 0.0, "iid": next_id, "exp": companion_granted_exp(companion_id, level), "flag": 0, "chrID": 0})
         next_id += 1
         granted += 1
     userdata["nextCompanionInventoryId"] = next_id
@@ -6487,9 +6550,16 @@ def _draw_companion_id(draws: tuple[CompanionDraw, ...]) -> int:
 
 
 def _companion_exp_at(master: Any, level: int) -> int:
-    if level <= 1:
-        return 0
-    return math.floor(master.exp_max * ((level - 1) / 98.0) ** master.exp_coeff)
+    """This master's own curve, read through the one shared implementation.
+
+    The operator's Companion-strengthen catalog may carry curves of its own, so
+    this route reads them from the master it is handed rather than by Companion
+    id; the arithmetic is `companion_progression_data`'s either way, because a
+    grant states a level from that curve and this derives a level back out of
+    it. Two copies of it drifting is exactly how a granted Companion came to
+    hold a level its experience did not support.
+    """
+    return companion_exp_at(master.exp_max, master.exp_coeff, level)
 
 
 def _companion_level_at_exp(master: Any, experience: int) -> int:
@@ -6801,7 +6871,7 @@ def _apply_message_grants(
     for companion_id, level in companions:
         owned.append({
             "bid": companion_id, "lv": level, "date": 0.0,
-            "iid": next_id, "exp": 0, "flag": 0, "chrID": 0,
+            "iid": next_id, "exp": companion_granted_exp(companion_id, level), "flag": 0, "chrID": 0,
         })
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
@@ -7334,7 +7404,8 @@ def _outcome_buddy_info(userdata: dict[str, Any], clear: dict[str, Any], identit
     room = max(catalog.max_companions - len(owned), 0)
     rows = copy.deepcopy(owned)
     for companion_id in result["buddies"][:room]:
-        rows.append({"bid": companion_id, "lv": catalog.companion_masters[companion_id].drop_level, "date": 0.0, "iid": next_id, "exp": 0, "flag": 0, "chrID": 0})
+        level = catalog.companion_masters[companion_id].drop_level
+        rows.append({"bid": companion_id, "lv": level, "date": 0.0, "iid": next_id, "exp": companion_granted_exp(companion_id, level), "flag": 0, "chrID": 0})
         next_id += 1
     userdata["nextCompanionInventoryId"] = next_id
     return _companion_info(rows)
