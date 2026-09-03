@@ -121,6 +121,35 @@ ARCHIVE_SECTION_ALLOWLIST: dict[int, tuple[int, ...]] = {
     **{chapter: (1, 2, 3, 4) for chapter in range(8000, 8008)},
 }
 
+#: The archive chapters whose sections the client unlocks in clear order, as
+#: ``chapter -> the first section that is gated on the one below it``.
+#:
+#: This is the client's gate, not a server list, and it looks like a menu bug
+#: until it is recognised. `UISpecialSelect.IsQuestOpen` (ARM64 `0xF84D84`)
+#: resolves `BattleData.Chapter.GetSection` for the tier it is asked about and,
+#: when that section's `parentQuest` is not empty, returns **false** unless
+#: `UserData.GetQuestClearDate(parentQuest)` (`0x19D8ADC`) is nonzero -- before
+#: it ever reaches `CheckQuestFlag`, so no flag this server sends can open a
+#: tier whose parent is unclear. Both `<GetList>` implementations drop a tier
+#: that fails rather than greying it out, so a folded card legitimately opens
+#: onto its first tier alone until that tier is cleared.
+#:
+#: Read from the reviewed BattleData through the same type trees
+#: `battledata_importer` uses. These two are the whole of it inside the archive
+#: manifests: 2015 chains `2015-1 <- 2015-2 <- 2015-3` (Final Fantasy XV --
+#: Gladiolus, Ignis, Prompto) and 2017 chains `2017-1` through `2017-5`
+#: (Arachnobot's Tale, parts 1--5). Every section of 2000--2011, 2014, 2016,
+#: 2018 and 8000--8018 declares an empty `parentQuest`. Tower 9000--9003 and
+#: Melting Pot 9100--9102 chain the same way and are recorded with their own
+#: families.
+#:
+#: **What this table is for.** A withholding in `ARCHIVE_SECTION_ALLOWLIST` that
+#: drops a chained section strands every section above it permanently, because
+#: the parent it names can never be cleared. The allowlist for a chapter named
+#: here must therefore start at section 1 and be contiguous; the generator test
+#: checks exactly that.
+CHAINED_ARCHIVE_SECTIONS: dict[int, int] = {2015: 2, 2017: 2}
+
 #: The archived families the final client listed under Arena -> Descent Quests
 #: rather than Arena -> Special Quests.
 #:

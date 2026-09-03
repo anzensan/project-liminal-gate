@@ -1602,6 +1602,37 @@ didn't open up" -- Melting Pot Lizardfolk stayed one section long.
   transitions, which are profile-canned rather than identity-settled, are left
   alone; the ordinary story is gated by `progressCode`, not by this map.
 
+### Final Fantasy XV shows Gladiolus alone -- and that is the retired shape
+
+**Reported symptom.** Issue 62 follow-up: "current PLG just has Arena ->
+Special Quests -> Final Fantasy XV - Gladiolus", where the 5.5.7 shutdown menu
+record lists Gladiolus, Ignis and Prompto inside that card. The reporter had
+not cleared Gladiolus.
+
+- **Not a defect.** It is the same `parentQuest` gate recorded above, reached
+  from the other side. `UISpecialSelect.IsQuestOpen` (`0xF84D84`) tests the
+  parent *before* `CheckQuestFlag`, and a tier whose parent has no
+  `questClearDate` is dropped from the list rather than greyed out -- so a
+  correctly served folded card opens onto its first tier alone until that tier
+  is cleared, and no flag the server sends can change that.
+- **Confirmed by BattleData.** Read through the same type trees
+  `battledata_importer` uses, Chapter 2015 chains `2015-1 <- 2015-2 <- 2015-3`,
+  titled `FF15 グラディオラス`, `FF15 イグニス` and `FF15 プロンプト`. Chapter
+  2017 (Arachnobot's Tale) chains its five parts identically. A sweep of the
+  whole table found no other chained archive chapter: every section of
+  2000--2011, 2014, 2016, 2018 and 8000--8018 declares an empty `parentQuest`.
+  A shutdown menu record showing all three tiers is a record of a *cleared*
+  account, not of what a fresh one is served.
+- **Confirmed the server serves all three.** The catalog carries 2015 sections
+  1--3, the loader folds them onto the one `2015` card, and `flags` sends
+  `sp_ch_2015-1`, `-2` and `-3` together at the card's unlock. Nothing is
+  withheld; the two upper tiers are waiting on the clear, not on the wire.
+- **Local policy.** The chains are recorded in
+  `event_manifest_data.CHAINED_ARCHIVE_SECTIONS` with the invariant they impose
+  -- a chained chapter's `ARCHIVE_SECTION_ALLOWLIST` entry must start at
+  section 1 and be contiguous, because withholding a chained section strands
+  every section above it permanently. A generator test enforces it.
+
 ## 2026-08-08: two settled mutations answered without `success` and hung the client
 
 **Reported symptom.** A Luck Candybox could finally be used, and confirming it

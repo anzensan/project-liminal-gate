@@ -24,6 +24,7 @@ from liminal_gate.event_catalog_generator import (
 )
 from liminal_gate.event_manifest_data import (
     ARCHIVE_SECTION_ALLOWLIST,
+    CHAINED_ARCHIVE_SECTIONS,
     EIDOLON_MANIFEST_ROWS,
     EIDOLON_PLAYABLE_SECTIONS,
     EVENT_CLEAR_COINS,
@@ -230,6 +231,27 @@ class EventCatalogGeneratorTest(unittest.TestCase):
         self.assertNotIn("sp_ch_2015", flags)
         for section in (4, 5, 6):
             self.assertNotIn((2015, section), loaded.by_identity())
+
+    def test_a_withholding_never_breaks_a_clear_order_chain(self) -> None:
+        """A chained chapter must be served from section 1 with no gaps.
+
+        `UISpecialSelect.IsQuestOpen` drops a tier whose BattleData
+        `parentQuest` has no `questClearDate`, before it consults any flag, so
+        the sections of a chained chapter can only be reached in order. Withhold
+        one and every section above it is stranded permanently: the parent it
+        names can never be cleared, and no flag this server sends can open it.
+        Nothing on the wire says so -- the card lists and simply stops
+        expanding -- so this is the only place it can be caught.
+        """
+        for chapter, first_chained in CHAINED_ARCHIVE_SECTIONS.items():
+            allowed = ARCHIVE_SECTION_ALLOWLIST.get(chapter)
+            if allowed is None:
+                continue
+            self.assertEqual(
+                tuple(range(1, len(allowed) + 1)), allowed,
+                f"chapter {chapter} chains from section {first_chained}; "
+                "its allowlist must start at 1 and be contiguous",
+            )
 
     def test_no_card_is_folded_that_the_client_cannot_expand(self) -> None:
         """Every folded row must be a chapter `GetSectionCount` can count.
