@@ -1633,6 +1633,57 @@ not cleared Gladiolus.
   section 1 and be contiguous, because withholding a chained section strands
   every section above it permanently. A generator test enforces it.
 
+### An equipped Companion's Luck is part of the team average the chests are drawn against
+
+**Reported symptom.** Issue 76, after the Strikes Back chests began appearing:
+"Not sure if it's because I have a Panda equipped on a character, but my team
+should be considered above 80 luck and no 80 luck chest appeared."
+
+- **Confirmed by disassembly.** `UserData.GetTeamLuckAverage(teamID)` (ARM64
+  `0x19DCC60`-`0x19DCDB8`) walks the six slots of one squad through
+  `GetTeamMember`, and for each slot that resolves to an owned character adds
+  `Character.get_luckConsiderBuddy` to one accumulator, `1` to a counter, and
+  `Character.get_teamLuckUpBuddyEffect` to a third. It then divides the first
+  by the counter with a signed integer divide -- zero if the counter is zero --
+  adds the team accumulator whole, and clamps the sum at 1000 tenths. The empty
+  slots are skipped, not averaged in as zeroes.
+- **The two effects are not the same shape.** `get_luckConsiderBuddy`
+  (`0xD089C8`) returns the plain stat when `Character._buddyID` is below 1 or
+  the Companion is absent from `luckUpBuddyIds`, and otherwise `luck + bonus`
+  clamped at 1000 -- so a personal bonus may carry a character past its own
+  class cap but never past 100.0, and it is applied *before* the average.
+  `get_teamLuckUpBuddyEffect` (`0xD08BBC`) returns 0 or the value from
+  `teamLuckUpBuddyIds` with no clamp, and the caller adds every slot's, so team
+  bonuses stack per equipped copy and land *after* the average.
+- **Both tables are keyed by the Companion, not by the inventory id.** The
+  lookup key is `Character.buddyID.ToString()`, which is `buddyInfo.list[].bid`.
+  `chrdata[].buddy` is the inventory id and names the box row, not the
+  Companion, so the box has to be walked to get from one to the other.
+- **Consequence.** The server published `luckUpBuddies` and
+  `teamLuckUpBuddies` to the client and then averaged the stored stat alone, so
+  every Companion-boosted squad rolled its chests at less than the header it
+  was shown. That was recorded here as erring safely toward fewer chests, and
+  it is not safe: A through D are curves, where a low average costs a little
+  probability, but Luck 80 and Luck 100 are thresholds that simply do not
+  appear below 80.0 and 100.0 -- and those two are where the Strikes Back
+  quests' character-specific Companions come from. A Panda alone is +3.0 on one
+  member, which moves a six-slot average by up to 5.0 tenths of a point; the
+  reporter's squad was displayed at or above 80.0 and averaged here below it.
+- **Local policy.** `luck_data` holds the three effect tables and
+  `server_constants` projects them onto the client's key names rather than
+  restating them. Two copies could disagree, and the disagreement would be
+  invisible from either side: the client would display a team Luck the server
+  had not rolled against.
+- **What was deliberately not changed.** `luckUpBoostBuddies` (Royal Ringstone)
+  is still served as recovered and still unmodelled. The client reads it as a
+  percentage against a base of 100 -- `Character.get_luckUpBoost` (`0xD08D34`)
+  returns a literal 100 for a character with no listed Companion, and
+  `UserData.GetLuckUpBoost` (`0x19DCDB8`) takes the maximum across the squad
+  starting from 100 -- so the recovered value of 2 can never exceed the base and
+  is inert wherever the client uses it. No reached call site for either was
+  found, and the Luck gain this server rolls is its own, so the value is left
+  exactly as the operator's APK carried it rather than reinterpreted.
+
 ## 2026-08-08: two settled mutations answered without `success` and hung the client
 
 **Reported symptom.** A Luck Candybox could finally be used, and confirming it

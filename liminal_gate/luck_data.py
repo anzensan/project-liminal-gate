@@ -145,6 +145,34 @@ LUCKY_RUNNER_EXTRA_SPAWN_CHANCE = 0.3
 LUCKY_ENEMIES_PER_BATTLE = 1
 
 
+#: **Confirmed, from the client.** The Companion Luck effects, keyed by the
+#: Companion's own ID -- `Character.buddyID`, which is `buddyInfo.list[].bid`
+#: and *not* the inventory id `chrdata[].buddy` names. The client reads all
+#: three from the constants block this server serves (`UserData.luckUpBuddyIds`
+#: at 0x170, `teamLuckUpBuddyIds` at 0x178, `luckUpBoostBuddies` at 0x180), so
+#: these tables are the wire values as well; `server_constants` projects them
+#: onto their key names rather than restating them, because a server that
+#: serves one set of Companion effects and rolls against another is exactly the
+#: disagreement the client cannot see.
+#:
+#: The community record names the same Companions independently: Unicorn at
+#: +10 personal, Panda at +30, Senala O at +10 team and six more at +5.
+COMPANION_PERSONAL_LUCK_TENTHS: dict[int, int] = {292: 100, 293: 300}
+COMPANION_TEAM_LUCK_TENTHS: dict[int, int] = {
+    291: 100, 394: 50, 395: 50, 428: 50, 484: 50, 496: 50, 497: 50,
+}
+
+#: Royal Ringstone, which the record describes as doubling a successful Luck
+#: increment. The client reads it as a percentage against a base of 100 --
+#: `Character.get_luckUpBoost` (ARM64 `0xD08D34`) returns a literal 100 for a
+#: character with no listed Companion, and `UserData.GetLuckUpBoost`
+#: (`0x19DCDB8`) takes the maximum across the squad starting from 100 -- and no
+#: reached code path in the client consumes the result. This server does not
+#: model the effect either, so the value is carried for the client's benefit
+#: alone and is left exactly as it was served.
+COMPANION_LUCK_GAIN_BOOST: dict[int, int] = {445: 2}
+
+
 @dataclass(frozen=True)
 class ChestTier:
     """One of the six chest slots, and the rule that decides it appears.

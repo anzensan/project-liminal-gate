@@ -5,13 +5,18 @@ import unittest
 from liminal_gate.luck_data import (
     ALLOW_LUCKY_CHAPTERS,
     CHEST_TIERS,
+    COMPANION_LUCK_GAIN_BOOST,
+    COMPANION_PERSONAL_LUCK_TENTHS,
+    COMPANION_TEAM_LUCK_TENTHS,
     LUCK_CAP_BY_CHARACTER,
     LUCK_TENTHS_MAX,
     LUCKY_ORBLING_GAIN_TENTHS,
     LUCKY_RUNNER_CHAPTERS,
     LUCKY_RUNNER_GAIN_TENTHS,
     character_luck_cap,
+    chest_probabilities,
 )
+from liminal_gate.server_constants import build_server_constants
 from liminal_gate.luck_pool_catalog import LuckPoolCatalog
 from liminal_gate.trading_post_data import TRADING_POST_WEEKS
 from liminal_gate.luck_pool_interpolation import build_luck_pools
@@ -540,6 +545,29 @@ class ChestWireTest(unittest.TestCase):
         self.assertEqual({}, chest_items([""] * 6))
 
 
+#: Panda, the +3.0 personal Companion, and Senala O, the +1.0 team one.
+PANDA, SENALA = 293, 291
+#: An ordinary Companion, carrying no Luck effect of any kind.
+PLAIN_COMPANION = 1
+
+
+def equipping(save: dict, equipped: dict[int, int]) -> dict:
+    """Give characters Companions, linking both halves the way the client does.
+
+    `chrdata[].buddy` names the *inventory* id and `buddyInfo.list[].chrID`
+    names the character back; the Companion itself is `bid`. A save that half
+    links them is refused elsewhere, so the tests build whole links.
+    """
+    box = []
+    for inventory_id, (character, companion) in enumerate(equipped.items(), start=1):
+        box.append({"iid": inventory_id, "bid": companion, "lv": 1, "exp": 0, "chrID": character})
+        for row in save["chrdata"]:
+            if row["id"] == character:
+                row["buddy"] = inventory_id
+    save["buddyInfo"] = {"list": box, "record": []}
+    return save
+
+
 class TeamLuckReadTest(unittest.TestCase):
     def test_the_party_average_comes_off_the_save(self) -> None:
         self.assertEqual(300, party_team_luck(userdata({1: 200, 2: 400})))
@@ -550,6 +578,79 @@ class TeamLuckReadTest(unittest.TestCase):
 
     def test_a_save_without_a_party_is_zero(self) -> None:
         self.assertEqual(0, party_team_luck({}))
+
+
+class CompanionLuckTest(unittest.TestCase):
+    """The Companion effects the client folds into the Luck it displays.
+
+    `UserData.GetTeamLuckAverage` averages `Character.luckConsiderBuddy` over
+    the squad and then adds every slot's `teamLuckUpBuddyEffect`, so a server
+    that averages the stored stat alone rolls against a smaller number than the
+    player was shown.
+    """
+
+    def test_a_personal_companion_is_averaged_in(self) -> None:
+        """Panda's +3.0 is one member's, so it is +3.0 divided by the party."""
+        save = equipping(userdata({1: 400, 2: 400}), {1: PANDA})
+        self.assertEqual(400 + 300 // 2, party_team_luck(save))
+
+    def test_a_team_companion_is_added_after_the_average(self) -> None:
+        """Senala O's +1.0 is the team's, so it is +1.0 whatever the party size."""
+        save = equipping(userdata({1: 400, 2: 400}), {1: SENALA})
+        self.assertEqual(500, party_team_luck(save))
+
+    def test_team_companions_stack(self) -> None:
+        save = equipping(userdata({1: 400, 2: 400}), {1: SENALA, 2: SENALA})
+        self.assertEqual(600, party_team_luck(save))
+
+    def test_a_companion_with_no_luck_effect_changes_nothing(self) -> None:
+        save = equipping(userdata({1: 400, 2: 400}), {1: PLAIN_COMPANION})
+        self.assertEqual(400, party_team_luck(save))
+
+    def test_a_companion_on_a_benched_character_changes_nothing(self) -> None:
+        """The bonus belongs to the squad on screen, like every other Luck read."""
+        save = equipping(userdata({1: 400, 2: 400, 3: 400}, [1, 2, 0, 0, 0, 0]), {3: PANDA})
+        self.assertEqual(400, party_team_luck(save))
+
+    def test_a_buddy_the_box_does_not_hold_is_not_a_bonus(self) -> None:
+        """Half a link is a save defect the server repairs elsewhere; here it
+        must simply not be read as some Companion's effect."""
+        save = userdata({1: 400, 2: 400})
+        save["chrdata"][0]["buddy"] = 77
+        save["buddyInfo"] = {"list": [], "record": []}
+        self.assertEqual(400, party_team_luck(save))
+
+    def test_a_save_with_no_companion_box_is_the_stored_average(self) -> None:
+        self.assertEqual(400, party_team_luck(userdata({1: 400, 2: 400})))
+
+    def test_the_panda_carries_a_squad_over_the_luck_80_threshold(self) -> None:
+        """Issue 76. The reporter's squad displayed at or above 80.0 with a
+        Panda equipped and was refused the Luck 80 chest, which is where the
+        character-specific Companions of the Strikes Back quests come from."""
+        squad = {member: 795 for member in range(1, 7)}
+        without = userdata(dict(squad))
+        with_panda = equipping(userdata(dict(squad)), {1: PANDA})
+        self.assertEqual(795, party_team_luck(without))
+        # 79.5 plus Panda's +3.0 is 100.0 rather than 82.5: a personal bonus
+        # stops at the client's own ceiling before the average is taken.
+        self.assertEqual((LUCK_TENTHS_MAX + 795 * 5) // 6, party_team_luck(with_panda))
+        self.assertEqual(0.0, chest_probabilities(party_team_luck(without))["Luck 80"])
+        self.assertEqual(1.0, chest_probabilities(party_team_luck(with_panda))["Luck 80"])
+
+    def test_the_served_constants_are_the_tables_the_roll_uses(self) -> None:
+        """Two copies of these effects could disagree, and the disagreement
+        would show the player one team Luck while the chests were drawn
+        against another."""
+        constants = build_server_constants()
+        for key, table in (
+            ("luckUpBuddies", COMPANION_PERSONAL_LUCK_TENTHS),
+            ("teamLuckUpBuddies", COMPANION_TEAM_LUCK_TENTHS),
+            ("luckUpBoostBuddies", COMPANION_LUCK_GAIN_BOOST),
+        ):
+            self.assertEqual(
+                {str(companion): effect for companion, effect in table.items()},
+                constants[key],
+            )
 
 
 def three_squads(party_luck: dict[int, int], squads: list[list[int]], team_no: int) -> dict:

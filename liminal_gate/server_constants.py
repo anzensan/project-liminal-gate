@@ -31,6 +31,11 @@ from __future__ import annotations
 from typing import Any
 
 from liminal_gate.archive_economy import DAILY_QUEST_FREE_ENERGY
+from liminal_gate.luck_data import (
+    COMPANION_LUCK_GAIN_BOOST,
+    COMPANION_PERSONAL_LUCK_TENTHS,
+    COMPANION_TEAM_LUCK_TENTHS,
+)
 from liminal_gate.save_validation import MAX_ITEM_STACK
 from liminal_gate.secondary_world_data import world_max_chapters
 from liminal_gate.story_progression_catalog import CORE_SECTION_COUNTS
@@ -51,6 +56,17 @@ LOCAL_COUNTRY_NAME = "United States"
 # flag it remains closed, while its presence keeps the client from taking the
 # fallback. A configured local event catalog replaces this one-entry fixture.
 CLOSED_SPECIAL_QUEST_SENTINEL = "3003-1"
+
+
+def _by_companion_id(effects: dict[int, int]) -> dict[str, int]:
+    """A Companion effect table in the string-keyed form the client parses.
+
+    `SetServerConstants` stores these three as `JsonData` and every read of one
+    looks the Companion up by `buddyID.ToString()`, so an integer key is a key
+    the client never finds.
+    """
+    return {str(companion): effect for companion, effect in effects.items()}
+
 
 # The last core-story chapter, taken from the same table the progression graph
 # is built from so the ceiling below can never fall behind the story it bounds.
@@ -235,13 +251,16 @@ def build_server_constants(
         # Companion master Luck effects, stored in Luck tenths, recovered from
         # the final client's embedded Character Luck dictionaries.  The client's
         # Companion/Luck properties require these three to be present.
-        "luckUpBuddies": {"292": 100, "293": 300},
-        "teamLuckUpBuddies": {
-            "291": 100, "394": 50, "395": 50, "428": 50,
-            "484": 50, "496": 50, "497": 50,
-        },
+        #
+        # They are projected from `luck_data` rather than restated here,
+        # because the chest roll averages the party's Luck with these same
+        # effects applied.  Two copies could disagree, and the disagreement
+        # would be invisible: the client would show the team Luck it was told
+        # while the server rolled the chests against a different number.
+        "luckUpBuddies": _by_companion_id(COMPANION_PERSONAL_LUCK_TENTHS),
+        "teamLuckUpBuddies": _by_companion_id(COMPANION_TEAM_LUCK_TENTHS),
         # Royal Ringstone doubles a successful per-character Luck increment.
-        "luckUpBoostBuddies": {"445": 2},
+        "luckUpBoostBuddies": _by_companion_id(COMPANION_LUCK_GAIN_BOOST),
     }
     if normal_slot_coins is not None:
         constants["NormalSlotCoins"] = normal_slot_coins
