@@ -15,6 +15,13 @@
   - `jobLevels` is packed, not a level. The low twelve bits are the job level
     and the rest is its progression, so the editor shows them as two fields and
     repacks them on export. Never write a plain level into that field.
+  - A Companion's level is derived from its EXP on the server: every strengthen
+    recomputes `lv` from `exp` against the master's curve, so a level written
+    without its EXP lasts until the first strengthen. The editor carries the
+    curve (the generated table below, rendered from the server's own
+    progression data by `liminal_gate.save_editor_tables`) and always writes
+    the pair together. `buddyInfo.record` is derived from `buddyInfo.list` the
+    same way the server derives it, after every edit.
 
   The client reads several numbers with LitJson's double accessor, and
   JSON.stringify turns 10.0 into 10, which makes the client fail parsing an
@@ -127,7 +134,7 @@
     <div class="row" style="margin-top:.9rem">
       <button id="pickNames">Load names (optional)…</button>
       <input type="file" id="namesFile" accept=".json,application/json" class="hidden">
-      <span id="namesLoaded" class="muted">No name file — characters and items show as bare IDs.</span>
+      <span id="namesLoaded" class="muted">No name file — characters, items, and Companions show as bare IDs.</span>
     </div>
     <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
       Setup writes <code>user-data/names.json</code> when you pass
@@ -160,9 +167,12 @@
         <div><label for="coins">Coins</label><input id="coins" type="number" min="0" max="99999999"></div>
         <div><label for="energy">Energy</label><input id="energy" type="number" min="0" max="9999"></div>
         <div><label for="freeEnergy">Free Energy</label><input id="freeEnergy" type="number" min="0" max="9999"></div>
+        <div><label>&nbsp;</label><button id="maxWallet">Fill to the client's ceilings</button></div>
       </div>
       <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
-        The nested <code>valuables</code> projection is kept in step automatically.
+        Energy is the premium currency (paid and free are one balance in the client).
+        The ceilings are the client's own <code>maxCoins</code> and <code>maxEnergy</code>;
+        the nested <code>valuables</code> projection is kept in step automatically.
       </p>
     </section>
 
@@ -193,7 +203,37 @@
     </section>
 
     <section>
-      <h2>5 · Items</h2>
+      <h2>5 · Companions</h2>
+      <div class="scroll">
+        <table id="companions">
+          <thead><tr><th>IID</th><th>Companion</th><th>Level</th><th>Cap</th><th>EXP</th><th>Equipped to</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="companionSummary" class="muted" style="margin-top:.6rem;font-size:.75rem"></div>
+      <div class="row" style="margin-top:1rem">
+        <div style="flex:2;min-width:12rem">
+          <label for="addCompanionId">Add Companion</label>
+          <input id="addCompanionId" list="companionNames" placeholder="ID, or a name once names are loaded">
+          <datalist id="companionNames"></datalist>
+        </div>
+        <div style="flex:1;min-width:7rem"><label for="addCompanionLevel">Level</label><input id="addCompanionLevel" type="number" min="1" max="80" placeholder="max"></div>
+        <button id="addCompanion" style="margin-top:1.1rem">Add</button>
+        <button id="addEveryCompanion" style="margin-top:1.1rem">Add one of each</button>
+      </div>
+      <div id="companionNote" class="muted" style="margin-top:.6rem;font-size:.75rem"></div>
+      <p class="muted" style="margin:.8rem 0 0;font-size:.75rem">
+        A blank level means the Companion's own cap. Level and EXP are written together from the
+        server's progression curve, because the server recomputes the level from the EXP on the next
+        strengthen. The same Companion may be held more than once. Removing one also frees the
+        character carrying it and empties every versus slot naming it. The box holds at most
+        <code>1000</code>; "Add one of each" grants every master the account does not yet hold, at its cap,
+        until the box is full.
+      </p>
+    </section>
+
+    <section>
+      <h2>6 · Items</h2>
       <div class="row">
         <div style="flex:1;min-width:9rem"><label for="itemId">Item slot (1–181)</label><input id="itemId" type="number" min="1" max="181" value="1"></div>
         <div style="flex:1;min-width:9rem"><label for="itemCount">Count (0–999)</label><input id="itemCount" type="number" min="0" max="999" value="0"></div>
@@ -203,7 +243,7 @@
     </section>
 
     <section>
-      <h2>6 · Check and export</h2>
+      <h2>7 · Check and export</h2>
       <div id="findings"></div>
       <div class="row" style="margin-top:1rem">
         <button id="export" class="primary">Export edited save…</button>
@@ -230,13 +270,73 @@ const LEVEL_CAP = 90;
 const ITEM_SLOTS = 181;
 const MAX_STACK = 999;
 const WALLET = ["coins", "energy", "freeEnergy", "energyAppStore", "energyGooglePlay", "energyAndApp"];
+// `ServerConstants.maxCoins` / `maxEnergy`, the same ceilings save_validation.py enforces.
+const MAX_COINS = 99999999;
+const MAX_ENERGY = 9999;
+// `BuddyBoxMax`: the box the server settles drops against, and the count at
+// which the client refuses every stage that could drop a Companion.
+const COMPANION_BOX = 1000;
+const COMPANION_FLAG_LOCKED = 2;
+
+// BEGIN generated Companion progression table
+// Rendered from liminal_gate/companion_progression_data.py by
+// `python3 -m liminal_gate.save_editor_tables tools/save-editor.html`.
+// Do not edit by hand: tests/test_save_editor.py compares it to the source.
+const COMPANION_PROGRESSION = [
+  {max: 1, exp: [], ids: [441,446]},
+  {max: 1, exp: [], ids: [128,129,130,140,245,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,299,301,333,342,344,346,348,350,352,354,356,367,368,383,388,390,391,393,394,395,396,397,398,399,400,402,404,416,417,418,419,427,428,429,430,431,432,442,445,447,450,452,454,456,457,458,459,468,469,470,471,472,473,484,485,486,487,488,489,490,491,492,493,494,495,496,497]},
+  {max: 10, exp: [40,174,409,750,1198,1757,2429,3215,4118], ids: [185]},
+  {max: 10, exp: [82,342,787,1419,2243,3259,4471,5879,7484], ids: [87]},
+  {max: 10, exp: [65,282,661,1209,1933,2834,3918,5186,6642], ids: [131,132,133,134,135,136,137,138,139,151,152,153,154,155,156,157,162,164,180,181,182,183,184,186,187,188,225,226,227,228,233,234,235,236]},
+  {max: 10, exp: [41,191,466,878,1435,2144,3009,4037,5231], ids: [108,109,110,111]},
+  {max: 20, exp: [28,124,290,532,850,1247,1724,2282,2922,3646,4454,5347,6326,7391,8544,9784,11112,12529,14036], ids: [194]},
+  {max: 20, exp: [124,514,1180,2129,3364,4889,6707,8818,11227,13934,16940,20248,23859,27774,31993,36519,41352,46492,51942], ids: [88]},
+  {max: 20, exp: [98,423,991,1814,2899,4252,5877,7780,9963,12431,15185,18230,21567,25199,29127,33355,37884,42715,47851], ids: [8,14,20,26,36,37,38,68,69,70,71,83,163,165,189,190,191,192,193,195,196,197,207,208,209,210,211,212,213,214,215,237,238,239,240]},
+  {max: 20, exp: [62,286,699,1318,2153,3216,4514,6056,7847,9894,12202,14777,17622,20743,24143,27826,31796,36057,40611], ids: [168,169,170,171]},
+  {max: 30, exp: [165,685,1574,2839,4486,6519,8942,11758,14969,18578,22587,26998,31812,37032,42658,48692,55136,61990,69256,76935,85028,93536,102461,111802,121560,131738,142335,153352,164790], ids: [166]},
+  {max: 30, exp: [131,564,1322,2419,3866,5669,7837,10373,13285,16575,20247,24307,28756,33598,38837,44474,50512,56954,63802,71058,78725,86804,95297,104207,113534,123281,133450,144041,155056], ids: [1,6,9,15,21,27,39,40,41,72,73,74,75,90,91,92,93,94,95,96,97,98,141,142,143,144,145,146,147,148,149,241,242,243,244]},
+  {max: 30, exp: [83,382,933,1757,2871,4288,6019,8074,10463,13192,16270,19702,23496,27657,32190,37101,42395,48076,54149,60617,67486,74758,82439,90531,99037,107962,117309,127080,137280], ids: [172,173,174,175]},
+  {max: 40, exp: [206,857,1968,3549,5608,8149,11178,14698,18712,23223,28234,33748,39765,46290,53322,60865,68920,77488,86570,96169,106286,116921,128076,139752,151951,164672,177918,191690,205988,220813,236166,252048,268460,285402,302876,320882,339422,358494,378102], ids: [167]},
+  {max: 40, exp: [164,705,1653,3024,4832,7087,9796,12967,16606,20718,25309,30384,35945,41998,48546,55592,63140,71193,79753,88823,98406,108505,119122,130259,141918,154102,166812,180051,193821,208122,222958,238330,254240,270689,287679,305211,323287,341909,361077], ids: [2,7,11,12,17,18,23,24,29,30,32,33,34,35,48,50,51,52,53,54,55,56,57,58,84,85,86,100,102,104,106,112,114,115,116,117,118,119,120,121,126,216,217,218,219,220,221,222,223,224,252,256,257,258,264,266,369,370,405,406,407,420,422,460,462,464,466,478,479,480,481]},
+  {max: 40, exp: [130,580,1388,2577,4164,6163,8585,11440,14737,18484,22688,27355,32492,38104,44197,50776,57845,65409,73472,82038,91111,100696,110794,121411,132548,144210,156399,169119,182372,196161,210490,225359,240773,256734,273243,290304,307919,326090,344820], ids: [176,177,178,179]},
+  {max: 60, exp: [312,1249,2811,4997,7809,11245,15306,19991,25301,31236,37796,44981,52790,61224,70283,79966,90274,101207,112765,124947,137755,151187,165243,179925,195231,211162,227717,244897,262703,281132,300187,319866,340170,361099,382653,404831,427634,451062,475114,499791,525093,551020,577571,604748,632548,660974,690024,719700,750000,780924,812473,844648,877446,910870,944918,979591,1014889,1050812,1087359], ids: [78,89,127,150,253,259,260,362,363,375,376]},
+  {max: 60, exp: [197,846,1983,3629,5799,8504,11755,15560,19927,24862,30371,36460,43134,50398,58255,66711,75768,85431,95703,106588,118088,130206,142946,156311,170302,184922,200175,216062,232585,249747,267550,285997,305088,324827,345214,366253,387944,410291,433293,456954,481274,506255,531900,558209,585184,612827,641138,670120,699774,730101,761103,792781,825136,858170,891883,926278,961354,997115,1033560], ids: [4,10,16,22,28,42,43,44,49,59,60,61,62,63,64,65,66,67,76,107,122,123,124,125,198,199,200,201,202,203,204,205,206,229,230,231,232,255,263,265,381,382,423,433,435,443,444,461,463,465,467]},
+  {max: 60, exp: [157,696,1666,3093,4997,7396,10302,13728,17685,22181,27225,32826,38990,45725,53037,60931,69414,78491,88166,98446,109334,120835,132953,145693,159058,173052,187679,202943,218847,235394,252588,270431,288928,308080,327892,348365,369503,391309,413784,436932,460755,485256,510437,536300,562849,590084,618010,646626,675937,705944,736649,768055,800162,832974,866492,900719,935655,971304,1007666], ids: [246,247,248,249]},
+  {max: 60, exp: [124,573,1399,2636,4306,6432,9028,12112,15694,19788,24405,29554,35245,41486,48286,55652,63593,72114,81223,90926,101229,112138,123658,135796,148556,161944,175964,190621,205920,221865,238462,255713,273624,292198,311439,331351,351939,373205,395153,417787,441111,465127,489840,515252,541366,568186,595715,623956,652912,682586,712981,744099,775944,808518,841824,875865,910643,946161,982422], ids: [113,158,159,160,161,261]},
+  {max: 80, exp: [312,1249,2811,4997,7809,11245,15306,19991,25301,31236,37796,44981,52790,61224,70283,79966,90274,101207,112765,124947,137755,151187,165243,179925,195231,211162,227717,244897,262703,281132,300187,319866,340170,361099,382653,404831,427634,451062,475114,499791,525093,551020,577571,604748,632548,660974,690024,719700,750000,780924,812473,844648,877446,910870,944918,979591,1014889,1050812,1087359,1124531,1162328,1200749,1239795,1279466,1319762,1360683,1402228,1444398,1487192,1530612,1574656,1619325,1664618,1710537,1757080,1804248,1852040,1900458,1949500], ids: [361,365]},
+  {max: 80, exp: [364,1457,3279,5830,9110,13119,17857,23323,29518,36443,44096,52478,61588,71428,81997,93294,105320,118075,131559,145772,160714,176384,192784,209912,227769,246355,265670,285714,306486,327988,350218,373177,396865,421282,446428,472303,498906,526239,554300,583090,612609,642857,673833,705539,737973,771137,805029,839650,875000,911078,947886,985422,1023688,1062682,1102405,1142857,1184037,1225947,1268586,1311953,1356049,1400874,1446428,1492711,1539723,1587463,1635932,1685131,1735058,1785714,1837099,1889212,1942055,1995626,2049927,2104956,2160714,2217201,2274416], ids: [3,5,13,19,25,31,45,46,47,77,79,80,81,82,99,101,103,105,250,251,254,262,303,304,305,306,307,358,359,360,364,366,371,372,373,374,385,386,408,409,421,424,425,426,434,436,437,438,439,440,448,449,474,475,476,477,482,483]},
+  {max: 80, exp: [230,987,2314,4234,6765,9922,13715,18154,23248,29006,35433,42537,50323,58797,67964,77829,88396,99670,111654,124353,137769,151908,166771,182363,198686,215743,233537,252072,271349,291372,312142,333663,355936,378964,402750,427295,452602,478672,505509,533113,561486,590631,620550,651244,682715,714964,747995,781807,816403,851785,887954,924911,962659,1001198,1040530,1080657,1121580,1163300,1205820,1249139,1293260,1338184,1383911,1430445,1477785,1525933,1574890,1624658,1675237,1726629,1778835,1831856,1885694,1940349,1995822,2052115,2109229,2167164,2225923], ids: [377,378,379,380,410,411,412,413,414,415]},
+  {max: 80, exp: [1316,5644,13225,24198,38662,56698,78372,103739,132850,165750,202478,243072,287565,335988,388371,444741,505124,569544,638025,710588,787255,868046,952979,1042074,1135348,1232819,1334501,1440413,1550568,1664983,1783671,1906646,2033923,2165514,2301432,2441690,2586299,2735273,2888623,3046360,3208495,3375038,3546002,3721396,3901229,4085514,4274258,4467472,4665165,4867346,5074025,5285210,5500910,5721134,5945890,6175187,6409032,6647434,6890400,7137939,7390059,7646766,7908068,8173973,8444487,8719619,8999374,9283761,9572785,9866454,10164775,10467753,10775396,11087710,11404700,11726375,12052739,12383799,12719561], ids: [298,300,302,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,334,335,336,337,338,339,340,341,343,345,347,349,351,353,355,357,384,387,389,392,401,403,451,453,455]},
+];
+// END generated Companion progression table
+
+const companionProfiles = new Map();
+for (const profile of COMPANION_PROGRESSION) for (const id of profile.ids) companionProfiles.set(id, profile);
+const companionMaxLevel = (bid) => (companionProfiles.get(bid) || { max: 1 }).max;
+// The EXP the server expects a Companion of this master to hold at `level`,
+// which is also what it recomputes the level from on the next strengthen.
+const companionExpAt = (bid, level) => {
+  const profile = companionProfiles.get(bid);
+  if (!profile || level <= 1) return 0;
+  return profile.exp[Math.min(level, profile.max) - 2];
+};
+const companionLevelAtExp = (bid, exp) => {
+  const profile = companionProfiles.get(bid);
+  let level = 1;
+  if (!profile) return level;
+  for (let candidate = 2; candidate <= profile.max; candidate += 1) {
+    if (profile.exp[candidate - 2] > exp) break;
+    level = candidate;
+  }
+  return level;
+};
 
 let document_ = null;      // the whole parsed save
 let accountId = null;
 let handle = null;         // File System Access handle, when the browser has it
 // Optional, user-supplied, never shipped: names are game text, so this tool
 // carries none and simply labels IDs when a name file is provided.
-let names = { characters: {}, items: {} };
+let names = { characters: {}, items: {}, companions: {} };
 
 const nameFor = (kind, id) => {
   const found = names[kind] && names[kind][String(id)];
@@ -299,9 +399,10 @@ $("namesFile").addEventListener("change", async (event) => {
     names = {
       characters: (parsed && parsed.characters) || {},
       items: (parsed && parsed.items) || {},
+      companions: (parsed && parsed.companions) || {},
     };
-    const counts = [Object.keys(names.characters).length, Object.keys(names.items).length];
-    $("namesLoaded").textContent = `${file.name} — ${counts[0]} character names, ${counts[1]} item names`;
+    const counts = ["characters", "items", "companions"].map((kind) => Object.keys(names[kind]).length);
+    $("namesLoaded").textContent = `${file.name} — ${counts[0]} character names, ${counts[1]} item names, ${counts[2]} Companion names`;
     $("namesLoaded").className = "sev-ok";
   } catch (error) {
     $("namesLoaded").textContent = `Could not read that name file: ${error.message}`;
@@ -376,6 +477,7 @@ function render() {
     .sort((left, right) => Number(left[0]) - Number(right[0]))
     .map(([id, name]) => `<option value="${escapeHtml(`${name} (${id})`)}"></option>`)
     .join("");
+  renderCompanions();
   const held = (data.itemList || [])
     .map((count, index) => [index + 1, count])
     .filter(([, count]) => count > 0);
@@ -403,14 +505,14 @@ $("roster").addEventListener("input", (event) => {
 });
 
 // Accepts an ID, a name, or the "Name (12)" form the datalist offers.
-function resolveCharacterId(text) {
+function resolveId(kind, text) {
   const trimmed = String(text || "").trim();
   if (!trimmed) return null;
   const parenthesised = trimmed.match(/\((\d+)\)\s*$/);
   if (parenthesised) return Number(parenthesised[1]);
   if (/^\d+$/.test(trimmed)) return Number(trimmed);
   const lowered = trimmed.toLowerCase();
-  const found = Object.entries(names.characters).find(([, name]) => String(name).toLowerCase() === lowered);
+  const found = Object.entries(names[kind]).find(([, name]) => String(name).toLowerCase() === lowered);
   return found ? Number(found[0]) : null;
 }
 
@@ -432,7 +534,7 @@ function newCharacterRow(id, level) {
 
 $("addCharacter").addEventListener("click", () => {
   const note = $("addNote");
-  const id = resolveCharacterId($("addId").value);
+  const id = resolveId("characters", $("addId").value);
   const owned = new Set((userdata().chrdata || []).map((row) => row.id));
   if (id === null || !Number.isInteger(id) || id <= 0) {
     note.textContent = "Enter a character ID, or a name once a name file is loaded.";
@@ -472,16 +574,202 @@ $("roster").addEventListener("click", (event) => {
   render();
 });
 
-for (const field of ["coins", "energy", "freeEnergy"]) {
-  $(field).addEventListener("input", (event) => {
-    const data = userdata();
-    data[field] = Math.max(0, Math.trunc(Number(event.target.value) || 0));
-    if (data.valuables && typeof data.valuables === "object") {
-      for (const name of WALLET) if (name in data.valuables && name in data) data.valuables[name] = data[name];
+/* ---------- Companions ---------- */
+
+const companionBox = () => {
+  const data = userdata();
+  if (!data.buddyInfo || typeof data.buddyInfo !== "object" || !Array.isArray(data.buddyInfo.list)) {
+    data.buddyInfo = { list: [], record: [] };
+  }
+  return data.buddyInfo.list;
+};
+
+// Mirrors the server's `_companion_info`: `record` is the book, one entry per
+// distinct master, the best copy held (highest level, then highest inventory
+// id), ordered by master id. Every server grant path rebuilds it from `list`,
+// and so does every edit here, so the two never disagree.
+function rebuildCompanionRecord() {
+  const best = new Map();
+  for (const companion of companionBox()) {
+    const current = best.get(companion.bid);
+    if (!current || companion.lv > current.lv || (companion.lv === current.lv && companion.iid > current.iid)) {
+      best.set(companion.bid, companion);
     }
+  }
+  userdata().buddyInfo.record = [...best.keys()]
+    .sort((left, right) => left - right)
+    .map((bid) => JSON.parse(JSON.stringify(best.get(bid))));
+}
+
+// The server's rule when the field is absent: one past the highest id held.
+// A recorded value below that would hand the next grant an id already in use.
+function nextCompanionInventoryId() {
+  const data = userdata();
+  const highest = companionBox().reduce((top, companion) => Math.max(top, Number(companion.iid) || 0), 0);
+  return Number.isInteger(data.nextCompanionInventoryId) && data.nextCompanionInventoryId > highest
+    ? data.nextCompanionInventoryId
+    : highest + 1;
+}
+
+// Returns null on success, otherwise the reason nothing was added. The row's
+// key order is the server's own grant row; `date` is re-emitted as a decimal
+// on export like every other `date`.
+function addCompanion(bid, level) {
+  const data = userdata();
+  if (!companionProfiles.has(bid)) {
+    return `${bid} is not a Companion master the server knows; it could never be sold, strengthened, or equipped.`;
+  }
+  const owned = companionBox();
+  if (owned.length >= COMPANION_BOX) {
+    return `The box already holds ${COMPANION_BOX} Companions; the client refuses every stage that could drop one while it is full.`;
+  }
+  const lv = Math.min(companionMaxLevel(bid), Math.max(1, Math.trunc(Number(level)) || 1));
+  const iid = nextCompanionInventoryId();
+  owned.push({ bid, lv, date: 0, iid, exp: companionExpAt(bid, lv), flag: 0, chrID: 0 });
+  data.nextCompanionInventoryId = iid + 1;
+  rebuildCompanionRecord();
+  return null;
+}
+
+function setCompanionLevel(index, level) {
+  const companion = companionBox()[index];
+  companion.lv = Math.min(companionMaxLevel(companion.bid), Math.max(1, Math.trunc(Number(level)) || 1));
+  companion.exp = companionExpAt(companion.bid, companion.lv);
+  rebuildCompanionRecord();
+}
+
+function removeCompanion(index) {
+  const data = userdata();
+  const [removed] = companionBox().splice(index, 1);
+  // Both halves of an equipment link go together: a character still claiming
+  // a Companion the box no longer holds refuses every later party and equip
+  // save (save_validation._validate_companion_links).
+  for (const row of data.chrdata || []) if (row && row.buddy === removed.iid) row.buddy = 0;
+  // The versus party names Companions by inventory id, as `buddy` does. The
+  // server never validates this list, so a stale slot cannot refuse a save;
+  // it is emptied so the client is not asked to field a Companion that no
+  // longer exists.
+  if (Array.isArray(data.teamBuddies_VS)) {
+    data.teamBuddies_VS = data.teamBuddies_VS.map((slot) => (slot === removed.iid ? 0 : slot));
+  }
+  rebuildCompanionRecord();
+}
+
+// One of every master the account does not hold, at its cap, until the box
+// is full. Returns how many were added.
+function addEveryCompanion() {
+  const owned = new Set(companionBox().map((companion) => companion.bid));
+  let added = 0;
+  for (const bid of [...companionProfiles.keys()].sort((left, right) => left - right)) {
+    if (owned.has(bid)) continue;
+    if (addCompanion(bid, companionMaxLevel(bid)) !== null) break;
+    added += 1;
+  }
+  return added;
+}
+
+function renderCompanions() {
+  const data = userdata();
+  const owned = data.buddyInfo && Array.isArray(data.buddyInfo.list) ? data.buddyInfo.list : [];
+  const body = $("companions").querySelector("tbody");
+  body.innerHTML = "";
+  owned.forEach((companion, index) => {
+    const cap = companionMaxLevel(companion.bid);
+    const equipped = companion.chrID ? nameFor("characters", companion.chrID) : "—";
+    const locked = (companion.flag || 0) & COMPANION_FLAG_LOCKED ? " · locked" : "";
+    const tr = window.document.createElement("tr");
+    tr.innerHTML =
+      `<td>${escapeHtml(String(companion.iid))}</td><td>${escapeHtml(nameFor("companions", companion.bid))}</td>` +
+      `<td><input type="number" min="1" max="${cap}" value="${escapeHtml(String(companion.lv))}" data-companion="${index}"${cap === 1 ? " disabled" : ""}></td>` +
+      `<td class="muted">${cap}</td><td class="muted">${escapeHtml(String(companion.exp ?? 0))}</td>` +
+      `<td>${escapeHtml(equipped)}${locked}</td>` +
+      `<td><button data-remove-companion="${index}">Remove</button></td>`;
+    body.appendChild(tr);
+  });
+  $("companionSummary").textContent = owned.length
+    ? `${owned.length} of ${COMPANION_BOX} box slots used.`
+    : `The box is empty (${COMPANION_BOX} slots).`;
+  // Every master is offered: unlike characters, the same Companion may be
+  // held more than once.
+  $("companionNames").innerHTML = Object.entries(names.companions)
+    .sort((left, right) => Number(left[0]) - Number(right[0]))
+    .map(([id, name]) => `<option value="${escapeHtml(`${name} (${id})`)}"></option>`)
+    .join("");
+}
+
+$("companions").addEventListener("input", (event) => {
+  const input = event.target;
+  if (input.dataset.companion === undefined) return;
+  setCompanionLevel(Number(input.dataset.companion), input.value);
+  render();
+});
+
+$("companions").addEventListener("click", (event) => {
+  const index = event.target.dataset.removeCompanion;
+  if (index === undefined) return;
+  removeCompanion(Number(index));
+  render();
+});
+
+$("addCompanion").addEventListener("click", () => {
+  const note = $("companionNote");
+  const bid = resolveId("companions", $("addCompanionId").value);
+  if (bid === null || !Number.isInteger(bid) || bid <= 0) {
+    note.textContent = "Enter a Companion ID, or a name once a name file is loaded.";
+    note.className = "sev-error";
+    return;
+  }
+  const requested = $("addCompanionLevel").value.trim();
+  const level = requested === "" ? companionMaxLevel(bid) : Number(requested);
+  const refused = addCompanion(bid, level);
+  if (refused !== null) {
+    note.textContent = refused;
+    note.className = "sev-error";
+    return;
+  }
+  const added = companionBox()[companionBox().length - 1];
+  note.textContent = `Added ${nameFor("companions", bid)} at level ${added.lv} as inventory id ${added.iid}.`;
+  note.className = "sev-ok";
+  $("addCompanionId").value = "";
+  render();
+});
+
+$("addEveryCompanion").addEventListener("click", () => {
+  const added = addEveryCompanion();
+  const note = $("companionNote");
+  note.textContent = added
+    ? `Added ${added} Companion${added === 1 ? "" : "s"}, each at its cap.`
+    : "Nothing added: every master is already held, or the box is full.";
+  note.className = added ? "sev-ok" : "sev-warning";
+  render();
+});
+
+/* ---------- wallet ---------- */
+
+// The client reads the nested `valuables` projection while the server
+// mutates the flat fields; a disagreement shows one balance and spends another.
+function setWallet(field, value, maximum) {
+  const data = userdata();
+  data[field] = Math.min(maximum, Math.max(0, Math.trunc(Number(value) || 0)));
+  if (data.valuables && typeof data.valuables === "object") {
+    for (const name of WALLET) if (name in data.valuables && name in data) data.valuables[name] = data[name];
+  }
+  $(field).value = data[field];
+}
+
+const WALLET_CEILINGS = { coins: MAX_COINS, energy: MAX_ENERGY, freeEnergy: MAX_ENERGY };
+
+for (const [field, maximum] of Object.entries(WALLET_CEILINGS)) {
+  $(field).addEventListener("input", (event) => {
+    setWallet(field, event.target.value, maximum);
     check();
   });
 }
+
+$("maxWallet").addEventListener("click", () => {
+  for (const [field, maximum] of Object.entries(WALLET_CEILINGS)) setWallet(field, maximum, maximum);
+  check();
+});
 
 $("username").addEventListener("input", (event) => { account().username = event.target.value; });
 
@@ -523,6 +811,7 @@ function check() {
     const [level] = decodeLevel((row.jobLevels || [0])[0]);
     if (level > LEVEL_CAP) findings.push(["error", `chrdata[${index}]`, `decodes to level ${level}, above the cap of ${LEVEL_CAP}`]);
   });
+  findings.push(...checkCompanions(data));
   if (Object.keys(account().tutorial_requests || {}).length) {
     findings.push(["warning", "tutorial_requests", "cached responses remain; apply with --clear-replay-cache if an edited value is one they already returned"]);
   }
@@ -537,20 +826,69 @@ function check() {
   $("export").disabled = findings.some(([severity]) => severity === "error");
 }
 
+// Mirrors save_validation._validate_companions and _validate_companion_links,
+// plus the two things the Python side does not check because it has no
+// progression table: the level cap, and whether `exp` still decodes to `lv`.
+function checkCompanions(data) {
+  const findings = [];
+  const owned = data.buddyInfo && Array.isArray(data.buddyInfo.list) ? data.buddyInfo.list : [];
+  const inventory = new Map();
+  owned.forEach((companion, index) => {
+    const where = `buddyInfo.list[${index}]`;
+    if (!companion || typeof companion !== "object" || !Number.isInteger(companion.iid) || companion.iid <= 0) {
+      findings.push(["error", where, "each Companion needs a positive integer iid"]);
+      return;
+    }
+    if (inventory.has(companion.iid)) findings.push(["error", where, `inventory id ${companion.iid} appears more than once`]);
+    inventory.set(companion.iid, companion);
+    if (!companionProfiles.has(companion.bid)) {
+      findings.push(["warning", where, `master ${companion.bid} is not in the bundled progression table, so its level cap is unknown`]);
+    } else if (companion.lv > companionMaxLevel(companion.bid)) {
+      findings.push(["error", where, `level ${companion.lv} is above this Companion's cap of ${companionMaxLevel(companion.bid)}`]);
+    } else if (companionLevelAtExp(companion.bid, companion.exp || 0) !== companion.lv) {
+      findings.push(["warning", where, `exp ${companion.exp || 0} decodes to level ${companionLevelAtExp(companion.bid, companion.exp || 0)}, not ${companion.lv}; the next strengthen will reset the level`]);
+    }
+  });
+  if (owned.length > COMPANION_BOX) findings.push(["error", "buddyInfo.list", `${owned.length} Companions; the box holds at most ${COMPANION_BOX}`]);
+  const highest = Math.max(0, ...inventory.keys());
+  const next = data.nextCompanionInventoryId;
+  if (next !== undefined && (!Number.isInteger(next) || next <= highest)) {
+    findings.push(["error", "nextCompanionInventoryId", `must be greater than every id in the box (highest is ${highest}), or the next Companion granted reuses an id`]);
+  }
+  const byRow = new Map((data.chrdata || []).filter((row) => row && typeof row === "object").map((row) => [row.id, row]));
+  for (const row of byRow.values()) {
+    if (row.buddy && (inventory.get(row.buddy) || {}).chrID !== row.id) {
+      findings.push(["error", `chrdata[id=${row.id}].buddy`, `character ${row.id} claims Companion ${row.buddy}, which does not claim it back; every party and equip save is refused while this is true`]);
+    }
+  }
+  for (const [iid, companion] of inventory) {
+    if (companion.chrID && (byRow.get(companion.chrID) || {}).buddy !== iid) {
+      findings.push(["error", `buddyInfo.list[iid=${iid}].chrID`, `Companion ${iid} is equipped to character ${companion.chrID}, which ${byRow.has(companion.chrID) ? "does not claim it back" : "the roster does not contain"}; every party and equip save is refused while this is true`]);
+    }
+  }
+  return findings;
+}
+
 /* ---------- export ---------- */
 
 // Marks every value under a float-typed key so the decimal survives
 // serialisation, then unwraps the markers in the finished text.
 const MARK = "__liminal_gate_float__:";
 
-function markFloats(value, key) {
-  if (Array.isArray(value)) return value.map((item) => markFloats(item, key));
+// `questClearDate` is keyed by stage ("6000-1"), not by a field name, and
+// every value under it is a timestamp the client reads as a double
+// (`GetQuestClearDate`), so the whole object is float-typed rather than any
+// one key in it. This is what save_validation._validate_floats checks.
+const FLOAT_OBJECTS = new Set(["questClearDate"]);
+
+function markFloats(value, key, floatTyped = false) {
+  if (Array.isArray(value)) return value.map((item) => markFloats(item, key, floatTyped));
   if (value && typeof value === "object") {
     const copy = {};
-    for (const [name, item] of Object.entries(value)) copy[name] = markFloats(item, name);
+    for (const [name, item] of Object.entries(value)) copy[name] = markFloats(item, name, FLOAT_OBJECTS.has(key));
     return copy;
   }
-  if (typeof value === "number" && FLOAT_KEYS.has(key) && Number.isInteger(value)) return `${MARK}${value}`;
+  if (typeof value === "number" && Number.isInteger(value) && (floatTyped || FLOAT_KEYS.has(key))) return `${MARK}${value}`;
   return value;
 }
 
