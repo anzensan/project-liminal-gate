@@ -13,9 +13,10 @@ The thresholds are precomputed here rather than by the formula in the page
 because JavaScript's `Math.pow` and Python's `**` are not guaranteed to agree
 in the last bit, and `floor` turns a last-bit disagreement into an EXP one
 below the level's threshold -- which the server then reads as the level below.
-`tests/test_save_editor.py` checks the block in the page against this module,
-and this module against `bootstrap_server._companion_exp_at`, so the three
-cannot drift apart without a test saying so.
+They come from `companion_progression_data.companion_exp_at`, the same
+function the server derives a level back out of, so the page's rendered block
+is the one remaining copy; `tests/test_save_editor.py` checks it against this
+module, and this module against the server's per-master view.
 
 Regenerate the page's copy after changing the progression data:
 
@@ -25,27 +26,14 @@ Regenerate the page's copy after changing the progression data:
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 import sys
 from typing import Any
 
-from liminal_gate.companion_progression_data import COMPANION_PROGRESSION_ROWS
+from liminal_gate.companion_progression_data import COMPANION_PROGRESSION_ROWS, companion_exp_at
 
 BEGIN_MARKER = "// BEGIN generated Companion progression table"
 END_MARKER = "// END generated Companion progression table"
-
-
-def companion_exp_at(exp_max: int, exp_coeff: float, level: int) -> int:
-    """The EXP a Companion holds on reaching `level`.
-
-    The same expression as `bootstrap_server._companion_exp_at`, kept in step
-    by test rather than by import: importing the server here would pull ~30
-    catalogs into a table renderer.
-    """
-    if level <= 1:
-        return 0
-    return math.floor(exp_max * ((level - 1) / 98.0) ** exp_coeff)
 
 
 def companion_level_table() -> list[dict[str, Any]]:

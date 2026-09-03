@@ -48,9 +48,12 @@ class CompanionProgressionTableTest(unittest.TestCase):
 
     Three links are checked: the block in the page equals what the module
     renders; the module's thresholds equal `bootstrap_server._companion_exp_at`
-    for every master and level; and every threshold decodes back to its own
-    level through `_companion_level_at_exp`, which is what the server does on
-    the next strengthen. A failure of the first is fixed by re-running
+    for every master and level -- both read
+    `companion_progression_data.companion_exp_at`, so this pins the data path
+    (progression rows here, catalog masters there) rather than the formula;
+    and every threshold decodes back to its own level through
+    `_companion_level_at_exp`, which is what the server does on the next
+    strengthen. A failure of the first is fixed by re-running
     `python3 -m liminal_gate.save_editor_tables tools/save-editor.html`.
     """
 
