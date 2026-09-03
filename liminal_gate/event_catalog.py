@@ -20,6 +20,7 @@ from liminal_gate.event_manifest_data import (
     STANDING_SPECIAL_MANIFEST_ROWS,
     folded_card_chapter,
 )
+from liminal_gate.luck_pool_event_data import STRIKES_BACK_FAMILY_REWARDS
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
 
@@ -383,6 +384,30 @@ def _is_standing_special(chapter: int) -> bool:
     return chapter in {row[1] for row in STANDING_SPECIAL_MANIFEST_ROWS}
 
 
+#: Each Strikes Back family's own recruited Lambda character, read off the same
+#: recovered reward table the families' chest pools are built from -- one
+#: recovery, so the character a chest pays and the character a battle recruits
+#: cannot drift apart.
+STRIKES_BACK_RECRUITS: dict[int, int] = {
+    chapter: recruit for chapter, recruit, *_ in STRIKES_BACK_FAMILY_REWARDS
+}
+
+#: A repeated recruit of one of those characters adds this much durable Luck,
+#: in the client's tenths.
+#:
+#: The value is a physical-client result screen: a repeated 8-Bit Golem Lambda
+#: in Chapter 8006 announces +1.0 Luck. It is applied to all fourteen families
+#: rather than to that one, because the rule it is an instance of is not a
+#: per-chapter one -- the community record's Luck page states Luck rises "by 1
+#: for each duplicate character recruited", and a tester who worked through
+#: Spinetrich Kino, Kraken Kino, Tiamat Kino, 8-Bit Spinetrich, 8-Bit Golem and
+#: Odin Kino reported the increment missing on every family but the one that
+#: was modeled. Keeping the contract on 8006 alone made the screenshot evidence
+#: for one family into a claim that the other thirteen had no such rule, which
+#: is a claim nothing supports.
+STRIKES_BACK_DUPLICATE_LUCK = 10
+
+
 def build_bundled_counter_descent_policy() -> EventCatalog:
     """Return the fourteen packaged non-collaboration Strikes Back families.
 
@@ -404,6 +429,13 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
     ]
     if len(manifests) != 14:
         raise EventCatalogError("bundled Counter Descent manifest is incomplete")
+    if any(row[2] not in STRIKES_BACK_RECRUITS for row in manifests):
+        # Every family here recruits its own character, and the duplicate
+        # contract below indexes this map without a fallback. A manifest
+        # chapter the reward table does not name is a mismatch between two
+        # recoveries of the same fourteen families, not a family without a
+        # recruit, so it fails here rather than silently losing the contract.
+        raise EventCatalogError("a Counter Descent family names no recruited character")
     stages = tuple(
         EventStage(
             event_id=event_id,
@@ -413,17 +445,12 @@ def build_bundled_counter_descent_policy() -> EventCatalog:
             stamina=stamina,
             coins=0,
             clear_coins=0,
-            # The client-visible 8-Bit Golem Lambda duplicate result announces
-            # +1.0 Luck.  The report identifies the Chapter 8006 family and
-            # the matching final-client name table resolves its character as
-            # 897; the other Counter Descent families remain unmodeled until
-            # their own result evidence exists.
-            character_ids=(897,) if chapter == 8006 else (),
+            character_ids=(STRIKES_BACK_RECRUITS[chapter],),
             selector="descent_hunting",
             unlock_after_chapter=unlock_after_chapter,
             projected_rewards=True,
-            duplicate_grant_luck=10 if chapter == 8006 else 0,
-            reported_character_rewards=chapter == 8006,
+            duplicate_grant_luck=STRIKES_BACK_DUPLICATE_LUCK,
+            reported_character_rewards=True,
         )
         for event_id, flag, chapter, unlock_after_chapter, _character_ids in manifests
         for section, stamina in enumerate(

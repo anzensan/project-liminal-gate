@@ -1633,6 +1633,54 @@ not cleared Gladiolus.
   section 1 and be contiguous, because withholding a chained section strands
   every section above it permanently. A generator test enforces it.
 
+### A duplicate recruit's Luck belongs to the character, not to one chapter or one channel
+
+**Reported symptom.** Issue 79: "characters who normally should receive 1%
+bonus luck with each recruitment (generally the 8-bit or hiso Lambda
+characters) do not retain it. Only 8-bit golem Lambda does, for some reason,
+and only when recruited 'naturally', not when received via luck chest."
+Tested across Spinetrich Kino, Kraken Kino, Tiamat Kino, 8-Bit Spinetrich,
+8-Bit Golem and Odin Kino.
+
+- **The exception names the cause.** 8-Bit Golem is the one Strikes Back family
+  this server had ever modeled. A physical-client result in Chapter 8006
+  announced +1.0 Luck for a repeated 8-Bit Golem Lambda, and the contract was
+  written onto that chapter alone, with both fields defaulting off and a note
+  that the other thirteen families remained unmodeled until their own result
+  evidence existed.
+- **Why that scoping was wrong.** It reads as caution and is not. The
+  screenshot is evidence for an *instance* of a rule the community record
+  states generally -- its Luck page has the stat rising "by 1 for each
+  duplicate character recruited" -- and a rule stated for duplicates carries no
+  per-chapter qualifier to preserve. Withholding it from the other thirteen
+  therefore made a positive claim of its own, that those families have no such
+  rule, which nothing supports and which a tester then disproved by walking six
+  of them. Evidence for one member of a class is not evidence against the rest
+  of the class.
+- **The characters were already recovered.** `STRIKES_BACK_FAMILY_REWARDS`
+  resolves each family's recruited Λ, wiki revision by wiki revision, and the
+  chest pools are expanded from it; 8006's entry is the same 897 the screenshot
+  identified. The duplicate contract now reads that table rather than
+  restating a literal, so the character a chest pays and the character a battle
+  recruits are one recovery and cannot drift.
+- **The second channel, and where the line actually falls.** A chest that hands
+  over a character the account already holds granted nothing, on the reasoning
+  that a Pact raises a duplicate's Skill Boost and no source says a chest did.
+  That reasoning holds for Skill Boost and not for Luck, and the difference is
+  in what each source quantifies over: the Pact's Skill Boost rule is stated
+  *for the Pact*, while the Luck rule is stated *for the duplicate* and names
+  no channel. This server already pays the Luck increment on the Pact of Fate,
+  on a Recode into an owned character, and on the battle recruit at the very
+  stage whose chest was refusing it, so the chest was the one acquisition
+  channel treating a copy as nothing. It now pays the stage's declared
+  increment per copy -- a chest naming the recruit in both threshold tiers pays
+  twice -- and pays nothing where the stage declares no contract, which is
+  every family outside these fourteen.
+- **What is still not claimed.** The value remains the single Chapter 8006
+  observation. Nothing here raises it, applies it to characters outside the
+  fourteen recovered recruits, or extends the Pact's Skill Boost rule to a
+  chest.
+
 ### An equipped Companion's Luck is part of the team average the chests are drawn against
 
 **Reported symptom.** Issue 76, after the Strikes Back chests began appearing:

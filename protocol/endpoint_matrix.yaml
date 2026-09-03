@@ -43,10 +43,10 @@ capabilities:
     note: "Chapter-1100 Shin'en and Mutoh use section ordinal play order; a client-shaped chrdata,lastUpdate Give Up write releases an active battle durably, with replay/restart/re-entry transport coverage. Original-client retest remains pending because Issue 73 reports only the form fields."
     transport_tests: true
     restart_tests: true
-  - family: strikes_back_chapter_8006_duplicate
+  - family: strikes_back_duplicate_recruit
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "Chapter 8006 8-Bit Golem Lambda duplicate settlement preserves the physical-client-announced +1.0 Luck, with replay/restart transport coverage; other Strikes Back duplicate contracts remain unmodeled."
+    note: "All fourteen Strikes Back families preserve the +1.0 Luck a repeated Lambda recruit announces, each naming the character its own chest pools are built from; the value is the Chapter 8006 physical-client result and the range is the record's channel-free duplicate rule, after a tester found the increment missing on every family but 8006. A chest copy of an already-held recruit pays the same increment per copy, where it previously granted nothing. Replay and restart transport coverage on both channels."
     transport_tests: true
     restart_tests: true
   - family: event_luck_treasure_chests

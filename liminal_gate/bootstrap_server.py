@@ -3254,7 +3254,12 @@ class BootstrapState:
             # least, but rewards don't stick around."
             if companions is not None:
                 userdata["buddyInfo"] = companions
-            announced |= _award_chest_grants(userdata, authored_chest)
+            announced |= _award_chest_grants(
+                userdata, authored_chest,
+                _duplicate_luck_contract(
+                    stage.character_grants, stage.duplicate_grant_luck,
+                ),
+            )
             if stage.once_per_utc_day:
                 _stamp_daily_quest_clear(account, stage, now)
                 if award_daily_quest_energy(
@@ -4053,7 +4058,12 @@ class BootstrapState:
             # The chest's own Companions and characters. Granted after the
             # roster merge for the same reason the Luck gain below is: a stale
             # client's `chrdata` must not overwrite what this clear awarded.
-            announced |= _award_chest_grants(userdata, authored_chest)
+            announced |= _award_chest_grants(
+                userdata, authored_chest,
+                _duplicate_luck_contract(
+                    stage.character_ids, stage.duplicate_grant_luck,
+                ) if event else None,
+            )
             # The Luck gain rolled at start is committed here, after the roster
             # merge, so a stale client's chrdata cannot overwrite it -- the same
             # ordering `_preserved_roster` exists to guarantee for grants.
@@ -6340,7 +6350,23 @@ _WORLD_MAP_SPECIAL_COMPANION_BOX = 1000
 _CHEST_COMPANION_BOX = 1000
 
 
-def _award_chest_grants(userdata: dict[str, Any], slots: list[str]) -> dict[int, int]:
+def _duplicate_luck_contract(
+    characters: tuple[int, ...], increment: int,
+) -> dict[int, int]:
+    """The stage's own duplicate-Luck contract, per character it names.
+
+    A chest can name a character the stage's contract does not cover -- an
+    operator's pool may name anything -- so the increment travels keyed by the
+    characters it was observed for rather than as a bare number applied to
+    whatever the chest happened to pay.
+    """
+    return {character: increment for character in characters} if increment else {}
+
+
+def _award_chest_grants(
+    userdata: dict[str, Any], slots: list[str],
+    duplicate_luck: dict[int, int] | None = None,
+) -> dict[int, int]:
     """Grant the Companions and characters an authored chest awards.
 
     Coins and items are reconciled against the client's own submission, because
@@ -6368,10 +6394,33 @@ def _award_chest_grants(userdata: dict[str, Any], slots: list[str]) -> dict[int,
     rows = userdata.setdefault("chrdata", [])
     held = {row.get("id") for row in rows if isinstance(row, dict)}
     for character_id in characters:
-        # A duplicate grants nothing. A Pact raises a duplicate's Skill Boost,
-        # but no source says a chest did, and inventing one would be a reward
-        # this project made up -- the reasoning an inbox present already uses.
         if character_id in held:
+            # A duplicate's Luck, and only for a character the stage's own
+            # contract names -- a family with no observed increment, and a
+            # chest naming someone outside it, both grant nothing here.
+            #
+            # A chest copy is a copy: the record's Luck page states the stat
+            # rises "by 1 for each duplicate character recruited" and names no
+            # channel, and this server already pays that increment on the Pact
+            # of Fate, on a Recode into an owned character, and on the battle
+            # recruit at this very stage. The chest was the one acquisition
+            # left paying nothing, which is what a tester found -- their 8-Bit
+            # Golem Lambda kept the increment when the battle recruited it and
+            # lost it when the chest handed over the same character.
+            #
+            # Skill Boost is deliberately still not granted here. The Luck rule
+            # is stated for the duplicate rather than for the channel; the Pact
+            # rule is stated for the Pact, and extending that one to a chest
+            # would be a reward this project made up.
+            increment = (duplicate_luck or {}).get(character_id, 0)
+            if increment:
+                for row in rows:
+                    if isinstance(row, dict) and row.get("id") == character_id:
+                        row["luck"] = min(
+                            int(row.get("luck", 0)) + increment,
+                            character_luck_cap(character_id),
+                        )
+                        break
             continue
         rows.append(_granted_character_row(character_id))
         held.add(character_id)
