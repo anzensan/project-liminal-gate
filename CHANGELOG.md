@@ -60,6 +60,44 @@ run the command.
 
 ### Fixed
 
+- **An equipped Companion's Luck did not count toward the team average, so the
+  Luck 80 and Luck 100 chests could not be reached.** A tester on issue 76,
+  after the Strikes Back chests began appearing: *"Not sure if it's because I
+  have a Panda equipped on a character, but my team should be considered above
+  80 luck and no 80 luck chest appeared."*
+
+  It is the Panda. The client's own team Luck — the number on the Party
+  Formation header, the number the player reasons about — folds in the two
+  Companion effects the server publishes to it: a personal bonus added to one
+  character's Luck before the average (Unicorn +1.0, Panda +3.0) and a team
+  bonus added to the average afterwards (Senala Ο +1.0, six more at +0.5). The
+  server served those constants and then averaged the stored stat alone, so a
+  Companion-boosted squad was always rolled at less than the client displayed.
+
+  Erring low was documented as the safe direction, and it is not. Four of the
+  six chest tiers are curves, where a low average means slightly worse odds;
+  the two named ones are *thresholds*, where it means the chest cannot appear
+  at all. Luck 80 and Luck 100 are the chests that carry the character-specific
+  Companions of the Strikes Back quests, which nothing else drops.
+
+  `UserData.GetTeamLuckAverage` is now reproduced exactly, from the client's
+  own code rather than from the community description of it: it sums
+  `luckConsiderBuddy` over the fielded squad's occupied slots, divides by how
+  many it found, adds every slot's `teamLuckUpBuddyEffect` whole, and caps at
+  100.0 — with each personal bonus capped at 100.0 first, which is why a
+  character at 79.5 holding a Panda counts as 100.0 rather than 82.5. The team
+  bonuses stack per equipped copy. One table now feeds both the roll and the
+  constants block the client is sent, because two copies of these effects could
+  disagree and nothing would show it: the player would be told one team Luck
+  while the chests were drawn against another.
+
+  Nothing about a stored Luck value changes, and no other Luck decision moves:
+  the growth roll and its per-class ceiling read the stat itself, which a
+  Companion does not raise.
+
+  Both deployments: dedicated server restart, and an APK rebuild for on-device
+  testers. No catalog regeneration.
+
 - **The ΟⅡ Companions were still arriving at level 1, and a level 1 one has a
   skill that never fires.** The same tester on issue 77, after the last round:
   *"Previously pulled Companions were restored, but now display at level 1 and,

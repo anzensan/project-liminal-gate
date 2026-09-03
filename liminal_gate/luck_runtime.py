@@ -30,6 +30,8 @@ import random
 from liminal_gate.luck_data import (
     ALLOW_LUCKY_CHAPTERS,
     CHEST_TIERS,
+    COMPANION_PERSONAL_LUCK_TENTHS,
+    COMPANION_TEAM_LUCK_TENTHS,
     character_luck_cap,
     LUCK_GAIN_TENTHS,
     LUCK_TENTHS_MAX,
@@ -66,15 +68,57 @@ def _seeded(*parts: object) -> random.Random:
     return random.Random(hashlib.sha256(material).hexdigest())
 
 
+def equipped_companions(userdata: dict) -> dict[object, int]:
+    """Map each character that has one to the Companion ID it is equipping.
+
+    The link is two-sided and neither half is the Companion itself: a roster
+    row's `buddy` names an *inventory* id, and the Luck tables are keyed by the
+    Companion -- `buddyInfo.list[].bid`, which is what the client holds in
+    `Character.buddyID`. Going from one to the other means walking the box, so
+    it is done once here rather than per party slot.
+    """
+    info = userdata.get("buddyInfo")
+    owned = info.get("list") if isinstance(info, dict) else None
+    roster = userdata.get("chrdata")
+    if not isinstance(owned, list) or not isinstance(roster, list):
+        return {}
+    companion_by_inventory = {
+        companion["iid"]: companion["bid"]
+        for companion in owned
+        if isinstance(companion, dict)
+        and type(companion.get("iid")) is int and type(companion.get("bid")) is int
+    }
+    equipped: dict[object, int] = {}
+    for row in roster:
+        if not isinstance(row, dict):
+            continue
+        inventory_id = row.get("buddy", 0)
+        if type(inventory_id) is not int:
+            continue
+        companion = companion_by_inventory.get(inventory_id)
+        if companion is not None:
+            equipped[row.get("id")] = companion
+    return equipped
+
+
 def party_team_luck(userdata: dict) -> int:
     """Read the account's current team Luck in tenths from its own save.
 
-    Companion Luck effects are not applied here. The client publishes the three
-    constants that describe them and computes its own display value; this server
-    does not model which Companion is equipped to which party member, so the
-    average is taken over the characters' stored Luck alone. The effect is that
-    a Companion-boosted team is treated as slightly unluckier than the client
-    shows it, which errs toward fewer chests rather than more.
+    Companion Luck effects are applied, because the client's own team Luck --
+    the number the player is shown and reasons about -- includes them, and this
+    is the number the chest tiers are drawn against. `UserData.GetTeamLuckAverage`
+    (ARM64 `0x19DCC60`) walks the fielded squad's six slots and, for each
+    character it finds, adds `Character.get_luckConsiderBuddy` to one running
+    total and `Character.get_teamLuckUpBuddyEffect` to another; it divides the
+    first by the number of characters found, adds the second whole, and caps the
+    result at 100.0. `team_luck` is that arithmetic.
+
+    Leaving the effects out is what a tester reported on issue 76: a squad the
+    client displayed at or above 80.0 with a Panda equipped was averaged here
+    without the Panda, came in below 800 tenths, and so failed the Luck 80
+    chest's threshold -- the chest that carries Companions available nowhere
+    else. Erring low is not a safe direction when a tier is a threshold rather
+    than a curve.
 
     The average is over the squad on screen, which is what the client's own
     Party Formation header averages; see `active_party_members` for why the
@@ -89,10 +133,21 @@ def party_team_luck(userdata: dict) -> int:
         for row in roster
         if isinstance(row, dict) and type(row.get("luck", 0)) is int
     }
-    members = tuple(
-        luck_by_id.get(member, 0) for member in party if member
-    )
-    return team_luck(members)
+    equipped = equipped_companions(userdata)
+    members: list[int] = []
+    personal: list[int] = []
+    team_bonus = 0
+    for member in party:
+        if not member:
+            continue
+        companion = equipped.get(member)
+        members.append(luck_by_id.get(member, 0))
+        personal.append(COMPANION_PERSONAL_LUCK_TENTHS.get(companion, 0))
+        # Every equipped copy contributes: the client sums the team effect over
+        # the squad's slots rather than taking the largest, so two Companions
+        # granting +5 are +10 to the team.
+        team_bonus += COMPANION_TEAM_LUCK_TENTHS.get(companion, 0)
+    return team_luck(tuple(members), tuple(personal), team_bonus)
 
 
 def roll_luck_result(
