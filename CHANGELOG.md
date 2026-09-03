@@ -60,6 +60,44 @@ run the command.
 
 ### Fixed
 
+- **Only one Strikes Back family kept the Luck a repeated Λ recruit announces,
+  and a chest copy kept none at all.** A tester on issue 79: *"characters who
+  normally should receive 1% bonus luck with each recruitment (generally the
+  8-bit or hiso Lambda characters) do not retain it. Only 8-bit golem Lambda
+  does, for some reason, and only when recruited 'naturally', not when received
+  via luck chest."*
+
+  Both halves were ours, and the "for some reason" is the giveaway: 8-Bit Golem
+  is the one family that had ever been modeled. A physical-client screenshot of
+  a Chapter 8006 duplicate established the +1.0, and the contract was written
+  onto that chapter alone with the note that the other thirteen families stayed
+  unmodeled until their own screenshots existed. That was the wrong shape of
+  caution. The rule the screenshot is an instance of is not per-chapter — the
+  record's Luck page states Luck rises "by 1 for each duplicate character
+  recruited" — so restricting it to 8006 turned evidence *for* one family into
+  an implicit claim *against* the other thirteen, which nothing supported. All
+  fourteen now name their own recruit, read from the same recovered table their
+  chest pools are built from, so the character a chest pays and the character a
+  battle recruits can never drift apart.
+
+  The chest half was a separate refusal in the same area. A chest that handed
+  over a character the account already held granted nothing, on the reasoning
+  that a Pact raises a duplicate's Skill Boost and no source says a chest did.
+  That reasoning is right about Skill Boost — the Pact rule is stated for the
+  Pact — and wrong about Luck, which the record states for the *duplicate* and
+  not for the channel. This server already pays it on the Pact of Fate, on a
+  Recode into an owned character, and on the battle recruit at that very stage;
+  the chest was the one acquisition left paying nothing. It now pays the same
+  increment, per copy, and only where the stage declares one — a family with no
+  observed contract still grants nothing.
+
+  Regression coverage drives all six families the reporter listed through a
+  real start and clear, and a chest whose pool names an already-held recruit in
+  both threshold tiers is asserted at two increments rather than one.
+
+  Both deployments: dedicated server restart, and an APK rebuild for on-device
+  testers. No catalog regeneration.
+
 - **An equipped Companion's Luck did not count toward the team average, so the
   Luck 80 and Luck 100 chests could not be reached.** A tester on issue 76,
   after the Strikes Back chests began appearing: *"Not sure if it's because I

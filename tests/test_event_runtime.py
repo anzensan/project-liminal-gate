@@ -16,6 +16,8 @@ from liminal_gate.bootstrap_parsers import _valid_generic_character_record
 from liminal_gate.event_catalog import (
     EventCatalog,
     EventStage,
+    STRIKES_BACK_DUPLICATE_LUCK,
+    STRIKES_BACK_RECRUITS,
     build_bundled_collab_special_policy,
     build_bundled_counter_descent_policy,
 )
@@ -24,6 +26,7 @@ from liminal_gate.hunting_catalog import build_bundled_hunting_policy
 from liminal_gate.luck_data import LUCK_TENTHS_MAX
 from liminal_gate.luck_pool_catalog import LuckPoolCatalog
 from liminal_gate.luck_pool_data import pool_for
+from liminal_gate.luck_pool_event_data import STRIKES_BACK_FAMILY_REWARDS
 from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_runtime import (
     chest_characters, chest_companions, chest_items,
@@ -1182,6 +1185,76 @@ class _CounterDescentRangeHarness:
 class CounterDescentRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):
     """The standard Strikes Back slice uses the real HTTP and durable path."""
 
+    def test_every_strikes_back_family_declares_its_own_recruit(self) -> None:
+        """Issue 79. The contract lived on Chapter 8006 alone, so thirteen
+        families recruited a Lambda the settlement had never heard of and had
+        nowhere to apply the increment the client had already announced."""
+        rewards = {chapter: recruit for chapter, recruit, *_ in STRIKES_BACK_FAMILY_REWARDS}
+        by_chapter = {stage.chapter: stage for stage in self.catalog.stages}
+        self.assertEqual(sorted(rewards), sorted(by_chapter))
+        for chapter, stage in sorted(by_chapter.items()):
+            self.assertEqual(
+                ((rewards[chapter],), STRIKES_BACK_DUPLICATE_LUCK, True),
+                (
+                    stage.character_ids,
+                    stage.duplicate_grant_luck,
+                    stage.reported_character_rewards,
+                ),
+                f"chapter {chapter}",
+            )
+        # The two recoveries of the same fourteen families have to agree: the
+        # chest pays the character the battle recruits.
+        self.assertEqual(rewards, STRIKES_BACK_RECRUITS)
+
+    def test_the_reported_families_keep_a_duplicate_recruit_luck(self) -> None:
+        """Issue 79, over the real HTTP and durable path.
+
+        The reporter worked through six families and found the increment on one
+        -- the one that had been modeled. Each family is driven here in turn
+        rather than asserting the catalog alone, because the contract has to
+        survive the same start, settlement and roster merge the reported clear
+        took.
+        """
+        families = (8000, 8001, 8003, 8005, 8006, 8015)
+        recruits = [STRIKES_BACK_RECRUITS[chapter] for chapter in families]
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            # Chapter 8015 opens after Chapter 16, which is the last of the six.
+            userdata["progressCode"] = 0x01000000 | (19 << 6) | 1
+            userdata["chrdata"] = [character(recruit) for recruit in recruits]
+            self.server.state._persist_locked()
+
+        for chapter in families:
+            recruit = STRIKES_BACK_RECRUITS[chapter]
+            stage = self.catalog.by_identity()[(chapter, 1)]
+            start = (
+                f"stamina={stage.stamina}&coins=0&chapter={chapter}"
+                f"&section=1&lastUpdate=1"
+            ).encode()
+            self.assertEqual(
+                200,
+                self.post(
+                    f"/gd/start_quest?otk={self.token}&requestID=start-{chapter}", start,
+                )[0],
+                chapter,
+            )
+            clear = self.clear_body(chapter=chapter, section=1, monsters=[recruit])
+            status, settled = self.post(
+                f"/gd/clear_quest?otk={self.token}&requestID=clear-{chapter}", clear,
+            )
+            self.assertEqual(200, status, settled)
+            durable = {row["id"]: row for row in self.account()["userdata"]["chrdata"]}
+            self.assertEqual(
+                STRIKES_BACK_DUPLICATE_LUCK, durable[recruit].get("luck", 0),
+                f"chapter {chapter} recruit {recruit}",
+            )
+        # Every family paid its own character and nobody else's.
+        durable = {row["id"]: row for row in self.account()["userdata"]["chrdata"]}
+        self.assertEqual(
+            [STRIKES_BACK_DUPLICATE_LUCK] * len(recruits),
+            [durable[recruit].get("luck", 0) for recruit in recruits],
+        )
+
     def test_8_bit_golem_lambda_duplicate_keeps_the_client_announced_luck(self) -> None:
         """Chapter 8006's observed duplicate result announces +1.0 Luck."""
         stage = self.catalog.by_identity()[(8006, 1)]
@@ -1495,6 +1568,163 @@ class EventStartChestTest(_CounterDescentRangeHarness, unittest.TestCase):
         userdata = self.account()["userdata"]
         self.assertIn(199, {row["id"] for row in userdata["chrdata"]})
         self.assertIn(128, {row["bid"] for row in userdata["buddyInfo"]["list"]})
+
+
+class StrikesBackChestDuplicateTest(_CounterDescentRangeHarness, unittest.TestCase):
+    """A chest copy of a character the account already holds is still a copy.
+
+    Issue 79's second half: the reporter's 8-Bit Golem Lambda kept the
+    increment when the battle recruited it and lost it when the chest handed
+    over the same character. `_award_chest_grants` skipped a duplicate
+    outright, on the reasoning that a Pact's duplicate Skill Boost is a Pact
+    rule and inventing a chest one would be a made-up reward. That reasoning
+    holds for Skill Boost and not for Luck: the record's Luck page states the
+    stat rises "by 1 for each duplicate character recruited" and names no
+    channel, and this server already pays it on the Pact of Fate, on a Recode
+    into an owned character, and on the battle recruit at this very stage.
+
+    The pool names the family's own recruit in both threshold tiers, and the
+    party sits at the Luck ceiling so both are certain. Two copies arrive, so
+    the assertion is on `2 x` the increment -- which is the per-copy half of
+    the rule, not just the fact that a chest pays at all.
+    """
+
+    CHEST_STAGE = (8006, 1)
+    RECRUIT = STRIKES_BACK_RECRUITS[8006]
+    #: A through D are declared empty so the only rewards are the two named
+    #: tiers, which keeps the clear's item projection untouched and the copy
+    #: count exact: C and D stay probabilistic even at the Luck ceiling.
+    OPERATOR_POOLS = {
+        "A": (), "B": (), "C": (), "D": (),
+        "Luck 80": (f"M{RECRUIT}",), "Luck 100": (f"M{RECRUIT}",),
+    }
+
+    def start_server(self) -> None:
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0),
+            self.profile,
+            BootstrapState(self.state_path),
+            event_catalog=self.catalog,
+            stamina=True,
+            luck_pool_catalog=LuckPoolCatalog({self.CHEST_STAGE: dict(self.OPERATOR_POOLS)}),
+        )
+
+    def setUp(self) -> None:
+        super().setUp()
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["progressCode"] = 0x01000000 | (12 << 6) | 1
+            userdata["chrdata"] = [
+                dict(character(member), luck=LUCK_TENTHS_MAX)
+                for member in (3, 4, 5, 6, 7, 8)
+            ] + [character(self.RECRUIT)]
+            userdata["teamMembers"] = [3, 4, 5, 6, 7, 8]
+            self.server.state._persist_locked()
+
+    def test_a_chest_copy_of_an_owned_recruit_pays_the_increment(self) -> None:
+        chapter, section = self.CHEST_STAGE
+        stage = self.catalog.by_identity()[self.CHEST_STAGE]
+        body = (
+            f"stamina={stage.stamina}&coins=0&chapter={chapter}"
+            f"&section={section}&lastUpdate=1"
+        ).encode()
+        status, started = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=dup-start", body,
+        )
+        self.assertEqual(200, status, started)
+        self.assertEqual(
+            (self.RECRUIT, self.RECRUIT), chest_characters(started["luckResult"]),
+        )
+
+        # No recruit is reported, so the battle channel contributes nothing and
+        # what the assertion below measures is the chest alone.
+        clear = self.clear_body(chapter=chapter, section=section)
+        status, settled = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=dup-clear", clear,
+        )
+        self.assertEqual(200, status, settled)
+        durable = self.account()["userdata"]["chrdata"]
+        rows = [row for row in durable if row["id"] == self.RECRUIT]
+        self.assertEqual(1, len(rows), "the chest added a second row for a held character")
+        self.assertEqual(2 * STRIKES_BACK_DUPLICATE_LUCK, rows[0]["luck"])
+
+        self.restart()
+        self.assertEqual(
+            (status, settled),
+            self.post(f"/gd/clear_quest?otk={self.token}&requestID=dup-clear", clear),
+        )
+        durable = self.account()["userdata"]["chrdata"]
+        rows = [row for row in durable if row["id"] == self.RECRUIT]
+        self.assertEqual(2 * STRIKES_BACK_DUPLICATE_LUCK, rows[0]["luck"])
+
+
+class StrikesBackChestOutsiderTest(_CounterDescentRangeHarness, unittest.TestCase):
+    """An operator's pool can name any character; the increment cannot follow it.
+
+    The value is one family's observed figure, so it is keyed to the characters
+    that family's own stage declares rather than applied to whatever the chest
+    happened to pay. Without that, an operator pool naming an unrelated
+    duplicate would hand it 8-Bit Golem's number.
+    """
+
+    CHEST_STAGE = (8006, 1)
+    RECRUIT = STRIKES_BACK_RECRUITS[8006]
+    #: Held but not fielded, and named by no Strikes Back family. Off the party
+    #: so no battle-end Luck can reach it either -- though this stage's five
+    #: stamina is below the gain gate regardless.
+    OUTSIDER = 9
+    OPERATOR_POOLS = {
+        "A": (), "B": (), "C": (), "D": (),
+        "Luck 80": (f"M{RECRUIT}",), "Luck 100": (f"M{OUTSIDER}",),
+    }
+
+    def start_server(self) -> None:
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0),
+            self.profile,
+            BootstrapState(self.state_path),
+            event_catalog=self.catalog,
+            stamina=True,
+            luck_pool_catalog=LuckPoolCatalog({self.CHEST_STAGE: dict(self.OPERATOR_POOLS)}),
+        )
+
+    def setUp(self) -> None:
+        super().setUp()
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["progressCode"] = 0x01000000 | (12 << 6) | 1
+            userdata["chrdata"] = [
+                dict(character(member), luck=LUCK_TENTHS_MAX)
+                for member in (3, 4, 5, 6, 7, 8)
+            ] + [character(self.RECRUIT), character(self.OUTSIDER)]
+            userdata["teamMembers"] = [3, 4, 5, 6, 7, 8]
+            self.server.state._persist_locked()
+
+    def test_only_the_declared_character_takes_the_increment(self) -> None:
+        chapter, section = self.CHEST_STAGE
+        stage = self.catalog.by_identity()[self.CHEST_STAGE]
+        self.assertNotIn(self.OUTSIDER, stage.character_ids)
+        body = (
+            f"stamina={stage.stamina}&coins=0&chapter={chapter}"
+            f"&section={section}&lastUpdate=1"
+        ).encode()
+        status, started = self.post(
+            f"/gd/start_quest?otk={self.token}&requestID=outsider-start", body,
+        )
+        self.assertEqual(200, status, started)
+        self.assertEqual(
+            (self.RECRUIT, self.OUTSIDER), chest_characters(started["luckResult"]),
+        )
+        status, settled = self.post(
+            f"/gd/clear_quest?otk={self.token}&requestID=outsider-clear",
+            self.clear_body(chapter=chapter, section=section),
+        )
+        self.assertEqual(200, status, settled)
+        durable = {row["id"]: row for row in self.account()["userdata"]["chrdata"]}
+        self.assertEqual(
+            STRIKES_BACK_DUPLICATE_LUCK, durable[self.RECRUIT].get("luck", 0),
+        )
+        self.assertEqual(0, durable[self.OUTSIDER].get("luck", 0))
 
 
 class StrikesBackRecordedChestTest(_CounterDescentRangeHarness, unittest.TestCase):
