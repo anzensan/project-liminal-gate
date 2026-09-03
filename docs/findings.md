@@ -2684,3 +2684,54 @@ is the span of the highest ceiling any Companion carries.
 holding a level 30 stake, that stake surviving a fusion, the two curve
 implementations agreeing, and the repair's four cases; the reporting tester has
 not re-run against this build.
+
+## 2026-09-02: the story ceiling the server sent, and the chapter it hid
+
+**Reported symptom.** Issue 82: "Chapter 41 does not appear after clearing
+chapter 40." The screenshots show Chapter 40 cleared and the clear recorded.
+No request failed; the server log carried only 200s.
+
+**The cause is one served constant, and the client applies it to the player
+rather than to the catalogue.** `UserData.get_chapterNo`
+(ARM64 `0x19D752C`-`0x19D75D0`) does not return the stored chapter. It returns
+`min(_chapterNo, ServerConstants.maxChapter)`, reading the stored value from
+instance offset `0x88` and the ceiling from static offset `0x10`. Its sibling
+`get_sectionNo` (`0x19D7B58`) calls it and answers the literal `100` -- the
+"this chapter is finished" sentinel -- whenever the stored chapter is the
+larger of the two.
+
+Everything the player sees reads that clamped pair rather than the stored one.
+`UIMap.getCurrentChapter` (`0xE66B70`) tail-calls
+`UserData.get_worldChapterNo` (`0x19D7938`), which for world 0 tail-calls the
+clamp; `UnlockNextChapter` (`0x19D90C0`) and `UnlockNextSection` (`0x19D90F4`)
+reach it the same way, so the ceiling governs unlocking as well as drawing.
+`ChapterInterface.get_chapterCount` (`0xD05DCC`) is the same static read,
+unwrapped: the client's own name for `maxChapter` is *how many chapters exist*.
+
+This module sent 40. The reviewed client's `BattleData` carries Chapters
+1--42. So an account that cleared 40-10 had `_chapterNo` advanced to 41 by a
+clear this server accepted and recorded -- and then read it back as Chapter 40,
+Section 100. Cleared, registered, and pinned. Chapter 41 could not appear, and
+nothing on the wire could say so.
+
+**The stored progress was never damaged, which is why no migration is needed.**
+`UserData.GetWorldProgressCode` (`0x19D9394`) builds the story code from the
+raw fields at `0x88`/`0x8C`, not from the two clamped properties -- `ldp w8, w9,
+[x0, #0x88]` and then `bfi w0, w8, #6, #10`. The client kept reporting 41-1 on
+every write while refusing to draw it. Affected accounts need a login against a
+corrected server, nothing more.
+
+**What changed.** `maxChapter` is now `LAST_CORE_STORY_CHAPTER`, taken as
+`max(CORE_SECTION_COUNTS)` from the same table `build_core_story_policy` builds
+the progression graph from, so the ceiling cannot fall behind the story it
+bounds. It resolves to 42, and the clamp is left doing only the job it exists
+for: an account that finishes 42-3 is written forward to 43-1 and reads back as
+Chapter 42, fully cleared, standing on the last map the client draws.
+
+**Both deployments.** The constant is served from the status and login routes
+by `build_server_constants`, which both launchers share -- so the dedicated
+server needs a restart, and the on-device package needs an APK rebuild, because
+that route bakes `liminal_gate` into `assets/liminal_gate/`.
+
+**Not yet validated on hardware.** A regression test pins the served value to
+the core-story table; the reporting tester has not re-run against this build.

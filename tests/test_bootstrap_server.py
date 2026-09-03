@@ -20,7 +20,7 @@ from liminal_gate.bootstrap_server import (
 from liminal_gate.bootstrap_wire import _endpoint_refusal_envelope
 from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.server_constants import CLIENT_CONSTANT_KEYS
-from liminal_gate.story_progression_catalog import build_core_story_policy
+from liminal_gate.story_progression_catalog import CORE_SECTION_COUNTS, build_core_story_policy
 from tests.support import serve
 
 
@@ -829,6 +829,14 @@ class IncludedBootstrapProfileTest(unittest.TestCase):
         # naming the static instead leaves the box at the client's default of
         # 250 and the client then refuses to enter a stage that could drop one.
         self.assertEqual(1000, constants["BuddyBoxMax"])
+        # `maxChapter` bounds the player, not the catalogue.
+        # `UserData.get_chapterNo` returns `min(_chapterNo, maxChapter)` and
+        # `get_sectionNo` answers the "chapter finished" sentinel 100 above it,
+        # so a ceiling below the story's own length strands an account at the
+        # ceiling with every clear still recorded (issue 82: Chapter 41 never
+        # appeared behind a 40 sent here).
+        self.assertEqual(42, constants["maxChapter"])
+        self.assertEqual(max(CORE_SECTION_COUNTS), constants["maxChapter"])
         self.assertNotIn("maxBuddyBoxCount", constants)
         # The character box has no key at all: the client keeps its own 1024.
         self.assertNotIn("maxCharacterCount", constants)

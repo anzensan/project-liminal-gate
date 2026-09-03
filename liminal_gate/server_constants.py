@@ -33,6 +33,7 @@ from typing import Any
 from liminal_gate.archive_economy import DAILY_QUEST_FREE_ENERGY
 from liminal_gate.save_validation import MAX_ITEM_STACK
 from liminal_gate.secondary_world_data import world_max_chapters
+from liminal_gate.story_progression_catalog import CORE_SECTION_COUNTS
 
 
 # The final archive client is 5.5.7, so the final-major state is advertised
@@ -50,6 +51,10 @@ LOCAL_COUNTRY_NAME = "United States"
 # flag it remains closed, while its presence keeps the client from taking the
 # fallback. A configured local event catalog replaces this one-entry fixture.
 CLOSED_SPECIAL_QUEST_SENTINEL = "3003-1"
+
+# The last core-story chapter, taken from the same table the progression graph
+# is built from so the ceiling below can never fall behind the story it bounds.
+LAST_CORE_STORY_CHAPTER = max(CORE_SECTION_COUNTS)
 
 # Every name `UserData.SetServerConstants` (`0x19D2A74`-`0x19D6904`) looks up in
 # this block, in the order its literals appear.  A key outside this set is not
@@ -128,7 +133,32 @@ def build_server_constants(
         # `UserData..cctor` assigns it the literal 3, which is the length
         # `InitData` then allocates `worldProgressCode` at. There is nothing
         # here for a server to declare.
-        "maxChapter": 40,
+        #
+        # The last core-story chapter, and a ceiling the client applies to the
+        # *player* rather than to the catalogue.  `UserData.get_chapterNo`
+        # (ARM64 `0x19D752C`-`0x19D75D0`) does not return the stored chapter: it
+        # returns `min(_chapterNo, maxChapter)`, and `get_sectionNo`
+        # (`0x19D7B58`) answers the sentinel 100 -- "this chapter is finished"
+        # -- whenever the stored chapter is the larger of the two.  Everything
+        # the player sees reads the clamped pair: `UIMap.getCurrentChapter`
+        # reaches it through `UserData.get_worldChapterNo` (`0x19D7938`), which
+        # tail-calls the clamp for world 0, and so do `UnlockNextChapter` and
+        # `UnlockNextSection`.
+        #
+        # So a value below the story's own length does not shorten the map, it
+        # strands the account at the ceiling.  This module sent 40 while
+        # BattleData carries Chapters 1--42, which is issue 82: a player who
+        # cleared 40-10 had `_chapterNo` advanced to 41 by a clear the server
+        # accepted and recorded, and then read it back as chapter 40 section
+        # 100.  The clear registered, Chapter 41 never opened, and no request
+        # failed -- the ceiling is applied entirely inside the client.
+        #
+        # 42 is the largest core-story chapter in the reviewed client's own
+        # BattleData, so the clamp now does only the job it exists for: an
+        # account that finishes 42-3 is written forward to 43-1 and reads back
+        # as Chapter 42, fully cleared, standing on the last map the client
+        # draws.
+        "maxChapter": LAST_CORE_STORY_CHAPTER,
         "maxCoins": 99999999,
         "maxEnergy": 9999,
         "maxFreeEnergy": 9999,
