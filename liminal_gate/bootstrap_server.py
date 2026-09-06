@@ -657,6 +657,31 @@ def _migrate_companion_drop_level(account: dict[str, Any]) -> None:
         userdata["buddyInfo"] = _companion_info(owned)
 
 
+def migrate_account(account: dict[str, Any]) -> None:
+    """Bring one account's durable document up to what this build reads.
+
+    The one list. Every repair a load applies is named here and nowhere else,
+    because a second caller has to apply exactly this set: `on_device_state`
+    compares a save against itself across a transfer, and a load-time repair is
+    a change it would otherwise report as lost progress. It did report one --
+    a tester's update raised a Companion to the level it drops at, which is
+    this file's own `_migrate_companion_drop_level` doing its job, and the
+    transfer check answered with the whole Companion box and told them to
+    restore the backup that held the unrepaired copy.
+
+    Applied in order and each one idempotent: a save that needs none is left
+    byte-for-byte alone.
+    """
+    _migrate_replay_keys(account)
+    _migrate_granted_character_rows(account)
+    _migrate_tutorial_inventory(account)
+    _migrate_wallet_projection(account)
+    _migrate_companion_record(account)
+    _migrate_companion_drop_level(account)
+    _migrate_companion_equipment(account)
+    _migrate_rebirth_job_slots(account)
+
+
 def _migrate_rebirth_job_slots(account: dict[str, Any]) -> None:
     """Clear slot data a Rebirth copied onto jobs its character does not have.
 
@@ -804,14 +829,7 @@ def _parse_state_document(document: object) -> tuple[
     if active_account_id is not None and (not isinstance(active_account_id, str) or active_account_id not in accounts):
         raise ProfileError("local bootstrap state contains an invalid active account")
     for account in accounts.values():
-        _migrate_replay_keys(account)
-        _migrate_granted_character_rows(account)
-        _migrate_tutorial_inventory(account)
-        _migrate_wallet_projection(account)
-        _migrate_companion_record(account)
-        _migrate_companion_drop_level(account)
-        _migrate_companion_equipment(account)
-        _migrate_rebirth_job_slots(account)
+        migrate_account(account)
     # Absent in saves written before per-client routing; an empty map simply
     # falls back to the active account, which is the earlier behaviour.
     client_hosts = document.get("client_hosts", {})

@@ -14,6 +14,7 @@ command here that cannot lose anything.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 import subprocess
@@ -24,6 +25,7 @@ import urllib.request
 
 from liminal_gate import tester_setup, toolchain
 from liminal_gate.account_state import AccountStateError, read_document
+from liminal_gate.bootstrap_server import migrate_account
 from liminal_gate.on_device_setup import (
     DEFAULT_APK, DEFAULT_DATA, DEFAULT_HOST_SOURCE, DEFAULT_RESOURCES, LOOPBACK_PORT,
     OnDeviceSetupError, launch_apk, prepare_on_device_apk, validate_device,
@@ -197,6 +199,49 @@ def durable_state(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return projection
 
 
+def as_this_build_reads_it(document: dict[str, Any]) -> dict[str, Any]:
+    """The document a save becomes once this build has loaded it.
+
+    A transfer is verified by comparing a save against itself on the other
+    side, and the side that arrives has been through the server's load-time
+    repairs. Those repairs are the point of having them -- one of them raises a
+    Companion this project once minted at level 1 to the level it actually
+    drops at -- so comparing an unrepaired save against a repaired one reports
+    every one of them as lost progress.
+
+    A tester met exactly that: `update` answered a successful update by
+    printing their entire Companion box twice, saying the install "kept every
+    account but not their progress", and telling them to restore the backup --
+    which held the level 1 copy the update had just repaired. Reported on
+    issue 84.
+
+    So the baseline is migrated too, on a copy, and what remains after that is
+    a real difference. `migrate_account` is the server's own list rather than a
+    second one kept in step by hand.
+    """
+    migrated = copy.deepcopy(document)
+    accounts = migrated.get("accounts")
+    for account in (accounts.values() if isinstance(accounts, dict) else ()):
+        if isinstance(account, dict) and isinstance(account.get("userdata"), dict):
+            migrate_account(account)
+    return migrated
+
+
+#: How much of a differing value a message may carry. The box a save holds can
+#: be hundreds of Companions long, and printing two of them cost one report
+#: 85KB of console for a single changed level -- unreadable, and unactionable
+#: for being unreadable. Short values still print whole, which is every scalar
+#: a loss is normally spelled in.
+VALUE_EXCERPT_CHARACTERS = 160
+
+
+def _describe(value: Any) -> str:
+    text = repr(value)
+    if len(text) <= VALUE_EXCERPT_CHARACTERS:
+        return text
+    return f"{text[:VALUE_EXCERPT_CHARACTERS]}... ({len(text)} characters in all)"
+
+
 def durable_state_differences(
     before: dict[str, Any], after: dict[str, Any],
 ) -> list[str]:
@@ -207,6 +252,9 @@ def durable_state_differences(
     progress inside them passed that check and printed reassurance. This
     compares the progress itself and names the fields that moved, so the
     message a tester acts on is specific enough to act on.
+
+    Pass the baseline through `as_this_build_reads_it` first wherever the two
+    sides are separated by a load, or the server's own repairs answer as loss.
     """
     expected, actual = durable_state(before), durable_state(after)
     differences: list[str] = []
@@ -222,9 +270,48 @@ def durable_state_differences(
                 continue
             elif was[field] != now[field]:
                 differences.append(
-                    f"account {account_id}: {field} was {was[field]!r}, is now {now[field]!r}"
+                    f"account {account_id}: {field} was {_describe(was[field])}, "
+                    f"is now {_describe(now[field])}"
                 )
     return differences
+
+
+def _difference_key(difference: str) -> str:
+    """The `account X: field` a difference is about, without its values."""
+    for marker in (" was ", " is gone", " is missing"):
+        head, found, _ = difference.partition(marker)
+        if found:
+            return head
+    return difference
+
+
+def transfer_differences(
+    before: dict[str, Any], after: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """What a transfer lost, and what this build repaired on the way.
+
+    The two sides of a transfer are separated by a load, and a load applies
+    this build's own repairs -- so the arriving save is the departing one plus
+    whatever `migrate_account` had to fix. Compared raw, every repair reads as
+    lost progress; compared only against the migrated baseline, a field a
+    migration *adds* reads as a field the device dropped. A difference has to
+    survive both readings to be real, so only the fields that do are returned
+    as losses, and the ones the migration alone accounts for are returned as
+    repairs.
+    """
+    migrated = durable_state_differences(as_this_build_reads_it(before), after)
+    raw = durable_state_differences(before, after)
+    surviving = {_difference_key(difference) for difference in raw}
+    lost = [
+        difference for difference in migrated
+        if _difference_key(difference) in surviving
+    ]
+    excused = {_difference_key(difference) for difference in lost}
+    repaired = sorted({
+        _difference_key(difference) for difference in raw
+        if _difference_key(difference) not in excused
+    })
+    return lost, repaired
 
 
 def _summarize_differences(differences: list[str], limit: int = 8) -> str:
@@ -299,7 +386,11 @@ def import_state(
             f"the app restarted on account {verified.get('active_account_id')}, not the imported "
             f"{active}. The previous save is still on the device as state.json.bak.1."
         )
-    differences = durable_state_differences(edited, verified)
+    # The device loaded the file that was pushed, so what it holds now is that
+    # file as this build reads it. An older backup carrying anything a load
+    # repairs is imported successfully and would otherwise be reported as
+    # having arrived wrong.
+    differences, _ = transfer_differences(edited, verified)
     if differences:
         raise OnDeviceStateError(
             f"the app restarted on the right account but not the imported progress: "
@@ -381,8 +472,10 @@ def update(args: argparse.Namespace) -> int:
             )
         # Every account still being present is not the same as every account
         # still holding its progress, and the reassurance below is only worth
-        # printing once the progress itself has been compared.
-        differences = durable_state_differences(expected, current)
+        # printing once the progress itself has been compared -- against the
+        # backup as *this* build reads it, because the new install has already
+        # read it that way.
+        differences, repaired = transfer_differences(expected, current)
         if differences:
             raise OnDeviceStateError(
                 f"the updated install kept every account but not their progress: "
@@ -390,6 +483,15 @@ def update(args: argparse.Namespace) -> int:
                 f"python3 -m liminal_gate.on_device_state import --device {device} {backup} --yes"
             )
         print(f"  the save survived the update; backup retained: {backup}")
+        # Named rather than passed over in silence: a repair changes what the
+        # player sees -- the one that prompted this raised a Companion from
+        # level 1 to the level it drops at -- and a tester who notices deserves
+        # to have been told which fields moved and that nothing was lost.
+        if repaired:
+            print(
+                f"  this build repaired {_summarize_differences(repaired)} on load; "
+                f"that is a fix being applied, not progress lost"
+            )
     else:
         print("  no backup existed, so nothing could be compared against.")
     return 0

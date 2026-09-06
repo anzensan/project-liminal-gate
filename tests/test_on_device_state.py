@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import json
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stdout
 from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
@@ -392,6 +392,77 @@ class UpdateCommandTest(unittest.TestCase):
         self.assertIn("progressCode was 999, is now 0", message)
         self.assertIn("coins was 12345, is now 0", message)
         self.assertIn("on_device_state import", message)
+
+    def _update_output_over(self, before: dict, after: dict) -> str:
+        stream = io.StringIO()
+        with redirect_stdout(stream):
+            self._update_over(before, after)
+        return stream.getvalue()
+
+    #: A Companion the archive once minted at level 1 and a load now raises to
+    #: the level it actually drops at, with the experience that level stands
+    #: on. Mizell OII: the very Companion issue 84 was opened about.
+    REPAIRED_COMPANION = 332
+    REPAIRED_LEVEL, REPAIRED_EXP = 30, 1550568
+
+    def _save_holding(self, level: int, experience: int) -> dict:
+        row = {
+            "bid": self.REPAIRED_COMPANION, "iid": 1, "lv": level, "exp": experience,
+            "date": 0.0, "flag": 1, "chrID": 0,
+        }
+        return {
+            "accounts": {"a": {"userdata": {
+                "progressCode": 999, "coins": 12345,
+                "valuables": {
+                    "coins": 12345, "energy": 0, "freeEnergy": 0,
+                    "energyAppStore": 0, "energyGooglePlay": 0, "energyAndApp": 0,
+                },
+                "buddyInfo": {"list": [dict(row)], "record": [dict(row)]},
+                "nextCompanionInventoryId": 2, "chrdata": [], "itemList": [0] * 8,
+            }}},
+            "tokens": {}, "active_account_id": "a",
+        }
+
+    def test_a_repair_this_build_applies_on_load_is_not_lost_progress(self) -> None:
+        """The update compares the backup against what the new install holds,
+        and the new install has already run its load-time repairs on it. A
+        tester's successful update was refused over one of them -- their level
+        1 Mizell OII being raised to the level it drops at -- and the message
+        told them to restore the backup that held the unrepaired copy. See
+        issue 84."""
+        before = self._save_holding(1, 0)
+        after = self._save_holding(self.REPAIRED_LEVEL, self.REPAIRED_EXP)
+        output = self._update_output_over(before, after)
+        self.assertIn("the save survived the update", output)
+        self.assertIn("repaired account a: buddyInfo on load", output)
+        self.assertIn("not progress lost", output)
+
+    def test_a_real_loss_beside_a_repair_is_still_refused(self) -> None:
+        """Excusing the repair must not excuse everything around it. The
+        Companion is repaired and the wallet is gone, and only one of those is
+        this build's own doing."""
+        before = self._save_holding(1, 0)
+        after = self._save_holding(self.REPAIRED_LEVEL, self.REPAIRED_EXP)
+        after["accounts"]["a"]["userdata"]["coins"] = 0
+        with self.assertRaises(on_device_state.OnDeviceStateError) as raised:
+            self._update_over(before, after)
+        message = str(raised.exception)
+        self.assertIn("coins was 12345, is now 0", message)
+        self.assertNotIn("buddyInfo", message)
+
+    def test_a_long_value_is_excerpted_rather_than_printed_whole(self) -> None:
+        """One changed Companion level printed a 382-entry box twice, 85KB of
+        console for a difference nobody could find in it."""
+        box = {"list": [
+            {"bid": 1, "iid": index, "lv": 1, "exp": 0, "date": 0.0, "flag": 1, "chrID": 0}
+            for index in range(1, 200)
+        ]}
+        before = {"accounts": {"a": {"userdata": {"buddyInfo": box}}}, "tokens": {}, "active_account_id": "a"}
+        after = {"accounts": {"a": {"userdata": {"buddyInfo": {"list": []}}}}, "tokens": {}, "active_account_id": "a"}
+        message = "; ".join(on_device_state.durable_state_differences(before, after))
+        self.assertIn("characters in all", message)
+        self.assertLess(len(message), 600)
+        self.assertIn("account a: buddyInfo was", message)
 
     def test_an_update_that_only_moves_ephemeral_fields_is_accepted(self) -> None:
         # The stamina origin is rebased on load and whole numbers come back as

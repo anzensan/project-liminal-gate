@@ -60,6 +60,39 @@ run the command.
 
 ### Fixed
 
+- **A successful on-device update reported itself as lost progress, and
+  answered with the whole Companion box.** A tester updated, found everything
+  intact, and was told otherwise: *"unlike prior updates I had an extremely
+  long list of buddyInfo data... It ends with a direction to import a prior
+  save, but as far as I can tell, it isn't needed because my data and progress
+  is still there."* They were right, and following that direction would have
+  restored the save the update had just repaired.
+
+  `update` verifies a transfer by comparing the backup it exported against
+  what the new install holds. The two are separated by a *load*, and a load
+  applies this build's own repairs -- so the one difference in their save was
+  `_migrate_companion_drop_level` raising a level 1 Mizell ΟⅡ to the level it
+  drops at, with the experience that level stands on. That is a fix landing,
+  not progress leaving, and it was the very Companion issue 84 was opened
+  about.
+
+  The baseline is now migrated too, on a copy, through the server's own
+  `migrate_account` rather than a second list kept in step by hand. A
+  difference has to survive both readings -- against the raw backup and
+  against the migrated one -- to count as a loss, so a repair is excused while
+  a field a migration merely adds is not mistaken for one the device dropped.
+  Repairs are named in the success line instead of being passed over, because
+  a repair changes what the player sees. `import` is verified the same way; it
+  had the same defect, and would have refused any older backup carrying
+  anything a load repairs.
+
+  A differing value is also excerpted now rather than printed whole. Their
+  message carried a 382-entry Companion box twice -- 85KB of console for one
+  changed level, unactionable for being unreadable. Short values, which is
+  every scalar a loss is normally spelled in, still print exactly as before.
+
+  Build-computer behaviour: no server restart and no APK rebuild.
+
 - **The Resplendent Dragon King paid the Inexorable's Luck 80 chest, and the
   Inexorable paid the Resplendent's.** A tester farmed the Resplendent card all
   day and was paid Axion Dragon Λ four times where its page promises Holy
