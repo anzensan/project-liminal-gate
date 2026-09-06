@@ -402,8 +402,15 @@ class ArchiveQuestChestRecordTest(unittest.TestCase):
         self.assertEqual(3, len({frozenset(pool) for pool in hundreds}))
         # Primordial: Axion Dragon Z, Edg'low OII, Schweiz OII, Scarlet OIII.
         self.assertEqual(("O105", "O324", "O327", "O399"), hundreds[0])
-        # Every one of the three pays 9,000 Coins and a Lambda at Luck 80.
-        for chapter, recruit in ((2009, "M887"), (2010, "M889"), (2011, "M888")):
+        # Every one of the three pays 9,000 Coins and a Lambda at Luck 80, and
+        # which Lambda is settled by the chapter's own battle program rather
+        # than by the order the three page titles are listed in: 2010 spawns
+        # `SP_HIGGSDRA` and 2011 spawns `SP_HOLYDRA`, so 2010 is the Inexorable
+        # (Axion Dragon Λ) and 2011 the Resplendent (Holy Dragon Λ). Filed the
+        # other way round, the card's third tier paid Axion where its page
+        # promises Holy, which is what a tester farming it reported on issue
+        # 83.
+        for chapter, recruit in ((2009, "M887"), (2010, "M888"), (2011, "M889")):
             with self.subTest(chapter=chapter):
                 self.assertIn("C9000", pool_for(chapter, 1, "Luck 80"))
                 self.assertIn(recruit, pool_for(chapter, 1, "Luck 80"))

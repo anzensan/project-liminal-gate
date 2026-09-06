@@ -445,19 +445,22 @@ _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] =
             "Luck 100": ('O105', 'O324', 'O327', 'O399',),
         },
     ),
-    # The Resplendent Dragon King, rev 84014.
-    2010: (
-        {
-            "A": ('C3000', 'I89', 'I90', 'I12', 'I15', 'I122',),
-            "B": ('C6000', 'I89', 'I90', 'I12', 'I15', 'I122',),
-            "C": ('C9000', 'I116', 'I117',),
-            "D": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99',),
-            "Luck 80": ('C9000', 'M889', 'O99',),
-            "Luck 100": ('O101', 'O328', 'O331', 'O398',),
-        },
-    ),
     # The Inexorable Dragon King, rev 84015.
-    2011: (
+    #
+    # 2010 and 2011 were filed the other way round -- 2010 read as the
+    # Resplendent and 2011 as the Inexorable -- because the three pages were
+    # joined to the three chapters in the order their titles are listed rather
+    # than by anything in the client. The client settles it: chapter 2010's
+    # own battle program spawns `SP_HIGGSDRA` and chapter 2011's spawns
+    # `SP_HOLYDRA` (`native_encounter_importer` output, enemies 1129 and
+    # 1133). The Inexorable Dragon King is the Axion Dragon fight and the
+    # Resplendent is the Holy Dragon one, so the Axion tier is 2010 and the
+    # Holy tier is 2011. `event_manifest_data`'s folded-card note reads the
+    # same way round -- the shutdown menu record lists the family as The
+    # Primordial / Inexorable / Resplendent against member chapters 2009,
+    # 2010, 2011 -- and a tester farming the card's third tier all day was
+    # paid Axion Dragon Λ where the page promises Holy Dragon Λ (issue 83).
+    2010: (
         {
             "A": ('C3000', 'I89', 'I90', 'I12', 'I16', 'I123',),
             "B": ('C6000', 'I89', 'I90', 'I12', 'I16', 'I123',),
@@ -465,6 +468,17 @@ _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] =
             "D": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99',),
             "Luck 80": ('C9000', 'M888', 'O130',),
             "Luck 100": ('O268', 'O326', 'O329', 'O330',),
+        },
+    ),
+    # The Resplendent Dragon King, rev 84014.
+    2011: (
+        {
+            "A": ('C3000', 'I89', 'I90', 'I12', 'I15', 'I122',),
+            "B": ('C6000', 'I89', 'I90', 'I12', 'I15', 'I122',),
+            "C": ('C9000', 'I116', 'I117',),
+            "D": ('I93', 'I94', 'I132', 'I137', 'I95', 'I96', 'I97', 'I98', 'I99',),
+            "Luck 80": ('C9000', 'M889', 'O99',),
+            "Luck 100": ('O101', 'O328', 'O331', 'O398',),
         },
     ),
 }
