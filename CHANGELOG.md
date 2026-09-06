@@ -60,6 +60,26 @@ run the command.
 
 ### Fixed
 
+- **The Resplendent Dragon King paid the Inexorable's Luck 80 chest, and the
+  Inexorable paid the Resplendent's.** A tester farmed the Resplendent card all
+  day and was paid Axion Dragon Λ four times where its page promises Holy
+  Dragon Λ (issue 83). The two tables were right and were filed against the
+  wrong chapters: the three pages were joined to chapters 2009--2011 in the
+  order their titles are listed, and that order is not the client's.
+
+  The client settles it in its own battle programs. Chapter 2010 spawns
+  `SP_HIGGSDRA` (enemy 1129) and chapter 2011 spawns `SP_HOLYDRA` (enemy
+  1133), so 2010 is the Axion Dragon fight -- The Inexorable Dragon King -- and
+  2011 is the Holy Dragon one, The Resplendent. `event_manifest_data` already
+  read the same way round from the other side: the shutdown menu record lists
+  the family as The Primordial / Inexorable / Resplendent against the member
+  chapters `2009-1`, `2010-1`, `2011-1` the client holds in that order. The
+  Primordial's table was never in doubt and is unchanged.
+
+  Both chapters' whole tables move together, so the weapon and ring materials
+  in A and B follow their bosses too. A server restart applies it; the catalogs
+  are not involved.
+
 - **Only one Strikes Back family kept the Luck a repeated Λ recruit announces,
   and a chest copy kept none at all.** A tester on issue 79: *"characters who
   normally should receive 1% bonus luck with each recruitment (generally the
