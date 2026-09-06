@@ -79,6 +79,13 @@ MAX_ENERGY = 9999
 CHRDATA_FLOAT_LIST_FIELDS = ("jobLevels", "jobSlots")
 CHRDATA_FLOAT_FIELDS = ("date",)
 ACCOUNT_FLOAT_FIELDS = ("lastupdate", "refillStartTime", "metalZoneUnlockTime")
+#: Objects under `userdata` whose *values* are read as doubles, whatever key
+#: each one sits under.  `questClearDate` maps a stage label to its clear time,
+#: so nothing about the key names the type and an editor cannot recognise these
+#: the way it recognises the fields above.  Named here because it is the list
+#: `tools/save-editor.html` has to agree with, and disagreeing cost issue 75 an
+#: unappliable save with one finding per cleared stage.
+FLOAT_VALUE_OBJECT_FIELDS = ("questClearDate",)
 FLOAT_FIELDS = CHRDATA_FLOAT_LIST_FIELDS + CHRDATA_FLOAT_FIELDS + ACCOUNT_FLOAT_FIELDS
 WALLET_FIELDS = ("coins", "energy", "freeEnergy", "energyAppStore", "energyGooglePlay", "energyAndApp")
 
@@ -426,7 +433,8 @@ def _validate_floats(account_id: str, userdata: dict[str, Any]) -> list[Finding]
     # Each cleared stage's timestamp, for the same reason: `GetQuestClearDate`
     # reads the value with LitJson's double accessor and raises on an integer
     # rather than converting it.
-    cleared = userdata.get("questClearDate")
-    for quest, value in sorted((cleared if isinstance(cleared, dict) else {}).items()):
-        check(value, f"questClearDate.{quest}")
+    for name in FLOAT_VALUE_OBJECT_FIELDS:
+        entries = userdata.get(name)
+        for key, value in sorted((entries if isinstance(entries, dict) else {}).items()):
+            check(value, f"{name}.{key}")
     return findings

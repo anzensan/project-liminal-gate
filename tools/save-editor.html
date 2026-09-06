@@ -224,6 +224,15 @@
 // render 10.0 as 10 and make the client fail parsing a good response, so these
 // are re-emitted with an explicit decimal on export.
 const FLOAT_KEYS = new Set(["jobLevels", "jobSlots", "date", "lastupdate", "refillStartTime", "metalZoneUnlockTime"]);
+// Objects whose *values* are read that way, whatever their keys are. Each
+// cleared stage's timestamp lives under its own stage label -- `questClearDate`
+// is `{"10-5": 1787146587.0, ...}` -- so the decimal cannot be recognised from
+// the key the number sits under, only from the object holding it. Leaving this
+// out re-emitted every clear date as a whole number, which
+// `save_validation._validate_floats` refuses one finding at a time: a save with
+// 130 cleared stages came back with 130 errors and could not be applied.
+// Reported on issue 75, with this fix.
+const FLOAT_VALUE_OBJECTS = new Set(["questClearDate"]);
 const JOB_LEVEL_BITS = 12;
 const JOB_LEVEL_MASK = 0xFFF;
 const LEVEL_CAP = 90;
@@ -543,19 +552,20 @@ function check() {
 // serialisation, then unwraps the markers in the finished text.
 const MARK = "__liminal_gate_float__:";
 
-function markFloats(value, key) {
-  if (Array.isArray(value)) return value.map((item) => markFloats(item, key));
+function markFloats(value, key, parentKey) {
+  if (Array.isArray(value)) return value.map((item) => markFloats(item, key, parentKey));
   if (value && typeof value === "object") {
     const copy = {};
-    for (const [name, item] of Object.entries(value)) copy[name] = markFloats(item, name);
+    for (const [name, item] of Object.entries(value)) copy[name] = markFloats(item, name, key);
     return copy;
   }
-  if (typeof value === "number" && FLOAT_KEYS.has(key) && Number.isInteger(value)) return `${MARK}${value}`;
+  const isFloat = FLOAT_KEYS.has(key) || FLOAT_VALUE_OBJECTS.has(parentKey);
+  if (typeof value === "number" && isFloat && Number.isInteger(value)) return `${MARK}${value}`;
   return value;
 }
 
 function serialise(save) {
-  const text = JSON.stringify(markFloats(save, ""), null, 2);
+  const text = JSON.stringify(markFloats(save, "", ""), null, 2);
   return text.replace(new RegExp(`"${MARK}(-?\\d+)"`, "g"), "$1.0") + "\n";
 }
 

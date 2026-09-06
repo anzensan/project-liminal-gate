@@ -80,6 +80,24 @@ run the command.
   in A and B follow their bosses too. A server restart applies it; the catalogs
   are not involved.
 
+- **A save exported from the local editor was refused with one error per
+  cleared stage.** Reported on issue 75 with the fix: `questClearDate` maps a
+  stage label to its clear time, so nothing about the key `1787146587.0` sits
+  under says the client reads it as a decimal, and the editor recognised
+  decimals by key name alone. Every clear date came back a whole number, and
+  `account_state apply` refused the save -- 130 findings for an account with
+  130 cleared stages.
+
+  The editor now also marks the values of objects that are wholly decimal, and
+  `save_validation` names that list (`FLOAT_VALUE_OBJECT_FIELDS`) beside the
+  field list it already named, so the two halves are one authority. A test
+  compares the validator's lists against the editor's source, which is what
+  nothing did before: the editor is HTML and the validator is Python, and they
+  had drifted with nothing to notice.
+
+  This is a build-computer change. It needs no server restart and no APK
+  rebuild -- reload `tools/save-editor.html` and re-export.
+
 - **Only one Strikes Back family kept the Luck a repeated Λ recruit announces,
   and a chest copy kept none at all.** A tester on issue 79: *"characters who
   normally should receive 1% bonus luck with each recruitment (generally the
