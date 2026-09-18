@@ -183,6 +183,21 @@ class FullStoryProgressionTest(unittest.TestCase):
         # The run ends on the terminal sentinel, with the roster and the wallet
         # intact across all 384 stages and every restart.
         self.assertEqual(TERMINAL, ((progress & 0xFFFF) >> 6, progress & 0x3F))
+        # A finished story still replays: the terminal sentinel names no stage,
+        # and resolving it to none refused every start after 42-3.
+        for chapter, section in ((42, 3), (10, 1)):
+            label = f"after-end-{chapter}-{section}"
+            status, started = self.post(
+                "/gd/start_quest", f"start-{label}",
+                [("stamina", "0"), ("coins", "0"), ("chapter", str(chapter)), ("section", str(section)), ("lastUpdate", "1")],
+            )
+            self.assertEqual((200, True), (status, started["success"]), f"start {label}")
+            coins += CLEAR_COINS
+            status, cleared = self.post(
+                "/gd/clear_quest", f"clear-{label}", self.clear_fields(chapter, section, progress, coins),
+            )
+            self.assertEqual(200, status, f"clear {label}: {cleared}")
+            self.assertEqual(progress, self.userdata()["progressCode"], f"progress after {label}")
         final = self.userdata()
         # 392 generic awards on top of the wallet the scripted stage left.
         self.assertEqual(coins, final["coins"])
