@@ -29,6 +29,7 @@ from liminal_gate.luck_pool_data import (
 )
 from liminal_gate.rebirth_recipe_data import REBIRTH_RECIPE_ROWS
 from liminal_gate.luck_pool_event_data import (
+    _ARCHIVE_QUEST_CHEST_TABLES,
     ARCHIVE_QUEST_CHEST_POOLS,
     ATTRIBUTE_TYPE_ITEMS,
     BREASOUL_CHEST_POOLS,
@@ -380,11 +381,33 @@ class ArchiveQuestChestRecordTest(unittest.TestCase):
     def test_a_single_table_answers_for_every_section_of_its_quest(self) -> None:
         """The record documents the quest, not the section, where it gives one
         table. Expanding it reads the page; inventing a per-section difference
-        it does not draw would not."""
-        for section in (2, 3, 4):
-            self.assertEqual(
-                pool_for(2000, 1, "Luck 100"), pool_for(2000, section, "Luck 100"),
-            )
+        it does not draw would not. The Dragon Kings are the single-table case
+        now that the three Descent families carry one table per quest."""
+        for chapter in (2009, 2010, 2011):
+            with self.subTest(chapter=chapter):
+                self.assertEqual(1, len(_ARCHIVE_QUEST_CHEST_TABLES[chapter]))
+
+    def test_each_descent_section_is_its_own_quest_rather_than_a_broadcast(self) -> None:
+        """Issue 91: the four sections are four quests, not one served four
+        times, and only the fourth pays the Fang the recode needs.
+
+        The section each page belongs to is joined on the client's own
+        BattleData -- (stamina, assumed level) of (15, 25), (25, 45), (40, 65)
+        and (40, 80) across the four sections, against the same four pairs on
+        the four pages -- so the Fang lands on the section that actually costs
+        40 stamina at assumed level 80 rather than on a guessed ordinal.
+        """
+        for chapter, fang in ((2000, "I134"), (2001, "I135"), (2002, "I136")):
+            with self.subTest(chapter=chapter):
+                # The record puts each family's Fang on the Recoded page only.
+                for tier in ("D", "Luck 80", "Luck 100"):
+                    self.assertIn(fang, pool_for(chapter, 4, tier), tier)
+                for section in (1, 2, 3):
+                    for tier in ("D", "Luck 80", "Luck 100"):
+                        self.assertNotIn(fang, pool_for(chapter, section, tier))
+                # And the four tiers are genuinely four tables.
+                luck_100 = {pool_for(chapter, section, "Luck 100") for section in (1, 2, 3, 4)}
+                self.assertEqual(4, len(luck_100))
 
     def test_the_three_descents_pay_the_character_their_manifest_names(self) -> None:
         """The join is confirmed from the client rather than the page title:

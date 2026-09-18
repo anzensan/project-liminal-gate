@@ -18,12 +18,14 @@ from liminal_gate.luck_pool_catalog import (
     LuckPoolCatalogError,
     load_luck_pool_catalog,
 )
-from liminal_gate.luck_pool_data import LUCK_CHEST_POOLS, pool_for
+from liminal_gate.luck_pool_data import DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, pool_for
 from liminal_gate.luck_pool_event_data import (
     EIDOLON_CHEST_POOLS,
     STRIKES_BACK_CHEST_POOLS,
 )
-from liminal_gate.luck_pool_interpolation import build_luck_pools, donor_chapters
+from liminal_gate.luck_pool_interpolation import (
+    bracketing_chapters, build_luck_pools, donor_chapters,
+)
 from liminal_gate.luck_runtime import roll_luck_result
 
 #: A stage the community record does document, so an override is observable.
@@ -231,6 +233,45 @@ class InterpolatedLuckPoolTest(unittest.TestCase):
         # Past the last documented chapter there is only one side to take.
         self.assertEqual((36,), donor_chapters(42))
         self.assertEqual((1,), donor_chapters(1))
+
+    def test_a_documented_chapter_still_fills_the_tiers_its_record_misses(self) -> None:
+        """Issue 92: Chapters 9 and 25 paid no Luck 100 chest in any section.
+
+        A documented chapter brackets against itself, so its undocumented
+        stages could borrow only from its own documented stages. Chapter 9's
+        one documented stage carries a single item in A and one in B, so all
+        ten of its sections paid nothing at C, D, Luck 80 and Luck 100 -- which
+        made the chapter the record *covers* worse than the two either side of
+        it, both of which pay a full chest. A tester playing a 100-Luck team
+        found it in Chapters 9 and 25; 31 and 34 had it too.
+        """
+        for chapter in (9, 25, 31, 34):
+            with self.subTest(chapter=chapter):
+                undocumented = next(
+                    section for section in range(1, 11)
+                    if (chapter, section) not in DOCUMENTED_CHEST_POOLS
+                )
+                for tier in ("Luck 80", "Luck 100"):
+                    self.assertTrue(
+                        self.pools.pool_for(chapter, undocumented, tier), (chapter, tier),
+                    )
+
+    def test_the_fallback_reaches_the_neighbours_and_not_the_chapter_itself(self) -> None:
+        """The bracket is the same one a neighbouring chapter already gets."""
+        self.assertEqual((6, 13), bracketing_chapters(9))
+        self.assertEqual((16, 28), bracketing_chapters(25))
+        # Unchanged for a chapter the record does not document at all.
+        self.assertEqual(donor_chapters(10), (9, 13))
+
+    def test_a_documented_stage_is_still_never_filled_in(self) -> None:
+        """The fallback runs only where the record names no stage at all.
+
+        25-7's Luck 100 cell is empty on the page, and that is the record
+        paying nothing there; the rest of Chapter 25 is a silence.
+        """
+        self.assertIn((25, 7), DOCUMENTED_CHEST_POOLS)
+        self.assertEqual((), self.pools.pool_for(25, 7, "Luck 100"))
+        self.assertTrue(self.pools.pool_for(25, 1, "Luck 100"))
 
     def test_only_a_story_chapter_ever_donates(self) -> None:
         """Bracketing is a claim about chapter numbers being a progression.
