@@ -631,22 +631,38 @@ class LocalSigningToolTest(unittest.TestCase):
             dummy_dll.mkdir()
             (dummy_dll / "Assembly-CSharp.dll").write_bytes(b"")
             (dummy_dll.parent / "dump.cs").write_text("", encoding="utf-8")
-            with patch("liminal_gate.tester_setup.load_master_trees", return_value={"ChrDatabase": {}, "BuddyDatabase": {}}), \
-                 patch("liminal_gate.tester_setup.build_character_catalog", return_value={}), \
-                 patch("liminal_gate.tester_setup.write_character_catalog"), \
-                 patch("liminal_gate.tester_setup.build_companion_equipment_catalog", return_value={}), \
-                 patch("liminal_gate.tester_setup.write_companion_equipment_catalog"), \
-                 patch("liminal_gate.tester_setup.write_local_names"), \
-                 patch("liminal_gate.tester_setup.derive_story_outcome_catalog"), \
-                 patch("liminal_gate.tester_setup.ensure_keystore", side_effect=lambda *_: order.append("keystore")), \
-                 patch("liminal_gate.tester_setup.find_build_tools", side_effect=lambda *_: order.append("build-tools") or (root / "zipalign", root / "apksigner")), \
-                 patch("liminal_gate.tester_setup.check_derivation_prerequisites", side_effect=lambda *_: order.append("prerequisites")), \
-                 patch("liminal_gate.tester_setup.build_import_manifest", side_effect=lambda *_, **__: order.append("inventory") or {}), \
-                 patch("liminal_gate.tester_setup.write_import_manifest"), patch("liminal_gate.tester_setup.build_resource_manifest", return_value={}), \
-                 patch("liminal_gate.tester_setup.write_resource_manifest"), patch("liminal_gate.tester_setup.prepare_pact_banners"), patch("liminal_gate.tester_setup.prepare_coin_creeps_banners"), \
-                 patch("liminal_gate.tester_setup.generate_legacy_client_plan", return_value={"patches": []}), \
-                 patch("liminal_gate.tester_setup.load_patch_plan", return_value={}), patch("liminal_gate.tester_setup.apply_patch_plan"), \
-                 patch("liminal_gate.tester_setup.sign_apk"):
+            # Entered through an `ExitStack` rather than as one `with` naming
+            # every patch. CPython's compiler counts each context manager in a
+            # `with` as a statically nested block and refuses more than twenty
+            # before 3.12: these nineteen, inside the two `with`s around them,
+            # crossed that line and the *whole file* stopped compiling on the
+            # 3.11 this project supports (`requires-python = ">=3.11"`). The
+            # suite still passed on 3.13, so only CI saw it. A stack is one
+            # block however many patches it holds.
+            with contextlib.ExitStack() as patches:
+                def stub(target: str, **behaviour: object) -> None:
+                    patches.enter_context(patch(f"liminal_gate.tester_setup.{target}", **behaviour))
+
+                stub("load_master_trees", return_value={"ChrDatabase": {}, "BuddyDatabase": {}})
+                stub("build_character_catalog", return_value={})
+                stub("write_character_catalog")
+                stub("build_companion_equipment_catalog", return_value={})
+                stub("write_companion_equipment_catalog")
+                stub("write_local_names")
+                stub("derive_story_outcome_catalog")
+                stub("ensure_keystore", side_effect=lambda *_: order.append("keystore"))
+                stub("find_build_tools", side_effect=lambda *_: order.append("build-tools") or (root / "zipalign", root / "apksigner"))
+                stub("check_derivation_prerequisites", side_effect=lambda *_: order.append("prerequisites"))
+                stub("build_import_manifest", side_effect=lambda *_, **__: order.append("inventory") or {})
+                stub("write_import_manifest")
+                stub("build_resource_manifest", return_value={})
+                stub("write_resource_manifest")
+                stub("prepare_pact_banners")
+                stub("prepare_coin_creeps_banners")
+                stub("generate_legacy_client_plan", return_value={"patches": []})
+                stub("load_patch_plan", return_value={})
+                stub("apply_patch_plan")
+                stub("sign_apk")
                 prepare_local_tester(apk, resources, root / "user-data", 8696, None, dummy_dll_dir=dummy_dll)
         self.assertEqual(["keystore", "build-tools", "prerequisites", "inventory"], order)
 
