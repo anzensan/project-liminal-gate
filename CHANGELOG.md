@@ -83,6 +83,36 @@ run the command.
 
 ### Fixed
 
+- **Neither secondary world could be finished: the clear on the last stage
+  answered a Network Error that came back on every retry.** A tester on issue
+  90, on The Death of Shay and Arionne: *"At the end of the chapter 5 - part 1,
+  when the "Chapter Clear" appears, i have a Network Erreur and I can't
+  continue (I try twice). When I Reset the game to resume, same problem
+  again."* That is BreaSoul's Chapter 104, whose single section is the last of
+  the world. Every earlier section settled.
+
+  The client's `UnlockNextSection` increments the section, compares it against
+  the chapter's own count, and on overflow calls `SetWorldNewChapter(worldNo,
+  chapter + 1, 1)` -- which stores the packed cursor with no ceiling of its
+  own, because `worldMaxChapter` is read by the getter `get_worldChapterNo`
+  and never by that setter. So finishing a world leaves the client holding a
+  cursor one chapter past the last one the world declares, and it posts that
+  raw value on the clear and on every write after it. This server judged it
+  against the sections the world declares and refused. The advanced cursor is
+  already in the client's own saved userdata by then, so the refusal survived
+  restarting the game: BreaSoul reported 105-1 after 104-1, the Five Emperors
+  would have reported 120-1 after 119-1, and neither map could be completed.
+
+  The one value is now accepted, and only accepted: `is_valid_world_progress`
+  still says what this server may *hold*, the frontier still stops at the
+  world's last section, and the cursor sent back is still built from that. An
+  account already stuck recovers on its next clear with no repair to its save.
+  Nothing further out is accepted, which is the shape that must never be
+  echoed to a client that reads it as an `Int32`.
+
+  Both deployments: a server restart for the dedicated route, an APK rebuild
+  for the all-in-one on-device package.
+
 - **A successful on-device update reported itself as lost progress, and
   answered with the whole Companion box.** A tester updated, found everything
   intact, and was told otherwise: *"unlike prior updates I had an extremely
