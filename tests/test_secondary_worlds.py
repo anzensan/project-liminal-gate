@@ -7,6 +7,7 @@ import unittest
 from urllib.parse import urlencode
 
 from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.event_catalog import EventCatalog, EventStage
 from liminal_gate.hunting_catalog import (
     BUNDLED_ITEM_SLOTS,
     BUNDLED_MAX_STACK,
@@ -289,6 +290,14 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
         self.server, self.thread = start_server(
             ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(self.state_path),
             hunting_catalog=catalog(), secondary_worlds=True,
+            # One Dragon King, for the Special menu that stays open on every
+            # world map.
+            event_catalog=EventCatalog((
+                EventStage(
+                    "resplendent_dragon_king", "sp_ch_2011", 2011, 1,
+                    40, 0, 0, (), unlock_after_chapter=4,
+                ),
+            )),
         )
         self.addCleanup(self.stop_server)
         if self.account_id not in self.server.state.accounts:
@@ -517,6 +526,56 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
         self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
         self.assertEqual(200, self.start("start-110", 110, 1)[0])
         self.assertEqual(409, self.clear("clear-110", 110, 1, world=0)[0])
+
+    def test_an_archive_battle_clears_from_a_side_world_map(self) -> None:
+        """Issue 81: a Dragon King won while standing on the Five Emperors.
+
+        The client posts `GetWorldProgressCode()`, which is world 2's cursor
+        there, and the archive clear compared it against the story code.
+        """
+        story = self.userdata()["progressCode"]
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        status, started = self.start("start-2011", 2011, 1, stamina=40)
+        self.assertEqual((200, True), (status, started["success"]))
+        status, settled = self.clear("clear-2011", 2011, 1, world=FIVE_EMPERORS_WORLD)
+        self.assertEqual((200, True), (status, settled["success"]))
+        self.assertEqual("free_roam", self.account()["tutorial_phase"])
+        self.assertEqual(story, self.userdata()["progressCode"])
+        self.assertEqual(
+            (110, 1),
+            unpack_world_progress(self.account()["world_progress"][str(FIVE_EMPERORS_WORLD)]),
+        )
+
+    def test_an_archive_clear_naming_no_world_section_is_still_refused(self) -> None:
+        """The story code is no cursor either side world declares."""
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        self.assertEqual(200, self.start("start-2011", 2011, 1, stamina=40)[0])
+        userdata = self.userdata()
+        status, payload = self.post("/gd/clear_quest", "story-code", [
+            ("progressCode", str(userdata["progressCode"])),
+            ("worldMapNo", str(FIVE_EMPERORS_WORLD)),
+            ("valuables", json.dumps({
+                "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
+                "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
+                "coins": userdata["coins"],
+            })),
+            ("chrdata", json.dumps([self.character])),
+            ("itemList", json.dumps(userdata["itemList"])),
+            ("summonList", json.dumps(userdata["summonList"])),
+            ("battle_result", json.dumps({
+                "chapter": 2011, "section": 1, "coins": 0, "exp": 0,
+                "items": {}, "buddies": [], "monsters": [], "summons": [],
+                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+            })),
+            ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
+        ])
+        self.assertEqual((409, "event_clear_progress_conflict"), (status, payload["error"]))
+
+    def test_an_archive_clear_naming_the_wrong_world_is_still_refused(self) -> None:
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        self.assertEqual(200, self.start("start-2011", 2011, 1, stamina=40)[0])
+        status, payload = self.clear("clear-2011", 2011, 1, world=BREASOUL_WORLD)
+        self.assertEqual((409, "event_clear_world_map_conflict"), (status, payload["error"]))
 
     def test_a_descent_advances_only_its_own_world(self) -> None:
         story = self.userdata()["progressCode"]
