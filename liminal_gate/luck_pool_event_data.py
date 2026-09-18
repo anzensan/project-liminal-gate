@@ -326,6 +326,32 @@ ARCHIVE_SPECIAL_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] =
 #: documents the quest rather than the section, and expanding it is reading
 #: what the page says rather than inventing a difference it does not draw.
 #:
+#: **That broadcast was wrong for the three Descent families, and it is what
+#: issue 91 reported.** Chapters 2000, 2001 and 2002 do not serve one quest
+#: across four sections; they serve *four* quests, one per section, and the
+#: record documents each on its own page with its own table. Only the
+#: `Descended` page had been read, so its chest was served for `Evolved`,
+#: `Ultra` and `Recoded` too -- and the Fang that is the whole point of the
+#: Recoded tier (`Bahamut's Fang` and its two siblings, the recode materials a
+#: tester went twenty runs looking for) appears on no other page. Each family's
+#: own navbox names the four quests and their order.
+#:
+#: The section each page belongs to is joined on the client's own BattleData
+#: rather than on the page order, because a table filed under the wrong section
+#: is worse than a donated one. Every one of the three chapters carries
+#: `(rawStamina, assumedLevel)` of (15, 25), (25, 45), (40, 65) and (40, 80)
+#: across its four sections, and the four pages of every family carry exactly
+#: those pairs: Descended 15/25, Evolved 25/45, Ultra 40/65, Recoded 40/80,
+#: with five battles throughout. Stamina alone leaves Ultra and Recoded tied at
+#: 40; the assumed level separates them, and the two fields agree on the other
+#: two sections independently. That is the same standard of evidence the
+#: `Final Fantasy XV` and `Royal Rings Descended` tables are still withheld for
+#: lacking -- their sections carry no such discriminator.
+#:
+#: The scrape that read the three new pages per family reproduces all three
+#: `Descended` tables already here byte for byte, which is what says the reader
+#: and the name resolution are the ones that produced the reviewed rows.
+#:
 #: Three of the seven join by the recruit their own chest names, resolved
 #: against the client's master data rather than by the page title: 2000's is
 #: character 148, 2001's is 144, 2002's is 151, which are exactly the ids
@@ -366,8 +392,10 @@ ARCHIVE_SPECIAL_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] =
 #:   join from the other side: its Luck 80 pays Leonidas, Compass and Lantern,
 #:   which are that recode's own materials.
 _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] = {
-    # Bahamut Descended, rev 84016.
+    # Bahamut's four quests, one section each, in the order the client's
+    # own BattleData puts them: see the module note above.
     2000: (
+        # Bahamut Descended, rev 84016. Section 1: 15 stamina, assumed level 25.
         {
             "A": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
             "B": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
@@ -376,9 +404,38 @@ _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] =
             "Luck 80": ('M148', 'O8', 'O128',),
             "Luck 100": ('M148', 'O8',),
         },
+        # Bahamut Evolved, rev 84017. Section 2: 25 stamina, assumed level 45.
+        {
+            "A": ('C500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('I48', 'M524', 'M519',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M148', 'O8', 'O9',),
+            "Luck 100": ('M148', 'O9',),
+        },
+        # Bahamut Ultra, rev 84018. Section 3: 40 stamina, assumed level 65.
+        {
+            "A": ('C1000', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C1000', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('I48', 'I49', 'M524',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M148', 'O9', 'O12',),
+            "Luck 100": ('M148', 'O337', 'O12',),
+        },
+        # Bahamut Recoded, rev 84154. Section 4: 40 stamina, assumed level 80.
+        {
+            "A": ('C1500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C1500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('I48', 'I49', 'M524', 'M519',),
+            "D": ('I134', 'I50', 'I112', 'I81',),
+            "Luck 80": ('I134', 'M632', 'O311',),
+            "Luck 100": ('I134', 'M632', 'O275', 'O311',),
+        },
     ),
-    # Leviathan Descended, rev 84021.
+    # Leviathan's four quests, one section each, in the order the client's
+    # own BattleData puts them: see the module note above.
     2001: (
+        # Leviathan Descended, rev 84021. Section 1: 15 stamina, assumed level 25.
         {
             "A": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
             "B": ('C250', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
@@ -387,9 +444,38 @@ _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] =
             "Luck 80": ('M144', 'O14', 'O128',),
             "Luck 100": ('M144', 'O14',),
         },
+        # Leviathan Evolved, rev 84022. Section 2: 25 stamina, assumed level 45.
+        {
+            "A": ('C500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('I51', 'M671',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M144', 'O14', 'O15',),
+            "Luck 100": ('M144', 'O15',),
+        },
+        # Leviathan Ultra, rev 84023. Section 3: 40 stamina, assumed level 65.
+        {
+            "A": ('C1000', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C1000', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('C2000', 'I51', 'I52',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M144', 'O15', 'O18',),
+            "Luck 100": ('M144', 'O353', 'O18',),
+        },
+        # Leviathan Recoded, rev 84024. Section 4: 40 stamina, assumed level 80.
+        {
+            "A": ('C1500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "B": ('C1500', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I46',),
+            "C": ('I51', 'I52', 'M671',),
+            "D": ('I135',),
+            "Luck 80": ('I135', 'M634', 'O312',),
+            "Luck 100": ('I135', 'M634', 'O276',),
+        },
     ),
-    # Odin Descended, rev 84025.
+    # Odin's four quests, one section each, in the order the client's
+    # own BattleData puts them: see the module note above.
     2002: (
+        # Odin Descended, rev 84025. Section 1: 15 stamina, assumed level 25.
         {
             "A": ('C250', 'I9', 'I10', 'I11', 'I12',),
             "B": ('C250', 'I9', 'I10', 'I11', 'I12',),
@@ -397,6 +483,33 @@ _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] =
             "D": ('I50', 'I81', 'I112',),
             "Luck 80": ('M151', 'O37', 'O128',),
             "Luck 100": ('M151', 'O37',),
+        },
+        # Odin Evolved, rev 84027. Section 2: 25 stamina, assumed level 45.
+        {
+            "A": ('C500', 'I9', 'I10', 'I11', 'I12',),
+            "B": ('C500', 'I9', 'I10', 'I11', 'I12',),
+            "C": ('I57', 'M463',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M151', 'O37', 'O40',),
+            "Luck 100": ('M151', 'O40',),
+        },
+        # Odin Ultra, rev 84026. Section 3: 40 stamina, assumed level 65.
+        {
+            "A": ('C1000', 'I9', 'I10', 'I11', 'I12',),
+            "B": ('C1000', 'I9', 'I10', 'I11', 'I12',),
+            "C": ('C2000', 'I57', 'I58',),
+            "D": ('I50', 'I81', 'I112',),
+            "Luck 80": ('M151', 'O40', 'O85',),
+            "Luck 100": ('M151', 'O355', 'O85',),
+        },
+        # Odin Recoded, rev 84028. Section 4: 40 stamina, assumed level 80.
+        {
+            "A": ('C1500', 'I9', 'I10', 'I11', 'I12',),
+            "B": ('C1500', 'I9', 'I10', 'I11', 'I12',),
+            "C": ('I57', 'I58', 'M463',),
+            "D": ('I136', 'I50', 'I81', 'I112',),
+            "Luck 80": ('I136', 'M633', 'O313',),
+            "Luck 100": ('I136', 'M633', 'O277',),
         },
     ),
     # Lucia the Explorer, rev 84031.

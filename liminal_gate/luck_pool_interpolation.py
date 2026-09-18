@@ -103,6 +103,22 @@ def donor_chapters(chapter: int) -> tuple[int, ...]:
     return tuple(sorted({*below[-1:], *above[:1]}))
 
 
+def bracketing_chapters(chapter: int) -> tuple[int, ...]:
+    """The documented chapters on either side, never the chapter itself.
+
+    `donor_chapters` answers a documented chapter with *itself* on both sides,
+    which is right as far as it goes -- the chapter's own record should lead --
+    but it leaves nothing to fall back on for a tier that record never fills.
+    This is that fallback, and it is the same bracket a neighbouring chapter
+    already gets: Chapter 9's undocumented stages borrow from 6 and 13 for the
+    tiers Chapter 9 itself is silent on, exactly as Chapters 8 and 10 do.
+    """
+    documented = _documented_chapters()
+    below = [entry for entry in documented if entry < chapter]
+    above = [entry for entry in documented if entry > chapter]
+    return tuple(sorted({*below[-1:], *above[:1]}))
+
+
 @dataclass(frozen=True)
 class InterpolatedLuckPools:
     """Answers for undocumented stages; defers to the record everywhere else."""
@@ -118,7 +134,23 @@ class InterpolatedLuckPools:
             # tier empty on purpose. Both are the record speaking; neither is a
             # gap to fill.
             return documented
-        return _donor_pools(donor_chapters(chapter)).get(tier, ())
+        donated = _donor_pools(donor_chapters(chapter)).get(tier, ())
+        if donated:
+            return donated
+        # A documented chapter donates only to itself, so one whose record
+        # covers a single stage fills only the tiers that stage fills and
+        # leaves every other stage in the chapter empty at the rest. That made
+        # a documented chapter *worse* than its undocumented neighbours:
+        # Chapters 8 and 10 paid a Luck 100 chest and Chapter 9, the one the
+        # record actually covers, paid nothing in all ten sections, because its
+        # only documented stage carries one item in A and one in B. Reported on
+        # issue 92 for Chapters 9 and 25; 31 and 34 had it too.
+        #
+        # Falling back to the bracket is the rule this module already applies
+        # one chapter to either side, so the answer here is the answer the
+        # neighbours were already getting. A documented *stage* is still never
+        # touched: this runs only where the record names no stage at all.
+        return _donor_pools(bracketing_chapters(chapter)).get(tier, ())
 
 
 @dataclass(frozen=True)

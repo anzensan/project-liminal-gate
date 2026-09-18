@@ -83,6 +83,54 @@ run the command.
 
 ### Fixed
 
+- **The Recoded tier of each Descent family paid the Descended chest, so its
+  Fang never dropped.** A tester on issue 91, about Leviathan Recoded and
+  Bahamut Recoded: *"won't drop their correct luck treasure rewards. I spend
+  about 20 tries and never got their luck 80 and luck 100 rewards from Wiki but
+  only other things... I am mostly talking about Bahamut and Leviathan Fangs."*
+  They were not unlucky. The Fang was not in the pool.
+
+  Chapters 2000, 2001 and 2002 do not serve one quest across four sections;
+  they serve four -- Descended, Evolved, Ultra and Recoded -- and the record
+  documents each on its own page with its own chest. Only the `Descended` page
+  had been read, and a chapter carrying a single table has it answer for every
+  section, which is right where the record documents the quest rather than the
+  section and wrong here. All three families now carry one table per section.
+
+  Which page belongs to which section is joined on the client's own BattleData
+  rather than on the order the pages are listed in: every one of the three
+  chapters carries `(stamina, assumed level)` of (15, 25), (25, 45), (40, 65)
+  and (40, 80) across its four sections, and the twelve pages carry exactly
+  those pairs. Stamina alone ties Ultra and Recoded at 40 and the assumed level
+  separates them. The scrape that read the nine new pages reproduces all three
+  `Descended` tables already in the tree byte for byte, and every name on all
+  twelve resolved.
+
+  Both deployments: a server restart for the dedicated route, an APK rebuild
+  for the all-in-one on-device package.
+
+- **Chapters 9, 25, 31 and 34 paid no Luck 100 chest in any section, and
+  Chapters 9 and 31 no Luck 80 either.** A tester on issue 92, playing a
+  100-Luck team: *"I can get 80 and 100 Luck chests to drop in most chapters.
+  However, at least in Chapters 9 and 25, the 100 Luck chest doesn't appear to
+  drop at all, and at times the 80 Luck chest doesn't drop."*
+
+  Interpolation answers an undocumented stage with the documented chapters that
+  bracket it, and a documented chapter brackets against *itself* on both sides.
+  That is right as far as it goes -- a chapter's own record should lead -- but
+  it left nothing to fall back on for a tier that record never fills. Chapter
+  9's one documented stage carries a single item in A and one in B, so all ten
+  of its sections paid nothing at C, D, Luck 80 and Luck 100, which made the
+  chapter the record covers *worse* than Chapters 8 and 10 either side of it.
+
+  A chapter now falls back to the same bracket its neighbours already use, for
+  the tiers its own record is silent on. A documented *stage* is still never
+  filled in: 25-7's Luck 100 cell is empty on the page, and that stays the
+  record paying nothing there.
+
+  Both deployments: a server restart for the dedicated route, an APK rebuild
+  for the all-in-one on-device package.
+
 - **Neither secondary world could be finished: the clear on the last stage
   answered a Network Error that came back on every retry.** A tester on issue
   90, on The Death of Shay and Arionne: *"At the end of the chapter 5 - part 1,
