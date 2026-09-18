@@ -40,6 +40,15 @@ class StoryProgressionCatalog:
         indexes = self.index_by_identity()
         stage_index = indexes.get(identity)
         unlocked_index = indexes.get(current_identity)
+        # Clearing the last stage advances to its successor -- 43-1, the
+        # terminal sentinel -- which names no stage of its own. Read as one
+        # past the last index it unlocks every stage for replay; left
+        # unresolved it answered `None` for every start and clear, so an
+        # account that finished the story could not enter any story stage.
+        if unlocked_index is None and self.stages:
+            final = self.stages[-1]
+            if current_identity == (final.successor_chapter, final.successor_section):
+                unlocked_index = len(self.stages)
         if stage_index is None or unlocked_index is None or stage_index > unlocked_index:
             return None
         if stage_index < unlocked_index:

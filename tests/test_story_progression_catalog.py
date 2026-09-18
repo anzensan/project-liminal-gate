@@ -27,6 +27,15 @@ class StoryProgressionCatalogTest(unittest.TestCase):
         self.assertEqual(0x010000C1, catalog.expected_reveal_progress(0x030000C1))
         self.assertEqual(0x010000C1, catalog.expected_clear_progress(0x010000C1, (2, 5)))
 
+    def test_a_finished_story_replays_every_stage(self) -> None:
+        """Clearing 42-3 leaves the account on 43-1, which names no stage."""
+        write_json(self.path, build_story_progression(_metadata()))
+        catalog = load_story_progression_catalog(self.path)
+        finished = 0x01000000 | (43 << 6) | 1
+        for stage in (catalog.stages[0], catalog.stages[-1]):
+            self.assertEqual(finished, catalog.expected_clear_progress(finished, (stage.chapter, stage.section)))
+        self.assertIsNone(catalog.expected_clear_progress(0x01000000 | (44 << 6) | 1, (2, 1)))
+
     def test_rejects_changed_successor(self) -> None:
         document = build_story_progression(_metadata())
         document["stages"][0]["successor_low_progress"] = 0
