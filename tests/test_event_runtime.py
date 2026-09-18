@@ -2095,3 +2095,135 @@ class RaidRangeLoginParamsTest(unittest.TestCase):
         # 9010--9099 is the client's own Tower of Temptation range and takes the
         # ordinary start path, so nothing is declared for it.
         self.assertNotIn("eventQuestParams", self.login(9010))
+
+
+class BattleCounterRoundTripTest(unittest.TestCase):
+    """Issue 89: Arachnobot's Tale Part 5 always finished on Ending A.
+
+    Ending A adds `EndingA` to the battle's send counters, which the clear
+    reports as JSON text in `battle_result.counters`. Battle 5-1 routes every
+    run to Ending A until the next start's `counters` object hands the total
+    back, so a server that dropped the report pinned every run on Ending A.
+    """
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = Path(directory.name) / "state.json"
+        self.token = "counter-token"
+        self.progress = 0x01000000 | (43 << 6) | 1
+        self.start_server()
+        self.server.state.create_account(self.token, "counter-account", {
+            "coins": 500, "energy": 0, "freeEnergy": 20, "worldMapNo": 0,
+            "progressCode": self.progress, "chrdata": [character(3)],
+            "teamMembers": [3, 0, 0, 0, 0, 0],
+            "itemList": [0] * ITEM_SLOTS, "summonList": [0] * 16,
+        })
+        with self.server.state.lock:
+            self.server.state.accounts["counter-account"]["tutorial_phase"] = "free_roam"
+            self.server.state._persist_locked()
+
+    def start_server(self) -> None:
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), bootstrap_profile(), BootstrapState(self.path),
+            event_catalog=EventCatalog((
+                EventStage("arachnobot_5", "sp_ch_2017", 2017, 5, 15, 0, 0, (), unlock_after_chapter=4),
+                EventStage("jade_dragon_hunt", "sp_ch_2004", 2004, 1, 15, 0, 0, (), unlock_after_chapter=4),
+            )),
+        )
+        self.addCleanup(self.stop_server)
+
+    def stop_server(self) -> None:
+        if self.server is not None:
+            stop_server(self.server, self.thread)
+            self.server = None
+
+    def post(self, route: str, request_id: str, fields: dict) -> tuple[int, dict]:
+        return support_post(
+            self.server, f"/gd/{route}", request_id, urlencode(fields).encode(),
+            token=self.token, headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    def start(self, request_id: str, chapter: int = 2017, section: int = 5) -> tuple[int, dict]:
+        return self.post("start_quest", request_id, {
+            "stamina": 15, "coins": 0, "chapter": chapter, "section": section, "lastUpdate": 1,
+        })
+
+    def clear(self, request_id: str, counters: object, chapter: int = 2017, section: int = 5) -> tuple[int, dict]:
+        battle = {
+            "coins": 0, "buddies": [], "items": {}, "exp": 0, "section": section,
+            "monsters": [], "summons": [], "luckynum": 0, "chapter": chapter,
+            "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+        }
+        if counters is not None:
+            battle["counters"] = counters
+        return self.post("clear_quest", request_id, {
+            "progressCode": self.progress, "worldMapNo": 0,
+            "valuables": json.dumps({
+                "energyAppStore": 0, "energy": 0, "energyAndApp": 0,
+                "freeEnergy": 20, "energyGooglePlay": 0, "coins": 500,
+            }),
+            "chrdata": json.dumps([character(3)]),
+            "itemList": json.dumps([0] * ITEM_SLOTS),
+            "summonList": json.dumps([0] * 16),
+            "battle_result": json.dumps(battle),
+            "itmp0": -1, "itmp1": 0, "lastUpdate": 1,
+        })
+
+    def play(self, label: str, counters: object) -> tuple[int, dict]:
+        status, started = self.start(f"start-{label}")
+        self.assertEqual((200, True), (status, started["success"]))
+        return self.clear(f"clear-{label}", counters)
+
+    def test_ending_a_is_handed_back_on_the_next_start(self) -> None:
+        status, first = self.start("start-first")
+        self.assertEqual((200, True), (status, first["success"]))
+        self.assertNotIn("counters", first)
+        self.assertEqual(200, self.clear("clear-first", json.dumps({"EndingA": 1}))[0])
+        status, second = self.start("start-second")
+        self.assertEqual((200, {"EndingA": 1}), (status, second["counters"]))
+
+    def test_counters_accumulate_and_a_retried_clear_counts_once(self) -> None:
+        self.assertEqual(200, self.play("a", json.dumps({"EndingA": 1}))[0])
+        replay = self.clear("clear-a", json.dumps({"EndingA": 1}))
+        self.assertEqual(200, replay[0])
+        self.assertEqual(200, self.play("f", json.dumps({"EndingA": 1, "EndingF": 1}))[0])
+        _status, started = self.start("start-next")
+        self.assertEqual({"EndingA": 2, "EndingF": 1}, started["counters"])
+
+    def test_a_clear_without_counters_changes_nothing(self) -> None:
+        self.assertEqual(200, self.play("a", json.dumps({"EndingA": 1}))[0])
+        self.assertEqual(200, self.play("plain", None)[0])
+        self.assertEqual(200, self.play("empty", "{}")[0])
+        _status, started = self.start("start-next")
+        self.assertEqual({"EndingA": 1}, started["counters"])
+
+    def test_a_chapter_is_handed_only_its_own_counters(self) -> None:
+        self.assertEqual(200, self.play("a", json.dumps({"EndingA": 1}))[0])
+        status, other = self.start("start-jade", 2004, 1)
+        self.assertEqual((200, True), (status, other["success"]))
+        self.assertNotIn("counters", other)
+
+    def test_a_retried_start_carries_the_counters_too(self) -> None:
+        self.assertEqual(200, self.play("a", json.dumps({"EndingA": 1}))[0])
+        self.assertEqual(200, self.start("start-open")[0])
+        _status, retried = self.start("start-open-again")
+        self.assertEqual({"EndingA": 1}, retried["counters"])
+
+    def test_counters_survive_a_restart(self) -> None:
+        self.assertEqual(200, self.play("a", json.dumps({"EndingA": 1}))[0])
+        self.stop_server()
+        self.start_server()
+        _status, started = self.start("start-after-restart")
+        self.assertEqual({"EndingA": 1}, started["counters"])
+
+    def test_a_malformed_counter_report_is_refused(self) -> None:
+        for label, counters in (
+            ("not-json", "EndingA"), ("a-list", "[1]"),
+            ("negative", json.dumps({"EndingA": -1})), ("a-bool", json.dumps({"EndingA": True})),
+            ("not-text", {"EndingA": 1}),
+        ):
+            with self.subTest(label):
+                self.assertEqual(200, self.start(f"start-{label}")[0])
+                status, payload = self.clear(f"clear-{label}", counters)
+                self.assertEqual((501, "unsupported_clear_quest"), (status, payload["error"]))
