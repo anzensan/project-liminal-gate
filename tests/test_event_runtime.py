@@ -20,6 +20,7 @@ from liminal_gate.event_catalog import (
     STRIKES_BACK_RECRUITS,
     build_bundled_collab_special_policy,
     build_bundled_counter_descent_policy,
+    merge_event_catalogs,
 )
 from liminal_gate.event_flag_data import music_event_flags
 from liminal_gate.hunting_catalog import build_bundled_hunting_policy
@@ -1974,6 +1975,28 @@ class CaptiveGolemClassLimitTest(unittest.TestCase):
         # A route's own refusal code rides `cmdError`; see docs/server-protocol.md.
         self.assertEqual(200, status, payload)
         self.assertEqual(CLASS_LIMIT_ERROR_CODE, payload["cmdError"])
+
+    def test_the_band_survives_the_merge_the_standard_server_performs(self) -> None:
+        """Issue 86, reported again after the band shipped: a Z-class team still
+        walked into every section.
+
+        Nothing was wrong with the gate; the class map never reached it.
+        `merge_event_catalogs` rebuilt the catalog from its stages alone, and
+        only the operator's own loaded catalog carries a class map -- the
+        bundled policies merged over it carry none. `over_class_limit` reads an
+        empty map as nothing to check, so the gate answered False for every
+        party. The standard server merges whenever `--hunting` is on, which
+        every launcher passes, so this was every deployment; the tests above
+        build a catalog directly and never merge, so they kept passing.
+        """
+        merged = merge_event_catalogs(
+            EventCatalog((EventStage("other", "sp_ch_9999", 9999, 1, 10, 0, 0, ()),)),
+            self.catalog(),
+        )
+        self.assertEqual({self.OVER_CLASS: 8, self.WITHIN_CLASS: 3}, merged.character_classes)
+        stage = merged.by_identity()[(2008, 4)]
+        self.assertTrue(merged.over_class_limit(stage, [self.OVER_CLASS, 0, 0, 0, 0, 0]))
+        self.assertFalse(merged.over_class_limit(stage, [self.WITHIN_CLASS, 0, 0, 0, 0, 0]))
 
     def test_a_party_inside_the_band_still_enters(self) -> None:
         status, payload = self.start([self.WITHIN_CLASS, 0, 0, 0, 0, 0])

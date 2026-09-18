@@ -562,12 +562,23 @@ def merge_event_catalogs(*catalogs: EventCatalog | None) -> EventCatalog | None:
     retained.
     """
     stages: dict[tuple[int, int], EventStage] = {}
+    # Carried forward, first owner wins, exactly as the stages are. Rebuilding
+    # the catalog without it is what silently retired the Captive Golem class
+    # band: only the operator's own loaded catalog carries a class map, the
+    # bundled policies merged over it carry none, and `over_class_limit` reads
+    # an empty map as "nothing to check" rather than as a missing input. The
+    # standard server merges whenever `--hunting` is on, which every launcher
+    # passes, so the gate was dead on every deployment while its unit tests --
+    # which build a catalog directly and never merge -- kept passing. Issue 86.
+    classes: dict[int, int] = {}
     for catalog in catalogs:
         if catalog is None:
             continue
         for stage in catalog.stages:
             stages.setdefault((stage.chapter, stage.section), stage)
-    return EventCatalog(tuple(stages.values())) if stages else None
+        for character_id, character_class in (catalog.character_classes or {}).items():
+            classes.setdefault(character_id, character_class)
+    return EventCatalog(tuple(stages.values()), classes or None) if stages else None
 
 
 def _hash(path: Path) -> str:

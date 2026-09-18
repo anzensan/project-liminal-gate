@@ -83,6 +83,29 @@ run the command.
 
 ### Fixed
 
+- **The Captive Golem's class band was enforced on no deployment at all, and
+  had not been since it shipped.** Reported again on issue 86 after the band
+  was supposed to be fixed: *"This not work with the last build, i can reach
+  every stage with a Z team."* Nothing was wrong with the gate. The class map
+  never reached it.
+
+  `merge_event_catalogs` rebuilt the catalog from its stages alone, and only
+  the operator's own loaded catalog carries a class map -- the bundled Counter
+  Descent and collab policies merged over it carry none. `over_class_limit`
+  reads an empty map as nothing to check rather than as a missing input, so it
+  answered False for every party. The standard server merges whenever
+  `--hunting` is on, and every launcher passes it, so the band was dead
+  everywhere while its own tests kept passing: they build a catalog directly
+  and never merge. The map is now carried through the merge, first owner
+  winning, the way the stages already are.
+
+  The second half of that report is working as intended and stays as it is:
+  Chapter 2008 pays no Luck Treasure Chest because the Luck page's own list of
+  chestless quests names The Captive Golem. See `NO_CHEST_CHAPTERS`.
+
+  Both deployments: a server restart for the dedicated route, an APK rebuild
+  for the all-in-one on-device package.
+
 - **The Recoded tier of each Descent family paid the Descended chest, so its
   Fang never dropped.** A tester on issue 91, about Leviathan Recoded and
   Bahamut Recoded: *"won't drop their correct luck treasure rewards. I spend
