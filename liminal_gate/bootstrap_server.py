@@ -186,6 +186,7 @@ from liminal_gate.secondary_world_data import (
     build_bundled_breasoul_stages,
     build_bundled_five_emperors_stages,
     initial_world_progress,
+    is_reportable_world_progress,
     is_valid_world_progress,
     secondary_world_event_flags,
     unpack_world_progress,
@@ -3118,12 +3119,15 @@ class BootstrapState:
             # story code refused every side-world clear ever posted, left the
             # battle active, and blocked the account from starting anything
             # else. Bounded rather than pinned: the cursor names a section that
-            # world declares, and the frontier stays this server's to move.
+            # world declares -- or the one past its last, which is where the
+            # client's own `UnlockNextSection` leaves it after the clear that
+            # finishes the world -- and the frontier stays this server's to
+            # move. See `is_reportable_world_progress` and issue 90.
             reported_world = clear["worldMapNo"]
             if reported_world == MAIN_WORLD:
                 world_progress_matches = clear["progressCode"] == int(userdata.get("progressCode", 0))
             else:
-                world_progress_matches = is_valid_world_progress(
+                world_progress_matches = is_reportable_world_progress(
                     str(reported_world), clear["progressCode"],
                 )
             # A Hunting clear may fold the battle's Coins into the wallet it
@@ -3961,7 +3965,7 @@ class BootstrapState:
             # code being compared.
             reported_world = clear["worldMapNo"]
             if event and reported_world != MAIN_WORLD:
-                progress_matches = is_valid_world_progress(
+                progress_matches = is_reportable_world_progress(
                     str(reported_world), clear["progressCode"],
                 )
             else:
@@ -4283,14 +4287,17 @@ class BootstrapState:
             if target == MAIN_WORLD:
                 if write["progressCode"] != held:
                     return "tutorial_state_conflict", None
-            elif not is_valid_world_progress(str(target), write["progressCode"]):
+            elif not is_reportable_world_progress(str(target), write["progressCode"]):
                 # Bounded by the sections that world declares rather than by
                 # equality with the cursor this server holds. The two agree
                 # whenever they should -- the client's `UnlockNextSection`
-                # advances by the same table the clear already advanced -- and
-                # the shape that must never be accepted is a cursor naming a
-                # section no world has, because it would be sent straight back
-                # and the client reads it as an `Int32`.
+                # advances by the same table the clear already advanced, until
+                # the world's last section, where it rolls one chapter past the
+                # end and this server's frontier stays put; that one value is
+                # accepted too, and never stored. The shape that must never be
+                # accepted is a cursor naming a section further out than that,
+                # because it would be sent straight back and the client reads
+                # it as an `Int32`.
                 return "tutorial_state_conflict", None
             # The frontier is not moved here, in either direction. Clearing a
             # section is what opens the next one, and `_advance_world_progress`

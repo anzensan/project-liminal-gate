@@ -312,26 +312,74 @@ def advanced_world_progress(packed: int, chapter: int, section: int) -> int | No
     )
 
 
-def is_valid_world_progress(world: str, packed: object) -> bool:
-    """Whether a stored cursor is one this world could actually hold.
+def _world_cursor(world: str, packed: object) -> tuple[tuple[int, int], tuple[tuple[int, int], ...]] | None:
+    """The section a cursor names and the world's own section list, or None.
 
-    Checked because the value is sent to the client, and the client reads it
-    with LitJson's `Int32` accessor: a number past that range raises
-    `InvalidCastException` inside the userdata load, which reaches a tester as
-    a freeze rather than an error. A hand-edited save is a supported way to
-    reach this server -- `tools/save-editor.html` exists -- so the save layer,
-    not the wire, is where an impossible cursor has to stop.
+    The shape checks both predicates below share. `packed` is bounded because
+    the value is sent to the client, and the client reads it with LitJson's
+    `Int32` accessor: a number past that range raises `InvalidCastException`
+    inside the userdata load, which reaches a tester as a freeze rather than an
+    error. A hand-edited save is a supported way to reach this server --
+    `tools/save-editor.html` exists -- so the save layer, not the wire, is where
+    an impossible cursor has to stop.
     """
     if type(packed) is not int or packed < 0 or packed > _NEW_STAGE_BIT | _SHOW_PROGRESS_BIT | 0xFFFF:
-        return False
+        return None
     # `isascii` as well as `isdigit`, because the key is sent as written and the
     # client resolves it with `Int32.Parse`. Python calls an Arabic-Indic digit
     # a digit and converts it; whether that client's parse agrees is exactly the
     # kind of thing this project does not put on the wire to find out.
     if not (type(world) is str and world.isascii() and world.isdigit()):
-        return False
+        return None
     sections = _WORLD_SECTIONS.get(int(world))
-    return sections is not None and unpack_world_progress(packed) in sections
+    return None if sections is None else (unpack_world_progress(packed), sections)
+
+
+def is_valid_world_progress(world: str, packed: object) -> bool:
+    """Whether a cursor is one this server may *hold* for this world.
+
+    The strict half: every value stored on an account or sent back to the
+    client is one of that world's own declared sections. Use
+    :func:`is_reportable_world_progress` to judge a cursor the client sent,
+    which is legitimately one value wider.
+    """
+    held = _world_cursor(world, packed)
+    return held is not None and held[0] in held[1]
+
+
+def is_reportable_world_progress(world: str, packed: object) -> bool:
+    """Whether a cursor the *client* reports is one it could legitimately hold.
+
+    Wider than :func:`is_valid_world_progress` by exactly one value per world,
+    and the difference is the client's own arithmetic rather than a tolerance
+    chosen here. `UserData.UnlockNextSection` (`0x19D90F4`) increments the
+    section, compares it against the chapter's own section count, and on
+    overflow calls `SetWorldNewChapter(worldNo, chapter + 1, 1)` (`0x19D920C`).
+    That store (`0x19D8680`) applies no ceiling of its own -- `worldMaxChapter`
+    is read by the getter `get_worldChapterNo`, never by the setter, the same
+    split the core story's `maxChapter` has -- so clearing the last section of a
+    world leaves the cursor one chapter past the last one the world declares,
+    and `GetWorldProgressCode` (`0x19D9394`) hands that raw value straight back
+    on the clear and on every write after it.
+
+    Refusing it answered a Network Error to the clear that *finishes* a world,
+    on every retry and every relaunch, because by then the advanced cursor is
+    already in the client's own saved userdata and it re-sends it forever.
+    BreaSoul reported 105-1 after clearing 104-1 and the Five Emperors 120-1
+    after 119-1, so neither map could be completed at all. Reported on issue 90
+    against BreaSoul, whose last chapter carries a single section.
+
+    The extra value is only ever *accepted*, never kept: the frontier remains
+    `advanced_world_progress`'s, which holds at the world's last section, and
+    the projection sent back is built from that. So nothing widened here can be
+    stored or served, and an account already stuck recovers on its next write
+    with no repair to its save.
+    """
+    reported = _world_cursor(world, packed)
+    if reported is None:
+        return False
+    cursor, sections = reported
+    return cursor in sections or cursor == (sections[-1][0] + 1, 1)
 
 
 def world_max_chapters() -> list[int]:

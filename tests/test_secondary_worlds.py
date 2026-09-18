@@ -15,6 +15,7 @@ from liminal_gate.hunting_catalog import (
     hunting_settlement_within_bounds,
 )
 from liminal_gate.secondary_world_data import (
+    _WORLD_SECTIONS,
     BREASOUL_EVENT_FLAG,
     BREASOUL_UNLOCK,
     BREASOUL_WORLD,
@@ -27,6 +28,7 @@ from liminal_gate.secondary_world_data import (
     build_bundled_breasoul_stages,
     build_bundled_five_emperors_stages,
     initial_world_progress,
+    is_reportable_world_progress,
     is_valid_world_progress,
     pack_world_progress,
     secondary_world_event_flags,
@@ -352,9 +354,9 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
         held = self.account().get("world_progress", {})
         return held.get(str(world), self.userdata()["progressCode"])
 
-    def enter_world(self, request_id: str, world: int) -> tuple:
+    def enter_world(self, request_id: str, world: int, cursor: int | None = None) -> tuple:
         return self.post("/gd/userdata", request_id, [
-            ("progressCode", str(self.world_cursor(world))),
+            ("progressCode", str(self.world_cursor(world) if cursor is None else cursor)),
             ("worldMapNo", str(world)), ("lastUpdate", "1"),
         ])
 
@@ -364,10 +366,20 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
             ("section", str(section)), ("lastUpdate", "1"),
         ])
 
-    def clear(self, request_id: str, chapter: int, section: int, *, world: int) -> tuple:
+    def clear(
+        self, request_id: str, chapter: int, section: int, *, world: int,
+        cursor: int | None = None,
+    ) -> tuple:
+        """Settle a battle. ``cursor`` overrides the `progressCode` posted.
+
+        The default is the cursor this server holds, which is what the client
+        reports for every section but the last one in a world; `WorldEndTest`
+        is the one place the two legitimately differ.
+        """
         userdata = self.userdata()
         return self.post("/gd/clear_quest", request_id, [
-            ("progressCode", str(self.world_cursor(world))), ("worldMapNo", str(world)),
+            ("progressCode", str(self.world_cursor(world) if cursor is None else cursor)),
+            ("worldMapNo", str(world)),
             ("valuables", json.dumps({
                 "energyAppStore": 0, "energy": userdata["energy"], "energyAndApp": 0,
                 "freeEnergy": userdata["freeEnergy"], "energyGooglePlay": 0,
@@ -660,6 +672,123 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
         served = self.read_userdata()["worldProgressCode"]
         self.assertEqual((100, 1), unpack_world_progress(served["1"]))
         self.assertEqual((110, 1), unpack_world_progress(served["2"]))
+
+
+class WorldEndTest(SecondaryWorldTransactionTest):
+    """The clear that *finishes* a secondary world. Issue 90.
+
+    A tester reported a Network Error on The Death of Shay and Arionne at
+    "chapter 5 - part 1" -- BreaSoul's chapter 104, whose single section is the
+    last of the world -- that came back on every retry and survived restarting
+    the game. Every earlier section settled.
+
+    `UserData.UnlockNextSection` (`0x19D90F4`) increments the section, compares
+    it against the chapter's own count, and on overflow calls
+    `SetWorldNewChapter(worldNo, chapter + 1, 1)` (`0x19D920C`), which stores
+    the packed value with no ceiling: `worldMaxChapter` is read by the getter
+    `get_worldChapterNo`, never by that setter. So finishing a world leaves the
+    client holding a cursor one chapter past the last the world declares, and
+    `GetWorldProgressCode` (`0x19D9394`) posts that raw value on the clear and
+    on every write after it. The server judged it against the sections the
+    world declares and refused -- and because the advanced cursor is already in
+    the client's own saved userdata, the refusal repeated forever.
+
+    These tests post what the client posts rather than what this server holds,
+    which is the thing the rest of the suite could not see: every other clear
+    here echoes `world_cursor`, so the two never disagreed.
+    """
+
+    def _stand_at(self, world: int, chapter: int, section: int) -> int:
+        """Put the account on ``world`` with its frontier at ``chapter``-``section``.
+
+        Written into the live state rather than through twenty clears: what is
+        under test is the last one.
+        """
+        cursor = pack_world_progress(chapter, section)
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account.setdefault("world_progress", {})[str(world)] = cursor
+            self.server.state._persist_locked()
+        self.assertEqual(200, self.enter_world(f"swap-{world}", world, cursor)[0])
+        self.assertEqual(
+            (chapter, section), unpack_world_progress(self.read_userdata()["worldProgressCode"][str(world)]),
+        )
+        return cursor
+
+    def test_breasoul_settles_the_clear_that_finishes_the_world(self) -> None:
+        self._stand_at(BREASOUL_WORLD, 104, 1)
+        self.assertEqual(200, self.start("start-104", 104, 1)[0])
+        rolled = pack_world_progress(105, 1)
+        status, payload = self.clear("clear-104", 104, 1, world=BREASOUL_WORLD, cursor=rolled)
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+
+    def test_five_emperors_settles_the_clear_that_finishes_the_world(self) -> None:
+        self._stand_at(FIVE_EMPERORS_WORLD, 119, 1)
+        self.assertEqual(200, self.start("start-119", 119, 1, stamina=20)[0])
+        rolled = pack_world_progress(120, 1)
+        status, payload = self.clear("clear-119", 119, 1, world=FIVE_EMPERORS_WORLD, cursor=rolled)
+        self.assertEqual(200, status)
+        self.assertTrue(payload["success"])
+
+    def test_the_rolled_cursor_is_accepted_but_never_kept(self) -> None:
+        """The frontier holds at the world's last section, and that is served."""
+        self._stand_at(BREASOUL_WORLD, 104, 1)
+        self.assertEqual(200, self.start("start-104", 104, 1)[0])
+        rolled = pack_world_progress(105, 1)
+        self.assertEqual(200, self.clear("clear-104", 104, 1, world=BREASOUL_WORLD, cursor=rolled)[0])
+        served = self.read_userdata()["worldProgressCode"]
+        self.assertEqual((104, 1), unpack_world_progress(served["1"]))
+        self.assertTrue(is_valid_world_progress("1", served["1"]))
+
+    def test_the_flush_that_follows_that_clear_is_answered(self) -> None:
+        """The client echoes the rolled cursor again on its next write."""
+        self._stand_at(BREASOUL_WORLD, 104, 1)
+        self.assertEqual(200, self.start("start-104", 104, 1)[0])
+        rolled = pack_world_progress(105, 1)
+        self.assertEqual(200, self.clear("clear-104", 104, 1, world=BREASOUL_WORLD, cursor=rolled)[0])
+        self.assertEqual(200, self.enter_world("flush-104", BREASOUL_WORLD, rolled)[0])
+        served = self.read_userdata()["worldProgressCode"]
+        self.assertEqual((104, 1), unpack_world_progress(served["1"]))
+
+    def test_a_cursor_two_chapters_past_the_end_is_still_refused(self) -> None:
+        """One past is the client's own arithmetic; anything beyond is not."""
+        self._stand_at(BREASOUL_WORLD, 104, 1)
+        self.assertEqual(200, self.start("start-104", 104, 1)[0])
+        status, _ = self.clear(
+            "clear-104", 104, 1, world=BREASOUL_WORLD, cursor=pack_world_progress(106, 1),
+        )
+        self.assertEqual(409, status)
+
+
+class WorldEndPredicateTest(unittest.TestCase):
+    """What each world may report, against what this server may hold."""
+
+    def test_the_roll_past_is_reportable_but_never_holdable(self) -> None:
+        for world, rolled in (("1", (105, 1)), ("2", (120, 1))):
+            packed = pack_world_progress(*rolled)
+            self.assertTrue(is_reportable_world_progress(world, packed), world)
+            self.assertFalse(is_valid_world_progress(world, packed), world)
+
+    def test_every_declared_section_stays_both(self) -> None:
+        for world in ("1", "2"):
+            for chapter, section in _WORLD_SECTIONS[int(world)]:
+                packed = pack_world_progress(chapter, section)
+                self.assertTrue(is_valid_world_progress(world, packed))
+                self.assertTrue(is_reportable_world_progress(world, packed))
+
+    def test_nothing_further_out_is_reportable(self) -> None:
+        for world, beyond in (("1", (106, 1)), ("1", (105, 2)), ("2", (121, 1)), ("2", (120, 2))):
+            self.assertFalse(
+                is_reportable_world_progress(world, pack_world_progress(*beyond)), (world, beyond),
+            )
+
+    def test_the_shape_checks_still_refuse_a_hand_edited_cursor(self) -> None:
+        self.assertFalse(is_reportable_world_progress("1", "105"))
+        self.assertFalse(is_reportable_world_progress("1", -1))
+        self.assertFalse(is_reportable_world_progress("1", 1 << 30))
+        self.assertFalse(is_reportable_world_progress("9", pack_world_progress(105, 1)))
+        self.assertFalse(is_reportable_world_progress("\u0661", pack_world_progress(105, 1)))
 
 
 class SecondaryWorldChestTest(unittest.TestCase):
