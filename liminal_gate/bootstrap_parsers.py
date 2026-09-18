@@ -161,6 +161,23 @@ def _parse_generic_story_clear(body: bytes) -> dict[str, Any] | None:
         return None
     if "counters" in battle and type(battle["counters"]) is not str:
         return None
+    # `BattleManager.sendCounters` travels as JSON text inside the JSON:
+    # `AppServerUtil.GetBattleResult` (`0xDB8E50`) runs `JsonMapper.ToJson`
+    # over the `Dictionary<string, int>` and stores the string. A scripted
+    # battle adds to it -- Arachnobot's Tale ENDA calls
+    # `AddTransmissionServerCounter("EndingA", 1)` -- and the server is meant
+    # to hand the totals back on the next start. See `_record_battle_counters`.
+    counters: object = {}
+    if "counters" in battle:
+        try:
+            counters = json.loads(battle["counters"])
+        except json.JSONDecodeError:
+            return None
+    if type(counters) is not dict or any(
+        type(value) is not int or value < 0 for value in counters.values()
+    ):
+        return None
+    result["counters"] = counters
     if any(type(battle[name]) is not list or any(type(value) is not int or value < 0 for value in battle[name]) for name in ("buddies", "monsters", "summons")):
         return None
     if type(battle["items"]) is not dict or any(not isinstance(item_id, str) or not item_id.isdecimal() or int(item_id) <= 0 or type(count) is not int or count < 1 for item_id, count in battle["items"].items()):

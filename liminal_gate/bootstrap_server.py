@@ -3291,6 +3291,7 @@ class BootstrapState:
                     # they had before the reward.
                     _synchronize_wallet_projection(userdata)
             cleared_quests = _record_quest_clear(userdata, identity, now)
+            _record_battle_counters(account, identity[0], clear["counters"])
             account["tutorial_phase"] = "free_roam"
             account["active_luck_result"] = []
             account["active_luck_up"] = []
@@ -3582,6 +3583,7 @@ class BootstrapState:
             account["world_map_special_progress"] = frontier
             userdata["lastupdate"] = 1.0
             cleared_quests = _record_quest_clear(userdata, identity, time.time())
+            _record_battle_counters(account, identity[0], clear["counters"])
             account["tutorial_phase"] = "free_roam"
             account["active_luck_result"] = []
             account["active_luck_up"] = []
@@ -3718,6 +3720,9 @@ class BootstrapState:
                 # again. Re-sending is not a re-roll; the stored slots are
                 # returned exactly as they were authored.
                 payload = {"success": True, "refillStartTime": float(userdata.get("refillStartTime", 0.0))}
+                counters = _battle_counters(account, stage.chapter)
+                if counters:
+                    payload["counters"] = counters
                 open_chest = account.get("active_luck_result")
                 open_luck_up = account.get("active_luck_up")
                 open_chest = open_chest if isinstance(open_chest, list) else []
@@ -3822,6 +3827,12 @@ class BootstrapState:
                 payload["luckResult"] = list(luck_slots)
             if any(luck_up):
                 payload["luckUpTable"] = list(luck_up)
+            # What this chapter's scripted battles have reported so far; see
+            # `_record_battle_counters`. Absent rather than empty, like the
+            # chest: the client guards the key and reads nothing without it.
+            counters = _battle_counters(account, stage.chapter)
+            if counters:
+                payload["counters"] = counters
             account["tutorial_phase"] = "generic_story_active"
             account["active_generic_story"] = identity
             # Another battle is open now, so a battle released earlier is no
@@ -4148,6 +4159,7 @@ class BootstrapState:
                 payload["buddyInfo"] = copy.deepcopy(
                     userdata.get("buddyInfo", {"list": [], "record": []}),
                 )
+            _record_battle_counters(account, identity[0], clear["counters"])
             account["tutorial_phase"] = "free_roam"
             account["active_generic_story"] = None
             account["active_battle_continue_coins"] = 0
@@ -5907,6 +5919,59 @@ def _cleared_identity(body: bytes) -> tuple[int, int] | None:
     """The chapter/section a clear request settles, if it is well formed."""
     clear = _parse_generic_story_clear(body)
     return None if clear is None else (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
+
+
+#: `BattleManager.SetReceivedServerCounter` (`0xCC5300`) reads each counter
+#: with LitJson's `Int32` cast, so a total is held below the point it throws.
+_BATTLE_COUNTER_MAX = 2 ** 31 - 1
+
+
+def _record_battle_counters(
+    account: dict[str, Any], chapter: int, counters: dict[str, int],
+) -> None:
+    """Add a clear's reported battle counters to the account's running totals.
+
+    Scripted battles keep two counter sets. What the battle adds to
+    `BattleManager.sendCounters` rides out in `battle_result.counters`; what
+    the server hands back in the next `start_quest` answer's `counters` object
+    is loaded by `SetReceivedServerCounter`, whose caller in the start
+    callback guards the key with `Contains`. Arachnobot's Tale is built on the
+    round trip: Ending A adds `EndingA`, and Battle 5-1 routes every run to
+    Ending A until `GetReceivedServerCounter("EndingA")` is nonzero. Battle
+    5-2B reads `EndingF` the same way. Discarding the report left the count at
+    zero forever, so no turn count reached route 2X or 2Y. Issue 89.
+
+    Kept per chapter. Every reader is Chapter 2017's own script, and the keys
+    are bare names like `EndingA` that another chapter could reuse, so a total
+    is only ever returned to the chapter that reported it. Summed, because the
+    client *adds* to the counter rather than setting it, and a clear is
+    settled once per request id, so a retry cannot count twice.
+    """
+    if not counters:
+        return
+    held = account.get("battle_counters")
+    if not isinstance(held, dict):
+        held = account["battle_counters"] = {}
+    totals = held.get(str(chapter))
+    if not isinstance(totals, dict):
+        totals = held[str(chapter)] = {}
+    for key, value in counters.items():
+        current = totals.get(key)
+        current = current if type(current) is int and current >= 0 else 0
+        totals[key] = min(current + value, _BATTLE_COUNTER_MAX)
+
+
+def _battle_counters(account: dict[str, Any], chapter: int) -> dict[str, int]:
+    """The `counters` a start of ``chapter`` hands back, well formed or empty."""
+    held = account.get("battle_counters")
+    totals = held.get(str(chapter)) if isinstance(held, dict) else None
+    if not isinstance(totals, dict):
+        return {}
+    return {
+        key: value for key, value in totals.items()
+        if isinstance(key, str) and type(value) is int
+        and 0 <= value <= _BATTLE_COUNTER_MAX
+    }
 
 
 def _record_quest_clear(userdata: dict[str, Any], identity: tuple[int, int], when: float) -> dict[str, float]:
