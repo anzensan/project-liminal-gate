@@ -3936,10 +3936,31 @@ class BootstrapState:
                 ),
                 None,
             )
+            # An archive battle is reached from the Special menu, which is open
+            # on every world map, so the client may be standing on BreaSoul or
+            # the Five Emperors when it posts this clear. There `progressCode`
+            # is that world's cursor -- `GetWorldProgressCode` again, the reason
+            # the Hunting clear already branches on the world -- and comparing
+            # it against the story code refused every Dragon King and Strikes
+            # Back won from a side-world map, on every retry. Issue 81. An
+            # archive clear never moves the story, so the story code it settles
+            # is the one the server holds either way; the cursor is only
+            # bounded by the sections its world declares. The core story stays
+            # pinned: its stages live on world 0's map and its clear moves the
+            # code being compared.
+            reported_world = clear["worldMapNo"]
+            if event and reported_world != MAIN_WORLD:
+                progress_matches = is_valid_world_progress(
+                    str(reported_world), clear["progressCode"],
+                )
+            else:
+                progress_matches = (
+                    expected_progress is not None and clear["progressCode"] == expected_progress
+                )
             checks = (
                 ("phase", account.setdefault("tutorial_phase", "initial") == "generic_story_active" or released is not None),
                 ("active_stage", active == {"chapter": identity[0], "section": identity[1]} or released is not None),
-                ("progress", expected_progress is not None and clear["progressCode"] == expected_progress),
+                ("progress", progress_matches),
                 ("world_map", clear["worldMapNo"] == int(userdata.get("worldMapNo", 0))),
                 ("wallet", settled_coins is not None),
                 (
