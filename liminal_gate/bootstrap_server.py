@@ -859,6 +859,11 @@ def _parse_state_document(document: object) -> tuple[
         # is the correct value for one: nothing was remembered, so there is
         # nothing to settle. No migration beyond this default is owed.
         account.setdefault("released_generic_story", None)
+        # The same record for the two families whose releases were forgotten
+        # entirely. Absent is right on every save written before this existed:
+        # nothing was remembered, so there is nothing to settle, and the
+        # orphaned-entry path below is what those saves recover through.
+        account.setdefault("released_local_battle", None)
         account.setdefault("active_hunt", None)
         account.setdefault("active_hunt_ticket_spent", None)
         account.setdefault("active_world_map_special", None)
@@ -891,6 +896,7 @@ def _parse_state_document(document: object) -> tuple[
             )
             or account["active_generic_story"] is not None and not isinstance(account["active_generic_story"], dict)
             or account["released_generic_story"] is not None and not _valid_released_story(account["released_generic_story"])
+            or account["released_local_battle"] is not None and not _valid_released_local_battle(account["released_local_battle"])
             or account["active_hunt"] is not None and not isinstance(account["active_hunt"], dict)
             or account["active_hunt_ticket_spent"] is not None and type(account["active_hunt_ticket_spent"]) is not bool
             or account["active_world_map_special"] is not None and not isinstance(account["active_world_map_special"], dict)
@@ -2862,6 +2868,7 @@ class BootstrapState:
                 # is followed by no clear at all, while the other is followed by
                 # exactly the clear `remember_released_story` keeps settleable.
                 remember_released_story(account)
+                remember_released_local_battle(account)
                 account["tutorial_phase"] = "free_roam"
                 account["active_generic_story"] = None
                 account["active_hunt"] = None
@@ -2987,6 +2994,7 @@ class BootstrapState:
             # Another battle is open now, so a battle released earlier is no
             # longer the one the client is finishing.
             account["released_generic_story"] = None
+            account["released_local_battle"] = None
             # A new battle does not repay the last one's Continues; see
             # `_continue_coins_charged`.
             if stage.once_per_utc_day:
@@ -3156,11 +3164,21 @@ class BootstrapState:
             # return -- told a tester's dump only that something about the
             # account was wrong, and a stale Companion box read exactly like a
             # wallet disagreement. See Issue 61.
+            # A battle this account started and something later released,
+            # being finished now by the client that resumed it. The chest and
+            # Luck growth it settles against are the live fields above, which
+            # the release leaves exactly where they were; see
+            # `remember_released_local_battle` and `orphaned_battle_entry`.
+            resumable = (
+                released_local_battle_matches(account, identity, "hunt")
+                or orphaned_battle_entry(account)
+            )
             checks = (
-                ("phase", account.setdefault("tutorial_phase", "initial") == "hunting_active"),
+                ("phase", account.setdefault("tutorial_phase", "initial") == "hunting_active" or resumable),
                 (
                     "active_stage",
-                    account.get("active_hunt") == {"chapter": identity[0], "section": identity[1]},
+                    account.get("active_hunt") == {"chapter": identity[0], "section": identity[1]}
+                    or resumable,
                 ),
                 ("progress", world_progress_matches),
                 ("world_map", reported_world == int(userdata.get("worldMapNo", 0))),
@@ -3301,6 +3319,7 @@ class BootstrapState:
             account["active_luck_up"] = []
             account["active_hunt"] = None
             account["active_hunt_ticket_spent"] = None
+            account["released_local_battle"] = None
             account["active_battle_continue_coins"] = 0
             # A secondary world advances its own cursor and nothing else. The
             # main story's `progressCode` is checked unchanged above and stays
@@ -3410,6 +3429,7 @@ class BootstrapState:
             # Another battle is open now, so a battle released earlier is no
             # longer the one the client is finishing.
             account["released_generic_story"] = None
+            account["released_local_battle"] = None
             # A new battle does not repay the last one's Continues; see
             # `_continue_coins_charged`.
             # Chapter 1100 charges 25 stamina, which clears the battle-end gate
@@ -3502,10 +3522,14 @@ class BootstrapState:
             identity = (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
             stage = catalog.by_identity().get(identity)
             userdata = account["userdata"]
-            if (
-                stage is None
-                or account.setdefault("tutorial_phase", "initial") != "world_map_special_active"
-                or account.get("active_world_map_special") != {"chapter": identity[0], "section": identity[1]}
+            resumable = (
+                released_local_battle_matches(account, identity, "world_map_special")
+                or orphaned_battle_entry(account)
+            )
+            if stage is None or not (
+                resumable
+                or account.setdefault("tutorial_phase", "initial") == "world_map_special_active"
+                and account.get("active_world_map_special") == {"chapter": identity[0], "section": identity[1]}
             ):
                 return "tutorial_state_conflict", None
             result = clear["battle_result"]
@@ -3592,6 +3616,7 @@ class BootstrapState:
             account["active_luck_result"] = []
             account["active_luck_up"] = []
             account["active_world_map_special"] = None
+            account["released_local_battle"] = None
             account["active_battle_continue_coins"] = 0
             # The Chapter 1100 Roads pay no preservation Energy either: they are
             # repeatable training zones, and the income is reserved for story
@@ -3842,6 +3867,7 @@ class BootstrapState:
             # Another battle is open now, so a battle released earlier is no
             # longer the one the client is finishing.
             account["released_generic_story"] = None
+            account["released_local_battle"] = None
             # A new battle does not repay the last one's Continues; see
             # `_continue_coins_charged`.
             # Retained because the client folds the chest into the balances it
@@ -6151,6 +6177,101 @@ def remember_released_story(account: dict[str, Any]) -> None:
     }
     account["active_luck_result"] = []
     account["active_luck_up"] = []
+
+
+#: The two families the release route forgot. `remember_released_story` keeps a
+#: core-story battle settleable and returns early for everything else, so a
+#: Hunting or Chapter-1100 battle was released and forgotten -- and because the
+#: client that resumes one sends no `start_quest`, nothing could re-arm it and
+#: the stage could not be finished by any action the player could take. That is
+#: issue 90: BreaSoul's last stage, released by the roster save the client
+#: writes while the results sequence is still running.
+_RELEASABLE_LOCAL_BATTLES = (
+    ("hunting_active", "active_hunt", "hunt"),
+    ("world_map_special_active", "active_world_map_special", "world_map_special"),
+)
+
+
+def remember_released_local_battle(account: dict[str, Any]) -> None:
+    """Keep a released Hunting or Chapter-1100 battle settleable, by identity.
+
+    Deliberately lighter than `remember_released_story`, which also moves the
+    chest and Luck growth into the record. Nothing is moved here, because these
+    two settlements already read those off the live fields and the release
+    leaves them where they are -- so the record has one job, which is to say
+    which stage the clear that follows is allowed to name. Every start drops
+    it, for the reason the core-story record is dropped: an account that began
+    something else has moved on, and the live fields now describe that battle.
+    """
+    for phase, active, kind in _RELEASABLE_LOCAL_BATTLES:
+        identity = account.get(active)
+        if account.get("tutorial_phase") != phase or not isinstance(identity, dict):
+            continue
+        chapter, section = identity.get("chapter"), identity.get("section")
+        if type(chapter) is int and type(section) is int and chapter >= 1 and section >= 1:
+            account["released_local_battle"] = {
+                "kind": kind, "chapter": chapter, "section": section,
+            }
+        return
+
+
+def _valid_released_local_battle(released: object) -> bool:
+    """Whether a stored released local battle has the shape settlement reads."""
+    if not isinstance(released, dict) or set(released) != {"kind", "chapter", "section"}:
+        return False
+    return (
+        released["kind"] in {kind for _phase, _active, kind in _RELEASABLE_LOCAL_BATTLES}
+        and type(released["chapter"]) is int and released["chapter"] >= 1
+        and type(released["section"]) is int and released["section"] >= 1
+    )
+
+
+def released_local_battle_matches(
+    account: dict[str, Any], identity: tuple[int, int], kind: str,
+) -> bool:
+    """Whether this clear is the one a forgotten release left settleable.
+
+    Only when no battle of any kind is open, for the reason
+    `released_story_matches` reads the phase as well: a record that somehow
+    outlived its claim still must not settle a clear beside a live battle.
+    """
+    released = account.get("released_local_battle")
+    return (
+        account.get("tutorial_phase") not in ACTIVE_BATTLE_PHASES
+        and isinstance(released, dict)
+        and released.get("kind") == kind
+        and (released.get("chapter"), released.get("section")) == identity
+    )
+
+
+def orphaned_battle_entry(account: dict[str, Any]) -> bool:
+    """Whether this account carries an entry no settlement ever consumed.
+
+    **The repair for saves stranded before the record above existed.** Those
+    carry nothing naming the lost stage -- the whole account was read to be
+    sure -- but they do carry the entry itself, because the release clears the
+    battle and `remember_released_story` is what clears the Luck fields, and it
+    returned early for exactly these two families. So the chest dealt at entry
+    and the Luck growth rolled with it are left sitting on an account with no
+    battle open, and that pairing happens in no other state: a settled clear
+    leaves both empty lists, an account that never entered anything leaves them
+    absent, and a released *core-story* battle leaves them empty because the
+    record absorbed them.
+
+    This grants no capability that was not already reachable, which is the
+    argument `remember_released_story` makes for itself: the stage can be
+    re-entered through `start_quest` and settled today, and this lets the
+    client that cannot send one reach the same place. The entry is consumed by
+    the settlement that reads it, so it answers for one clear and not a second.
+    """
+    return (
+        account.get("tutorial_phase") not in ACTIVE_BATTLE_PHASES
+        and account.get("active_generic_story") is None
+        and account.get("active_hunt") is None
+        and account.get("active_world_map_special") is None
+        and isinstance(account.get("active_luck_result"), list)
+        and bool(account["active_luck_result"])
+    )
 
 
 def _valid_released_story(released: object) -> bool:

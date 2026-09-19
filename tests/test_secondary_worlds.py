@@ -761,6 +761,88 @@ class WorldEndTest(SecondaryWorldTransactionTest):
         self.assertEqual(409, status)
 
 
+class ReleasedSideWorldBattleTest(SecondaryWorldTransactionTest):
+    """A side-world battle released mid-results can still be finished. Issue 90.
+
+    The client writes a roster or party save while the results sequence is
+    still running, which this server reads as an abandon and releases the
+    battle -- it cannot tell that write from a Give Up and does not have to,
+    because a Give Up is followed by no clear. `remember_released_story` keeps
+    a core-story battle settleable through exactly that, and returned early for
+    everything else, so a Hunting battle was released and *forgotten*. The
+    clear that followed answered `hunting_clear_phase_conflict`, and because a
+    resumed battle sends no `start_quest`, nothing could ever re-arm it.
+
+    Reported on BreaSoul's last stage, which is where a tester met it twice and
+    then met it again after the cursor fix, but nothing here is about the last
+    stage: any side-world battle released this way was stranded the same way.
+    """
+
+    def _release(self, chapter: int, section: int) -> None:
+        """Start the battle, then write the roster the way the results do."""
+        self.assertEqual(200, self.enter_world("swap", BREASOUL_WORLD)[0])
+        self.assertEqual(200, self.start(f"start-{chapter}", chapter, section)[0])
+        self.assertEqual(200, self.post("/gd/userdata", f"results-{chapter}", [
+            ("chrdata", json.dumps([self.character])), ("lastUpdate", "1"),
+        ])[0])
+        self.assertIsNone(self.account().get("active_hunt"))
+
+    def test_the_clear_after_a_forgotten_release_settles(self) -> None:
+        self._release(100, 1)
+        status, payload = self.clear("clear-100", 100, 1, world=BREASOUL_WORLD)
+        self.assertEqual((200, True), (status, payload["success"]))
+        self.assertIn("100-1", self.userdata().get("questClearDate", {}))
+
+    def test_the_release_records_the_stage_it_forgot(self) -> None:
+        self._release(100, 1)
+        self.assertEqual(
+            {"kind": "hunt", "chapter": 100, "section": 1},
+            self.account().get("released_local_battle"),
+        )
+
+    def test_the_record_is_dropped_once_the_clear_settles(self) -> None:
+        self._release(100, 1)
+        self.assertEqual(200, self.clear("clear-100", 100, 1, world=BREASOUL_WORLD)[0])
+        self.assertIsNone(self.account().get("released_local_battle"))
+
+    def test_starting_something_else_drops_the_record(self) -> None:
+        """The live fields describe that battle now, not the released one."""
+        self._release(100, 1)
+        self.assertEqual(200, self.start("start-other", 100, 2)[0])
+        self.assertIsNone(self.account().get("released_local_battle"))
+
+    def test_an_account_that_entered_nothing_still_cannot_claim_a_clear(self) -> None:
+        self.assertEqual(200, self.enter_world("swap", BREASOUL_WORLD)[0])
+        status, _ = self.clear("claim", 100, 1, world=BREASOUL_WORLD)
+        self.assertEqual(409, status)
+
+    def test_a_save_stranded_before_the_record_existed_recovers(self) -> None:
+        """The repair for the accounts already broken. They carry nothing
+        naming the lost stage, but they do carry the entry itself: the release
+        clears the battle and `remember_released_story` is what clears the Luck
+        fields, and it returned early for these. An entry sitting on an account
+        with no battle open happens in no other state."""
+        self._release(100, 1)
+        with self.server.state.lock:
+            # Exactly an account released by a build that had no record to keep.
+            self.server.state.accounts[self.account_id]["released_local_battle"] = None
+            self.server.state._persist_locked()
+        self.assertTrue(self.account().get("active_luck_result"))
+        status, payload = self.clear("clear-100", 100, 1, world=BREASOUL_WORLD)
+        self.assertEqual((200, True), (status, payload["success"]))
+
+    def test_the_orphaned_entry_answers_one_clear_and_not_a_second(self) -> None:
+        """Consuming it is what bounds the repair: a second free clear costs
+        another entry, which costs what entering a stage costs."""
+        self._release(100, 1)
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["released_local_battle"] = None
+            self.server.state._persist_locked()
+        self.assertEqual(200, self.clear("first", 100, 1, world=BREASOUL_WORLD)[0])
+        self.assertEqual([], self.account().get("active_luck_result"))
+        self.assertEqual(409, self.clear("second", 100, 1, world=BREASOUL_WORLD)[0])
+
+
 class WorldEndPredicateTest(unittest.TestCase):
     """What each world may report, against what this server may hold."""
 

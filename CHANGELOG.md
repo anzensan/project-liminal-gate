@@ -83,6 +83,45 @@ run the command.
 
 ### Fixed
 
+- **A side-world battle released while its results were still running could
+  never be finished, and the stage was lost for good.** Issue 90 again, after
+  the cursor fix: *"I have the same problem, always a network error after Clear
+  screen."* That fix was real and necessary, and it was not this.
+
+  The client writes a roster or party save while the results sequence is still
+  running. This server reads that as an abandon and releases the battle -- it
+  cannot tell that write from a Give Up, and does not have to, because a Give
+  Up is followed by no clear at all. `remember_released_story` exists for
+  exactly that and keeps the battle settleable, but it returns early for
+  anything that is not core story, so a Hunting battle -- which is how both
+  secondary worlds are served -- was released and *forgotten*. Every clear
+  afterwards answered `hunting_clear_phase_conflict`, and a resumed battle
+  sends no `start_quest`, so nothing could re-arm it: force-closing replayed
+  the same refusal, which is what the first report meant by resetting to resume
+  and meeting the same problem again.
+
+  Released Hunting and Chapter-1100 battles are now remembered by identity, so
+  the clear that follows settles the stage it names and no other. Chapter 1100
+  had the identical gap and is fixed in the same pass.
+
+  **Accounts already stranded repair themselves**, without an edited save. They
+  carry nothing naming the lost stage, but they do carry the entry: the release
+  clears the battle, and clearing the chest and Luck growth was
+  `remember_released_story`'s job, which it never did for these. An entry
+  sitting on an account with no battle open occurs in no other state -- a
+  settled clear leaves both empty, an account that entered nothing leaves them
+  absent -- so it is read as the release it is, and the clear that names a
+  stage the catalog serves settles against it. The entry is consumed, so it
+  answers one clear and not a second, and nothing is granted that re-entering
+  the stage did not already grant.
+
+  Existing saves need no migration and no repair pass. The new record defaults
+  to absent, which is the correct value for every save written before it, and
+  an older build ignores it rather than refusing the save.
+
+  Both deployments: a server restart for the dedicated route, an APK rebuild
+  for the all-in-one on-device package.
+
 - **The Captive Golem's class band was enforced on no deployment at all, and
   had not been since it shipped.** Reported again on issue 86 after the band
   was supposed to be fixed: *"This not work with the last build, i can reach
