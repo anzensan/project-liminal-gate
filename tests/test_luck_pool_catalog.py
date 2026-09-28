@@ -273,6 +273,21 @@ class InterpolatedLuckPoolTest(unittest.TestCase):
         self.assertEqual((), self.pools.pool_for(25, 7, "Luck 100"))
         self.assertTrue(self.pools.pool_for(25, 1, "Luck 100"))
 
+    def test_nine_seven_pays_the_mage_its_record_names(self) -> None:
+        """Issue 92, after the bracket fix: 9-7 was the one stage of Chapter 9
+        still paying no Luck 80 or Luck 100 chest. It is documented, so nothing
+        derived may fill it; what it lacked was its own record, whose only
+        reward there is `Lizardfolk Mage (Fire)` -- held back as ambiguous
+        until the job's `SkillAttrib` settled which of four it is."""
+        for tier in ("Luck 80", "Luck 100"):
+            self.assertEqual(("M200",), self.pools.pool_for(9, 7, tier), tier)
+        # The tiers the page leaves empty stay empty: that is the record.
+        self.assertEqual((), self.pools.pool_for(9, 7, "C"))
+        self.assertEqual(("I2",), self.pools.pool_for(9, 7, "A"))
+
+    def test_thirteen_eight_pays_the_ice_mage_beside_its_neighbours(self) -> None:
+        self.assertEqual(("O128", "M203", "M338"), self.pools.pool_for(13, 8, "Luck 80"))
+
     def test_only_a_story_chapter_ever_donates(self) -> None:
         """Bracketing is a claim about chapter numbers being a progression.
 
