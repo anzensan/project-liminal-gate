@@ -83,6 +83,25 @@ run the command.
 
 ### Fixed
 
+- **The save commands blamed a server that was not running, and the `.lock`
+  file for it.** A tester on issue 93, editing a stopped save by hand: the
+  tools reported the save locked, and the `.bootstrap-state.json.lock` beside
+  it read as the cause. Every failure to take the lock was reported as "in
+  use", including a filesystem that cannot lock at all -- a mounted phone, a
+  network share -- where no server was involved.
+
+  Lock failures are now told apart. A lock another process holds still refuses,
+  and now says the `.lock` file is expected to exist and is not the problem. A
+  filesystem that cannot lock is named as such: the save commands, run by hand
+  against a stopped save, go ahead with a warning that the check could not be
+  made, and the server still refuses to start there, because two servers on an
+  unlockable save overwrite each other silently. A failure this code does not
+  recognise still refuses. `docs/troubleshooting.md` has the row.
+
+  Tool change for the save commands; the server's refusal changes only its
+  message. A server restart for the dedicated route, an APK rebuild for the
+  all-in-one on-device package.
+
 - **A side-world battle released while its results were still running could
   never be finished, and the stage was lost for good.** Issue 90 again, after
   the cursor fix: *"I have the same problem, always a network error after Clear

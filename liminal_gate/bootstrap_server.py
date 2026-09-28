@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import copy
+import errno
 from dataclasses import dataclass, fields, replace
 import hashlib
 import ipaddress
@@ -772,16 +773,61 @@ def _migrate_wallet_projection(account: dict[str, Any]) -> None:
         _synchronize_wallet_projection(userdata)
 
 
+class StateLockUnsupported(OSError):
+    """The filesystem holding the save cannot take a file lock at all.
+
+    Distinct from contention, and the difference is the whole point. Every
+    caller used to read any failure here as "a server holds this save", so an
+    operator editing a stopped save on a filesystem that cannot lock -- a
+    mounted phone, a network share, a FUSE mount -- was told to stop a server
+    that was not running, and the `.lock` file beside the save read as the
+    culprit. The file is meant to be there; it only blocks while a process
+    holds a lock on it. Issue 93.
+    """
+
+
+#: What a lock another process already holds answers with: `flock` gives
+#: EWOULDBLOCK/EAGAIN, and `msvcrt.locking` gives EACCES or EDEADLOCK.
+_LOCK_HELD_ERRNOS = frozenset(
+    code for code in (
+        errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES, errno.EDEADLK,
+        getattr(errno, "EDEADLOCK", None),
+    ) if code is not None
+)
+#: What a filesystem that cannot lock answers with. Named rather than inferred
+#: as "anything else": an errno outside both sets still refuses, the old way,
+#: because a failure this code has not seen is not evidence the save is free.
+_LOCK_UNSUPPORTED_ERRNOS = frozenset(
+    code for code in (
+        errno.ENOLCK, errno.EOPNOTSUPP, getattr(errno, "ENOTSUP", None),
+        errno.EINVAL, errno.ENOSYS,
+    ) if code is not None and code not in _LOCK_HELD_ERRNOS
+)
+
+
 def _lock_exclusive(stream: Any) -> None:
     """Take a non-blocking exclusive advisory lock the OS drops on exit.
 
     Both mechanisms are released automatically when the process ends, so a
     crashed server never leaves a lock a tester has to clear by hand.
+
+    Raises `StateLockUnsupported` when the filesystem cannot lock, and the
+    original `OSError` otherwise -- including when another process holds it.
     """
-    if fcntl is not None:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    elif msvcrt is not None:  # pragma: no cover - exercised on Windows only
-        msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+    try:
+        if fcntl is not None:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        elif msvcrt is not None:  # pragma: no cover - exercised on Windows only
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError as error:
+        if error.errno in _LOCK_UNSUPPORTED_ERRNOS:
+            raise StateLockUnsupported(error.errno, os.strerror(error.errno)) from error
+        raise
+
+
+def _lock_failure_name(error: OSError) -> str:
+    """The errno's symbolic name, for a message a tester will paste."""
+    return errno.errorcode.get(error.errno, str(error.errno)) if error.errno else type(error).__name__
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -989,6 +1035,15 @@ class BootstrapState:
         stream = lock_path.open("a+b")
         try:
             _lock_exclusive(stream)
+        except StateLockUnsupported as error:
+            stream.close()
+            # Still a refusal for a server: two servers on one unlockable save
+            # overwrite each other silently, which is the hazard the lock is for.
+            raise ProfileError(
+                f"the filesystem holding {self.path.parent} cannot take a file lock "
+                f"({_lock_failure_name(error)}), so this server cannot guarantee it is the "
+                "only one using the save. Start it with a --data-dir on a local disk."
+            ) from error
         except OSError as error:
             stream.close()
             raise ProfileError(

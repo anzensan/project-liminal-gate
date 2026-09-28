@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from liminal_gate import account_state
 
+import errno
+import io
 import json
 import os
 from pathlib import Path
@@ -19,7 +21,7 @@ from liminal_gate.account_state import (
     snapshot,
     summarize,
 )
-from liminal_gate.bootstrap_server import BootstrapState
+from liminal_gate.bootstrap_server import BootstrapState, ProfileError
 
 
 OLD_DEVICE = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -79,6 +81,39 @@ class AccountStateToolTest(unittest.TestCase):
         self.assertIn("stop the local server", str(refused.exception))
         with self.assertRaises(AccountStateError):
             adopt(self.state_path, OLD_DEVICE, NEW_DEVICE, confirmed=True, force=False)
+
+    def test_a_held_lock_says_the_lock_file_is_not_the_problem(self) -> None:
+        """Issue 93: the `.lock` file beside the save read as the blocker."""
+        with self.assertRaises(AccountStateError) as refused:
+            restore(self.state_path, self.state_path, confirmed=True)
+        self.assertIn("expected to exist and is not the problem", str(refused.exception))
+
+    def test_a_filesystem_that_cannot_lock_is_not_reported_as_a_running_server(self) -> None:
+        """Issue 93: an operator editing a stopped save on a filesystem that
+        cannot take a lock -- a mounted phone, a network share -- was told to
+        stop a server that did not exist, and could not edit the save at all."""
+        self.state.close()
+        unsupported = OSError(errno.ENOLCK, "No locks available")
+        with patch("liminal_gate.bootstrap_server.fcntl.flock", side_effect=unsupported), \
+                patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            restore(self.state_path, self.state_path, confirmed=True)
+        self.assertIn("cannot take a file lock (ENOLCK)", stderr.getvalue())
+
+    def test_an_unrecognised_lock_failure_still_refuses(self) -> None:
+        """A failure this code has not seen is not evidence the save is free."""
+        self.state.close()
+        with patch("liminal_gate.bootstrap_server.fcntl.flock", side_effect=OSError(errno.EIO, "I/O")):
+            with self.assertRaises(AccountStateError):
+                restore(self.state_path, self.state_path, confirmed=True)
+
+    def test_a_server_still_refuses_a_save_it_cannot_lock(self) -> None:
+        """Two servers on one unlockable save overwrite each other silently,
+        which is the hazard the lock exists for; only the message changes."""
+        self.state.close()
+        with patch("liminal_gate.bootstrap_server.fcntl.flock", side_effect=OSError(errno.ENOLCK, "x")):
+            with self.assertRaises(ProfileError) as refused:
+                BootstrapState(self.state_path)
+        self.assertIn("cannot take a file lock", str(refused.exception))
 
     def test_restore_and_adopt_require_confirmation(self) -> None:
         self.state.close()
