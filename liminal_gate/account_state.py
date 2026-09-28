@@ -24,12 +24,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from liminal_gate.bootstrap_server import ACCOUNT_STATE_BACKUP_COUNT, REPLAY_CACHE_FIELDS, _fsync_directory, _lock_exclusive
+from liminal_gate.bootstrap_server import (
+    ACCOUNT_STATE_BACKUP_COUNT, REPLAY_CACHE_FIELDS, StateLockUnsupported,
+    _fsync_directory, _lock_exclusive, _lock_failure_name,
+)
 from liminal_gate.save_validation import validate_document
 
 
@@ -114,15 +118,32 @@ def timestamp() -> str:
 
 
 def acquire_lock(state: Path):
-    """Refuse to change a save a running server still owns."""
+    """Refuse to change a save a running server still owns.
+
+    A filesystem that cannot lock is not a server holding the save, and saying
+    it was is what issue 93 reported: an operator editing a stopped save was
+    told to stop a server that did not exist. These commands are run by hand
+    against a save the operator has already stopped, so on such a filesystem
+    they go ahead and say plainly what could not be checked.
+    """
     state.parent.mkdir(parents=True, exist_ok=True)
     stream = state.with_name(f".{state.name}.lock").open("a+b")
     try:
         _lock_exclusive(stream)
+    except StateLockUnsupported as error:
+        print(
+            f"warning: {state.parent} is on a filesystem that cannot take a file lock "
+            f"({_lock_failure_name(error)}), so whether a server is still using this save "
+            "cannot be checked. Make sure none is running before relying on the result.",
+            file=sys.stderr,
+        )
+        return stream
     except OSError as error:
         stream.close()
         raise AccountStateError(
-            "account state is in use; stop the local server before changing it"
+            "account state is in use; stop the local server before changing it. "
+            f"(The .{state.name}.lock file beside the save is expected to exist and is "
+            f"not the problem; a running process holds a lock on it: {_lock_failure_name(error)}.)"
         ) from error
     return stream
 

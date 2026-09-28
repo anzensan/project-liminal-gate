@@ -20,8 +20,10 @@ import zipfile
 from liminal_gate.bootstrap_server import (
     BootstrapServer,
     ProfileError,
+    StateLockUnsupported,
     _fsync_directory,
     _lock_exclusive,
+    _lock_failure_name,
     build_server,
 )
 from liminal_gate.resource_catalog import ResourceCatalogError, load_resource_catalog_document
@@ -301,6 +303,11 @@ def _write_if_absent(path: Path, data: bytes) -> None:
     with lock_path.open("a+b") as stream:
         try:
             _lock_exclusive(stream)
+        except StateLockUnsupported as error:
+            raise ProfileError(
+                f"packaged Android state cannot be locked on this filesystem "
+                f"({_lock_failure_name(error)}): {path}"
+            ) from error
         except OSError as error:
             raise ProfileError(
                 f"packaged Android state is already in use: {path}"
