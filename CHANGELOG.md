@@ -83,6 +83,26 @@ run the command.
 
 ### Fixed
 
+- **A Hunting battle retried after a loss could not be cleared, if its chest
+  held anything.** Issue 94, on the Five Emperors' Gatekeeper: *"I get a
+  network error at the end, restart doesn't work."* His log showed three
+  `start_quest` calls for 111-1, every one arriving while the battle was still
+  open, and every clear refused with `invalid_local_hunting_items`.
+
+  A start for the battle already open is a retry, and it rightly charges
+  nothing and rolls nothing. But it also answered without the chest the first
+  start dealt, while the server went on holding that chest against the battle.
+  The client, told there was no chest, folded none into the inventory and
+  wallet it reported, and settlement, expecting one, refused every clear. It
+  shows as `invalid_local_hunting_items` or `hunting_clear_wallet_conflict`
+  depending on whether the held chest carries Coins. The story entry had this
+  exact bug and was fixed long ago; the Hunting entry, which serves both
+  secondary worlds, the Daily Quests and the Hunting zones, never got the same
+  fix. A retry now re-sends the stored chest and Luck growth unchanged.
+
+  Both deployments: a server restart for the dedicated route, an APK rebuild
+  for the all-in-one on-device package.
+
 - **9-7 still paid no Luck 80 or Luck 100 chest after the Chapter 9 fix.** The
   tester on issue 92 spot-checked six stages on a 100-Luck team and found every
   one fixed but this. 9-7 is a documented stage, so nothing derived may fill

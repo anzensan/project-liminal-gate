@@ -973,6 +973,27 @@ class SecondaryWorldChestTest(unittest.TestCase):
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
         ])
 
+    def test_a_retried_start_re_sends_the_chest_it_is_still_holding(self) -> None:
+        """Issue 94: the Gatekeeper, retried after losing, could never be cleared.
+
+        A retry sends `start_quest` again for the battle still open, and this
+        server answered it without `luckResult` while keeping the chest the
+        first start dealt. The client fought with no chest, folded none in, and
+        every clear came back `invalid_local_hunting_items`, because settlement
+        still expected that chest's items. The client folds in the chest from
+        the response it actually got, so that is the chest used here.
+        """
+        self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
+        status, first = self.start("start", self.CHAPTER, self.SECTION, self.STAMINA)
+        self.assertEqual(200, status, first)
+        self.assertTrue(any(first["luckResult"]))
+        status, retried = self.start("retry", self.CHAPTER, self.SECTION, self.STAMINA)
+        self.assertEqual(200, status, retried)
+        # Re-sent, not re-rolled.
+        self.assertEqual(first["luckResult"], retried.get("luckResult"))
+        status, settled = self.chest_clear("clear", retried.get("luckResult", [""] * 6))
+        self.assertEqual(200, status, settled)
+
     def test_a_five_emperors_clear_delivers_its_documented_chest(self) -> None:
         self.assertEqual(200, self.enter_world("swap", FIVE_EMPERORS_WORLD)[0])
         status, started = self.start("start", self.CHAPTER, self.SECTION, self.STAMINA)

@@ -2973,8 +2973,30 @@ class BootstrapState:
             active = account.get("active_hunt")
             identity = {"chapter": stage.chapter, "section": stage.section}
             if phase == "hunting_active" and active == identity:
-                # A retry under a *new* request id must not charge again.
-                payload = _canonical_payload({"success": True, "refillStartTime": float(userdata.get("refillStartTime", 0.0))})
+                # A retry under a *new* request id must not charge again -- and
+                # must re-send the chest the first start dealt. That chest is
+                # still held against this battle, and settlement adds its items
+                # and Coins to what the client is expected to report, because
+                # the client folds them in itself. Answering a retry without it
+                # told the client there was no chest while the server went on
+                # expecting one, so the clear came back
+                # `invalid_local_hunting_items` on every attempt and the stage
+                # could not be finished: issue 94, the Five Emperors' Gatekeeper,
+                # retried three times after losing, each start re-entering the
+                # battle still open. The story entry learned this first; this is
+                # its fix for the Hunting families, which include both secondary
+                # worlds. Re-sending is not a re-roll: the stored slots go back
+                # exactly as they were authored.
+                payload = {"success": True, "refillStartTime": float(userdata.get("refillStartTime", 0.0))}
+                open_chest = account.get("active_luck_result")
+                open_luck_up = account.get("active_luck_up")
+                open_chest = open_chest if isinstance(open_chest, list) else []
+                open_luck_up = open_luck_up if isinstance(open_luck_up, list) else []
+                if any(open_chest):
+                    payload["luckResult"] = list(open_chest)
+                if any(open_luck_up):
+                    payload["luckUpTable"] = list(open_luck_up)
+                payload = _canonical_payload(payload)
                 requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
                 self._persist_locked()
                 return "success", payload
