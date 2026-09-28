@@ -19,20 +19,30 @@ Two consequences are deliberate and should not be quietly fixed later:
   this table exactly as sourced and says so in the server's startup output.
 * **Fourteen chapters carry no chest at all**, and that is the record stating
   an absence rather than leaving a gap. See `NO_CHEST_CHAPTERS`.
-* **Sixty-five of the ninety-nine dropped rewards have since been recovered**,
-  and nineteen of the thirty-one stages still lose at least one. Chapter 25-7,
+* **Sixty-eight of the ninety-nine dropped rewards have since been recovered**,
+  and seventeen of the thirty-one stages still lose at least one. Chapter 25-7,
   added after the first scrape missed its unheaded table, is not among them --
-  every cell the record fills for it resolved. The scrape dropped
-  sixty-eight character icons, four item names that resolved to nothing, and
-  twenty-seven empty or generic cells. The icons carried their names, so
-  sixty-five of them resolve by exact match against the operator's own
-  `ChrDatabase` and are emitted here in the `M` form.
+  every cell the record fills for it resolved -- and neither are 9-7 and 13-8
+  any longer. The scrape dropped sixty-eight character icons, four item names
+  that resolved to nothing, and twenty-seven empty or generic cells. The icons
+  carried their names, so sixty-five of them resolve by exact match against the
+  operator's own `ChrDatabase` and are emitted here in the `M` form.
 
-  Three icons do not, and the reason is a real ambiguity rather than a lookup
-  failure: the wiki writes `Mage (Ice)` and `Lizardfolk Mage (Fire)`, while the
-  master data holds four characters named `Mage` and four named `Lizardfolk
-  Mage`, distinguished by an element the catalog does not name. They are 9-7
-  Luck 80 and Luck 100, and 13-8 Luck 80. Choosing one would be a guess.
+  The other three were a real ambiguity rather than a lookup failure, and are
+  now resolved on the client's own data rather than chosen. The wiki writes
+  `Mage (Ice)` and `Lizardfolk Mage (Fire)` -- 9-7 Luck 80 and Luck 100, and
+  13-8 Luck 80 -- while the master data holds four characters named `Mage` and
+  four named `Lizardfolk Mage`, and no element on any of them: `Attrib` is 0
+  on all eight. What separates each four is the job's `SkillAttrib`, 1 to 4,
+  in the same order across both families (Mage 66/338/339/340, Lizardfolk Mage
+  200/341/342/343). Which number is which element is fixed by the maximum HP
+  the wiki gives every variant, against each job's `HPmax`: the ratio is
+  0.9076 for all four Mages and 0.9116 for all four Lizardfolk Mages exactly
+  when 1 is Fire, 2 Ice, 3 Lightning and 4 Darkness -- the order both wiki
+  pages list them in -- and no other assignment holds it. So `Lizardfolk Mage
+  (Fire)` is character 200, the only Lizardfolk Mage at 3144, and `Mage (Ice)`
+  is character 338. Reported on issue 92, where 9-7 was the one stage of
+  Chapter 9 still paying no Luck 80 or Luck 100 chest.
 
   The four `unresolved_item_name` rows are recorded here and deliberately not
   acted on. Three name characters the master data holds -- `Lizardfolk Archer`
@@ -86,8 +96,9 @@ LUCK_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     (4, 1): {"A": ('C150', 'I83', 'I91', 'I89', 'I1', 'I11', 'I82',), "B": ('C150', 'I3', 'I5', 'I7', 'I91', 'I89', 'I1', 'I17', 'I82',), "C": ('C300', 'I89', 'I122', 'I10', 'I11', 'I9', 'I17', 'I82',), "D": ('C450', 'M175', 'O128',), "Luck 80": ('M199', 'M79', 'M84', 'M175', 'O128', 'O129',), "Luck 100": ('C300', 'M79', 'M175', 'O128', 'O129',)},
     (4, 10): {"A": ('C150',), "B": ('I91',), "C": ('I10',), "D": ('M175',), "Luck 80": ('M84',), "Luck 100": ('O128',)},
     (6, 8): {"A": ('I5', 'I92', 'I91', 'I89', 'I1', 'I10',), "B": ('C175', 'I3', 'I83', 'I7',), "C": ('I90',), "D": ('M71', 'O128',), "Luck 80": ('C350', 'M91', 'M71', 'O128', 'O129',), "Luck 100": ('C350', 'I50', 'M91', 'M71', 'M220', 'O129',)},
-    (9, 7): {"A": ('I2',), "B": ('I5',)},  # incomplete
-    (13, 8): {"A": ('I6', 'I9',), "B": ('C275', 'I14',), "C": ('I5', 'I82',), "Luck 80": ('O128', 'M203',), "Luck 100": ('I86', 'O129', 'M110',)},  # incomplete
+    # Lizardfolk Mage (Fire) and Mage (Ice) resolve by element; see the module note.
+    (9, 7): {"A": ('I2',), "B": ('I5',), "Luck 80": ('M200',), "Luck 100": ('M200',)},
+    (13, 8): {"A": ('I6', 'I9',), "B": ('C275', 'I14',), "C": ('I5', 'I82',), "Luck 80": ('O128', 'M203', 'M338',), "Luck 100": ('I86', 'O129', 'M110',)},
     (13, 10): {"A": ('C275',), "B": ('I6',), "C": ('I89',), "Luck 100": ('C550',)},  # incomplete
     (16, 10): {"A": ('C325', 'I4', 'I91',), "B": ('C325', 'I83', 'I6', 'I8', 'I2', 'I11', 'I89',), "C": ('C650', 'I83', 'I91',), "D": ('M124', 'M73',), "Luck 80": ('O129', 'O128', 'M204',), "Luck 100": ('C650', 'I33', 'O129', 'O128', 'M204', 'M65',)},
     # The record's table for this stage carries no heading of any kind -- not the

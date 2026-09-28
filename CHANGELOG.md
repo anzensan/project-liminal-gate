@@ -83,6 +83,23 @@ run the command.
 
 ### Fixed
 
+- **9-7 still paid no Luck 80 or Luck 100 chest after the Chapter 9 fix.** The
+  tester on issue 92 spot-checked six stages on a 100-Luck team and found every
+  one fixed but this. 9-7 is a documented stage, so nothing derived may fill
+  it, and its record had been held back: its only reward at both tiers is
+  `Lizardfolk Mage (Fire)`, and the master data holds four Lizardfolk Mages
+  with no element on any of them.
+
+  The element is recoverable after all. Each job's `SkillAttrib` separates the
+  four, and the wiki's per-variant maximum HP against each job's `HPmax` holds
+  one constant ratio only when 1 is Fire, 2 Ice, 3 Lightning and 4 Darkness. So
+  9-7 now pays character 200 at both tiers, and 13-8's Luck 80 gains the `Mage
+  (Ice)`, character 338, it was missing for the same reason. Both stages' chests
+  are now complete against their pages.
+
+  Both deployments: a server restart for the dedicated route, an APK rebuild
+  for the all-in-one on-device package.
+
 - **The save commands blamed a server that was not running, and the `.lock`
   file for it.** A tester on issue 93, editing a stopped save by hand: the
   tools reported the save locked, and the `.bootstrap-state.json.lock` beside
