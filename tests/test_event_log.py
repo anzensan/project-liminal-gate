@@ -18,6 +18,15 @@ COMPANIONS = [{"bid": 31, "lv": 1, "date": 0.0, "iid": 2, "exp": 0, "flag": 1, "
 
 
 class EventLogPrivacyTest(unittest.TestCase):
+    def test_modeled_battle_fields_are_named_without_exposing_flags_or_counters(self) -> None:
+        shape = refused_write_shapes(urlencode({"battle_result": json.dumps({
+            "luckynum": 0, "unableluckdrop": False, "boostup": [0] * 6,
+            "globalFlags": '{"private-flag":1}', "counters": '{"private-counter":2}',
+        })}).encode())["battle_result"]
+        self.assertEqual(["boostup", "counters", "globalFlags", "luckynum", "unableluckdrop"], shape["keys"])
+        self.assertNotIn("unrecognized_keys", shape)
+        self.assertNotIn("private", json.dumps(shape))
+
     def test_malformed_body_records_only_hash_and_size(self) -> None:
         body = b"\xffprivate-binary"
         self.assertEqual(

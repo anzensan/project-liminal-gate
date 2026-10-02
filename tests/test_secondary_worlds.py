@@ -369,6 +369,7 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
     def clear(
         self, request_id: str, chapter: int, section: int, *, world: int,
         cursor: int | None = None,
+        battle_extra: dict | None = None,
     ) -> tuple:
         """Settle a battle. ``cursor`` overrides the `progressCode` posted.
 
@@ -392,7 +393,7 @@ class SecondaryWorldTransactionTest(unittest.TestCase):
                 "chapter": chapter, "section": section, "coins": 0, "exp": 0,
                 "items": {}, "buddies": [], "monsters": [], "summons": [],
                 "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
-            })),
+            } | (battle_extra or {}))),
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
         ])
 
@@ -722,6 +723,48 @@ class WorldEndTest(SecondaryWorldTransactionTest):
         status, payload = self.clear("clear-104", 104, 1, world=BREASOUL_WORLD, cursor=rolled)
         self.assertEqual(200, status)
         self.assertTrue(payload["success"])
+
+    def test_final_battle_flag_settles_and_replays_after_restart(self) -> None:
+        self._stand_at(BREASOUL_WORLD, 104, 1)
+        self.assertEqual(200, self.start("start-flag", 104, 1)[0])
+        before = self.account()
+        for malformed in ({"CH104_END": 1}, "null", "[]", '{"CH104_END":true}',
+                          '{"CH104_END":2}', '{"UNKNOWN":1}', "not-json"):
+            with self.subTest(malformed=malformed):
+                status, _ = self.clear(
+                    "bad-flag", 104, 1, world=BREASOUL_WORLD,
+                    cursor=pack_world_progress(105, 1),
+                    battle_extra={"globalFlags": malformed},
+                )
+                self.assertEqual(501, status)
+                self.assertEqual(before, self.account())
+        extra = {"globalFlags": '{"CH104_END":1}'}
+        args = dict(world=BREASOUL_WORLD, cursor=pack_world_progress(105, 1), battle_extra=extra)
+        status, payload = self.clear("clear-flag", 104, 1, **args)
+        self.assertEqual(200, status, payload)
+        self.assertEqual({"CH104_END": 1}, payload["globalFlags"])
+        settled = self.account()
+        self.assertEqual("free_roam", settled["tutorial_phase"])
+        self.assertEqual((status, payload), self.clear("clear-flag", 104, 1, **args))
+        self.assertEqual(settled, self.account())
+        self.restart()
+        self.assertEqual({"CH104_END": 1}, self.read_userdata()["globalFlags"])
+        self.assertEqual((status, payload), self.clear("clear-flag", 104, 1, **args))
+        self.assertEqual(settled, self.account())
+
+    def test_final_battle_flag_zero_is_preserved_and_other_flags_survive(self) -> None:
+        self._stand_at(BREASOUL_WORLD, 104, 1)
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["userdata"]["globalFlags"] = {"held": 1}
+            self.server.state._persist_locked()
+        self.assertEqual(200, self.start("start-zero", 104, 1)[0])
+        status, payload = self.clear(
+            "clear-zero", 104, 1, world=BREASOUL_WORLD,
+            cursor=pack_world_progress(105, 1),
+            battle_extra={"globalFlags": '{"CH104_END":0}'},
+        )
+        self.assertEqual(200, status, payload)
+        self.assertEqual({"held": 1, "CH104_END": 0}, payload["globalFlags"])
 
     def test_five_emperors_settles_the_clear_that_finishes_the_world(self) -> None:
         self._stand_at(FIVE_EMPERORS_WORLD, 119, 1)

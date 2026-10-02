@@ -984,9 +984,8 @@ class BundledHuntingStackCeilingTest(unittest.TestCase):
     """
 
     PROGRESS = 0x01000000 | (20 << 6) | 1
-    #: The ceiling this server used to project against, which the client was
-    #: never told and never enforced.
-    WITHDRAWN_CEILING = 999
+    #: The obsolete ceiling this server advertised before Issue 95.
+    WITHDRAWN_CEILING = 9999
     CHARACTER = {
         "id": 9001, "buddy": 0, "date": 0.0, "jobSlots": [0, 0, 0],
         "jobLevels": [1, 0, 0], "jobID": 0, "flags": 0, "skillBoost": 0,
@@ -996,7 +995,7 @@ class BundledHuntingStackCeilingTest(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.state_path = Path(self.temporary_directory.name) / "state.json"
         state = BootstrapState(self.state_path)
-        # One slot within a single Puppet Show haul of the old 999 ceiling.
+        # One slot within a single Puppet Show haul of the old 9999 ceiling.
         items = [0] * ITEM_SLOTS
         items[0] = self.WITHDRAWN_CEILING - 39
         state.create_account("token", "account", {
@@ -1065,13 +1064,24 @@ class BundledHuntingStackCeilingTest(unittest.TestCase):
         status, cleared = clear("clear", 74)
         self.assertEqual(200, status, cleared)
         self.assertTrue(cleared["success"], cleared)
-        self.assertEqual(held + 74, self.userdata()["itemList"][0])
+        self.assertEqual(min(MAX_ITEM_STACK, held + 74), self.userdata()["itemList"][0])
         self.assertEqual("free_roam", json.loads(
             self.state_path.read_text(encoding="utf-8"))["accounts"]["account"]["tutorial_phase"])
         self.assertEqual((status, cleared), clear("clear", 74))
         self.restart_server()
         self.assertEqual((status, cleared), clear("clear", 74))
-        self.assertEqual(held + 74, self.userdata()["itemList"][0])
+        self.assertEqual(min(MAX_ITEM_STACK, held + 74), self.userdata()["itemList"][0])
+
+    def test_status_advertises_the_final_client_inventory_cap(self) -> None:
+        status, payload = get(self.server, "/gd/get_server_status?platform=GooglePlay&app_version=5.57&otk=token")
+        self.assertEqual(200, status)
+        self.assertEqual(99999, payload["constants"]["maxItemCount"])
+
+    def test_the_same_haul_clamps_at_99999_and_replays(self) -> None:
+        with self.server.state.lock:
+            self.server.state.accounts["account"]["userdata"]["itemList"][0] = 99998
+            self.server.state._persist_locked()
+        self.test_observed_74_item_haul_is_strict_ceiling_and_replays()
 
     def stop_server(self) -> None:
         stop_server(self.server, self.thread)

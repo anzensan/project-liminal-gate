@@ -117,6 +117,7 @@ _KNOWN_KEYS = frozenset({
     "energyGooglePlay", "bonusStamina", "refillStartTime",
     # Battle settlement.
     "chapter", "section", "items", "buddies", "summons", "monsters",
+    "luckynum", "unableluckdrop", "boostup", "counters", "globalFlags",
 })
 
 

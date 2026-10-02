@@ -9,6 +9,7 @@ from pathlib import Path
 import tomllib
 
 from liminal_gate.reviewed_build import SOURCE_PROFILE
+from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 
 
 #: A story-outcome catalog under this name in the data directory is picked up
@@ -82,6 +83,11 @@ def load_story_outcome_catalog(path: Path) -> StoryOutcomeCatalog:
     masters_by_id = {master.companion_id: master for master in masters}
     if any(any(companion_id not in masters_by_id for companion_id in rule.companion_maxima) or any(character_id not in character_ids for character_id in rule.character_maxima) or any(item_id > value["item_slots"] for item_id in rule.item_maxima) for rule in rules):
         raise StoryOutcomeCatalogError("stage maxima reference an undeclared ID")
+    # Older generated catalogs baked in this server's obsolete inventory cap.
+    # Refresh that runtime capacity without rewriting the derived evidence or
+    # changing per-battle maxima. Hand-authored capacities remain explicit.
+    if "source" in value and value["item_slots"] == ITEM_SLOTS and value["max_stack"] in (999, 9999):
+        value["max_stack"] = MAX_ITEM_STACK
     return StoryOutcomeCatalog(frozenset(character_ids), *(value[name] for name in numeric), masters_by_id, {identity: rule for identity, rule in zip(identities, rules)})
 
 

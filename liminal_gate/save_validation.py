@@ -49,8 +49,10 @@ ITEM_SLOTS = 181
 #: bound the client -- it only makes the server call the client's own honest
 #: inventory impossible.  It read 999 until a Puppet Show clear that carried a
 #: slot past it was refused as an invalid settlement; see the CHANGELOG.
-#: `build_server_constants` sends this constant rather than its own literal.
-MAX_ITEM_STACK = 9999
+#: Issue 95's pre-shutdown inventory confirms stacks above 9999; the Items
+#: community record dates the 99999 ceiling to v4.4.0. The reviewed client is
+#: 5.5.7. `build_server_constants` sends this same limit to the client.
+MAX_ITEM_STACK = 99999
 #: The items the pre-battle Power-Up Item slot can offer, read from the reviewed
 #: client's own `ItemSet.itemSet` table: exactly the rows whose `ItemData.kind`
 #: is `ItemKind.HelpItem` (1).  `UIHelpItemSelect.MakeList` builds its list by

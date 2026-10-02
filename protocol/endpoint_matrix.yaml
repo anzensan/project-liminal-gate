@@ -7,6 +7,18 @@ statuses:
   local_policy: "implemented preservation behavior, not a historical-service claim"
   unsupported: "fails explicitly rather than returning generic success"
 capabilities:
+  - family: breasoul_finale_global_flag
+    routes: [clear_quest, userdata]
+    status: static_confirmed
+    note: "Issue 90: 104-1 sends globalFlags as JSON text containing CH104_END integer 0 or 1. The flag is merged durably with the Hunting settlement and returned as an object. Unknown flag contracts remain unsupported; the reporter's raw body and original-client retest remain pending."
+    transport_tests: true
+    restart_tests: true
+  - family: final_client_item_capacity
+    routes: [get_server_status, clear_quest, exchange, read_messages, achived]
+    status: local_policy
+    note: "Issue 95: community-recorded 99999 cap advertised to the 5.5.7 client and shared by bundled settlement and save validation/editor. Screenshot confirms inventories above 9999; exact cap comes from the Items record. Old generated story capacities refresh in memory; explicit manual caps remain. HTTP crossing, clamp, and restart replay pass; physical-client retest pending."
+    transport_tests: true
+    restart_tests: true
   - family: on_device_host_readiness
     routes: [healthz, resources]
     status: local_policy

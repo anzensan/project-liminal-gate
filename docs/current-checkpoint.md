@@ -1,5 +1,23 @@
 # Current Checkpoint
 
+Issue follow-up, 2026-10-02: Issue 90's latest log reaches `hunting_active`
+on 104-1, then returns `501 unsupported_clear_quest`. The reviewed ARM64
+client supplies a previously unsupported `battle_result.globalFlags` JSON
+string containing `CH104_END: 0` or `1`. This stage/flag now parses, commits
+with the Hunting clear, and returns as an object in clear/userdata responses.
+HTTP refusal/no-mutation, success, exact retry, and restart checks pass.
+The log hides the extra field names, so this is a statically established
+defect consistent with the report, not a raw-body reproduction or physical
+client acceptance. The next boundary is the reporter's 104-1 retest.
+
+Issue 95: the advertised and bundled inventory ceiling, save validation, and
+save editor now allow 99,999 items. Old generated story-outcome capacities
+of 999/9,999 are refreshed in memory without changing their source files or
+battle maxima. Explicit manual catalog capacities are preserved. HTTP tests
+cover crossing 9,999, clamping at 99,999, and restart replay; physical-client
+display/settlement at the new ceiling remains pending. Dedicated servers need
+a restart and clients a fresh status/login; on-device users need an APK rebuild.
+
 Date: 2026-08-22
 
 Mode: public-release implementation hardening and private on-device packaging.
