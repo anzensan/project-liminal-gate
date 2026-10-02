@@ -157,8 +157,28 @@ def _parse_generic_story_clear(body: bytes) -> dict[str, Any] | None:
         return None
     battle = result["battle_result"]
     battle_fields = {"coins", "buddies", "items", "exp", "section", "monsters", "summons", "luckynum", "chapter", "unableluckdrop", "boostup"}
-    if not isinstance(battle, dict) or set(battle) - {"counters"} != battle_fields or any(type(battle.get(name)) is not int or battle[name] < 0 for name in ("coins", "exp", "section", "luckynum", "chapter")) or battle["chapter"] < 2 or battle["section"] < 1 or type(battle["unableluckdrop"]) is not bool:
+    if not isinstance(battle, dict) or set(battle) - {"counters", "globalFlags"} != battle_fields or any(type(battle.get(name)) is not int or battle[name] < 0 for name in ("coins", "exp", "section", "luckynum", "chapter")) or battle["chapter"] < 2 or battle["section"] < 1 or type(battle["unableluckdrop"]) is not bool:
         return None
+    # Chapter104's final battle writes CH104_END as integer 0 or 1.
+    # GetBattleResult serializes globalFlags to JSON text, just like counters.
+    # Only this recovered flag/stage is modeled; other flags need evidence.
+    global_flags: object = {}
+    if "globalFlags" in battle:
+        if type(battle["globalFlags"]) is not str:
+            return None
+        try:
+            global_flags = json.loads(battle["globalFlags"])
+        except json.JSONDecodeError:
+            return None
+        if (
+            (battle["chapter"], battle["section"]) != (104, 1)
+            or type(global_flags) is not dict
+            or set(global_flags) != {"CH104_END"}
+            or type(global_flags["CH104_END"]) is not int
+            or global_flags["CH104_END"] not in (0, 1)
+        ):
+            return None
+    result["globalFlags"] = global_flags
     if "counters" in battle and type(battle["counters"]) is not str:
         return None
     # `BattleManager.sendCounters` travels as JSON text inside the JSON:

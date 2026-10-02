@@ -415,6 +415,26 @@ class BuildCatalogTest(unittest.TestCase):
             write_catalog(path, catalog)
             load_story_outcome_catalog(path)
 
+    def test_old_generated_inventory_caps_refresh_without_rewriting_evidence(self) -> None:
+        source = build_derivation_source(
+            self.encounters, self.characters, APK_SHA256, "d" * 64, "e" * 64,
+        )
+        catalog = self._build(source=source)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "story-outcomes.json"
+            for old in (999, 9999):
+                with self.subTest(old=old):
+                    catalog["max_stack"] = old
+                    write_catalog(path, catalog)
+                    original = path.read_bytes()
+                    loaded = load_story_outcome_catalog(path)
+                    self.assertEqual(99999, loaded.max_stack)
+                    self.assertEqual(original, path.read_bytes())
+                    # An explicitly supplied catalog still owns its capacity.
+                    manual = {k: v for k, v in catalog.items() if k != "source"}
+                    write_catalog(path, manual)
+                    self.assertEqual(old, load_story_outcome_catalog(path).max_stack)
+
     def test_unverified_native_calibration_stays_explicit(self) -> None:
         self.encounters["source"]["vtable_calibration"] = "unverified"
         _catalog, report, notes = self._build()

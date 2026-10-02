@@ -236,7 +236,7 @@
       <h2>6 · Items</h2>
       <div class="row">
         <div style="flex:1;min-width:9rem"><label for="itemId">Item slot (1–181)</label><input id="itemId" type="number" min="1" max="181" value="1"></div>
-        <div style="flex:1;min-width:9rem"><label for="itemCount">Count (0–999)</label><input id="itemCount" type="number" min="0" max="999" value="0"></div>
+        <div style="flex:1;min-width:9rem"><label for="itemCount">Count (0–99,999)</label><input id="itemCount" type="number" min="0" max="99999" value="0"></div>
         <button id="setItem" style="margin-top:1.1rem">Set</button>
       </div>
       <div id="itemSummary" class="muted" style="margin-top:.8rem;font-size:.75rem"></div>
@@ -277,7 +277,7 @@ const JOB_LEVEL_BITS = 12;
 const JOB_LEVEL_MASK = 0xFFF;
 const LEVEL_CAP = 90;
 const ITEM_SLOTS = 181;
-const MAX_STACK = 999;
+const MAX_STACK = 99999;
 const WALLET = ["coins", "energy", "freeEnergy", "energyAppStore", "energyGooglePlay", "energyAndApp"];
 // `ServerConstants.maxCoins` / `maxEnergy`, the same ceilings save_validation.py enforces.
 const MAX_COINS = 99999999;

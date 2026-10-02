@@ -83,6 +83,20 @@ run the command.
 
 ### Fixed
 
+- **The Death of Shay and Arionne finale clear accepts its ending flag
+  (Issue 90).** The final client sends `globalFlags` as JSON text containing
+  `CH104_END: 0` or `1`; the clear parser had rejected that field before
+  settlement. The flag now commits with the battle and survives retry and
+  restart. The log is consistent with this client-static defect; a tester
+  retest remains needed to confirm the reported failure is fully resolved.
+- **Item stacks now hold up to 99,999 (Issue 95).** Server constants, bundled
+  reward/Trading Post policies, save validation, and the save editor share the
+  final-client capacity. The editor had separately capped edits at 999.
+  Older generated story-outcome inventory caps are refreshed on load without
+  rewriting the catalog; manual catalog caps remain operator-defined.
+  Restart dedicated servers and reconnect clients, or rebuild an on-device
+  APK. Existing inventories are preserved.
+
 - **A Hunting battle retried after a loss could not be cleared, if its chest
   held anything.** Issue 94, on the Five Emperors' Gatekeeper: *"I get a
   network error at the end, restart doesn't work."* His log showed three

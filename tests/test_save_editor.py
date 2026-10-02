@@ -14,7 +14,7 @@ from liminal_gate.save_editor_tables import (
     render_companion_table,
     replace_table,
 )
-from liminal_gate.save_validation import FLOAT_FIELDS, FLOAT_VALUE_OBJECT_FIELDS
+from liminal_gate.save_validation import FLOAT_FIELDS, FLOAT_VALUE_OBJECT_FIELDS, MAX_ITEM_STACK
 
 EDITOR = Path(__file__).resolve().parents[1] / "tools" / "save-editor.html"
 SOURCE = EDITOR.read_text(encoding="utf-8")
@@ -29,6 +29,14 @@ def _js_set(name: str) -> set[str]:
 
 
 class SaveEditorSafetyTest(unittest.TestCase):
+    def test_item_editor_cap_matches_server_and_save_validation(self) -> None:
+        self.assertEqual(99999, MAX_ITEM_STACK)
+        limit = re.search(r"const MAX_STACK = (\d+);", SOURCE)
+        self.assertIsNotNone(limit)
+        self.assertEqual(MAX_ITEM_STACK, int(limit[1]))
+        field = re.search(r'<input id="itemCount"[^>]+>', SOURCE)[0]
+        self.assertIn(f'max="{MAX_ITEM_STACK}"', field)
+
     def test_user_supplied_values_are_not_inserted_as_unescaped_html(self) -> None:
         self.assertNotIn('$("account").innerHTML = ids.map', SOURCE)
         self.assertIn('escapeHtml(String(row.jobID ?? 0))', SOURCE)

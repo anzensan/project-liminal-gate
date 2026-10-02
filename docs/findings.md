@@ -1,5 +1,47 @@
 # Public Technical Findings
 
+## Issues 90 and 95 follow-up (2026-10-02)
+
+- **Client-static, Issue 90:** the reporter's
+  [October 1 log](https://github.com/anzensan/project-liminal-gate/issues/90#issuecomment-5933357605)
+  shows a successful 104-1 start and two POST clear parser refusals. The four
+  `unrecognized_keys` are a diagnostic allowlist count, not a parser verdict.
+  That allowlist omitted `luckynum`, `unableluckdrop`, `boostup`, `counters`,
+  and `globalFlags`; these modeled protocol names are now visible, while
+  flag names/values and counter contents remain private.
+- In the reviewed 5.5.7 ARM64 library (SHA-256
+  `ba6fecba562f7ff46305792cadeabcae1879a0c384f7195a5d77872af04c1753`),
+  `Chapter104.$Battle1_5$closure$935$8729.$.MoveNext` reads
+  `BattleManager.globalFlags` at `0x1737BA0` / `0x1737D00` and assigns
+  `CH104_END` integer 0 / 1 through `JsonData.op_Implicit(int)` (`0xFF4DA8`).
+  The key's literal slot is `0x2BDFF70` (via GOT entry `0x2AB8330`).
+  `GetBattleResult` (`0xDB8E50`) serializes the nonempty object through
+  `JsonMapper.ToJson` at `0xDB9A08`, storing the JSON string under
+  `globalFlags` at `0xDB9A18`--`0xDB9A38`. It separately serializes counters
+  at `0xDB98FC`; Chapter104's compiled methods contain no call to
+  `AddTransmissionServerCounter` (`0xCC4F70`).
+- `LoadUserdataFromJson` checks `globalFlags` and assigns the response's
+  **object** to `UserData.globalFlags` at `0xDB82A4`. `HasGlobalFlag`
+  (`0x19D8998`) checks key presence. The parser now admits exactly the
+  recovered 104-1 `CH104_END` integer forms; unknown flag contracts still
+  refuse. **Local policy:** merge the reported assignment into the held
+  object, preserving unrelated keys and an explicit zero. It commits in the
+  existing clear transaction with the reward state and cached reply. Omitted
+  reports do not erase flags. HTTP tests establish refusal without mutation,
+  durable settlement, and restart replay. The actual tester body is absent,
+  so final attribution and original-client acceptance still need a retest.
+- **Community record and reporter evidence, Issue 95:** the
+  [Items page](https://terrabattle.fandom.com/wiki/Items) records the increase
+  to 99,999 in v4.4.0. The [reporter's pre-shutdown screenshot](https://github.com/anzensan/project-liminal-gate/issues/95)
+  visibly holds Animata Claw 21,211 and Animata Bone 38,633. It establishes
+  stacks above 9,999; the exact ceiling comes from the community record.
+  The server advertised 9,999 from `MAX_ITEM_STACK`, its bundled Hunting,
+  mail, achievement, and exchange policies inherited it, and the editor
+  independently clamped edits to 999. They now agree on 99,999. Generated
+  story-outcome catalogs with the old standard capacity are normalized on
+  read; their files, source hashes, and per-stage maxima stay unchanged.
+  Manual catalog limits remain explicit operator policy.
+
 This file records only findings safe for the source-only public repository.
 Private inputs, captures, account state, and original assets remain excluded.
 

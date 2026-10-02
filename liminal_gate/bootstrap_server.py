@@ -3391,6 +3391,12 @@ class BootstrapState:
                     _synchronize_wallet_projection(userdata)
             cleared_quests = _record_quest_clear(userdata, identity, now)
             _record_battle_counters(account, identity[0], clear["counters"])
+            if clear["globalFlags"]:
+                # A flag report is a patch, not a replacement of unrelated
+                # account flags. It commits with the rewards and replay reply.
+                userdata["globalFlags"] = {
+                    **userdata.get("globalFlags", {}), **clear["globalFlags"],
+                }
             account["tutorial_phase"] = "free_roam"
             account["active_luck_result"] = []
             account["active_luck_up"] = []
@@ -3439,6 +3445,10 @@ class BootstrapState:
             if result["buddies"] or chest_companions(authored_chest):
                 payload = _canonical_payload(payload | {
                     "buddyInfo": copy.deepcopy(userdata.get("buddyInfo", {"list": [], "record": []})),
+                })
+            if clear["globalFlags"]:
+                payload = _canonical_payload(payload | {
+                    "globalFlags": copy.deepcopy(userdata["globalFlags"]),
                 })
             requests[_replay_key(request_id, body)] = {"body_sha256": digest, "payload": copy.deepcopy(payload)}
             self._persist_locked()
