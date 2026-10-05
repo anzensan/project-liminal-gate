@@ -215,11 +215,11 @@ class WorldProgressionTest(unittest.TestCase):
         self.assertEqual((101, 1), unpack_world_progress(cursor))
         self.assertEqual(0x3000000, cursor & 0x3000000)
 
-    def test_the_final_section_of_a_world_stays_put(self) -> None:
+    def test_the_final_section_of_a_world_advances_to_the_terminal_cursor(self) -> None:
         cursor = advanced_world_progress(pack_world_progress(119, 1), 119, 1)
-        self.assertEqual((119, 1), unpack_world_progress(cursor))
+        self.assertEqual((120, 1), unpack_world_progress(cursor))
         cursor = advanced_world_progress(pack_world_progress(104, 1), 104, 1)
-        self.assertEqual((104, 1), unpack_world_progress(cursor))
+        self.assertEqual((105, 1), unpack_world_progress(cursor))
 
     def test_replaying_a_cleared_section_never_moves_the_cursor_back(self) -> None:
         """The seed carries both banner bits, so this cannot be an int compare."""
@@ -752,6 +752,47 @@ class WorldEndTest(SecondaryWorldTransactionTest):
         self.assertEqual((status, payload), self.clear("clear-flag", 104, 1, **args))
         self.assertEqual(settled, self.account())
 
+    def test_agartha_flags_settle_once_and_survive_restart(self) -> None:
+        for chapter, flag in ((114, "CH114-1-Cleared"), (119, "CH114-2-Cleared")):
+            with self.subTest(chapter=chapter):
+                self._stand_at(FIVE_EMPERORS_WORLD, chapter, 1)
+                self.assertEqual(200, self.start(f"start-{chapter}", chapter, 1,
+                                               stamina=15 if chapter == 114 else 20)[0])
+                before = self.account()
+                for invalid in ({flag: True}, {flag: 0}, {"CH104_END": 1}, {}):
+                    status, _ = self.clear(
+                        "invalid-agartha", chapter, 1, world=FIVE_EMPERORS_WORLD,
+                        cursor=pack_world_progress(chapter + 1, 1),
+                        battle_extra={"globalFlags": json.dumps(invalid)},
+                    )
+                    self.assertEqual(501, status)
+                    self.assertEqual(before, self.account())
+                args = dict(world=FIVE_EMPERORS_WORLD,
+                            cursor=pack_world_progress(chapter + 1, 1),
+                            battle_extra={"globalFlags": json.dumps({flag: 1})})
+                status, payload = self.clear(f"clear-{chapter}", chapter, 1, **args)
+                self.assertEqual(200, status, payload)
+                self.assertEqual(1, payload["globalFlags"][flag])
+                settled = self.account()
+                self.restart()
+                self.assertEqual(1, self.read_userdata()["globalFlags"][flag])
+                self.assertEqual((status, payload), self.clear(f"clear-{chapter}", chapter, 1, **args))
+                self.assertEqual(settled, self.account())
+
+    def test_old_finale_clear_is_repaired_but_an_unwon_finale_is_not(self) -> None:
+        for world, chapter in ((BREASOUL_WORLD, 104), (FIVE_EMPERORS_WORLD, 119)):
+            self._stand_at(world, chapter, 1)
+            self.restart()
+            self.assertEqual((chapter, 1), unpack_world_progress(
+                self.read_userdata()["worldProgressCode"][str(world)]))
+            with self.server.state.lock:
+                account = self.server.state.accounts[self.account_id]
+                account["userdata"].setdefault("questClearDate", {})[f"{chapter}-1"] = 123.0
+                self.server.state._persist_locked()
+            self.restart()
+            self.assertEqual((chapter + 1, 1), unpack_world_progress(
+                self.read_userdata()["worldProgressCode"][str(world)]))
+
     def test_final_battle_flag_zero_is_preserved_and_other_flags_survive(self) -> None:
         self._stand_at(BREASOUL_WORLD, 104, 1)
         with self.server.state.lock:
@@ -774,15 +815,17 @@ class WorldEndTest(SecondaryWorldTransactionTest):
         self.assertEqual(200, status)
         self.assertTrue(payload["success"])
 
-    def test_the_rolled_cursor_is_accepted_but_never_kept(self) -> None:
-        """The frontier holds at the world's last section, and that is served."""
+    def test_the_earned_terminal_cursor_survives_restart(self) -> None:
+        """The client compares this cursor strictly above the cleared stage."""
         self._stand_at(BREASOUL_WORLD, 104, 1)
         self.assertEqual(200, self.start("start-104", 104, 1)[0])
         rolled = pack_world_progress(105, 1)
         self.assertEqual(200, self.clear("clear-104", 104, 1, world=BREASOUL_WORLD, cursor=rolled)[0])
         served = self.read_userdata()["worldProgressCode"]
-        self.assertEqual((104, 1), unpack_world_progress(served["1"]))
+        self.assertEqual((105, 1), unpack_world_progress(served["1"]))
         self.assertTrue(is_valid_world_progress("1", served["1"]))
+        self.restart()
+        self.assertEqual(served, self.read_userdata()["worldProgressCode"])
 
     def test_the_flush_that_follows_that_clear_is_answered(self) -> None:
         """The client echoes the rolled cursor again on its next write."""
@@ -792,7 +835,7 @@ class WorldEndTest(SecondaryWorldTransactionTest):
         self.assertEqual(200, self.clear("clear-104", 104, 1, world=BREASOUL_WORLD, cursor=rolled)[0])
         self.assertEqual(200, self.enter_world("flush-104", BREASOUL_WORLD, rolled)[0])
         served = self.read_userdata()["worldProgressCode"]
-        self.assertEqual((104, 1), unpack_world_progress(served["1"]))
+        self.assertEqual((105, 1), unpack_world_progress(served["1"]))
 
     def test_a_cursor_two_chapters_past_the_end_is_still_refused(self) -> None:
         """One past is the client's own arithmetic; anything beyond is not."""
@@ -889,11 +932,11 @@ class ReleasedSideWorldBattleTest(SecondaryWorldTransactionTest):
 class WorldEndPredicateTest(unittest.TestCase):
     """What each world may report, against what this server may hold."""
 
-    def test_the_roll_past_is_reportable_but_never_holdable(self) -> None:
+    def test_the_terminal_cursor_is_reportable_and_holdable(self) -> None:
         for world, rolled in (("1", (105, 1)), ("2", (120, 1))):
             packed = pack_world_progress(*rolled)
             self.assertTrue(is_reportable_world_progress(world, packed), world)
-            self.assertFalse(is_valid_world_progress(world, packed), world)
+            self.assertTrue(is_valid_world_progress(world, packed), world)
 
     def test_every_declared_section_stays_both(self) -> None:
         for world in ("1", "2"):

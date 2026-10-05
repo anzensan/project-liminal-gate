@@ -39,17 +39,17 @@ class MaxStaminaCurveTest(unittest.TestCase):
     """`UserData.GetMaxStamina`, ARM64 `0x19D8BDC`."""
 
     def test_recovered_endpoints_of_both_branches(self) -> None:
-        # ch <= 30: (ch - 1) / 29 * 80 + 20, so 1 -> 20 and 30 -> 100.
-        self.assertEqual(20, max_stamina_for_chapter(1))
-        self.assertEqual(100, max_stamina_for_chapter(30))
-        # ch > 30: (ch - 30) / 30 * 80 + 100, so 31 -> 102 and 60 -> 180.
-        self.assertEqual(102, max_stamina_for_chapter(31))
-        self.assertEqual(180, max_stamina_for_chapter(60))
+        # Raw curve: 1 -> 20 and 30 -> 100, then scale by 125%.
+        self.assertEqual(25, max_stamina_for_chapter(1))
+        self.assertEqual(125, max_stamina_for_chapter(30))
+        # Raw curve: 31 -> 102 and 60 -> 180; truncate before scaling.
+        self.assertEqual(127, max_stamina_for_chapter(31))
+        self.assertEqual(225, max_stamina_for_chapter(60))
 
     def test_the_branch_boundary_falls_on_the_low_side(self) -> None:
         # `subs w9, w8, #0x1e` then `b.le` puts chapter 30 itself on the first
         # curve; both happen to agree there, which is why only 31 proves it.
-        self.assertEqual(100, max_stamina_for_chapter(30))
+        self.assertEqual(125, max_stamina_for_chapter(30))
         self.assertNotEqual(max_stamina_for_chapter(30), max_stamina_for_chapter(31))
 
     def test_zero_chapter_is_substituted_with_one(self) -> None:
@@ -60,7 +60,8 @@ class MaxStaminaCurveTest(unittest.TestCase):
         self.assertEqual(values, sorted(values))
 
     def test_the_final_story_chapter_is_covered(self) -> None:
-        self.assertEqual(132, max_stamina_for_chapter(42))
+        self.assertEqual(165, max_stamina_for_chapter(42))
+        self.assertEqual(167, max_stamina_for_chapter(43))
 
 
 class MeterTest(unittest.TestCase):
@@ -106,7 +107,7 @@ class SpendTest(unittest.TestCase):
     def test_repeated_entries_exhaust_the_meter(self) -> None:
         """The Metal Zone regression: entry must not be unbounded."""
         now, origin, entries = 1_000_000.0, 0.0, 0
-        # Chapter 1's maximum is 20 and a Metal King entry costs 20 stamina, so
+        # Chapter 1's maximum is 25 and a Metal King entry costs 20 stamina, so
         # exactly one run is affordable before the meter has to refill.
         while (moved := spend_stamina(origin, 20, 1, now)) is not None:
             origin, entries = moved, entries + 1

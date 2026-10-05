@@ -31,6 +31,18 @@ class StoryProgressionCatalog:
     def by_identity(self) -> dict[tuple[int, int], StoryProgressionStage]:
         return {(stage.chapter, stage.section): stage for stage in self.stages}
 
+    def stage_for(self, identity: tuple[int, int]) -> StoryProgressionStage | None:
+        """Resolve an ordinary stage or a replay of the five tutorial battles.
+
+        Chapter 1 is excluded from the progression graph because the tutorial
+        owns its first pass. Replays use ordinary settlement without advancing
+        progress or repeating scripted tutorial grants.
+        """
+        if identity[0] == 1 and 1 <= identity[1] <= 5:
+            return StoryProgressionStage(1, identity[1], 1, 0, 1, identity[1],
+                                         (1 << 6) | identity[1], False)
+        return self.by_identity().get(identity)
+
     def index_by_identity(self) -> dict[tuple[int, int], int]:
         return {(stage.chapter, stage.section): index for index, stage in enumerate(self.stages)}
 
@@ -49,6 +61,8 @@ class StoryProgressionCatalog:
             final = self.stages[-1]
             if current_identity == (final.successor_chapter, final.successor_section):
                 unlocked_index = len(self.stages)
+        if identity[0] == 1 and 1 <= identity[1] <= 5 and unlocked_index is not None:
+            return current_progress
         if stage_index is None or unlocked_index is None or stage_index > unlocked_index:
             return None
         if stage_index < unlocked_index:

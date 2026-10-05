@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-22"
+updated: "2026-10-05"
 canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -7,10 +7,34 @@ statuses:
   local_policy: "implemented preservation behavior, not a historical-service claim"
   unsupported: "fails explicitly rather than returning generic success"
 capabilities:
+  - family: tutorial_battle_replay
+    routes: [start_quest, clear_quest]
+    status: local_policy
+    note: "Issue 65: chapter 1's five recovered identities replay through ordinary settlement after the tutorial; progress and roster are preserved. First-pass tutorial remains scripted. HTTP/retry/restart covered; rebuilt-client acceptance pending."
+    transport_tests: true
+    restart_tests: true
+  - family: secondary_world_completion
+    routes: [clear_quest, userdata]
+    status: static_confirmed
+    note: "Issue 96: finale settlement retains terminal 105-1/120-1 as required by IsSectionCleared. Load repairs a held finale only with its recorded questClearDate. Map writes alone never advance progress. Client relaunch retest pending."
+    transport_tests: true
+    restart_tests: true
+  - family: agartha_completion_flags
+    routes: [clear_quest, userdata]
+    status: static_confirmed
+    note: "Issue 97: normal 114-1 and hard 119-1 accept their respective recovered CH114-1-Cleared/CH114-2-Cleared JSON-string integer-1 flags. Unknown flag contracts fail. Atomic settlement and restart replay covered; client retest pending."
+    transport_tests: true
+    restart_tests: true
+  - family: final_story_stamina_capacity
+    routes: [get_server_status, login, start_quest, refill_stamina]
+    status: local_policy
+    note: "Issue 98: shared MaxStaminaBias=125 yields 167 at terminal chapter 43. Formula and wire key are client-static; percentage is inferred from reported final-service capacity. HTTP status and meter/refill regressions pass; client UI retest pending."
+    transport_tests: true
+    restart_tests: true
   - family: breasoul_finale_global_flag
     routes: [clear_quest, userdata]
     status: static_confirmed
-    note: "Issue 90: 104-1 sends globalFlags as JSON text containing CH104_END integer 0 or 1. The flag is merged durably with the Hunting settlement and returned as an object. Unknown flag contracts remain unsupported; the reporter's raw body and original-client retest remain pending."
+    note: "Issue 90: 104-1 sends globalFlags as JSON text containing CH104_END integer 0 or 1. The flag is merged durably with the Hunting settlement and returned as an object. Unknown flag contracts remain unsupported. Issue 96 confirms the clear now succeeds on the client; completed-map persistence is fixed separately in this pass."
     transport_tests: true
     restart_tests: true
   - family: final_client_item_capacity

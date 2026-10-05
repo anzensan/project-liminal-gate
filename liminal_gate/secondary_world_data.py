@@ -283,7 +283,7 @@ def advanced_world_progress(packed: int, chapter: int, section: int) -> int | No
     ``None`` when the stage names no modelled secondary-world section. The
     cursor records the furthest section the world has *unlocked*, which is what
     `IsSectionUnlocked` compares against, so a clear moves it to the cleared
-    section's successor and the last section of a world leaves it where it is.
+    section's successor, including the terminal chapter after a world's finale.
     A clear behind the frontier never moves it backwards.
     """
     world = world_for_chapter(chapter)
@@ -304,11 +304,11 @@ def advanced_world_progress(packed: int, chapter: int, section: int) -> int | No
         return packed
     index = sections.index((chapter, section))
     last = index + 1 == len(sections)
-    reached = (chapter, section) if last else sections[index + 1]
+    reached = (chapter + 1, 1) if last else sections[index + 1]
     if frontier >= reached:
         return packed
     return pack_world_progress(
-        *reached, chapter_boundary=not last and reached[0] != chapter,
+        *reached, chapter_boundary=reached[0] != chapter,
     )
 
 
@@ -336,23 +336,20 @@ def _world_cursor(world: str, packed: object) -> tuple[tuple[int, int], tuple[tu
 
 
 def is_valid_world_progress(world: str, packed: object) -> bool:
-    """Whether a cursor is one this server may *hold* for this world.
+    """Accept declared stages and the earned terminal cursor.
 
-    The strict half: every value stored on an account or sent back to the
-    client is one of that world's own declared sections. Use
-    :func:`is_reportable_world_progress` to judge a cursor the client sent,
-    which is legitimately one value wider.
+    IsSectionCleared compares the raw cursor strictly above the stage. Holding
+    the finale itself makes it appear uncleared after the next userdata load.
     """
-    held = _world_cursor(world, packed)
-    return held is not None and held[0] in held[1]
+    return is_reportable_world_progress(world, packed)
 
 
 def is_reportable_world_progress(world: str, packed: object) -> bool:
     """Whether a cursor the *client* reports is one it could legitimately hold.
 
-    Wider than :func:`is_valid_world_progress` by exactly one value per world,
-    and the difference is the client's own arithmetic rather than a tolerance
-    chosen here. `UserData.UnlockNextSection` (`0x19D90F4`) increments the
+    Includes exactly one terminal value per world beyond the playable stages.
+    This is the client's own arithmetic rather than a tolerance chosen here.
+    `UserData.UnlockNextSection` (`0x19D90F4`) increments the
     section, compares it against the chapter's own section count, and on
     overflow calls `SetWorldNewChapter(worldNo, chapter + 1, 1)` (`0x19D920C`).
     That store (`0x19D8680`) applies no ceiling of its own -- `worldMaxChapter`
@@ -369,11 +366,7 @@ def is_reportable_world_progress(world: str, packed: object) -> bool:
     after 119-1, so neither map could be completed at all. Reported on issue 90
     against BreaSoul, whose last chapter carries a single section.
 
-    The extra value is only ever *accepted*, never kept: the frontier remains
-    `advanced_world_progress`'s, which holds at the world's last section, and
-    the projection sent back is built from that. So nothing widened here can be
-    stored or served, and an account already stuck recovers on its next write
-    with no repair to its save.
+    Settlement advances the durable cursor; a map write alone cannot earn it.
     """
     reported = _world_cursor(world, packed)
     if reported is None:

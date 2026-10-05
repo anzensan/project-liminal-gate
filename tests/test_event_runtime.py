@@ -636,6 +636,12 @@ class EidolonRuntimeTest(unittest.TestCase):
     """Converted solo Eidolon drops persist at the result-screen boundary."""
 
     def test_visibility_drop_and_restart_replay_over_real_http(self) -> None:
+        self._exercise_eidolon_drop(section=1, companion=False)
+
+    def test_omicron_two_chest_has_level_30_experience_and_survives_restart(self) -> None:
+        self._exercise_eidolon_drop(section=3, companion=True)
+
+    def _exercise_eidolon_drop(self, *, section: int, companion: bool) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "state.json"
             token, account_id = "eidolon-token", "eidolon-account"
@@ -656,7 +662,7 @@ class EidolonRuntimeTest(unittest.TestCase):
             state.close()
             catalog = EventCatalog((
                 EventStage(
-                    "eidolon_artemis", "sp_ch_4100", 4100, 1,
+                    "eidolon_artemis", "sp_ch_4100", 4100, section,
                     10, 0, 0, (), summon_ids=(4,), selector="eidolon",
                     unlock_after_chapter=3,
                 ),
@@ -685,13 +691,13 @@ class EidolonRuntimeTest(unittest.TestCase):
                 "summonList": json.dumps(initial["summonList"]),
                 "battle_result": json.dumps({
                     "coins": 0, "buddies": [], "items": {}, "exp": 0,
-                    "section": 1, "monsters": [], "summons": [4],
+                    "section": section, "monsters": [], "summons": [4],
                     "luckynum": 0, "chapter": 4100,
                     "unableluckdrop": False, "boostup": [0] * 6,
                 }),
                 "itmp0": 0, "itmp1": 0, "lastUpdate": 1,
             }).encode()
-            start = b"stamina=10&coins=0&chapter=4100&section=1&lastUpdate=1"
+            start = f"stamina=10&coins=0&chapter=4100&section={section}&lastUpdate=1".encode()
 
             server, thread = start_server(
                 ("127.0.0.1", 0), profile, BootstrapState(state_path),
@@ -702,8 +708,9 @@ class EidolonRuntimeTest(unittest.TestCase):
                     server, "GET", f"/gd/get_server_status?otk={token}"
                 )
                 self.assertEqual(200, status)
+                self.assertEqual(125, server_status["constants"]["MaxStaminaBias"])
                 self.assertEqual(
-                    ["4100-1"],
+                    [f"4100-{section}"],
                     server_status["constants"]["eidolonQuestList"],
                 )
                 status, _ = request(
@@ -712,6 +719,12 @@ class EidolonRuntimeTest(unittest.TestCase):
                     start,
                 )
                 self.assertEqual(200, status)
+                if companion:
+                    # Force one reward from Artemis III's recorded pool; test
+                    # settlement independently of the random chest roll.
+                    with server.state.lock:
+                        server.state.accounts[account_id]["active_luck_result"] = ["O325"]
+                        server.state._persist_locked()
                 status, cleared = request(
                     server, "POST",
                     f"/gd/clear_quest?otk={token}&requestID=eidolon-clear",
@@ -719,6 +732,11 @@ class EidolonRuntimeTest(unittest.TestCase):
                 )
                 self.assertEqual(200, status, cleared)
                 self.assertNotIn("summonList", cleared)
+                if companion:
+                    owned = cleared["buddyInfo"]["list"]
+                    self.assertEqual(1, len(owned))
+                    self.assertEqual((325, 30, 1_550_568),
+                                     (owned[0]["bid"], owned[0]["lv"], owned[0]["exp"]))
                 self.assertEqual(
                     1,
                     server.state.accounts[account_id]["userdata"]["summonList"][3],
@@ -737,6 +755,8 @@ class EidolonRuntimeTest(unittest.TestCase):
                     clear,
                 )
                 self.assertEqual((200, cleared), (status, replayed))
+                if companion:
+                    self.assertEqual(owned, server.state.accounts[account_id]["userdata"]["buddyInfo"]["list"])
                 self.assertEqual(
                     1,
                     server.state.accounts[account_id]["userdata"]["summonList"][3],

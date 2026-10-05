@@ -83,6 +83,19 @@ run the command.
 
 ### Fixed
 
+- Chapter 1 stages can be replayed after the tutorial without restarting its
+  scripted progression or replacing the roster (#65).
+- BreaSoul and Five Emperors completion survives relaunch. Previously recorded
+  finale clears recover automatically when loading the save (#96).
+- Normal and hard Agartha clears accept and persist their client completion
+  flags instead of returning a parser error (#97).
+- The shared stamina percentage is now 125, giving a maximum of 167 after the
+  story. This matches the reported final-service capacity; the percentage is
+  inferred from that report and the recovered client formula (#98).
+- Confirmed Eidolon ΟⅡ Companion grants correctly arrive at level 30/80 with
+  matching experience. Added HTTP/restart coverage; no level change (#99).
+
+
 - **The Death of Shay and Arionne finale clear accepts its ending flag
   (Issue 90).** The final client sends `globalFlags` as JSON text containing
   `CH104_END: 0` or `1`; the clear parser had rejected that field before
