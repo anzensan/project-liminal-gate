@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import Any
 
 from liminal_gate.archive_economy import DAILY_QUEST_FREE_ENERGY
+from liminal_gate.stamina_meter import MAX_STAMINA_BIAS_PERCENT
 from liminal_gate.luck_data import (
     COMPANION_LUCK_GAIN_BOOST,
     COMPANION_PERSONAL_LUCK_TENTHS,
@@ -183,6 +184,7 @@ def build_server_constants(
         # reports, so the two have to be one number rather than two literals.
         "maxItemCount": MAX_ITEM_STACK,
         "refillInterval": 120,
+        "MaxStaminaBias": MAX_STAMINA_BIAS_PERCENT,
         "refillCost": 1,
         "maxMessages": 100,
         "levelCap": 90,

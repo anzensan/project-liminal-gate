@@ -114,7 +114,7 @@ def _parse_generic_story_start(body: bytes) -> dict[str, int] | None:
         values = {name: int(value) for name, value in pairs}
     except (UnicodeDecodeError, ValueError):
         return None
-    if any(value < 0 for value in values.values()) or values["chapter"] < 2 or values["section"] < 1:
+    if any(value < 0 for value in values.values()) or values["chapter"] < 1 or values["section"] < 1:
         return None
     # The client omits the field entirely rather than sending zero, so a
     # declared zero is not a form it produces.
@@ -157,11 +157,16 @@ def _parse_generic_story_clear(body: bytes) -> dict[str, Any] | None:
         return None
     battle = result["battle_result"]
     battle_fields = {"coins", "buddies", "items", "exp", "section", "monsters", "summons", "luckynum", "chapter", "unableluckdrop", "boostup"}
-    if not isinstance(battle, dict) or set(battle) - {"counters", "globalFlags"} != battle_fields or any(type(battle.get(name)) is not int or battle[name] < 0 for name in ("coins", "exp", "section", "luckynum", "chapter")) or battle["chapter"] < 2 or battle["section"] < 1 or type(battle["unableluckdrop"]) is not bool:
+    if not isinstance(battle, dict) or set(battle) - {"counters", "globalFlags"} != battle_fields or any(type(battle.get(name)) is not int or battle[name] < 0 for name in ("coins", "exp", "section", "luckynum", "chapter")) or battle["chapter"] < 1 or battle["section"] < 1 or type(battle["unableluckdrop"]) is not bool:
         return None
-    # Chapter104's final battle writes CH104_END as integer 0 or 1.
-    # GetBattleResult serializes globalFlags to JSON text, just like counters.
-    # Only this recovered flag/stage is modeled; other flags need evidence.
+    # GetBattleResult serializes the battle's flags as JSON text. Chapter104
+    # writes 0/1; Chapter114's normal and hard scripts write integer 1. The
+    # hard descent is chapter119 on the map (Chapter114.Section2 in code).
+    allowed_flags = {
+        (104, 1): {"CH104_END": (0, 1)},
+        (114, 1): {"CH114-1-Cleared": (1,)},
+        (119, 1): {"CH114-2-Cleared": (1,)},
+    }.get((battle["chapter"], battle["section"]), {})
     global_flags: object = {}
     if "globalFlags" in battle:
         if type(battle["globalFlags"]) is not str:
@@ -171,11 +176,10 @@ def _parse_generic_story_clear(body: bytes) -> dict[str, Any] | None:
         except json.JSONDecodeError:
             return None
         if (
-            (battle["chapter"], battle["section"]) != (104, 1)
-            or type(global_flags) is not dict
-            or set(global_flags) != {"CH104_END"}
-            or type(global_flags["CH104_END"]) is not int
-            or global_flags["CH104_END"] not in (0, 1)
+            type(global_flags) is not dict or not global_flags
+            or any(key not in allowed_flags or type(value) is not int
+                   or value not in allowed_flags[key]
+                   for key, value in global_flags.items())
         ):
             return None
     result["globalFlags"] = global_flags

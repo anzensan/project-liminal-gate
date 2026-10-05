@@ -38,13 +38,12 @@ A version gate in front of the curve clamps the chapter to
 ``2.6``; the final client is ``5.5.7``, so that branch is never taken and no
 clamp applies.
 
-``ServerConstants.MaxStaminaBias`` is not sent by this server, and it does not
-have to be: ``SetServerConstants`` writes a literal ``100`` when the key is
-absent (ARM64 ``0x19D57AC``).  The constant below is that default, so the two
-agree without adding a key whose production value was never recovered.
+The client falls back to ``MaxStaminaBias=100`` when it is absent (ARM64
+``0x19D57AC``). We explicitly send 125 to match the reported final-service
+maximum of 167 after Chapter 42: raw chapter 43 yields 134, then integer
+134 * 125 / 100 yields 167. The curve is confirmed from the binary; 125 is
+an inferred compatibility setting, not a recovered production response.
 
-Confidence: Confirmed.  Every constant and branch above was read from the
-shipped ARM64 ``libil2cpp.so``; none of it is inferred from secondary sources.
 """
 
 from __future__ import annotations
@@ -54,8 +53,8 @@ import struct
 
 #: ``ServerConstants.refillInterval``, in seconds, as this server advertises it.
 REFILL_INTERVAL_SECONDS = 120
-#: The client's own fallback for ``ServerConstants.MaxStaminaBias``.
-MAX_STAMINA_BIAS_PERCENT = 100
+#: Shared advertised compatibility setting; see the evidence boundary above.
+MAX_STAMINA_BIAS_PERCENT = 125
 #: The meter is full whenever the fill origin is at or before the epoch.
 FULL_METER_ORIGIN = 0.0
 

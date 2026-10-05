@@ -1,5 +1,22 @@
 # Current Checkpoint
 
+2026-10-05 issue pass: chapter-1 replays use ordinary settlement after the
+opening tutorial (#65); side-world finales retain terminal cursors and repair
+previously recorded completion on load (#96); normal/hard Agartha completion
+flags now parse and persist (#97). MaxStaminaBias is explicitly 125 on both
+client and server, giving 167 at the completed-story cursor (#98); this is an
+inferred compatibility setting, not a recovered historical response.
+
+The APK confirms Eidolon ΟⅡ drops at level 30/80 with 1,550,568 experience
+(#99); the existing behavior is retained and covered through HTTP/restart.
+The 99,999 capacity change (#95) remains in place. See the October 5 findings
+for evidence addresses, migration boundaries, and test coverage. All 1,747
+tests pass on Python 3.11 and 3.13; compilation and source-release preflight
+also pass. No new
+physical-client acceptance is claimed. Next boundary: rebuilt-client retests
+of chapter-1 replay, Agartha clear, completed-world relaunch, and stamina UI.
+
+
 Issue follow-up, 2026-10-02: Issue 90's latest log reaches `hunting_active`
 on 104-1, then returns `501 unsupported_clear_quest`. The reviewed ARM64
 client supplies a previously unsupported `battle_result.globalFlags` JSON

@@ -1,5 +1,68 @@
 # Public Technical Findings
 
+## Open-issue repair pass (2026-10-05)
+
+Evidence uses the reviewed 5.5.7 APK and the ARM64 library identified below.
+Original APKs, master assets, and the reporter's log remain unchanged.
+
+- **#65, confirmed parser gap; local replay policy:** ordinary start/clear
+  parsers refused chapter 1. The profile owns its first pass, so matching
+  replay starts fell back to tutorial phase conflicts. APK BattleData contains
+  exactly five playable chapter-1 sections, each costing 1 stamina and 0 Coins.
+  After reaching the ordinary story, these identities now use ordinary clear
+  settlement, holding current progress and preserving the roster. They cannot
+  advance an unfinished tutorial or repeat its scripted roster grants. The
+  existing 384-stage progression catalog format stays unchanged; replay-only
+  identities are resolved at runtime. Missing optional outcome rules remain
+  the existing trusted-local policy, not recovered chapter-1 reward maxima.
+  The old issue's logcat does not contain an actionable server refusal, so
+  this proves the server defect, not a reproduction of that entire device run.
+- **#96, confirmed cursor defect:** `UserData.IsSectionCleared`
+  (`0x19D7848–0x19D7910`) compares the raw world chapter/section strictly above
+  the queried stage. `UnlockNextSection` advances the finale to the next
+  chapter's first section, while the display getter separately clamps the
+  visible chapter. Keeping 104-1 after clearing it therefore makes it look
+  uncleared on login. Settlement now retains terminal 105-1 / 120-1. A save
+  held at 104-1 / 119-1 with a positive durable `questClearDate` for that finale
+  is repaired on load. Map writes alone cannot earn completion, and malformed
+  or further-out cursors remain refused.
+- **#97, confirmed additional flag contract:** the new log identifies
+  `globalFlags` on 114-1. `Chapter114`'s `Battle1_1` completion closure stores
+  integer 1 under `CH114-1-Cleared` at `0x150524C–0x1505284`; its `Battle2_1`
+  closure stores `CH114-2-Cleared` at `0x1506C7C–0x1506CB4`.
+  `Chapter119` inherits `Chapter114`; its Init tail (`0x1510714`) invokes
+  virtual slot 142 (`Section2`), where normal Chapter114 uses Section1.
+  BattleData names 119-1 as the hard Agartha descent. The parser now accepts
+  these respective stage-specific JSON-string flags, with integer 1 only.
+  Flags merge with existing userdata in the same durable settlement/cache
+  commit. Unrecognized flags, booleans, and wrong-stage flags still fail.
+- **#98, confirmed mechanism; inferred historical setting:**
+  `GetMaxStamina` (`0x19D8BDC–0x19D8D60`) truncates its float curve, then
+  multiplies by `MaxStaminaBias` and divides by 100. The server previously
+  omitted that setting, selecting the client's literal fallback 100. Chapter
+  43 (the completed chapter-42 cursor) then yields 134. Explicitly advertising
+  125 and using the same constant server-side yields 167, matching the
+  reporter's final-service maximum. The 125 value is an inferred compatibility
+  policy; no retained historical server response establishes it. Existing
+  fill origins are preserved, with no save rewrite needed.
+- **#99, expected behavior verified in the APK:** Eidolon ΟⅡ masters 311, 312,
+  313, 324, 325, 326, 327, 331, 341, 343, and 345 each contain `DropLevel=30`,
+  `MaxLevel=80`, `EXPmax=20000000`, and float `EXPcoeff=2.0999999046325684`.
+  The corresponding level-30 experience is 1,550,568. The existing grant path
+  already writes both correctly. An Artemis III chest regression now checks
+  the response, durable box, duplicate clear, and restart. No level reduction
+  is appropriate. The original #77 reporter also corrected the level-1 claim
+  in [their follow-up](https://github.com/anzensan/project-liminal-gate/issues/77#issuecomment-5448405464).
+- **#95:** the 99,999 ceiling was already implemented in `517e933`, including
+  old generated-catalog migration. Existing transport, cap, and restart tests
+  remain part of this pass; no additional capacity change is needed.
+
+Validation: real HTTP start/clear/status, rejected-body nonmutation, duplicate
+requests, restart, old-save completion repair, and all 384 core-story stages.
+Physical-client acceptance of these new fixes remains pending. Dedicated
+servers need a restart and fresh client login; on-device packages need a
+rebuild. These changes require no regenerated catalogs.
+
 ## Issues 90 and 95 follow-up (2026-10-02)
 
 - **Client-static, Issue 90:** the reporter's

@@ -527,6 +527,15 @@ def _migrate_world_progress(account: dict[str, Any]) -> None:
             and unpack_world_progress(held) >= unpack_world_progress(seeded)
             else seeded
         )
+    # Builds through 517e933 held the cursor on the finale even after a clear.
+    # Repair only a recorded completion, never a client-reported map position.
+    cleared = account.get("userdata", {}).get("questClearDate", {})
+    if isinstance(cleared, dict):
+        for world, chapter in (("1", 104), ("2", 119)):
+            stamp = cleared.get(f"{chapter}-1")
+            if (type(stamp) in (int, float) and stamp > 0
+                    and unpack_world_progress(migrated[world]) == (chapter, 1)):
+                migrated[world] = advanced_world_progress(migrated[world], chapter, 1)
     account["world_progress"] = migrated
 
 
@@ -1269,7 +1278,7 @@ class BootstrapState:
         can tell the two apart: it answers a not-yet-cleared stage with an
         advance and an already-cleared one with the account's current progress.
         """
-        if catalog is None or identity is None or identity not in catalog.by_identity():
+        if catalog is None or identity is None or catalog.stage_for(identity) is None:
             return False
         with self.lock:
             account = self.accounts.get(self.tokens.get(token))
@@ -3780,7 +3789,9 @@ class BootstrapState:
             )
             if values is None:
                 return "unsupported_start_quest", None
-            stage = catalog.by_identity().get((values["chapter"], values["section"]))
+            stage_identity = (values["chapter"], values["section"])
+            stage = (catalog.stage_for(stage_identity) if isinstance(catalog, StoryProgressionCatalog)
+                     else catalog.by_identity().get(stage_identity))
             entry_pair = (
                 (stage.entry_item_id, stage.entry_item_count)
                 if event and stage is not None
@@ -3995,7 +4006,8 @@ class BootstrapState:
             if clear is None:
                 return "unsupported_clear_quest", None
             identity = (clear["battle_result"]["chapter"], clear["battle_result"]["section"])
-            stage = catalog.by_identity().get(identity)
+            stage = (catalog.stage_for(identity) if isinstance(catalog, StoryProgressionCatalog)
+                     else catalog.by_identity().get(identity))
             if stage is None:
                 return "unsupported_clear_quest", None
             active = account.get("active_generic_story")

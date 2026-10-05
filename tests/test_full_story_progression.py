@@ -124,6 +124,41 @@ class FullStoryProgressionTest(unittest.TestCase):
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
         ]
 
+    def test_tutorial_battles_replay_without_resetting_story_or_roster(self) -> None:
+        for section in range(1, 6):
+            with self.subTest(section=section):
+                start = [("stamina", "1"), ("coins", "0"), ("chapter", "1"),
+                         ("section", str(section)), ("lastUpdate", "1")]
+                status, payload = self.post("/gd/start_quest", f"replay-start-{section}", start)
+                self.assertEqual(200, status, payload)
+                self.assertEqual((status, payload), self.post("/gd/start_quest", f"replay-start-{section}", start))
+                self.restart()
+                clear = self.clear_fields(1, section, FIRST_PROGRESS, section * CLEAR_COINS)
+                status, payload = self.post("/gd/clear_quest", f"replay-clear-{section}", clear)
+                self.assertEqual(200, status, payload)
+                settled = self.userdata()
+                self.assertEqual(FIRST_PROGRESS, settled["progressCode"])
+                self.assertEqual(section * CLEAR_COINS, settled["coins"])
+                self.assertEqual([self.character], settled["chrdata"])
+                self.assertEqual((status, payload), self.post("/gd/clear_quest", f"replay-clear-{section}", clear))
+                self.restart()
+                self.assertEqual((status, payload), self.post("/gd/clear_quest", f"replay-clear-{section}", clear))
+                self.assertEqual(settled, self.userdata())
+
+    def test_tutorial_replay_cannot_skip_unfinished_tutorial(self) -> None:
+        with self.server.state.lock:
+            account = self.server.state.accounts[self.account_id]
+            account["tutorial_phase"] = "initial"
+            account["userdata"]["progressCode"] = (1 << 24) | (1 << 6) | 1
+            self.server.state._persist_locked()
+        before = json.loads(self.state_path.read_text())["accounts"][self.account_id]
+        status, _ = self.post("/gd/start_quest", "premature-replay", [
+            ("stamina", "1"), ("coins", "0"), ("chapter", "1"),
+            ("section", "5"), ("lastUpdate", "1"),
+        ])
+        self.assertEqual(409, status)
+        self.assertEqual(before, json.loads(self.state_path.read_text())["accounts"][self.account_id])
+
     def test_every_core_story_stage_starts_clears_and_advances(self) -> None:
         identities = core_identities()
         self.assertEqual(384, len(identities))
