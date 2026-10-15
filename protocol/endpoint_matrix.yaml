@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-05"
+updated: "2026-10-15"
 canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -7,6 +7,18 @@ statuses:
   local_policy: "implemented preservation behavior, not a historical-service claim"
   unsupported: "fails explicitly rather than returning generic success"
 capabilities:
+  - family: client_counted_lucky_enemy_gain
+    routes: [start_quest, clear_quest, userdata]
+    status: static_confirmed
+    note: "Issue 100: luckynum is the client's earned Lucky-enemy tenths, not headcount. Settlement combines it with the separate battle-end table before the preserving roster merge. Guessed pre-battle enemy gains are removed. HTTP Lucky Orbling/Cryptid/caps/squad/release/stale-write/retry/restart covered; physical-client retest pending."
+    transport_tests: true
+    restart_tests: true
+  - family: companion_strengthen_exp_bonus
+    routes: [buddy_strengthen]
+    status: local_policy
+    note: "Issue 101: existing draws and integer response keys verified. Approved local bonus weights 75/15/8/2 give 25% total bonus chance; historical odds unknown, overrides preserved. All thresholds and HTTP no/+25/+50/+100 outcomes, exact EXP/materials/coins, logs and restart replay tested. Client suppresses animation after a base-feed level cap; original-client retest pending."
+    transport_tests: true
+    restart_tests: true
   - family: tutorial_battle_replay
     routes: [start_quest, clear_quest]
     status: local_policy

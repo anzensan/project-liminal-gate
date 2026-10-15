@@ -288,7 +288,7 @@ class EventRuntimeTest(unittest.TestCase):
             finally:
                 stop_server(server, thread)
 
-    def test_a_chestless_stage_answers_with_a_gain_and_no_chest(self) -> None:
+    def test_a_chestless_entry_does_not_guess_a_lucky_enemy_gain(self) -> None:
         """Six empty slots is not a chest, and this route used to send them.
 
         7010 Cryptid Forest is named on the record's own chestless list and is
@@ -337,22 +337,15 @@ class EventRuntimeTest(unittest.TestCase):
                     state.accounts["account"]["tutorial_phase"] = "free_roam"
                     state.accounts["account"]["active_generic_story"] = None
                     state._persist_locked()
-                self.assertTrue(
+                self.assertFalse(
                     any("luckUpTable" in payload for payload in seen),
-                    "and the Lucky-enemy gain must still reach the client",
+                    "enemy-earned Luck is reported on clear, not rolled at entry",
                 )
             finally:
                 stop_server(server, thread)
 
-    def test_a_flagged_event_chapter_grows_luck_below_the_stamina_gate(self) -> None:
-        """2006 Lucia and 7010 Cryptid Forest are `allowLucky` and reach the
-        client through the generic-story handler rather than the Hunting one,
-        so the source has to be offered there too.
-
-        Both stages here cost five stamina, under `LUCK_GAIN_MIN_STAMINA`, so
-        the battle-end gain cannot fire and any Luck is the Lucky-enemy source.
-        The unflagged control proves the confirmed rule still holds.
-        """
+    def test_a_lucky_event_clear_credits_the_reported_catch(self) -> None:
+        """An earned catch is independent of the battle-end stamina gate."""
         for chapter, flagged in ((2006, True), (2000, False)):
             with self.subTest(chapter=chapter):
                 with tempfile.TemporaryDirectory() as directory:
@@ -378,7 +371,7 @@ class EventRuntimeTest(unittest.TestCase):
                         "chrdata": json.dumps([character(3)]), "itemList": "[]", "summonList": "[]",
                         "battle_result": json.dumps({
                             "coins": 0, "buddies": [], "items": {}, "exp": 0, "section": 1,
-                            "monsters": [], "summons": [], "luckynum": 0, "chapter": chapter,
+                            "monsters": [], "summons": [], "luckynum": 3 if flagged else 0, "chapter": chapter,
                             "unableluckdrop": False, "boostup": [0] * 6,
                         }),
                         "itmp0": 0, "itmp1": 0, "lastUpdate": 1,
@@ -405,7 +398,7 @@ class EventRuntimeTest(unittest.TestCase):
                         if row["id"] == 3
                     )
                     if flagged:
-                        self.assertGreater(luck, 0, "a flagged event chapter granted no Luck")
+                        self.assertEqual(72, luck, "24 reported +0.3 catches must persist exactly")
                     else:
                         self.assertEqual(0, luck, "a five-stamina unflagged chapter granted Luck")
 

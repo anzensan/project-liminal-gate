@@ -101,7 +101,7 @@ provenance = "user-supplied"
 # normal_class_share_ppm = { a = 80000, b = 120000, c = 300000, d = 500000 }
 # The random strengthen EXP bonus, as [percent, weight] pairs. No production
 # odds for it survive, so these weights are a chosen policy.
-# strengthen_bonus_weights = [[0, 85], [25, 8], [50, 5], [100, 2]]
+# strengthen_bonus_weights = [[0, 75], [25, 15], [50, 8], [100, 2]]
 
 [hunting]
 # The chapter each Hunting tier and each Metal Zone becomes permanently
@@ -263,7 +263,10 @@ class CompanionTuning:
     ``strengthen_bonus_weights`` are weaker still: no production odds for the
     random EXP bonus survive and the client's own calculation does not contain
     them, so the bundled weights are a named local policy that keeps all three
-    documented outcomes reachable while leaving no bonus the common result.
+    documented outcomes reachable. The default 25% total bonus chance follows
+    issue 101's reported one-in-three-or-four frequency as local compatibility
+    policy, with 15/8/2 weights for +25/+50/+100; exact historical odds remain
+    unknown.
     """
 
     #: ``class -> ppm share of one Rare Companion pull``.
@@ -347,7 +350,7 @@ DEFAULT_TUNING = Tuning(
     companion=CompanionTuning(
         rare_class_share_ppm={"z": 30_000, "ss": 80_000, "s": 100_000, "a": 300_000, "b": 490_000},
         normal_class_share_ppm={"a": 80_000, "b": 120_000, "c": 300_000, "d": 500_000},
-        strengthen_bonus_weights=((0, 85), (25, 8), (50, 5), (100, 2)),
+        strengthen_bonus_weights=((0, 75), (25, 15), (50, 8), (100, 2)),
     ),
     hunting=HuntingTuning(
         tier_unlock_chapters=(3, 9, 18),

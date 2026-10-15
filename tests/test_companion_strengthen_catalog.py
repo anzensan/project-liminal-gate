@@ -56,6 +56,6 @@ class BundledCompanionStrengthenPolicyTest(unittest.TestCase):
     def test_bonus_weights_are_local_policy_making_no_bonus_the_common_case(self) -> None:
         # No production odds survive, so these keep all three documented
         # outcomes reachable without asserting the retired service's rates.
-        self.assertEqual(((0, 85), (25, 8), (50, 5), (100, 2)), self.catalog.bonus_weights)
+        self.assertEqual(((0, 75), (25, 15), (50, 8), (100, 2)), self.catalog.bonus_weights)
         weights = dict(self.catalog.bonus_weights)
         self.assertGreater(weights[0], sum(w for p, w in self.catalog.bonus_weights if p))
