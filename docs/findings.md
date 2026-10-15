@@ -1,5 +1,85 @@
 # Public Technical Findings
 
+## Issues 100 and 101 (2026-10-15)
+
+### Earned Lucky-enemy Luck is in the clear already (#100)
+
+**Confirmed from the final 5.5.7 ARM64 client**, SHA-256
+`ba6fecba562f7ff46305792cadeabcae1879a0c384f7195a5d77872af04c1753`:
+
+- `BattleManager.<_CheckForDrops>c__Iterator0.MoveNext` tests `Entity.isLucky`
+  at `0xCEB65C`. At `0xCEB698` it reads `isPetitLucky`; a normal Lucky enemy
+  adds 3 to `luckyNum` at `0xCEB6F8`, and a Petit Lucky adds 1 at `0xCEB718`.
+  The setter call is `0xCEB724`. These are stored tenths, not enemy headcount.
+- `AppServerUtil.GetBattleResult` calls `get_luckyNum` at `0xDB9848` and writes
+  that integer under `luckynum` at `0xDB9868`. The existing clear parser already
+  accepts it; settlement previously ignored it.
+- `UIBattleResultTeam.<Setup>c__Iterator0.MoveNext` reads the same counter at
+  `0xF50C8C` and adds it times `ServerConstants.LuckyLuckBonus` to each slot's
+  result gain (`0xF50BB8–0xF50BCC`). The constant defaults to 1 at
+  `0x19D56AC–0x19D56B0`, matching this server's omitted-key behavior.
+  `ShowMsg` adds the gain to `Character.luck` at `0xF5A0AC–0xF5A0B8` and
+  clamps to `get_luckMax`. `Character.ToHashTable` omits Luck, explaining why
+  the shown gain disappears when userdata is fetched again.
+- The [issue screenshots](https://github.com/anzensan/project-liminal-gate/issues/100)
+  show the same 2.1 difference for all six characters, such as Yukken 38.0 to
+  35.9 and S'naip 81.1 to 79.0. They support the reported loss; there is no raw
+  request capture establishing that particular battle's counter.
+
+The pre-battle guessed Lucky source is withdrawn. New starts author only the
+separate stamina-qualified battle-end `luckUpTable`; a clear adds the actual
+`luckynum` to that table and settles it before the monotonic roster merge.
+This preserves a real client's omitted-Luck rows and avoids double credit
+when a compatible client does report updated Luck. Only the fielded squad
+receives it, with per-character caps. Ordinary story, archive events (including
+Cryptid Forest), and Hunting (including Lucky Orbling) share the settlement.
+The existing durable commit and replay cache cover the result and rewards.
+
+The five new transport regression cases initially failed in three cases
+against unchanged `c66e5eb`, then passed with the correction. Coverage also
+includes the screenshot-sized 21-tenths gain, 18 tenths, Runner 1/2 tenths,
+zero catches, malformed counter rejection without mutation, caps, bench/empty
+slots, optional reported Luck, released Cryptid battles, stale roster writes,
+exact replay before/after restart, and refusal of a second fresh-ID clear.
+Previously issued start tables and cached clears retain their original replay
+contract. Past lost gains cannot be reconstructed from the remaining save, so
+no guessed retroactive compensation or save rewrite is performed.
+
+### Companion EXP bonuses: verified delivery and approved local odds (#101)
+
+The existing random draw was active: its former default was 85/8/5/2 weights
+for no bonus/+25/+50/+100, a 15% total bonus probability. The report alone does
+not establish that it never drew a bonus. The client callback at
+`0xDBD25C–0xDBD2E8` reads `totalEXP`, `additionalEXP`, and `expBonus` as integers,
+and the server already supplies those keys. `UIBuddyStrengthen.showExpBonus`
+checks percentages 25, 50, and 100 (`0xEDE384–0xEDE3BC`), so no enum conversion
+or response-field rename is appropriate.
+
+`UIBuddyStrengthen.<showLevelUp>c__Iterator8.MoveNext` adds ordinary EXP first.
+At `0xEDE860–0xEDE88C` it skips the bonus animation if that already reached
+`MaxLevel`, or if `additionalEXP` is zero. A credited bonus is therefore not
+always accompanied by an animation. This is recovered client behavior.
+
+The maintainer approved a **local 25% total bonus default**, following the
+[reporter's approximate one-in-four frequency](https://github.com/anzensan/project-liminal-gate/issues/101).
+The shared weights are now 75/15/8/2. Historical odds and the relative bonus
+frequencies remain unknown; explicit tuning and supplied catalogs still win.
+Every one of the 100 integer draw thresholds is tested. Real HTTP tests force
+all four outcomes with sufficient EXP headroom, checking exact credited EXP,
+coins, consumed materials, response integers, and replay after restart with no
+second draw. No probability-based/flaky test is used.
+
+Successful strengthen events now log `strengthen_exp_bonus_percent` and
+`strengthen_exp_bonus_awarded`, without roster/material IDs or owned EXP. The award flag describes positive
+`additionalEXP` in the response; stored EXP still stops at the level cap.
+These distinguish a no-bonus draw from a display-only report on retest. The
+bonus, payment, consumed materials, new level, and response cache still commit
+once together. Original-client animation acceptance remains pending.
+
+Dedicated servers need a restart; on-device packages need a rebuild. New
+catalog derivation is unnecessary. Originals, captures, and player saves are
+unchanged by this source release.
+
 ## Open-issue repair pass (2026-10-05)
 
 Evidence uses the reviewed 5.5.7 APK and the ARM64 library identified below.
@@ -1066,6 +1146,11 @@ read as raw wikitext through the site's MediaWiki API on 2026-08-01.
   policy rather than on the game's authority.
 
 ## 2026-08-04: Luck had preservation but no growth outside the story
+
+**Superseded for Lucky-enemy gains on 2026-10-15:** `luckynum` reports the
+actual earned tenths. The guessed enemy source and claim that no reporting
+channel exists are withdrawn; see Issues 100 and 101 above. The separate
+stamina-qualified battle-end gain remains.
 
 - **Confirmed defect, from two operator reports.** One reporter kept 10% Luck
   on a character across Metal Zone runs; another watched every character show

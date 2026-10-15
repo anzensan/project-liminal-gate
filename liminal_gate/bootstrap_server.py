@@ -193,7 +193,7 @@ from liminal_gate.secondary_world_data import (
     unpack_world_progress,
 )
 from liminal_gate.luck_runtime import (
-    apply_luck_up_table,
+    apply_battle_luck,
     chest_characters,
     chest_coins,
     chest_companions,
@@ -3100,13 +3100,10 @@ class BootstrapState:
             # stage. `LUCK_GAIN_MIN_STAMINA` is a rule about what a battle cost,
             # not about which selector offered it, so the declared cost is what
             # it reads -- a Metal Ticket standing in for stamina buys the same
-            # battle and must not quietly cost the party its Luck.  The
-            # `allowLucky` chapters add their own source on top, which is what
-            # reaches free Lucky Orbling and the two cheap flagged Hunting
-            # stages the battle-end rule cannot.
+            # battle and must not quietly cost the party its Luck. Enemy gains
+            # arrive separately as the clear's client-counted luckynum.
             luck_up = roll_luck_up_table(
                 userdata, stage.stamina, request_id, digest,
-                lucky_chapter=stage.chapter,
             )
             payload = _canonical_payload({"success": True, "refillStartTime": origin})
             if help_items is not None:
@@ -3338,6 +3335,7 @@ class BootstrapState:
             announced: dict[int, int] = {}
             if stage.character_grants:
                 announced |= _apply_hunting_character_grants(userdata, stage)
+            apply_battle_luck(userdata, account.get("active_luck_up"), result["luckynum"])
             userdata.update({
                 "lastupdate": 1.0,
                 "coins": expected_coins,
@@ -3357,12 +3355,6 @@ class BootstrapState:
                     self.tuning.exp.multiplier_percent, self.exp_curve,
                 ),
             })
-            # After the merge, so the entry's authored gain lands on the roster
-            # the clear settled rather than on the one it replaced, and once,
-            # because the entry is what rolled it.
-            active_luck_up = account.get("active_luck_up")
-            if isinstance(active_luck_up, list):
-                apply_luck_up_table(userdata, active_luck_up)
             if result["monsters"]:
                 announced |= _apply_monster_recruits(userdata, result["monsters"])
             # After the roster merge, like the story clear's own grant: a stale
@@ -3668,6 +3660,7 @@ class BootstrapState:
             # monster this battle recruited: `_preserved_roster` is authoritative
             # for every character the submission names, which is why the id list
             # no longer has to come back unchanged.
+            apply_battle_luck(userdata, account.get("active_luck_up"), result["luckynum"])
             userdata["chrdata"] = _exp_credited_roster(
                 _preserved_roster(userdata.get("chrdata"), clear["chrdata"]),
                 active_party_members(userdata), result["exp"],
@@ -3682,10 +3675,6 @@ class BootstrapState:
             userdata["summonList"] = _preserved_counts(
                 userdata.get("summonList"), clear["summonList"],
             )
-            # After the merge, and once, for the reason the Hunting clear gives.
-            active_luck_up = account.get("active_luck_up")
-            if isinstance(active_luck_up, list):
-                apply_luck_up_table(userdata, active_luck_up)
             # After the roster merge too, like the story and Hunting clears: a
             # stale client's `chrdata` must not overwrite what this chest
             # awarded. The Companion and character forms have no field for the
@@ -3926,12 +3915,9 @@ class BootstrapState:
                 stage.chapter, stage.section, party_team_luck(userdata),
                 request_id, body_hash, catalog=luck_pool_catalog,
             )
-            # 2006 Lucia and 7010 Cryptid Forest reach the client through this
-            # handler rather than the Hunting one, so the `allowLucky` source
-            # has to be offered here too.
+            # Enemy-earned Luck arrives separately in the clear's luckynum.
             luck_up = roll_luck_up_table(
                 userdata, stamina_cost, request_id, body_hash,
-                lucky_chapter=stage.chapter,
             )
             # Each field is sent on its own terms. Six empty slots is not a
             # chest, and saying "here is a chest" with nothing in it is the
@@ -4169,6 +4155,11 @@ class BootstrapState:
                 field: expected_coins if field == "coins" else int(userdata.get(field, 0))
                 for field in wallet_fields
             }
+            apply_battle_luck(
+                userdata,
+                released["luck_up"] if released is not None else account.get("active_luck_up"),
+                clear["battle_result"]["luckynum"],
+            )
             userdata.update({
                 "lastupdate": 1.0,
                 "progressCode": expected_progress,
@@ -4243,15 +4234,6 @@ class BootstrapState:
                     stage.character_ids, stage.duplicate_grant_luck,
                 ) if event else None,
             )
-            # The Luck gain rolled at start is committed here, after the roster
-            # merge, so a stale client's chrdata cannot overwrite it -- the same
-            # ordering `_preserved_roster` exists to guarantee for grants.
-            active_luck_up = (
-                released["luck_up"] if released is not None
-                else account.get("active_luck_up")
-            )
-            if isinstance(active_luck_up, list):
-                apply_luck_up_table(userdata, active_luck_up)
             cleared_quests = _record_quest_clear(userdata, identity, time.time())
             payload = {
                 "success": True,
@@ -5679,6 +5661,13 @@ class BootstrapHandler(BaseHTTPRequestHandler):
     ) -> None:
         """Emit one mutation result and attach bounded refusal diagnostics."""
         if result in {"success", "replay"}:
+            if (urlsplit(self.path).path == self.server.profile.routes.get("buddy_strengthen")
+                    and payload and payload.get("success") is True
+                    and type(payload.get("expBonus")) is int):
+                details = dict(getattr(self, "_event_details", None) or {})
+                details["strengthen_exp_bonus_percent"] = payload["expBonus"]
+                details["strengthen_exp_bonus_awarded"] = payload.get("additionalEXP", 0) > 0
+                self._event_details = details
             self._signed(HTTPStatus.OK, token, payload or {})
             return
         if result.startswith("unsupported_"):

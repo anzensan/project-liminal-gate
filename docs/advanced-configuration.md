@@ -1134,7 +1134,8 @@ rare_class_share_ppm = { z = 30000, ss = 80000, s = 100000, a = 300000, b = 4900
 normal_class_share_ppm = { a = 80000, b = 120000, c = 300000, d = 500000 }
 # The strengthen EXP bonus, as [percent, weight] pairs. No production odds
 # survive and the client's own calculation does not contain them.
-strengthen_bonus_weights = [[0, 85], [25, 8], [50, 5], [100, 2]]
+# Local policy: 25% total chance of a bonus. Historical odds are unknown.
+strengthen_bonus_weights = [[0, 75], [25, 15], [50, 8], [100, 2]]
 
 [hunting]
 # The chapter each tier and each Metal zone becomes permanent after. Both

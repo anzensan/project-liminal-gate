@@ -1,5 +1,27 @@
 # Current Checkpoint
 
+2026-10-15, #100/#101: Lucky-enemy gains now settle from the client's actual
+`battle_result.luckynum` counter, in tenths. The pre-battle guessed enemy roll
+is removed; the separate stamina-qualified battle-end roll remains. HTTP
+coverage includes Lucky Orbling, Cryptid Forest, the screenshot-sized +2.1,
+zero catches, caps/selected squad, release, stale roster writes, retry, and
+restart. Prior cached clears remain stable; past lost gains are not guessed
+back into saves.
+
+Companion EXP bonuses were already active at a chosen 15% rate. The maintainer
+approved a local 25% default (75/15/8/2 weights), with historical odds still
+unknown and explicit overrides preserved. Every draw threshold and all four
+HTTP outcomes are checked, including exact EXP, materials/coins, and restart
+replay without re-rolling. Scalar event diagnostics now identify whether a
+bonus was drawn and awarded before the level cap. The client intentionally hides its bonus
+animation if the base feed already reaches the level cap.
+
+Next boundary: tester confirmation on a restarted dedicated server or rebuilt
+on-device package. No new physical-client acceptance is claimed. Neither fix
+requires regenerated catalogs. All 1,743 tests pass on Python 3.11 and 3.13;
+compilation and source-release preflight pass. See October 15 findings for
+native addresses and limitations.
+
 2026-10-05 issue pass: chapter-1 replays use ordinary settlement after the
 opening tutorial (#65); side-world finales retain terminal cursors and repair
 previously recorded completion on load (#96); normal/hard Agartha completion

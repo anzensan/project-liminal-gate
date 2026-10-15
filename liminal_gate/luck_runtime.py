@@ -28,20 +28,12 @@ import hashlib
 import random
 
 from liminal_gate.luck_data import (
-    ALLOW_LUCKY_CHAPTERS,
     CHEST_TIERS,
     COMPANION_PERSONAL_LUCK_TENTHS,
     COMPANION_TEAM_LUCK_TENTHS,
     character_luck_cap,
     LUCK_GAIN_TENTHS,
     LUCK_TENTHS_MAX,
-    LUCKY_ENEMIES_PER_BATTLE,
-    LUCKY_ORBLING_GAIN_TENTHS,
-    LUCKY_ORBLING_PINCER_CHANCE,
-    LUCKY_RUNNER_CHAPTERS,
-    LUCKY_RUNNER_EXTRA_SPAWN_CHANCE,
-    LUCKY_RUNNER_GAIN_TENTHS,
-    LUCKY_RUNNER_GUARANTEED_PER_BATTLE,
     gains_luck,
     team_luck,
 )
@@ -183,59 +175,14 @@ def roll_luck_result(
     return slots
 
 
-def roll_lucky_enemy_gain(chapter: int, *seed: object) -> int:
-    """Return the Luck in tenths a flagged chapter's Lucky enemies grant.
-
-    This is the `allowLucky` source, and it is deliberately *not* the
-    battle-end gain: the record describes a Lucky enemy as granting its Luck
-    to every party member when pincered, with no reference to what the stage
-    cost to enter. Keeping it separate is what lets a free Daily Quest and a
-    five-stamina Hunting stage grant Luck while `LUCK_GAIN_MIN_STAMINA`, the
-    developer's own rule, stays intact for the battle-end gain.
-
-    The species is per chapter, because the two Lucky enemies are not
-    interchangeable: a Runner grants a third of what an Orbling does. Cryptid
-    Forest is the one flagged chapter whose enemy the record names outright,
-    and it names a Runner, so it takes the Runner's documented population and
-    gain instead of the Orbling policy the other four still use.
-
-    Drawn from its own stream so that adding this source cannot shift a single
-    existing `luckUpTable` roll on the stages that already had one. The chapter
-    is not part of the seed material for the same reason: threading it in would
-    re-roll every Orbling chapter that this correction does not touch.
-    """
-    generator = _seeded("luckyEnemy", *seed)
-    if chapter in LUCKY_RUNNER_CHAPTERS:
-        # The record states this population, so it is counted rather than
-        # rolled per enemy: one Runner always spawns and a second sometimes
-        # does, and a pincer from any direction grants -- there is no partial
-        # chance to apply once the enemy is there.
-        spawned = LUCKY_RUNNER_GUARANTEED_PER_BATTLE
-        if generator.random() < LUCKY_RUNNER_EXTRA_SPAWN_CHANCE:
-            spawned += 1
-        return spawned * LUCKY_RUNNER_GAIN_TENTHS
-    gained = 0
-    for _ in range(LUCKY_ENEMIES_PER_BATTLE):
-        if generator.random() < LUCKY_ORBLING_PINCER_CHANCE:
-            gained += LUCKY_ORBLING_GAIN_TENTHS
-    return gained
-
-
 def roll_luck_up_table(
-    userdata: dict, stamina: int, *seed: object, lucky_chapter: int | None = None,
+    userdata: dict, stamina: int, *seed: object,
 ) -> list[int]:
     """Return each party slot's Luck gain in tenths, zero where it did not rise.
 
-    Two sources feed one table, because `luckUpTable` is the only channel the
-    client renders a Luck gain through. A quest costing less than eight stamina
-    never raises Luck *at battle end*, which is the developer's own rule and
-    excludes every Daily Quest, all of which are free. ``lucky_chapter`` adds
-    the separate Lucky-type enemy source, which that rule does not govern.
-
-    Callers pass the stage's chapter rather than a flag they computed
-    themselves. Reducing the chapter to a boolean at the call site is what let
-    the species go unasked: by the time the roll happened, the one fact that
-    decides which Lucky enemy a stage carries had already been discarded.
+    This table covers the server-authored battle-end gain only. Lucky enemies
+    are counted by the surviving client in battle_result.luckynum; guessing
+    their gains at entry cannot preserve the outcome the player actually earned.
 
     A character at its ceiling stays there, and an empty slot stays zero.
 
@@ -249,11 +196,7 @@ def roll_luck_up_table(
     if party is None:
         return [0] * 6
     members = list(party) + [0] * max(0, 6 - len(party))
-    lucky = (
-        roll_lucky_enemy_gain(lucky_chapter, *seed)
-        if lucky_chapter in ALLOW_LUCKY_CHAPTERS else 0
-    )
-    if not gains_luck(stamina) and not lucky:
+    if not gains_luck(stamina):
         return [0] * 6
     roster = userdata.get("chrdata")
     current = {
@@ -262,10 +205,7 @@ def roll_luck_up_table(
         if isinstance(roster, list) and isinstance(row, dict) and type(row.get("luck", 0)) is int
     }
     generator = _seeded("luckUpTable", stamina, *seed)
-    # A stage below the gate still walks the draws below, so that a flagged
-    # cheap stage and an unflagged one of the same cost stay on one code path;
-    # a zero chance simply never rolls.
-    chance = min(1.0, stamina * LUCK_GAIN_CHANCE_PER_STAMINA) if gains_luck(stamina) else 0.0
+    chance = min(1.0, stamina * LUCK_GAIN_CHANCE_PER_STAMINA)
     table: list[int] = []
     for member in members:
         # Draw per slot regardless, so an empty or capped slot cannot shift the
@@ -279,8 +219,23 @@ def roll_luck_up_table(
         # the absolute one told the client a capped unit had gained, and the
         # results screen shows what this table says.
         headroom = max(0, character_luck_cap(member) - current.get(member, 0))
-        table.append(min((gain if rolled else 0) + lucky, headroom))
+        table.append(min(gain if rolled else 0, headroom))
     return table
+
+
+def apply_battle_luck(userdata: dict, rolled: object, lucky_num: int) -> None:
+    """Apply both battle-end and client-earned Lucky gains, in stored tenths.
+
+    GetBattleResult sends luckyNum unchanged. The client result UI adds it to
+    every party slot with LuckyLuckBonus=1 (the fallback we advertise), then
+    clamps to each character's own ceiling. Apply before the preserving roster
+    merge so a client that also reports the new Luck cannot count it twice.
+    """
+    table = rolled if isinstance(rolled, list) else []
+    apply_luck_up_table(userdata, [
+        lucky_num + (table[slot] if slot < len(table) else 0)
+        for slot in range(6)
+    ])
 
 
 def apply_luck_up_table(userdata: dict, table: list[int]) -> None:

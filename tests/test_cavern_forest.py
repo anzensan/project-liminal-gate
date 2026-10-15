@@ -324,7 +324,7 @@ class CavernForestTransactionTest(unittest.TestCase):
 
     def clear(
         self, request_id: str, chapter: int, section: int,
-        *, buddies=(), items=None, item_list=None, exp=0,
+        *, buddies=(), items=None, item_list=None, exp=0, lucky_num=0,
     ) -> tuple:
         userdata = self.userdata()
         return self.post("/gd/clear_quest", request_id, [
@@ -340,7 +340,7 @@ class CavernForestTransactionTest(unittest.TestCase):
             ("battle_result", json.dumps({
                 "chapter": chapter, "section": section, "coins": 0, "exp": exp,
                 "items": items or {}, "buddies": list(buddies), "monsters": [], "summons": [],
-                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+                "luckynum": lucky_num, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
             })),
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
         ])
@@ -386,13 +386,14 @@ class CavernForestTransactionTest(unittest.TestCase):
         self.assertEqual((2, 1), (settled[first - 1], settled[second - 1]))
         self.assertEqual("free_roam", self.account()["tutorial_phase"])
 
-    def test_the_forest_entry_pays_a_lucky_runner_despite_costing_one_stamina(self) -> None:
-        """The chapter is `allowLucky`, and that source is not governed by the
-        eight-stamina battle-end rule a one-stamina entry cannot meet."""
+    def test_the_forest_clear_pays_the_caught_runner(self) -> None:
         status, started = self.start("f-luck", CRYPTID_FOREST_CHAPTER, 2)
         self.assertEqual(200, status)
-        self.assertIn("luckUpTable", started)
-        self.assertTrue(any(started["luckUpTable"]))
+        self.assertNotIn("luckUpTable", started)
+        status, cleared = self.clear("f-luck-clear", CRYPTID_FOREST_CHAPTER, 2, lucky_num=1)
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(1, next(row["luck"] for row in cleared["chrdata"]
+                                 if row["id"] == self.character["id"]))
 
     def test_an_unreported_inventory_change_is_refused_without_mutation(self) -> None:
         """Trust covers the reported reward, not an unrelated inventory write.

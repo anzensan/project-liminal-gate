@@ -132,18 +132,6 @@ LUCKY_RUNNER_CHAPTERS = frozenset({7010})
 LUCKY_RUNNER_GUARANTEED_PER_BATTLE = 1
 LUCKY_RUNNER_EXTRA_SPAWN_CHANCE = 0.3
 
-#: **Local policy, and the second invented number in the Luck runtime.** How
-#: many Lucky-type enemies one battle on an *Orbling* chapter offers a pincer
-#: at. The record fixes the gain and the chance but never states a population
-#: for those four, and the spawn itself is decided by client-side battle data
-#: this server does not read. One per battle is the least the flag can mean
-#: while still meaning anything, and it keeps the invented claim to a count
-#: rather than a distribution.
-#:
-#: This number is invented only where the record is silent. It does not govern
-#: `LUCKY_RUNNER_CHAPTERS`, whose population the record states outright.
-LUCKY_ENEMIES_PER_BATTLE = 1
-
 
 #: **Confirmed, from the client.** The Companion Luck effects, keyed by the
 #: Companion's own ID -- `Character.buddyID`, which is `buddyInfo.list[].bid`

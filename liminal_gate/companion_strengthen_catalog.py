@@ -89,11 +89,10 @@ BUNDLED_SAME_COMPANION_MULTIPLIER = 2
 # multiplier from 1.0 to 1.5.
 BUNDLED_BYEBYE_COMPANION_ID = 245
 BUNDLED_BYEBYE_MULTIPLIER_PERCENT = 150
-# No production odds for the random EXP bonus survive, and the client's own
-# calculation does not contain them.  These weights are a named local policy
-# that keeps all three documented outcomes reachable while leaving no bonus the
-# common result -- not a claim about the retired service.
-BUNDLED_BONUS_WEIGHTS: tuple[tuple[int, int], ...] = ((0, 85), (25, 8), (50, 5), (100, 2))
+# The documented +25/+50/+100 outcomes are client-confirmed. Their historical
+# odds were never recovered. Use the shared local 25% total bonus policy from
+# tuning (issue 101); explicit operator tables continue to override it.
+BUNDLED_BONUS_WEIGHTS: tuple[tuple[int, int], ...] = DEFAULT_TUNING.companion.strengthen_bonus_weights
 
 
 def build_bundled_companion_strengthen_policy(

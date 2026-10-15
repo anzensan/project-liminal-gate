@@ -83,6 +83,16 @@ run the command.
 
 ### Fixed
 
+- Lucky Orbling and Cryptid Forest now retain the Lucky-enemy Luck the client
+  actually earned. Clear settlement uses `battle_result.luckynum` rather than
+  a guessed pre-battle gain, preserving the selected squad and character caps
+  through retries, roster saves, and restart (#100).
+- Companion upgrades now use the approved local 25% total EXP-bonus chance,
+  with +25%, +50%, and +100% outcomes. The old chosen rate was 15%; historical
+  odds remain unknown. Explicit custom settings still apply. Successful
+  upgrade event logs identify the rolled percentage and whether bonus EXP was
+  awarded before the level cap, for diagnosing reports where the client hides its animation (#101).
+
 - Chapter 1 stages can be replayed after the tutorial without restarting its
   scripted progression or replacing the roster (#65).
 - BreaSoul and Five Emperors completion survives relaunch. Previously recorded

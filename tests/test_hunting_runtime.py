@@ -218,7 +218,7 @@ class HuntingRuntimeTest(unittest.TestCase):
               items: dict | None = None, item_list: list | None = None, exp: int = 0,
               buddies: list | None = None, monsters: list | None = None,
               summons: list | None = None, summon_list: list | None = None,
-              snapshot: dict | None = None, wallet_coins: int | None = None) -> tuple[int, dict]:
+              snapshot: dict | None = None, wallet_coins: int | None = None, lucky_num: int = 0) -> tuple[int, dict]:
         # A real retry resends the body it sent the first time.  Rebuilding it
         # from live userdata would instead echo the Energy the first clear
         # granted, producing a different body and so a cache miss rather than
@@ -240,7 +240,7 @@ class HuntingRuntimeTest(unittest.TestCase):
                 "chapter": chapter, "section": section, "coins": coins, "exp": exp,
                 "items": items or {}, "buddies": buddies or [], "monsters": monsters or [],
                 "summons": summons or [],
-                "luckynum": 0, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
+                "luckynum": lucky_num, "unableluckdrop": False, "boostup": [0, 0, 0, 0, 0, 0],
             })),
             ("itmp0", "0"), ("itmp1", "0"), ("lastUpdate", "1"),
         ])
@@ -292,18 +292,19 @@ class HuntingRuntimeTest(unittest.TestCase):
                 f"a three-stamina stage raised Luck on battle {n}",
             )
 
-    def test_a_flagged_stage_grows_luck_below_the_stamina_gate(self) -> None:
-        """Crystal Road is `allowLucky` and costs seven, so only the
-        Lucky-enemy source can reach it. Its gain is the record's +0.3."""
+    def test_a_cheap_flagged_stage_pays_the_actual_catch_only(self) -> None:
         self.form_party()
-        gains = [self.battle(f"cr{n}", 3004, 1, 7) for n in range(24)]
-        self.assertTrue(any(gains), "a flagged stage never granted Luck")
-        self.assertLessEqual(set(gains), {0, 3}, f"unexpected gains {gains}")
+        status, started = self.start("cr", 3004, 1, 7)
+        self.assertEqual(200, status)
+        self.assertNotIn("luckUpTable", started)
+        status, cleared = self.clear("cr-clear", 3004, 1, lucky_num=6)
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(6, self.luck())
 
     def test_a_luck_gain_is_durable_across_restart(self) -> None:
         self.form_party()
         for n in range(24):
-            self.battle(f"dur{n}", 3004, 1, 7)
+            self.battle(f"dur{n}", 1201, 1, 15)
         earned = self.luck()
         self.assertGreater(earned, 0)
         self.restart()
@@ -313,15 +314,15 @@ class HuntingRuntimeTest(unittest.TestCase):
         """A re-roll on retry would be a Luck duplicator, as it would be a
         chest duplicator; and the clear must pay the entry's table once."""
         self.form_party()
-        status, first = self.start("retry", 3004, 1, 7)
+        status, first = self.start("retry", 1201, 1, 15)
         self.assertEqual((200, True), (status, first["success"]))
-        self.assertEqual(first, self.start("retry", 3004, 1, 7)[1])
+        self.assertEqual(first, self.start("retry", 1201, 1, 15)[1])
         before = self.luck()
-        self.clear("retry-clear", 3004, 1)
+        self.clear("retry-clear", 1201, 1)
         once = self.luck() - before
         self.assertEqual(sum(first.get("luckUpTable", [0])[:1]), once)
         # Replaying the clear must not pay it twice.
-        self.clear("retry-clear", 3004, 1)
+        self.clear("retry-clear", 1201, 1)
         self.assertEqual(before + once, self.luck())
 
     def field_third_squad(self) -> None:
