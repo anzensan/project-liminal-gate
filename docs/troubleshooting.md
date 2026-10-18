@@ -282,6 +282,50 @@ emulator, finds nothing on either layout — `Get-Content` is PowerShell, and
 `user-data` is a workstation folder. An empty result there is not evidence that
 the server refused nothing.
 
+### Briefly corrupted menu text (#102)
+
+The reported screenshot has damaged letters while artwork and numeric counters
+remain intact. Font-atlas invalidation is a hypothesis; no renderer fix has been
+verified. Server `events.jsonl` cannot show a client drawing fault. Record the
+device model, Android version, deployment (on-device APK or dedicated server),
+build commit, exact menu action, and approximate time into the session.
+
+For a PowerShell capture, open the game first, connect one authorized device,
+and run:
+
+```powershell
+$gameProcessId = (adb shell pidof com.mistwalkercorp.guardians).Trim()
+if ($gameProcessId -notmatch '^\d+$') { throw 'Open the game and check the connected device first.' }
+adb logcat --pid=$gameProcessId -v threadtime > menu-text-log.txt
+```
+
+Navigate until the flicker occurs, note the local time, then press Ctrl+C.
+Keep screen recording off during this capture: the reporter says it suppresses
+the symptom. An external camera is optional if available. Restart the capture
+after restarting the app, because its process ID changes. Check
+`adb logcat --help` if this device does not support the PID option; available
+options depend on Android version, as described in the
+[Android logcat documentation](https://developer.android.com/tools/logcat).
+Review the game's log for private account/request data before attaching it.
+A quiet log does not rule out a graphics fault. The next boundary is an affected
+device reproduction, not a speculative native binary patch.
+
+### Hunting clear after a save edit (#103)
+
+Current code accepts item counts below the durable inventory plus reported
+drops without removing the edited inventory. It still refuses unexplained
+increases, invalid count arrays, and counts outside the configured catalog cap.
+The known Metal Zone pre-entry ticket report cannot refund the spent ticket.
+Update/restart the dedicated server, or rebuild and reinstall the on-device
+APK with the same signing key; replacing the computer's checkout alone does not
+update the embedded server. Retry the active battle normally.
+
+This addresses a reproduced stale-inventory refusal, not a raw reproduction of
+the reporter's request. If `invalid_local_hunting_items` remains, include the
+new build commit, stage, the edited fields (without the save or owned counts),
+and whether a custom Hunting catalog is configured. An explicitly configured
+lower catalog capacity remains enforced.
+
 ### Capturing a logcat that contains the failure
 
 `adb logcat -c` clears the buffer and `adb logcat -d` dumps it and exits, so a

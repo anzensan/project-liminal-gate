@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import replace
 import json
+from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
 import unittest
@@ -860,6 +861,82 @@ class HuntingRuntimeTest(unittest.TestCase):
             (409, "hunting_clear_phase_conflict"),
             (status, collision["error"]),
         )
+
+    def test_imported_inventory_survives_a_stale_metal_clear_and_restart(self) -> None:
+        stale = list(self.userdata()["itemList"])
+        document = json.loads(self.state_path.read_text(encoding="utf-8"))
+        document["accounts"][self.account_id]["userdata"]["itemList"][1] = 99
+        connection = HTTPConnection(*self.server.server_address[:2])
+        try:
+            connection.request("POST", "/local/state", json.dumps(document),
+                               {"Content-Type": "application/json"})
+            response = connection.getresponse()
+            self.assertEqual(200, response.status, response.read())
+        finally:
+            connection.close()
+        self.restart()
+        self.assertEqual(200, self.start_with_ticket("edited-metal", 3000, 11, 4)[0])
+        snapshot = self.userdata()
+        expected = list(snapshot["itemList"])
+        # Stale ordinary slot plus the known pre-entry ticket count. Neither
+        # can overwrite the imported inventory or undo the committed spend.
+        status, cleared = self.clear("edited-clear", 3000, 11, item_list=stale,
+                                     exp=1000, buddies=[11], snapshot=snapshot)
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(expected, self.userdata()["itemList"])
+        self.restart()
+        self.assertEqual((status, cleared), self.clear(
+            "edited-clear", 3000, 11, item_list=stale,
+            exp=1000, buddies=[11], snapshot=snapshot,
+        ))
+        self.assertEqual(expected, self.userdata()["itemList"])
+        self.assertEqual([11], [row["bid"] for row in self.buddy_info()["list"]])
+        self.assertEqual(409, self.clear(
+            "edited-clear-new-id", 3000, 11, item_list=stale,
+            exp=1000, buddies=[11], snapshot=snapshot,
+        )[0])
+        self.assertEqual(expected, self.userdata()["itemList"])
+
+    def test_stale_hunting_items_credit_drops_once_without_losing_inventory(self) -> None:
+        self.assertEqual(200, self.start("stale-items", 1001, 1, 3)[0])
+        snapshot = self.userdata()
+        stale = [0] * 8
+        stale[2] = 2
+        status, cleared = self.clear("stale-items-clear", 1001, 1,
+                                     items={"2": 5, "3": 2}, item_list=stale,
+                                     snapshot=snapshot)
+        self.assertEqual(200, status, cleared)
+        expected = [0, 6, 2, 0, 2, 0, 0, 0]
+        self.assertEqual(expected, self.userdata()["itemList"])
+        self.restart()
+        self.assertEqual((status, cleared), self.clear(
+            "stale-items-clear", 1001, 1, items={"2": 5, "3": 2},
+            item_list=stale, snapshot=snapshot,
+        ))
+        self.assertEqual(expected, self.userdata()["itemList"])
+
+    def test_hunting_items_still_refuse_overclaims_and_bad_counts_without_mutation(self) -> None:
+        self.assertEqual(200, self.start("items-refusal", 1001, 1, 3)[0])
+        before = self.userdata()
+        for value, expected_status in ((2, 409), (True, 501), (-1, 501), (100, 409)):
+            submitted = list(before["itemList"])
+            submitted[1] = value
+            with self.subTest(value=value):
+                status, refused = self.clear("items-refusal-clear", 1001, 1,
+                                             item_list=submitted)
+                self.assertEqual(expected_status, status, refused)
+                self.assertEqual(before, self.userdata())
+
+    def test_stale_hunting_inventory_still_clamps_rewards_to_catalog_capacity(self) -> None:
+        with self.server.state.lock:
+            self.server.state.accounts[self.account_id]["userdata"]["itemList"][1] = 98
+            self.server.state._persist_locked()
+        self.assertEqual(200, self.start("capped-stale-items", 1001, 1, 3)[0])
+        stale = list(self.userdata()["itemList"])
+        status, cleared = self.clear("capped-stale-clear", 1001, 1,
+                                     items={"2": 5}, item_list=stale)
+        self.assertEqual(200, status, cleared)
+        self.assertEqual(99, self.userdata()["itemList"][1])
 
     def test_a_pre_fix_active_ticket_clear_can_recover_once_without_minting(self) -> None:
         """A live active battle predating the spend marker remains settleable."""

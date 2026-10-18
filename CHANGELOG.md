@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Hunting clears preserve imported/server-owned items when the client submits
+  stale lower counts (#103), while retaining ticket spends, catalog caps, and
+  refusal of unexplained increases. The report's exact inventory remains
+  unknown; an on-device retest is still needed. Menu-text corruption (#102)
+  remains under investigation, with a focused log-capture guide in
+  [troubleshooting](docs/troubleshooting.md#briefly-corrupted-menu-text-102).
+
 Every gameplay fix below needs a server restart; on-device testers need a rebuilt
 APK. None of them needs the event catalog regenerated — the folded-card
 identities are applied when the catalog is loaded, exactly as the class limits

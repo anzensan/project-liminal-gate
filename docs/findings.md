@@ -1,5 +1,69 @@
 # Public Technical Findings
 
+## Issues 102 and 103 (2026-10-18)
+
+### Hunting item equality can wedge a stale client (#103)
+
+The [report](https://github.com/anzensan/project-liminal-gate/issues/103)
+identifies `409 invalid_local_hunting_items` at Metal Zone 3000-5 after a save
+edit/import, with no reported item drops. It does not include the submitted or
+durable inventory, so it cannot identify which slot or comparison failed.
+
+`_projected_hunting_items` previously required exact inventory equality, apart
+from the already-established pre-entry Metal ticket exception. In contrast,
+ordinary story settlement already preserves stale lower counts. An HTTP test
+imports an increased item count through `/local/state`, restarts, starts Metal,
+then submits the lower snapshot plus its pre-entry ticket. Unchanged code
+refuses it with the reported error. A separate ordinary Hunting clear with
+reported drops also reproduced the refusal.
+
+The correction treats lower submitted counts as stale, preserves the durable
+inventory, and adds the declared battle/chest rewards under the catalog cap.
+It never adopts the lower array or credits an unexplained increase. The Metal
+ticket exception remains conditional on an actual spend (or a legacy active
+battle without the marker); stamina fallback cannot create a ticket. Strict
+outcome ceilings remain independent. This is explicitly local preservation
+policy, not a recovered historical reconciliation algorithm.
+
+Four new HTTP regression cases cover import, restart, exact replay, fresh-ID
+refusal after settlement, capped drops, and invalid/overclaimed counts without
+mutation. Existing ticket fallback and legacy-active tests remain green.
+The reporter's exact mismatch, edits that reduce counts, custom lower catalog
+caps, and physical-client acceptance are not established by these tests.
+
+Validation: all 1,747 tests pass on Python 3.11 and 3.13 with ResourceWarnings
+configured as errors, plus compilation, `git diff --check`, and source-only
+release preflight. A lock-file finalizer emits an ignored ResourceWarning in
+both full suites; the same warning reproduces on unchanged `385743d` in
+`test_message_lifecycle.MessageRewardKindTest`, so validation is not described
+as warning-free. The focused 57-test Hunting suite emits no such warning.
+
+### Menu glyph corruption is not yet reproduced (#102)
+
+The [screenshot and report](https://github.com/anzensan/project-liminal-gate/issues/102)
+show damaged text with intact artwork and numeric counters. Short-lived glyph
+atlas/geometry disagreement is a plausible inference, especially given menu
+transitions, longer sessions, and recording suppressing the symptom. It is not
+a proven diagnosis. Historical
+[NGUI font-atlas reports](https://www.tasharen.com/forum/index.php?topic=4953.0)
+describe related symptoms but do not establish this game's cause or a safe fix.
+
+Static inspection uses the final ARM64 `libil2cpp.so` SHA-256
+`ba6fecba562f7ff46305792cadeabcae1879a0c384f7195a5d77872af04c1753`.
+`UILabel.OnFontTextureChanged` at `0xEA59AC` walks the label list, resolves
+`get_trueTypeFont`, requests each label's characters (`0xEA5B50`), and invokes
+its dirty/update virtual method (`0xEA5B64`). `get_trueTypeFont` at `0xEA4764`
+also resolves a `UIFont`'s dynamic font; the theory that this path ignores
+that fallback is contradicted by the code. `SetActiveFont` installs the cached
+texture rebuild callback at `0xEA4CDC`. These calls do not prove that atlas
+updates and GPU rendering are synchronized on the affected device.
+
+No ADB device is connected, and the report lacks Android/device/build details.
+No font/native allocator/renderer patch is shipped for this hypothesis. The
+troubleshooting guide supplies a process-filtered PowerShell log capture with
+screen recording off. An affected device and timed reproduction are the next
+boundary; a quiet log alone cannot clear a graphics fault.
+
 ## Issues 100 and 101 (2026-10-15)
 
 ### Earned Lucky-enemy Luck is in the clear already (#100)

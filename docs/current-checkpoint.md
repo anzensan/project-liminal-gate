@@ -1,5 +1,25 @@
 # Current Checkpoint
 
+2026-10-18, #102/#103: Hunting settlement now preserves durable/imported items
+when a client submits lower stale counts, crediting only reported battle/chest
+drops and retaining the committed Metal ticket spend. Unexplained increases and
+catalog capacities remain enforced. HTTP tests reproduce the prior refusal,
+including an import through `/local/state`, restart, replay, capped rewards,
+and no mutation on refusals. This is local preservation policy; #103 lacks the
+raw inventory needed to establish that this is its sole cause. Physical retest
+requires a restarted server or rebuilt on-device APK.
+
+#102 remains unresolved. The screenshot suggests font-atlas invalidation; the
+reviewed UILabel font callback does request characters and mark labels dirty,
+so a missing callback is not established. There is no connected ADB device.
+The troubleshooting guide provides a process-filtered PowerShell log capture
+without screen recording, which the reporter says suppresses the fault. No
+speculative renderer patch or new physical-client acceptance is claimed.
+All 1,747 tests pass on Python 3.11 and 3.13; compilation, diff checks, and
+source-only release preflight pass. Both full suites emit a lock-file cleanup
+ResourceWarning also reproduced on unchanged `385743d`; this is not a claim of
+warning-free validation.
+
 2026-10-15, #100/#101: Lucky-enemy gains now settle from the client's actual
 `battle_result.luckynum` counter, in tenths. The pre-battle guessed enemy roll
 is removed; the separate stamina-qualified battle-end roll remains. HTTP
