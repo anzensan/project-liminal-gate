@@ -8185,14 +8185,18 @@ def _projected_hunting_items(
     slots: int,
     maximum: int,
 ) -> list[int] | None:
-    """Return the server-owned Hunting item projection, if the clear matches.
+    """Reconcile a clear against the server-owned Hunting item projection.
 
-    The final client repeats its pre-entry Item 50 count when clearing a Metal
-    battle. The server has already committed that ticket spend at start, so an
-    exact clear can differ by the one entry ticket in that slot only. New starts
-    retain whether a ticket was actually spent; ``None`` is limited to an
-    already-active battle loaded from a pre-fix save. In every accepted case the
-    returned inventory keeps the server's lower, already-charged ticket count.
+    A stale client snapshot must not erase an imported/server-granted item or
+    wedge the battle. Counts below the durable inventory plus reported rewards
+    are accepted, but cannot reduce that projection. Unexplained increases are
+    still refused. This is a local preservation policy, not recovered wire
+    behavior for every historical client version.
+
+    The final client also repeats its pre-entry Item 50 count at Metal clear.
+    Only that slot may exceed the projection, by at most the committed entry
+    spend. ``None`` supports active battles loaded from a pre-fix save. The
+    returned inventory always retains the already-charged ticket count.
     """
     if not (
         isinstance(current, list)
@@ -8200,6 +8204,7 @@ def _projected_hunting_items(
         and len(current) == slots
         and len(submitted) == slots
         and all(type(value) is int and 0 <= value <= maximum for value in current)
+        and all(type(value) is int and 0 <= value <= maximum for value in submitted)
     ):
         return None
     expected = list(current)
@@ -8207,14 +8212,14 @@ def _projected_hunting_items(
         if item_id > slots:
             return None
         expected[item_id - 1] = min(maximum, expected[item_id - 1] + count)
-    if submitted == expected:
+    if all(reported <= owned for reported, owned in zip(submitted, expected)):
         return expected
     if not stage.ticket_optional or ticket_spent is False:
         return None
     ticket_index = stage.entry_item_id - 1
     repeated_pre_entry = list(expected)
     repeated_pre_entry[ticket_index] += stage.entry_item_count
-    if repeated_pre_entry[ticket_index] > maximum or submitted != repeated_pre_entry:
+    if not all(reported <= owned for reported, owned in zip(submitted, repeated_pre_entry)):
         return None
     return expected
 
