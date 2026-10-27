@@ -271,7 +271,7 @@ class PactDrawTest(unittest.TestCase):
                     {
                         "id": selected.character_id,
                         "jobID": 0,
-                        "jobLevels": [11],
+                        "jobLevels": [11, 0, 0],
                         "jobSlots": [],
                         "isNew": False,
                         "levelAdded": 1,
@@ -314,7 +314,7 @@ class PactDrawTest(unittest.TestCase):
                 server.state.create_account("token", "account", {"coins": 20, "energy": 0, "freeEnergy": 0, "chrdata": []})
                 status, first = draw(server, "one")
                 self.assertEqual(200, status)
-                self.assertEqual((True, 10, [{"id": 9001, "jobID": 0, "jobLevels": [1], "jobSlots": [], "isNew": True, "levelAdded": 1, "skillBoost": 0}]), (first["success"], first["coins"], first["chrdata"]))
+                self.assertEqual((True, 10, [{"id": 9001, "jobID": 0, "jobLevels": [1, 0, 0], "jobSlots": [], "isNew": True, "levelAdded": 1, "skillBoost": 0}]), (first["success"], first["coins"], first["chrdata"]))
                 self.assertEqual((status, first), draw(server, "one"))
                 _, duplicate = draw(server, "two")
                 self.assertEqual((0, False, 2, 5), (duplicate["coins"], duplicate["chrdata"][0]["isNew"], duplicate["chrdata"][0]["levelAdded"], duplicate["chrdata"][0]["boostUp"]))
@@ -489,7 +489,7 @@ class PactDrawTest(unittest.TestCase):
                     {
                         "id": selected.character_id,
                         "jobID": 0,
-                        "jobLevels": [21],
+                        "jobLevels": [(12345 << 12) | 21, 0, 0],
                         "jobSlots": [],
                         "isNew": False,
                         "levelAdded": 1,
@@ -759,9 +759,9 @@ class DuplicateJobLevelTest(unittest.TestCase):
                 self.assertEqual([10 + added, 20 + added, 0], levels)
                 # Job experience is untouched by a level grant.
                 self.assertEqual([5, 7, 0], [int(value) >> 12 for value in stored["jobLevels"]])
-                # The reply describes the active job, which is the second.
+                # Preserve the active selection and send every packed job.
                 self.assertEqual(1, payload["chrdata"][0]["jobID"])
-                self.assertEqual([20 + added], payload["chrdata"][0]["jobLevels"])
+                self.assertEqual(stored["jobLevels"], payload["chrdata"][0]["jobLevels"])
                 self.assertEqual(added, payload["chrdata"][0]["levelAdded"])
             finally:
                 stop_server(server, thread)
@@ -833,11 +833,12 @@ class PlusPactJobLevelTest(unittest.TestCase):
                 self.assertEqual([10 + added + plus, 20 + added + plus, 0], levels)
                 # Job experience is untouched by either level grant.
                 self.assertEqual([5, 7, 0], [int(value) >> 12 for value in stored["jobLevels"]])
-                # The reply describes the active job, which is the second, and
-                # reports the two gains separately -- the duplicate's as
+                # The reply retains the second job as active, includes every
+                # packed job, and reports the two active-job gains separately:
+                # the duplicate's as
                 # `levelAdded` and the "+" as `levelAdded2`.
                 self.assertEqual(1, row["jobID"])
-                self.assertEqual([20 + added + plus], row["jobLevels"])
+                self.assertEqual(stored["jobLevels"], row["jobLevels"])
                 self.assertEqual(added, row["levelAdded"])
             finally:
                 stop_server(server, thread)

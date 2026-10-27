@@ -1,10 +1,11 @@
 from dataclasses import replace
+import hashlib
 import json
 from http.client import HTTPConnection
 from pathlib import Path
 import tempfile
 import unittest
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode
 
 from liminal_gate.bootstrap_server import (
     CLASS_LIMIT_ERROR_CODE,
@@ -30,7 +31,7 @@ from liminal_gate.luck_pool_data import pool_for
 from liminal_gate.luck_pool_event_data import STRIKES_BACK_FAMILY_REWARDS
 from liminal_gate.luck_pool_interpolation import build_luck_pools
 from liminal_gate.luck_runtime import (
-    chest_characters, chest_companions, chest_items,
+    chest_characters, chest_coins, chest_companions, chest_items, roll_luck_result,
 )
 from liminal_gate.save_validation import ITEM_SLOTS, MAX_ITEM_STACK
 from liminal_gate.tuning import DEFAULT_TUNING
@@ -1934,6 +1935,100 @@ class CollabSpecialRuntimeTest(_CounterDescentRangeHarness, unittest.TestCase):
             self.clear_body(chapter=8008, section=1),
         )
         self.assertEqual(200, status, cleared)
+
+
+class BattleChampsRecordedChestTest(_CounterDescentRangeHarness, unittest.TestCase):
+    """All eight default-pool chests settle once over HTTP across restarts."""
+
+    progress_chapter = 24
+
+    def build_catalog(self) -> EventCatalog:
+        return build_bundled_collab_special_policy()
+
+    def post(self, path: str, body: bytes) -> tuple[int, dict]:
+        status, payload = super().post(path, body)
+        # The transport signs the serialized field order. Replay canonicalizes
+        # that order, so compare semantic payloads rather than their signatures.
+        payload.pop("digest", None)
+        return status, payload
+
+    def start_server(self) -> None:
+        self.server, self.thread = start_server(
+            ("127.0.0.1", 0), self.profile, BootstrapState(self.state_path),
+            event_catalog=self.catalog, luck_pool_catalog=build_luck_pools(),
+        )
+
+    def test_all_eight_stages_keep_their_chest_through_start_clear_and_restart(self):
+        with self.server.state.lock:
+            userdata = self.server.state.accounts[self.account_id]["userdata"]
+            userdata["chrdata"] = [dict(character(853), luck=LUCK_TENTHS_MAX)]
+            userdata["teamMembers"] = [853, 0, 0, 0, 0, 0]
+            userdata["buddyInfo"] = {"list": [], "record": []}
+            self.server.state._persist_locked()
+
+        # Select deterministic request identities that exercise every reward
+        # form, including the family-specific recruits/materials. These remain
+        # real default-pool rolls, not a patched roll or an operator catalog.
+        targets = {
+            (8008, 1): {"I138", "M918"}, (8008, 2): {"I143", "O347"},
+            (8009, 1): {"I139", "O128"}, (8009, 2): {"M947", "O347"},
+            (8010, 1): {"C100", "M918"}, (8010, 2): {"C150", "O129"},
+            (8011, 1): {"I138", "I139"}, (8011, 2): {"M947", "O347"},
+        }
+        for (chapter, section), wanted in targets.items():
+            with self.subTest(chapter=chapter, section=section):
+                stage = self.catalog.by_identity()[(chapter, section)]
+                start = f"stamina={stage.stamina}&coins=0&chapter={chapter}&section={section}&lastUpdate=1".encode()
+                digest = hashlib.sha256(start).hexdigest()
+                request_id = next(
+                    f"bc-{chapter}-{section}-{attempt}" for attempt in range(4096)
+                    if wanted <= set(roll_luck_result(
+                        chapter, section, LUCK_TENTHS_MAX,
+                        f"bc-{chapter}-{section}-{attempt}", digest, catalog=build_luck_pools(),
+                    ))
+                )
+                start_path = f"/gd/start_quest?otk={self.token}&requestID={request_id}"
+                status, started = self.post(start_path, start)
+                self.assertEqual((200, True), (status, started["success"]))
+                chest = started["luckResult"]
+                self.assertTrue(wanted <= set(chest), chest)
+                self.assertEqual((status, started), self.post(start_path, start))
+                self.restart()
+                self.assertEqual((status, started), self.post(start_path, start))
+                # A fresh request ID for the held stage must not roll again.
+                self.assertEqual(chest, self.post(start_path + "-retry", start)[1]["luckResult"])
+
+                before = self.account()["userdata"]
+                inventory = list(before["itemList"])
+                for item_id, count in chest_items(chest).items():
+                    inventory[item_id - 1] += count
+                fields = {key: values[0] for key, values in parse_qs(
+                    self.clear_body(chapter=chapter, section=section, inventory=inventory).decode(),
+                ).items()}
+                wallet = json.loads(fields["valuables"])
+                wallet["coins"] += chest_coins(chest)
+                fields["valuables"] = json.dumps(wallet)
+                clear = urlencode(fields).encode()
+                clear_path = f"/gd/clear_quest?otk={self.token}&requestID={request_id}-clear"
+                status, settled = self.post(clear_path, clear)
+                self.assertEqual((200, True), (status, settled["success"]), settled)
+                after = self.account()["userdata"]
+                self.assertEqual(before["coins"] + chest_coins(chest), after["coins"])
+                self.assertEqual(inventory, after["itemList"])
+                self.assertEqual(before["progressCode"], after["progressCode"])
+                self.assertEqual(
+                    {row["id"] for row in before["chrdata"]} | set(chest_characters(chest)),
+                    {row["id"] for row in after["chrdata"]},
+                )
+                self.assertEqual(
+                    [row["bid"] for row in before["buddyInfo"]["list"]] + list(chest_companions(chest)),
+                    [row["bid"] for row in after["buddyInfo"]["list"]],
+                )
+                self.assertEqual((status, settled), self.post(clear_path, clear))
+                self.assertEqual(after, self.account()["userdata"])
+                self.restart()
+                self.assertEqual((status, settled), self.post(clear_path, clear))
+                self.assertEqual(after, self.account()["userdata"])
 
 
 class CaptiveGolemClassLimitTest(unittest.TestCase):

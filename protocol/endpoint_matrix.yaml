@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-15"
+updated: "2026-10-27"
 canonical_client_boundary: "Chapter 9 clear (physical-device playthrough); Chapter 2-1 trace-backed"
 statuses:
   confirmed: "wire shape and surviving-client acceptance are confirmed"
@@ -7,6 +7,18 @@ statuses:
   local_policy: "implemented preservation behavior, not a historical-service claim"
   unsupported: "fails explicitly rather than returning generic success"
 capabilities:
+  - family: pact_all_job_response
+    routes: [do_slot]
+    status: static_confirmed
+    note: "Issue 104: the client calls Character.LoadFromJson on each result and loads packed jobLevels from index zero, independently of jobID. Replies now snapshot the complete array after normal/plus grants; active-job labels, caps and locked jobs are preserved. HTTP all payment/Fate/plus variants, capped Job 1, EXP, batch snapshots and retry/restart pass. Old cached replies remain stable; physical retest pending."
+    transport_tests: true
+    restart_tests: true
+  - family: battle_champs_luck_chests
+    routes: [start_quest, clear_quest]
+    status: local_policy
+    note: "Issue 105: community-recorded Quest I/II and family-specific candidates for all eight Battle Champs stages override donated Chapter 36 pools. IDs verified against operator-decoded names; within-tier weights and one-item-per-slot behavior remain local policy. All eight HTTP start/clear/retry/restart paths covered, including materials, Coins, recruits and Companions. Explicit operator overrides remain; original-client retest pending."
+    transport_tests: true
+    restart_tests: true
   - family: client_counted_lucky_enemy_gain
     routes: [start_quest, clear_quest, userdata]
     status: static_confirmed
@@ -100,7 +112,7 @@ capabilities:
   - family: event_luck_treasure_chests
     routes: [start_quest, clear_quest]
     status: local_policy
-    note: "An event start_quest is served by the event branch of _select_mutation and now receives the launcher's own chest pool resolver, so Strikes Back, Special Quests, Descent Quests, the Tower and the Eidolon quests roll chests instead of six empty slots. Fifty-five event stages are answered from the community record's own chest templates -- forty-two Strikes Back quests, twelve Eidolons and A Chance Encounter With Sarah; every other event stage still draws operator or interpolated pools."
+    note: "An event start_quest receives the launcher's chest resolver. The documented pools include forty-two Strikes Back quests, twelve Eidolons, A Chance Encounter With Sarah, other documented Archive quests, and now all eight Battle Champs stages (#105). Undocumented event stages retain operator or interpolated pools; chestless refusals still apply."
   - family: hunting_luck_treasure_chests
     routes: [start_quest, clear_quest]
     status: local_policy

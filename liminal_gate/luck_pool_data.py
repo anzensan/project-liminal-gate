@@ -3,13 +3,14 @@
 **Community record, and incomplete by its own admission.** The retired service
 authored chest contents and the client only rendered them, so no table exists in
 the APK to recover. What exists is the final wiki's per-stage reward lists,
-scraped with page and revision provenance. Every row of that scrape carries
+with source provenance in adjacent comments and `docs/findings.md`. Every row
+of the original story scrape carries
 `community_table_incomplete`, and the wiki says so itself.
 
 Two consequences are deliberate and should not be quietly fixed later:
 
-* **One hundred and twenty-six stages have a pool** -- thirty-one core-story
-  stages here, and ninety-five event and side-world stages in
+* **153 stages have a pool** -- thirty-one core-story
+  stages here, and 122 event and side-world stages in
   :mod:`liminal_gate.luck_pool_event_data`. Every other stage in the game has
   none, and a stage with no pool yields no chest rather than a guessed one.
   This is a floor on what the feature does, not a claim that other stages had no
@@ -73,6 +74,7 @@ from __future__ import annotations
 from liminal_gate.luck_pool_event_data import (
     ARCHIVE_QUEST_CHEST_POOLS,
     ARCHIVE_SPECIAL_CHEST_POOLS,
+    BATTLE_CHAMPS_CHEST_POOLS,
     BREASOUL_CHEST_POOLS,
     DAILY_QUEST_CHEST_POOLS,
     EIDOLON_CHEST_POOLS,
@@ -136,6 +138,7 @@ LUCK_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
 DOCUMENTED_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     **LUCK_CHEST_POOLS,
     **STRIKES_BACK_CHEST_POOLS,
+    **BATTLE_CHAMPS_CHEST_POOLS,
     **EIDOLON_CHEST_POOLS,
     **ARCHIVE_SPECIAL_CHEST_POOLS,
     **ARCHIVE_QUEST_CHEST_POOLS,

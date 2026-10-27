@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Pact results send every unlocked job's packed level and EXP to the client
+  (#104), including when Job 1 is capped. Normal and "+" grants, payment
+  variants, and restart replay are covered; physical-client retest pending.
+- Battle Champs uses community-recorded chest candidates for each family and
+  difficulty (#105), restoring the event materials, Nia, Rascal and Nia ΟⅡ
+  to their documented tiers. Within-tier odds remain local policy and item
+  stacks still use the existing one-item-per-slot wire form. Both fixes need
+  a dedicated-server restart or an on-device APK rebuild, with no catalog
+  regeneration.
 - Hunting clears preserve imported/server-owned items when the client submits
   stale lower counts (#103), while retaining ticket spends, catalog caps, and
   refusal of unexplained increases. The report's exact inventory remains

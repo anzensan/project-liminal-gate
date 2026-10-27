@@ -1,5 +1,104 @@
 # Public Technical Findings
 
+## Issues 104 and 105 (2026-10-27)
+
+### Pact levels were committed for every job but sent for only one (#104)
+
+The [report](https://github.com/anzensan/project-liminal-gate/issues/104)
+describes duplicate and "+" pulls raising Job 1 alone, including no visible
+progress elsewhere when Job 1 is capped. `_raise_unlocked_jobs` already raises
+all nonzero slots, preserves packed EXP, and clamps each job independently.
+The response, however, supplied a singleton containing the active job's plain
+level. Existing tests checked the durable array while asserting that singleton,
+so they missed the wire disagreement.
+
+Reinspection of the operator's final 5.5.7 ARM64 library confirms the consumer:
+SHA-256 `ba6fecba562f7ff46305792cadeabcae1879a0c384f7195a5d77872af04c1753`.
+`AppServerUtil.<DoSlot>c__IteratorB.<DoSlot>c__AnonStorey5B.<>m__0` passes each
+result row to `Character.LoadFromJson` at `0xDC50C8`. That loader reads `jobID`
+at `0xD07D1C`, separately reads `jobLevels` at `0xD07D54`, and starts its
+level loop at index zero (`0xD081F0`). It compares against the array count
+(`0xD08218`), indexes that slot (`0xD08238`), and calls `SetJobLevel_bin`
+with the same index (`0xD08200`). `jobID` does not offset the array. A singleton
+therefore updates only Job 1 and also discards its packed EXP.
+
+Replies now snapshot the entire packed array after each grant, including zero
+slots for locked jobs. The "+" decorator replaces that snapshot after its own
+grant. Each row is copied so later draws in a batch cannot rewrite earlier
+rows. Active-job gain labels remain unchanged and can be zero at its cap while
+other jobs gain. The existing locked transaction, wallet debit and replay
+commit are unchanged; cached pre-fix responses retain their original contents.
+Login/userdata refreshes the durable roster; lost historical gains are not
+reconstructed.
+
+Before the correction, the new HTTP regressions failed on all 24 combinations
+of Coin/Energy/ticket, Skill Boost/Fate, normal/plus, and active Job 1/2, plus
+the batch snapshot case. The corrected path covers a capped Job 1, near-cap
+Job 2, retained EXP and locked Job 3, exact debit, unchanged state on replay,
+and replay after restart with random drawing forbidden. Existing all-job and
+plus tests now check the response array against the durable packed values.
+This is client-static and transport proof; no physical-client retest is claimed.
+
+### Battle Champs chests fell back to Chapter 36 (#105)
+
+The [report](https://github.com/anzensan/project-liminal-gate/issues/105)
+identifies unrelated story materials and recruits in Battle Champs chests.
+The event branch already receives the launcher's pool resolver, but no Battle
+Champs stage appeared in `DOCUMENTED_CHEST_POOLS`. Default interpolation
+therefore supplied Chapter 36's rewards. With interpolation disabled it instead
+supplied no chest. Both outcomes contradict the linked community record.
+
+The [Battle Champs record](https://terrabattle.fandom.com/wiki/Battle_Champs)
+has separate Quest I/II tables and family-specific additions. Its indexed
+rendering was reviewed on this date; direct HTML/API requests were refused,
+so no revision ID or new raw service capture is asserted. The table labels
+itself incomplete. Its Quest I Luck 100 candidates are Nia and Metal Minion;
+Quest II adds Metal Minion Λ and Nia ΟⅡ. Ice/White Essence, Mana Stone and
+Rascal belong only to the family/tier combinations the table actually names.
+The page's separate normal battle-drop probabilities are not chest weights.
+
+The retained ENCA-banner identity join is recorded below: 8008 Tempest, 8009
+Dire-Fang, 8010 Void-Venom, 8011 Brushfyr. The operator's decoded
+`user-data/names.json`, SHA-256
+`6f3c401b0c0e428d4ddf5cbe6ef43e8ababba243dba74dfd57bcfe4a2cbd2de1`,
+resolves Nia/Rascal★ to characters 918/947, Ice Essence/White Essence/Mana
+Stone to items 138/139/143, and Metal Minion/Metal Minion Λ/Nia ΟⅡ to
+Companions 128/129/347. Animata Core is item 181, using the existing final-build
+substitution for rotating Animata items. Names/catalogs and the APK are read
+only; no derived user catalog needs regeneration.
+
+All eight stages now have documented candidate pools, which take precedence
+over donation; explicit operator catalogs still replace a stage outright.
+Equal selection within a tier remains local policy, because weights are
+unknown. Historical Animata stacks/ranges still reduce to the existing one
+item per wire slot; no new quantity syntax is invented. Normal battle drops,
+Nia duplicate Skill Boost, and other duplicate-recruit effects are outside
+this correction.
+
+Exact pool fixtures and deterministic default rolls cover every family/tier,
+with and without donation, and operator precedence. Real HTTP tests select
+request identities that naturally roll event Coins, materials, Nia/Rascal and
+Companions across all eight stages. They restart with each battle active,
+confirm exact and fresh-ID start retries keep its chest, settle the rewards,
+then restart and replay each clear without a second grant. A Lambda party
+member keeps the fixture's 100.0 Luck valid across successive clears.
+
+Both corrections need a dedicated-server restart or an on-device APK rebuild.
+The current ADB inventory is empty. Original-client retests of #103--#105 and
+affected-device diagnostics for the still unresolved #102 remain the next
+boundaries. No GitHub issue is closed by these local changes.
+
+Validation: all 1,753 tests pass on Python 3.11 and 3.13 with
+`PYTHONWARNINGS=error::ResourceWarning`, and on the local Python 3.14 runtime.
+The documented lock-file finalizer warning remains in both CI-version suites;
+3.14 also reports HTTPError cleanup warnings. An initial concurrent run collided
+on the Android entrypoint's fixed loopback port; the serial 3.13 rerun passed.
+Compilation and `git diff --check` pass. Release preflight and the independent
+repository audit pass on a 280-file source-only snapshot containing the current
+edits and new tests. The raw working checkout is not a release tree: preflight
+rejects its ignored private inputs/build artifacts, and its repository audit
+reports the intentionally uncommitted changes. None were deleted or published.
+
 ## Issues 102 and 103 (2026-10-18)
 
 ### Hunting item equality can wedge a stale client (#103)
