@@ -126,6 +126,55 @@ SPECIES_TYPE_ITEMS_EXCEPT_OXSECIAN: tuple[str, ...] = tuple(
 #: and unaffected by any of this.
 STRIKES_BACK_EVENT_ITEM: str = 'I181'
 
+#: Battle Champs, https://terrabattle.fandom.com/wiki/Battle_Champs, the
+#: community record's separate Quest I/II chest tables (reviewed 2026-10-27).
+#: Family identities are independently established by the retained ENCA
+#: banners: 8008 Tempest, 8009 Dire-Fang, 8010 Void-Venom, 8011 Brushfyr.
+#: IDs resolve against the operator's decoded names: Ice Essence 138, White
+#: Essence 139, Mana Stone 143, Nia 918, Rascal★ 947, Nia ΟⅡ 347, Metal
+#: Minion 128 and Metal Minion Λ 129. These are chest candidates, not the
+#: page's separate battle-drop probabilities. Within-tier odds are unknown.
+#:
+#: As on Strikes Back, the rotating Animata item becomes Core for 5.5.7,
+#: and the existing wire form carries one item per slot rather than the
+#: recorded stacks/ranges. Do not encode an invented quantity suffix.
+def _battle_champs_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
+    pools: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {}
+    for chapter, first_extras, second_extras in (
+        (8008, ('I138',), ('I138', 'I143')),
+        (8009, ('I139',), ('M947', 'I139')),
+        (8010, (), ()),
+        (8011, ('I138', 'I139'), ('M947', 'I138', 'I139', 'I143')),
+    ):
+        pools[(chapter, 1)] = {
+            "A": ('C50', STRIKES_BACK_EVENT_ITEM),
+            "B": ('C50', STRIKES_BACK_EVENT_ITEM),
+            "C": ('C100', STRIKES_BACK_EVENT_ITEM),
+            "D": (STRIKES_BACK_EVENT_ITEM, *first_extras),
+            "Luck 80": ('O128', *first_extras),
+            "Luck 100": ('M918', 'O128'),
+        }
+        pools[(chapter, 2)] = {
+            "A": ('C50', STRIKES_BACK_EVENT_ITEM),
+            "B": ('C50', STRIKES_BACK_EVENT_ITEM),
+            "C": ('C100', 'C150', STRIKES_BACK_EVENT_ITEM, *second_extras),
+            "D": ('C300', STRIKES_BACK_EVENT_ITEM, *second_extras),
+            "Luck 80": ('O128', 'O129', *second_extras),
+            "Luck 100": ('M918', 'O128', 'O129', 'O347'),
+        }
+        if chapter == 8011:
+            # The record adds this Coin outcome only to Brushfyr II's Luck 80.
+            pools[(chapter, 2)]["Luck 80"] = (
+                'O128', 'O129', 'M947', 'C100', 'I138', 'I139', 'I143',
+            )
+    return pools
+
+
+BATTLE_CHAMPS_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = (
+    _battle_champs_pools()
+)
+
+
 #: Tier C names two item *classes* with no quantity at all, so one copy is the
 #: record read literally rather than a figure thrown away.
 STRIKES_BACK_CHEST_ITEMS: tuple[str, ...] = WEAPON_TYPE_ITEMS + ATTRIBUTE_TYPE_ITEMS

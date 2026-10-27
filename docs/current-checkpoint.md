@@ -1,5 +1,32 @@
 # Current Checkpoint
 
+2026-10-27, #104/#105: ordinary Pact replies now carry the complete packed
+job-level/EXP array, rather than a singleton. The server already raised every
+unlocked job, but the client loads response slots starting at zero, regardless
+of `jobID`. HTTP coverage exercises capped Job 1, Job 2 headroom, a locked job,
+Coin/Energy/ticket and Skill Boost/Fate draws, normal/plus grants, batch
+snapshots, exact retry and restart replay. Gain labels still describe the
+active job. Old cached replies remain unchanged; login refreshes the durable
+roster. No historical gains are guessed back into saves.
+
+Battle Champs' eight stages now use the linked community record's family- and
+tier-specific chest candidates instead of donated Chapter 36 pools. Names
+resolve against the operator's decoded tables. Default-pool HTTP starts and
+clears cover Coins, materials, Nia/Rascal and Companions across restart/retry;
+explicit operator overrides retain precedence. The incomplete community record
+does not recover within-tier odds; equal weighting and one item per chest slot
+remain local policy. Normal battle-drop rates and duplicate-recruit effects
+are outside this correction. See October 27 findings for evidence and limits.
+
+Both deployments need the same source update: restart a dedicated server,
+or rebuild the on-device APK. No catalog regeneration is required. No ADB
+device is connected; physical retests of #103--#105 and an affected-device
+reproduction of #102 remain the next boundaries.
+
+All 1,753 tests pass on Python 3.11, 3.13 and 3.14; compilation, diff checks,
+and source-only snapshot release checks pass. The existing lock-file cleanup
+warning remains; see findings for the test-port collision and serial rerun.
+
 2026-10-18, #102/#103: Hunting settlement now preserves durable/imported items
 when a client submits lower stale counts, crediting only reported battle/chest
 drops and retaining the committed Metal ticket spend. Unexplained increases and

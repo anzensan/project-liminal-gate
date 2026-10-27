@@ -2654,7 +2654,7 @@ class BootstrapState:
                         result = {
                             "id": selected.character_id,
                             "jobID": 0,
-                            "jobLevels": [catalog.new_level],
+                            "jobLevels": copy.deepcopy(current["jobLevels"]),
                             "jobSlots": [],
                             "isNew": True,
                             "levelAdded": catalog.new_level,
@@ -2686,7 +2686,7 @@ class BootstrapState:
                         return "unsupported_ordinary_pact", None
                     else:
                         # Every *unlocked* job gains, not just the first slot,
-                        # and the reply describes the active one; see
+                        # and the gain label describes the active one; see
                         # `_raise_unlocked_jobs`, which the "+" decoration below
                         # shares so that both level grants obey one rule.
                         old_boost = current.get("skillBoost", 0)
@@ -2697,7 +2697,11 @@ class BootstrapState:
                         result = {
                             "id": selected.character_id,
                             "jobID": active,
-                            "jobLevels": [level],
+                            # The client passes this row to LoadFromJson,
+                            # which loads packed values by array index from
+                            # zero, independently of jobID. Include every job
+                            # and its EXP, even when the active job is capped.
+                            "jobLevels": copy.deepcopy(current["jobLevels"]),
                             "jobSlots": [],
                             "isNew": False,
                             "levelAdded": level - old_level,
@@ -6837,8 +6841,8 @@ def _raise_unlocked_jobs(
 ) -> tuple[int, int]:
     """Add `added` levels to every job the character has unlocked.
 
-    Returns the active job's level before and after, which is what a pull
-    result reports beside its `jobID`.
+    Returns the active job's level before and after for the pull's gain label.
+    The response carries the complete packed array, loaded by job index.
 
     A duplicate raises the character, and the character is all of its jobs --
     which is why players unlocked a character's jobs before pulling more of it,
@@ -6847,11 +6851,8 @@ def _raise_unlocked_jobs(
     client's own screens use to tell the two apart.  Job experience rides in the
     high bits of the same packed value and is preserved across the grant.
 
-    Both level grants a pull can make come through here, the duplicate's and the
-    "+" decoration's, because the rule is one rule.  Granting slot 0 alone also
-    mismatches what the reply says: it reports the *active* `jobID`, so a
-    character whose active job is its second is told that job became a level
-    belonging to a different one.
+    Both level grants a pull can make come through here, the duplicate's and
+    the "+" decoration's, so a capped active job never blocks another job.
     """
     old_level = int(current["jobLevels"][active]) & 0xFFF
     level = old_level
@@ -6898,7 +6899,7 @@ def _apply_plus_pact(
     old_level, level = _raise_unlocked_jobs(
         current, active, random_source.randint(*tuning.plus_levels), max_level,
     )
-    result["jobLevels"] = [level]
+    result["jobLevels"] = copy.deepcopy(current["jobLevels"])
     result["levelAdded2"] = level - old_level
     gain = random_source.randint(*tuning.plus_tenths)
     field = "luck" if luck_type else "skillBoost"

@@ -88,7 +88,13 @@ a recovered client chapter/section, selector, and bounded settlement contract.
   [Weekly Challenge](https://terrabattle.fandom.com/wiki/Weekly_Challenge),
   Descent Quest pages, and [Battle Champs](https://terrabattle.fandom.com/wiki/Battle_Champs):
   reward tables recorded in `findings.md` for future boundaries; none is
-  implemented from the reference alone.
+  implemented from the reference alone. Battle Champs' eight chest tables are
+  now used for candidate membership (#105, 2026-10-27), independently of the
+  page's normal battle-drop rates. Direct page/API access was refused, so this
+  review uses the indexed rendering and claims no revision ID. Family
+  identities come from retained ENCA banners and IDs from operator-decoded
+  names; weights remain local policy and historical Animata stacks retain the
+  existing one-item-per-slot limitation.
 
 ## Reconciliation with the bundled policy
 

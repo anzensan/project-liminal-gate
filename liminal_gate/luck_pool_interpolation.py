@@ -1,7 +1,7 @@
 """Chest pools for the stages the record does not document, by donation.
 
-The community record documents one hundred and twenty-six stages: thirty-one
-in the core story, and ninety-five across the events and the two side worlds.
+The bundled community record covers 153 stages: thirty-one
+in the core story, and 122 across the events and the two side worlds.
 Without this, every other stage rolls six empty slots --
 honest, and it leaves a feature the game clearly had almost entirely inert: a
 player at Chapter 10 with real Luck never sees a chest, because nobody wrote

@@ -153,6 +153,16 @@ ticket/coin batch has been recovered. Missing-ticket error 2 is compatibility
 policy pending a live refusal capture. Nonzero campaign/event selectors remain
 unsupported.
 
+Ordinary `do_slot` results carry a snapshot of the character's complete packed
+`jobLevels` array after that draw, including locked zero slots and retained
+high-bit EXP. The client's `Character.LoadFromJson` loads indices starting at
+zero; `jobID` does not offset a singleton array. Both duplicate and "+" levels
+raise every unlocked job up to its cap. `levelAdded` and `levelAdded2` remain
+active-job gain labels and may be zero when that job is capped while others
+gain. Each batch row holds its own snapshot, and replay returns the committed
+row without drawing again. Cached pre-fix rows retain their original shape;
+login/userdata can refresh the complete durable roster.
+
 `do_buddy_slot` carries the same four payment variants for Companions, in the
 one form `kind=<0|1|20|21>&count=<n>&campaignID=0&eventFlag=0&lastUpdate=<n>`.
 `SlotKind.Normal` (0) draws the 81 normal-slot Companions for
