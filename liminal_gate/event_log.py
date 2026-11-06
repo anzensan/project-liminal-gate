@@ -82,6 +82,17 @@ def safe_form_diagnostics(body: bytes) -> dict[str, Any]:
         for name in ("buddies", "monsters", "summons"):
             if isinstance(battle.get(name), list):
                 settlement[f"reported_{name}"] = len(battle[name])
+        # The bounded special-quest settlement refuses on `luckynum` or
+        # `boostup` as well as on a Companion, under one error string. Issue
+        # 106 could not be told apart for that reason. Both are the client's
+        # own roll and gain -- numbers, not identities -- so the Lucky roll and
+        # whether any Skill Boost was claimed are safe to log; the Companion
+        # channel is then isolated by elimination from the count above.
+        if type(battle.get("luckynum")) is int:
+            settlement["reported_luckynum"] = battle["luckynum"]
+        boostup = battle.get("boostup")
+        if isinstance(boostup, list) and all(type(value) is int for value in boostup):
+            settlement["reported_boostup_nonzero"] = any(boostup)
         if isinstance(battle.get("items"), dict):
             counts = [count for count in battle["items"].values() if type(count) is int]
             settlement["reported_item_stacks"] = len(battle["items"])

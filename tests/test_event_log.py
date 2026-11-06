@@ -82,6 +82,15 @@ class SettlementDiagnosticTest(unittest.TestCase):
             details["reported_battle_result"],
         )
 
+    def test_a_settlement_reports_its_lucky_roll_and_skill_boost_claim(self) -> None:
+        """Issue 106: one refusal string covered luckynum, boostup and Companions."""
+        details = safe_form_diagnostics(self.body(luckynum=2, boostup=[0, 0, 1, 0, 0, 0]))
+        settlement = details["reported_battle_result"]
+        self.assertEqual(2, settlement["reported_luckynum"])
+        self.assertIs(True, settlement["reported_boostup_nonzero"])
+        quiet = safe_form_diagnostics(self.body(luckynum=0, boostup=[0] * 6))["reported_battle_result"]
+        self.assertEqual((0, False), (quiet["reported_luckynum"], quiet["reported_boostup_nonzero"]))
+
     def test_the_counts_carry_no_identity(self) -> None:
         """Counts, never contents: an item or Companion id is still not logged."""
         rendered = json.dumps(safe_form_diagnostics(self.body(buddies=[267], items={"9": 3})))
