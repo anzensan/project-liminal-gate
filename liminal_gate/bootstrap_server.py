@@ -7541,17 +7541,21 @@ def _bounded_special_result_matches(clear: dict[str, Any], max_exp: int) -> bool
     instead was a wedged account: it leaves the battle active and blocks every
     other stage until the same quest is replayed.
 
-    ``luckynum`` and ``boostup`` stay bounded to nothing.  They are not drop
-    channels -- they are the Lucky-enemy roll and the party's Skill Boost gain,
-    which reach the roster through `apply_luck_up_table` and the Pact
-    respectively, and letting a clear restate them would give the battle a
-    second, unbounded route into stats this server authors elsewhere.
+    ``luckynum`` stays bounded to nothing: it is the Lucky-enemy roll, which
+    reaches the roster through `apply_luck_up_table`, and letting a clear
+    restate it would give the battle a second, unbounded route into stats this
+    server authors elsewhere.  ``boostup`` is the opposite case.  The Shin'en
+    fight (issue 106) reports a nonzero Skill Boost gain for the party it
+    really fought with, and refusing it stranded the account on a Network
+    Error loop.  The gain is not a second route into anything: the client
+    folds it into the ``skillBoost`` of the ``chrdata`` it reports, which the
+    roster merge below already settles as a trusted local report, so the
+    array itself carries nothing left to authorise.
     """
     result = clear["battle_result"]
     return (
         result["exp"] <= max_exp
         and result["luckynum"] == 0
-        and result["boostup"] == [0] * 6
     )
 
 
