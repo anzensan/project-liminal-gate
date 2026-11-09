@@ -9,9 +9,10 @@ of the original story scrape carries
 
 Two consequences are deliberate and should not be quietly fixed later:
 
-* **153 stages have a pool** -- thirty-one core-story
-  stages here, and 122 event and side-world stages in
-  :mod:`liminal_gate.luck_pool_event_data`. Every other stage in the game has
+* **227 stages have a pool** -- thirty-one core-story
+  stages here, and 196 event and side-world stages in
+  :mod:`liminal_gate.luck_pool_event_data`, thirty of which (Melting Pot:
+  Beastfolk and Human) are labelled there as inferred rather than recorded. Every other stage in the game has
   none, and a stage with no pool yields no chest rather than a guessed one.
   This is a floor on what the feature does, not a claim that other stages had no
   chests -- almost certainly they did, and the record simply does not cover them.
@@ -79,6 +80,9 @@ from liminal_gate.luck_pool_event_data import (
     DAILY_QUEST_CHEST_POOLS,
     EIDOLON_CHEST_POOLS,
     FIVE_EMPERORS_CHEST_POOLS,
+    HUNT_TOWER_MELTING_POT_CHEST_POOLS,
+    MELTING_POT_INFERRED_CHEST_POOLS,
+    WORLD_MAP_SPECIAL_CHEST_POOLS,
     STRIKES_BACK_CHEST_POOLS,
 )
 
@@ -145,6 +149,9 @@ DOCUMENTED_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     **DAILY_QUEST_CHEST_POOLS,
     **BREASOUL_CHEST_POOLS,
     **FIVE_EMPERORS_CHEST_POOLS,
+    **HUNT_TOWER_MELTING_POT_CHEST_POOLS,
+    **MELTING_POT_INFERRED_CHEST_POOLS,
+    **WORLD_MAP_SPECIAL_CHEST_POOLS,
 }
 
 

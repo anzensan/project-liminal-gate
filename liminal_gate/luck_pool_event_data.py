@@ -412,17 +412,14 @@ ARCHIVE_SPECIAL_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] =
 #:
 #: - `The Last Story` (2003) and `Yamamoto's Puzzle Quest` (2007) carry no
 #:   chest section at all.
-#: - `Final Fantasy XV` (2015) and `Royal Rings Descended` (2016) carry one
-#:   table per section -- Gladiolus/Ignis/Prompto, and The Sun King/The Moon
-#:   King -- but nothing joins a caption to a section ordinal. Their names hold
-#:   no ordinal, the event catalog's `character_ids` sit on the chapter rather
-#:   than the section, and the recovered encounter symbols name enemies rather
-#:   than quests. Lucia's four tables are included precisely because its page
-#:   *does* number them (`Ⅱ`, `Ⅲ`, `Ⅳ`), which is the anchor those two lack.
-#:   A table filed under the wrong section is worse than a donated one.
-#: - Chapter 2017 has no identified page: `mechtula_story_archive` is this
-#:   project's own name for it and the wiki has no article containing the word.
-#:   Identifying it is the banner-art route, not a search.
+#: - `Final Fantasy XV` (2015), `Royal Rings Descended` (2016) and
+#:   `Arachnobot's Tale` (2017) were left out here until issue 107, for want of
+#:   a caption-to-section join. The client's own spawn symbols supply it for
+#:   2016 (`SP2016_SBOSS` on section 1, `SP2016_MBOSS` on section 2), and the
+#:   `parentQuest` chains order 2015 (Gladiolus, Ignis, Prompto) and 2017
+#:   (parts 1--5, which the page numbers). 2017 is `mechtula_story_archive`:
+#:   its sections spawn `SP2017_MECHTULA*`, and the page's chests pay the
+#:   Arachnobot and Manticlaw characters that tale recruits.
 #:
 #: Every page marks its own list incomplete, and every name on all seven
 #: resolved exactly against `names.json` -- no unresolved rewards, and no
@@ -643,6 +640,93 @@ _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] =
             "Luck 100": ('O101', 'O328', 'O331', 'O398',),
         },
     ),
+    # Royal Rings Descended, rev 84001. Section 1 spawns `SP2016_SBOSS`,
+    # section 2 `SP2016_MBOSS`: the Sun King's table, then the Moon King's.
+    2016: (
+        {
+            "A": ('I8', 'I83', 'I91', 'I2', 'I5', 'I89', 'I82'),
+            "B": ('C6000', 'I92', 'I90', 'I3', 'I5', 'I83', 'I164'),
+            "C": ('I118', 'I119'),
+            "D": ('I81', 'I50', 'I132', 'I94', 'I137', 'I93'),
+            "Luck 80": ('C9000', 'O437', 'O129', 'O433'),
+            "Luck 100": ('O130', 'O438', 'O440', 'O434', 'O436', 'O341', 'O322', 'O315'),
+        },
+        {
+            "A": ('I91', 'I1', 'I105', 'I165', 'I3', 'I89'),
+            "B": ('C3000', 'I3', 'I8', 'I6', 'I2', 'I106'),
+            "C": ('C4500', 'I118', 'I119'),
+            "D": ('I81', 'I50', 'I94', 'I132'),
+            "Luck 80": ('C4500', 'O439', 'O435', 'O129'),
+            "Luck 100": ('O439', 'O435', 'O351', 'O345', 'O325', 'O129', 'O130'),
+        },
+    ),
+    # Final Fantasy XV, rev 84038. `parentQuest` chains 2015-1 <- 2015-2
+    # <- 2015-3, Gladiolus, Ignis and Prompto, the page's caption order.
+    2015: (
+        {
+            "A": ('C100', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I8', 'I83', 'I91', 'I92', 'I105', 'I12', 'I46'),
+            "B": ('C100', 'I1', 'I3', 'I5', 'I6', 'I8', 'I83', 'I90', 'I91', 'I106'),
+            "C": ('C200', 'I1', 'I3', 'I4', 'I5', 'I83', 'I90'),
+            "D": ('C300', 'I156', 'I157'),
+            "Luck 80": ('C300', 'I154', 'I155', 'I156'),
+            "Luck 100": ('C300', 'I155'),
+        },
+        {
+            "A": ('C200', 'I5', 'I6', 'I7', 'I8', 'I82', 'I83', 'I91', 'I92', 'I106', 'I9'),
+            "B": ('C200', 'I2', 'I3', 'I4', 'I6', 'I7', 'I91', 'I105', 'I15'),
+            "C": ('C400', 'I2', 'I3', 'I4', 'I82', 'I89'),
+            "D": ('C400', 'I156', 'I157'),
+            "Luck 80": ('C600', 'I154', 'I156'),
+            "Luck 100": ('C600', 'I154', 'I155', 'I156', 'I157', 'M1080'),
+        },
+        {
+            "A": ('C300', 'I1', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I82', 'I89', 'I90', 'I91', 'I92', 'I105', 'I10'),
+            "B": ('C300', 'I2', 'I4', 'I5', 'I6', 'I7', 'I8', 'I82', 'I89', 'I91', 'I92', 'I105', 'I106', 'I10'),
+            "C": ('C600', 'I2', 'I5', 'I7', 'I89', 'I105', 'I10'),
+            "D": ('C900', 'I156'),
+            "Luck 80": ('C900', 'I154', 'I155', 'I156', 'I157'),
+            "Luck 100": ('C900', 'I154', 'I155', 'I157', 'M1080'),
+        },
+    ),
+    # Arachnobot's Tale, rev 84032. Parts 1--5 are sections 1--5 by the
+    # page's own numbering and the `parentQuest` chain. Empty rows are omitted.
+    2017: (
+        {
+            "A": ('C200', *SPECIES_TYPE_ITEMS),
+            "B": ('C200', *SPECIES_TYPE_ITEMS),
+            "Luck 80": ('C600', 'O128'),
+            "Luck 100": ('C600', 'O128'),
+        },
+        {
+            "A": ('I8',),
+            "B": ('C200',),
+            "Luck 80": ('O128',),
+            "Luck 100": ('C600',),
+        },
+        {
+            "A": ('C200',),
+            "B": ('C200',),
+            "C": ('I89',),
+            "D": ('C600', 'M1126'),
+            "Luck 80": ('C600', 'O128'),
+            "Luck 100": ('C600', 'M1126', 'I121'),
+        },
+        {
+            "A": ('C200', 'I7'),
+            "B": ('C200',),
+            "C": ('C400',),
+            "Luck 80": ('O128',),
+            "Luck 100": ('C600',),
+        },
+        {
+            "A": ('C200', 'I8', 'I89', 'I105', 'I83', 'I7', 'I92', 'I46'),
+            "B": ('C200', 'I82', 'I2', 'I8', 'I12', 'I9', 'I5', 'I46'),
+            "C": ('C400', 'I82', 'I105', 'I90', 'I3'),
+            "D": ('C600', 'I121', 'M1126', 'M1127'),
+            "Luck 80": ('C600', 'O128', 'M91'),
+            "Luck 100": ('C600', 'I121', 'O128', 'O129', 'M1127', 'M1126'),
+        },
+    ),
 }
 
 #: The chapters above and how many sections each serves, so a single-table
@@ -657,6 +741,7 @@ _ARCHIVE_QUEST_CHEST_TABLES: dict[int, tuple[dict[str, tuple[str, ...]], ...]] =
 #: drift silently apart.
 _ARCHIVE_QUEST_SECTIONS: dict[int, int] = {
     2000: 4, 2001: 4, 2002: 4, 2006: 4, 2009: 1, 2010: 1, 2011: 1,
+    2015: 3, 2016: 2, 2017: 5,
 }
 
 
@@ -829,3 +914,243 @@ FIVE_EMPERORS_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
     (118, 1): {"D": ('C3000',), "Luck 80": ('O476',), "Luck 100": ('O130',)},  # Apostolos, hard
     (119, 1): {"A": ('I2', 'I8'), "B": ('I9', 'I12'), "Luck 80": ('O72',), "Luck 100": ('I163', 'O72')},  # Agartha, hard
 }
+
+
+#: **Community record, page by page (reviewed 2026-11-09, issue 107).** Three
+#: Hunt specials, the four Tower of Temptation bosses and Melting Pot:
+#: Lizardfolk, each of which carries a plain chest table on its own page. None
+#: had a documented pool, so each was dealt a donated story chest, which is
+#: what a tester read against the wiki and reported. Revisions: Blade Falcon
+#: 84048, Bone Killer 84049, Ethereal 84173, Alika 84057, Gugba 84058, Bajanna
+#: 84059, Zeera 84060, Melting Pot Lizardfolk 84358.
+#:
+#: **How each page joins to a chapter and section.** Not by page title: the
+#: chapters below are named by the client's own spawn symbols in
+#: `user-data/derived/native-encounters.json`.
+#:
+#: - Hunts: `3200` spawns `SP3200_BLADE`, `3201` `SP3201_BONE` and `3202`
+#:   `SP3202_ETHER` -- Blade Falcon, Bone Killer and Ethereal. Each serves one
+#:   section.
+#: - Tower of Temptation: `9000` spawns `SP9000_ARIKA`, `9001` `SP9001_GUGUBA`,
+#:   `9002` `SP9002_BAJANNA` and `9003` `SP9003_ZEERA` -- the wiki's Alika,
+#:   Gugba, Bajanna and Zeera. Three sections at rising assumed levels join to
+#:   the pages' `I`, `II` and `III` captions, which number them. Gugba and
+#:   Bajanna carry identical tables for every tier and Zeera a single caption
+#:   (`Zeera I - III`), so one table answers all three sections.
+#: - Melting Pot: `9100` is Lizardfolk (BattleData title `トカゲ`). The page
+#:   groups its fifteen sections as Quests 1--5, 6--10 and 11--15, which are
+#:   the five-stamina, ten-stamina and fifteen-stamina bands. The Beastfolk and
+#:   Human pages hold empty lists, so `9101` and `9102` stay undocumented.
+#:
+#: Names resolved exactly against `names.json`, with one inference worth
+#: stating: the Bone Killer page's `Mage (Fire)` family has no name that
+#: carries the attribute -- each race has four characters called `Mage`. 66,
+#: 200, 201 and 205 are read as Fire because they are the single-job originals
+#: beside the Warrior and Knight families the other Hunt pages pay (63/71/202,
+#: 64/72/69/203), while 338--349 are the later triplets, one per added
+#: attribute. The client's master data would settle it; it has not been read.
+#: Within-tier odds and quantities are unknown, and every page marks its list
+#: incomplete. Melting Pot's final band lists no Luck 80 outcome, which is the
+#: record paying nothing there rather than a gap.
+_HUNT_CHEST_TABLES: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
+    # The Hunt For Blade Falcon.
+    (3200, 1): {
+        "A": ('C300', 'I4', 'I92', 'I7', 'I83', 'I6', 'I2', 'I1'),
+        "B": ('C300', 'I4', 'I92', 'I7', 'I9', 'I90', 'I89', 'I5', 'I1'),
+        "C": ('C600', 'I8', 'I5', 'I2', 'I1'),
+        "D": ('M187', 'C600', 'I50', 'O128'),
+        "Luck 80": ('M63', 'M202', 'M71', 'C600', 'O128', 'O129'),
+        "Luck 100": ('M187', 'C600', 'O128', 'O129'),
+    },
+    # The Hunt For Bone Killer.
+    (3201, 1): {
+        "A": ('C300', 'I92', 'I90'),
+        "B": ('C300', 'I3', 'I7', 'I90', 'I82'),
+        "C": ('C600', 'I90', 'I8'),
+        "D": ('M583',),
+        "Luck 80": ('M66', 'M201', 'M200', 'M205', 'O128'),
+        "Luck 100": ('M583', 'C600', 'O128'),
+    },
+    # The Hunt For Ethereal.
+    (3202, 1): {
+        "A": ('C300', 'I3', 'I83', 'I5', 'I7', 'I92', 'I1', 'I4', 'I10', 'I2'),
+        "B": ('C300', 'I3', 'I7', 'I91', 'I6', 'I90', 'I2', 'I82'),
+        "C": ('C600', 'I3', 'I5', 'I91', 'I6', 'I8', 'I4', 'I2', 'I82'),
+        "D": ('M132', 'O128', 'I50', 'I112'),
+        "Luck 80": ('M64', 'M72', 'M69', 'M203', 'C600', 'O128', 'O129'),
+        "Luck 100": ('M132', 'C600', 'O128', 'O129'),
+    },
+}
+
+
+def _tower_tier(
+    weapon: str, accessory: tuple[str, ...], iron: str, silver: str,
+) -> dict[str, tuple[str, ...]]:
+    """The shared shape of Gugba, Bajanna and Zeera: one weapon material each."""
+    base = ('C25', weapon, *accessory, 'I5', 'I6')
+    return {
+        "A": base, "B": base, "C": base,
+        "D": ('C50', 'I55', 'I56', 'I53', 'I54'),
+        "Luck 80": ('C50', iron, 'O128'),
+        "Luck 100": ('C50', silver, 'O128'),
+    }
+
+
+_TOWER_ALIKA: tuple[dict[str, tuple[str, ...]], ...] = (
+    {
+        "A": ('C25', 'I15', 'I11'),
+        "B": ('C25', 'I2', 'I15', 'I11'),
+        "C": ('C25', 'I2'),
+        "D": ('I55', 'I56'),
+        "Luck 80": ('C50', 'O128'),
+        "Luck 100": ('C50', 'O21'),
+    },
+    {
+        "A": ('C25', 'I15', 'I1', 'I2', 'I11'),
+        "B": ('C25', 'I15', 'I1', 'I2', 'I11'),
+        "C": ('I2', 'I1', 'I11'),
+        "D": ('I56',),
+        "Luck 80": ('C50', 'O128'),
+        "Luck 100": ('C50', 'O21'),
+    },
+    {
+        "A": ('C25', 'I1', 'I11', 'I2'),
+        "B": ('C25', 'I11', 'I2'),
+        "C": ('C25',),
+        "D": ('I55', 'I53', 'I54'),
+        "Luck 80": ('C50', 'O128'),
+        "Luck 100": ('C50', 'O128'),
+    },
+)
+
+_TOWER_SINGLE_TABLES: dict[int, dict[str, tuple[str, ...]]] = {
+    # Gugba: Terra Swordsteel, Iron Sword, Silver Sword.
+    9001: _tower_tier('I9', (), 'O36', 'O39'),
+    # Bajanna: Terra Spearbronze, Iron Spear, Silver Spear.
+    9002: _tower_tier('I10', (), 'O37', 'O40'),
+    # Zeera (`I - III`): Terra Staffwood and Green Ring, Killer and
+    # Bewitching Bow.
+    9003: _tower_tier('I12', ('I46',), 'O70', 'O74'),
+}
+
+#: Melting Pot: Lizardfolk, by the page's three five-quest bands.
+_MELTING_POT_LIZARDFOLK_BANDS: tuple[dict[str, tuple[str, ...]], ...] = (
+    {
+        "A": ('C15', 'I10'),
+        "B": ('C15', 'I3', 'I12', 'I17'),
+        "C": ('C15', 'I3', 'I11', 'I17'),
+        "D": ('C30', 'I50'),
+        "Luck 80": ('C30', 'O128'),
+        "Luck 100": ('C30', 'O128'),
+    },
+    {
+        "A": ('C25', 'I46', 'I12', 'I10'),
+        "B": ('C25', 'I46', 'I17', 'I10'),
+        "C": ('C25', 'I46'),
+        "D": ('C50', 'I50'),
+        "Luck 80": ('C50', 'O128'),
+        "Luck 100": ('C50', 'O172'),
+    },
+    {
+        "A": ('C25', 'I12'),
+        "B": ('C25',),
+        "C": ('C25', 'I10'),
+        "D": ('C50', 'I50'),
+        "Luck 100": ('C50', 'O128', 'O172'),
+    },
+)
+
+
+def _hunt_tower_melting_pot_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
+    pools = {key: dict(table) for key, table in _HUNT_CHEST_TABLES.items()}
+    for section, table in enumerate(_TOWER_ALIKA, start=1):
+        pools[(9000, section)] = dict(table)
+    for chapter, table in _TOWER_SINGLE_TABLES.items():
+        for section in (1, 2, 3):
+            pools[(chapter, section)] = dict(table)
+    for section in range(1, 16):
+        pools[(9100, section)] = dict(
+            _MELTING_POT_LIZARDFOLK_BANDS[(section - 1) // 5]
+        )
+    return pools
+
+
+HUNT_TOWER_MELTING_POT_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = (
+    _hunt_tower_melting_pot_pools()
+)
+
+
+#: **Community record, joined by the client's tier numbering (issue 107).** The
+#: Shin'en and Mutoh pages organise their chests by "difficulty level", which is
+#: the client's own battle tier (`Battle_Shinen_1`..`_4`, numbered against play
+#: order; see `world_map_special`): level 4 is a route's opening section. The
+#: join is corroborated from both sides. The level 4 tables pay each route's
+#: own Lambda recruit (characters 867 and 868), the battle-4 character the record
+#: documents on the opening section, and their C tier names Glassy and Golden
+#: Minion Lambda (267, 140), which are that section's recovered `dropBuddies`.
+#: Shin'en's level 2/3 table pays Demon's Talisman (96), which is section 3's
+#: manifest. Sections 4, 5, 7--10 have no table and keep the donated chest.
+WORLD_MAP_SPECIAL_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {
+    # Shin'en, rev 82737: difficulty level 4 is section 1.
+    (1100, 1): {
+        "A": ('I50', 'I81', 'I112', *ATTRIBUTE_TYPE_ITEMS),
+        "B": ('I50', 'I81', 'I112', *ATTRIBUTE_TYPE_ITEMS),
+        "C": ('C3000', 'O66', 'O267', 'O140'),
+        "D": ('M867',),
+        "Luck 80": ('M867', 'O308'),
+        "Luck 100": ('M867', 'O338', 'O308'),
+    },
+    # Shin'en difficulty levels 2 and 3 are sections 3 and 2.
+    (1100, 2): {
+        "A": ('I122',),
+        "B": ('I123',),
+        "D": ('O96',),
+        "Luck 80": ('O129',),
+        "Luck 100": ('O129',),
+    },
+    (1100, 3): {
+        "A": ('I122',),
+        "B": ('I123',),
+        "D": ('O96',),
+        "Luck 80": ('O129',),
+        "Luck 100": ('O129',),
+    },
+    # Mutoh, rev 83972: difficulty level 4 is section 6. Its level 2/3
+    # table is empty on the page, so sections 7 and 8 stay undocumented.
+    (1100, 6): {
+        "A": ('I50', 'I81', 'I112', *ATTRIBUTE_TYPE_ITEMS),
+        "B": ('I50', 'I81', 'I112', *ATTRIBUTE_TYPE_ITEMS),
+        "C": ('C3000', 'O125', 'O267', 'O140'),
+        "D": ('M868',),
+        "Luck 80": ('M868', 'O309'),
+        "Luck 100": ('M868', 'O334', 'O309'),
+    },
+}
+
+
+#: **Inferred, not recorded (issue 107).** The Melting Pot: Beastfolk and Human
+#: pages carry the same three-band chest headings as Lizardfolk with every row
+#: left blank. These pools are Lizardfolk's own bands with one substitution
+#: per race, chosen from each page's per-quest weapon counts (`DungeonInfo`
+#: columns Sword, Bow, Spear, Staff): Lizardfolk fights are spear-heavy and its
+#: chests pay Terra Spearbronze, so Beastfolk (sword-heavy) pays Terra
+#: Swordsteel and Human (bow-heavy) Terra Bowstring in its place. Lizardfolk's
+#: Luck 100 Discerning Spear has no sword or bow counterpart in the master data,
+#: so those slots pay Metal Minion instead. Coins, rings, tickets and Minions
+#: are carried over unchanged. A recovered table for either page replaces this.
+def _melting_pot_inferred_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
+    pools: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {}
+    for chapter, material in ((9101, 'I9'), (9102, 'I11')):
+        swap = {'I10': material, 'O172': 'O128'}
+        for section in range(1, 16):
+            band = _MELTING_POT_LIZARDFOLK_BANDS[(section - 1) // 5]
+            pools[(chapter, section)] = {
+                tier: tuple(dict.fromkeys(swap.get(reward, reward) for reward in rewards))
+                for tier, rewards in band.items()
+            }
+    return pools
+
+
+MELTING_POT_INFERRED_CHEST_POOLS: dict[tuple[int, int], dict[str, tuple[str, ...]]] = (
+    _melting_pot_inferred_pools()
+)

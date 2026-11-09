@@ -376,6 +376,9 @@ class ArchiveQuestChestRecordTest(unittest.TestCase):
         expected = {(chapter, section) for chapter in (2000, 2001, 2002, 2006)
                     for section in (1, 2, 3, 4)}
         expected |= {(chapter, 1) for chapter in (2009, 2010, 2011)}
+        expected |= {(2015, section) for section in (1, 2, 3)}
+        expected |= {(2016, section) for section in (1, 2)}
+        expected |= {(2017, section) for section in range(1, 6)}
         self.assertEqual(expected, set(ARCHIVE_QUEST_CHEST_POOLS))
 
     def test_a_single_table_answers_for_every_section_of_its_quest(self) -> None:
@@ -450,14 +453,19 @@ class ArchiveQuestChestRecordTest(unittest.TestCase):
         self.assertIn("M763", pool_for(2006, 2, "Luck 80"))
         self.assertIn("I108", pool_for(2006, 2, "Luck 80"))
 
-    def test_the_chapters_without_a_provable_join_are_left_undocumented(self) -> None:
-        """2003 and 2007 carry no chest section at all; 2015 and 2016 carry one
-        table per section with nothing joining a caption to a section ordinal;
-        2017 has no identified page. A table filed under the wrong section is
-        worse than a donated one."""
-        for chapter in (2003, 2007, 2015, 2016, 2017):
+    def test_the_chapters_without_a_chest_section_are_left_undocumented(self) -> None:
+        """2003 and 2007 carry no chest section at all."""
+        for chapter in (2003, 2007):
             with self.subTest(chapter=chapter):
                 self.assertFalse(has_documented_pool(chapter, 1), chapter)
+
+    def test_royal_rings_joins_each_king_by_its_own_spawn(self) -> None:
+        """Issue 107: section 1 spawns `SP2016_SBOSS` and section 2
+        `SP2016_MBOSS`, so the Sun King's table is section 1's and the Moon
+        King's section 2's, whatever order the page lists them in."""
+        self.assertIn("O437", pool_for(2016, 1, "Luck 80"))  # Sun King
+        self.assertIn("O439", pool_for(2016, 2, "Luck 80"))  # Moon King
+        self.assertNotIn("O439", pool_for(2016, 1, "Luck 80"))
 
 
 class DailyQuestChestRecordTest(unittest.TestCase):

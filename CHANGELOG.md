@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Luck Treasure Chests use the wiki's own tables for the Blade Falcon, Bone
+  Killer and Ethereal Hunts (3200--3202), the four Tower of Temptation bosses
+  (9000--9003, tiers I--III joined by caption) and Melting Pot: Lizardfolk
+  (9100, in the page's three five-quest bands), Royal Rings Descended (Sun
+  King on 2016-1, Moon King on 2016-2), Final Fantasy XV (2015-1..3),
+  Arachnobot's Tale (2017-1..5), and the Shin'en/Mutoh difficulty-level
+  tables (1100-1..3 and 1100-6) (#107). Chapters join by the client's own
+  spawn symbols, tier numbering and `parentQuest` chains. Two readings are
+  inferred: Bone Killer's `Mage (Fire)` family as characters 66/200/201/205,
+  and Melting Pot Beastfolk/Human (9101, 9102), whose wiki tables are blank,
+  as Lizardfolk's bands with a race-matched weapon material. Needs a
+  dedicated-server restart or an on-device APK rebuild, with no catalog
+  regeneration.
 - Pact results send every unlocked job's packed level and EXP to the client
   (#104), including when Job 1 is capped. Normal and "+" grants, payment
   variants, and restart replay are covered; physical-client retest pending.

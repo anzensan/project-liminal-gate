@@ -1,8 +1,9 @@
 """An operator's own Luck Treasure Chest pools, for the stages the record misses.
 
-The bundled pools cover 153 stages -- thirty-one in the
-core story, and 122 across the events and the two side worlds -- because
-that is what the community record covers. Every other stage
+The bundled pools cover 227 stages -- thirty-one in the
+core story, and 196 across the events and the two side worlds -- because
+that is what the community record covers, plus thirty Melting Pot stages
+inferred from their recorded sibling. Every other stage
 yields six empty slots. Almost certainly the retired service put chests on those
 stages too; the table that decided their contents was server-side and no capture
 of it survives, so the bundle states the absence rather than guessing at it.

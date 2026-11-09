@@ -1,7 +1,8 @@
 """Chest pools for the stages the record does not document, by donation.
 
-The bundled community record covers 153 stages: thirty-one
-in the core story, and 122 across the events and the two side worlds.
+The bundled pools cover 227 stages: thirty-one in the core story, and 196
+across the events and the two side worlds, thirty of those (Melting Pot:
+Beastfolk and Human) inferred from a sibling table rather than recorded.
 Without this, every other stage rolls six empty slots --
 honest, and it leaves a feature the game clearly had almost entirely inert: a
 player at Chapter 10 with real Luck never sees a chest, because nobody wrote
