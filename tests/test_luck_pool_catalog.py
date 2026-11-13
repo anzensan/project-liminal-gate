@@ -18,7 +18,10 @@ from liminal_gate.luck_pool_catalog import (
     LuckPoolCatalogError,
     load_luck_pool_catalog,
 )
-from liminal_gate.luck_pool_data import DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, pool_for
+from liminal_gate.luck_pool_data import (
+    DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, item_page_rewards, pool_for,
+)
+from liminal_gate.luck_pool_item_page_data import ITEM_PAGE_CHEST_CELLS
 from liminal_gate.luck_pool_event_data import (
     EIDOLON_CHEST_POOLS,
     STRIKES_BACK_CHEST_POOLS,
@@ -210,11 +213,19 @@ class InterpolatedLuckPoolTest(unittest.TestCase):
         self.pools = build_luck_pools()
 
     def test_a_documented_stage_is_never_touched(self) -> None:
-        """The sourced story stages stay exactly as sourced."""
+        """The sourced story stages keep every reward they were sourced with.
+
+        An item page may add a reward to a tier (issue 107) but never removes or
+        reorders one, so the sourced pool is always the prefix.
+        """
         for (chapter, section), tiers in LUCK_CHEST_POOLS.items():
             for tier, pool in tiers.items():
                 with self.subTest(stage=(chapter, section), tier=tier):
-                    self.assertEqual(pool, self.pools.pool_for(chapter, section, tier))
+                    added = tuple(
+                        reward for reward in item_page_rewards(chapter, section, tier)
+                        if reward not in pool
+                    )
+                    self.assertEqual(pool + added, self.pools.pool_for(chapter, section, tier))
 
     def test_a_tier_a_documented_stage_leaves_empty_stays_empty(self) -> None:
         """The record naming a stage and omitting a tier is the record
@@ -266,11 +277,15 @@ class InterpolatedLuckPoolTest(unittest.TestCase):
     def test_a_documented_stage_is_still_never_filled_in(self) -> None:
         """The fallback runs only where the record names no stage at all.
 
-        25-7's Luck 100 cell is empty on the page, and that is the record
-        paying nothing there; the rest of Chapter 25 is a silence.
+        25-7's Luck 100 cell is empty on its stage page, and that is the record
+        paying nothing *there*; only the White Hole's own item page adds to it,
+        and nothing donated does. The rest of Chapter 25 is a silence.
         """
         self.assertIn((25, 7), DOCUMENTED_CHEST_POOLS)
-        self.assertEqual((), self.pools.pool_for(25, 7, "Luck 100"))
+        self.assertEqual(
+            tuple(ITEM_PAGE_CHEST_CELLS[(25, 7)]["Luck 100"]),
+            self.pools.pool_for(25, 7, "Luck 100"),
+        )
         self.assertTrue(self.pools.pool_for(25, 1, "Luck 100"))
 
     def test_nine_seven_pays_the_mage_its_record_names(self) -> None:
@@ -325,6 +340,11 @@ class InterpolatedLuckPoolTest(unittest.TestCase):
         recorded = {
             reward
             for tiers in LUCK_CHEST_POOLS.values()
+            for pool in tiers.values()
+            for reward in pool
+        } | {
+            reward
+            for tiers in ITEM_PAGE_CHEST_CELLS.values()
             for pool in tiers.values()
             for reward in pool
         }

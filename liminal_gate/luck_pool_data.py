@@ -85,6 +85,7 @@ from liminal_gate.luck_pool_event_data import (
     WORLD_MAP_SPECIAL_CHEST_POOLS,
     STRIKES_BACK_CHEST_POOLS,
 )
+from liminal_gate.luck_pool_item_page_data import ITEM_PAGE_CHEST_CELLS
 
 #: The core story's pools, keyed by ``(chapter, section)`` and then by chest
 #: tier. Entries marked ``# incomplete`` lost at least one reward the record
@@ -202,11 +203,34 @@ def refuses_chest(chapter: int) -> bool:
     return chapter in NO_CHEST_CHAPTERS
 
 
-def pool_for(chapter: int, section: int, tier: str) -> tuple[str, ...]:
-    """Return one stage-and-tier reward pool, empty when undocumented."""
+def item_page_rewards(chapter: int, section: int, tier: str) -> tuple[str, ...]:
+    """Rewards an item page states for this exact stage and tier, else none.
+
+    The record documents chests from the stage's side and from each item's side,
+    and the two disagree about coverage: the Heartwood Sword page places it in
+    Story 20-1's chest, which has no stage table. These are added to a pool, not
+    substituted for it, because an item page names one reward in a tier and says
+    nothing about the rest. See :mod:`liminal_gate.luck_pool_item_pages`.
+    """
     if refuses_chest(chapter):
         return ()
-    return DOCUMENTED_CHEST_POOLS.get((chapter, section), {}).get(tier, ())
+    return ITEM_PAGE_CHEST_CELLS.get((chapter, section), {}).get(tier, ())
+
+
+def pool_for(chapter: int, section: int, tier: str) -> tuple[str, ...]:
+    """Return one stage-and-tier reward pool, empty when undocumented.
+
+    A documented stage's tier gains any reward an item page states for it. A
+    stage only item pages name is still *undocumented* (`has_documented_pool`):
+    the stage page's silence on the rest of its chest is not a statement that
+    the rest pays nothing, so interpolation keeps answering for it.
+    """
+    if refuses_chest(chapter):
+        return ()
+    base = DOCUMENTED_CHEST_POOLS.get((chapter, section), {}).get(tier, ())
+    return base + tuple(
+        reward for reward in item_page_rewards(chapter, section, tier) if reward not in base
+    )
 
 
 def has_documented_pool(chapter: int, section: int) -> bool:

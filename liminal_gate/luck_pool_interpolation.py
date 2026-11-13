@@ -47,7 +47,7 @@ from functools import lru_cache
 
 from liminal_gate.luck_data import CHEST_TIERS
 from liminal_gate.luck_pool_data import (
-    DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, pool_for, refuses_chest,
+    DOCUMENTED_CHEST_POOLS, LUCK_CHEST_POOLS, item_page_rewards, pool_for, refuses_chest,
 )
 
 
@@ -129,29 +129,36 @@ class InterpolatedLuckPools:
             # The record naming a quest as chestless is a statement, and a
             # donated pool is exactly the kind of derived answer it forbids.
             return ()
-        documented = pool_for(chapter, section, tier)
-        if documented or (chapter, section) in DOCUMENTED_CHEST_POOLS:
-            # Either the record answers, or it answers this stage and left this
-            # tier empty on purpose. Both are the record speaking; neither is a
-            # gap to fill.
-            return documented
+        if (chapter, section) in DOCUMENTED_CHEST_POOLS:
+            # The record answers this stage, and a tier it left empty is the
+            # record paying nothing there, not a gap to fill. Item pages may
+            # still add a reward, which `pool_for` merges in.
+            return pool_for(chapter, section, tier)
         donated = _donor_pools(donor_chapters(chapter)).get(tier, ())
-        if donated:
-            return donated
-        # A documented chapter donates only to itself, so one whose record
-        # covers a single stage fills only the tiers that stage fills and
-        # leaves every other stage in the chapter empty at the rest. That made
-        # a documented chapter *worse* than its undocumented neighbours:
-        # Chapters 8 and 10 paid a Luck 100 chest and Chapter 9, the one the
-        # record actually covers, paid nothing in all ten sections, because its
-        # only documented stage carries one item in A and one in B. Reported on
-        # issue 92 for Chapters 9 and 25; 31 and 34 had it too.
-        #
-        # Falling back to the bracket is the rule this module already applies
-        # one chapter to either side, so the answer here is the answer the
-        # neighbours were already getting. A documented *stage* is still never
-        # touched: this runs only where the record names no stage at all.
-        return _donor_pools(bracketing_chapters(chapter)).get(tier, ())
+        if not donated:
+            # A documented chapter donates only to itself, so one whose record
+            # covers a single stage fills only the tiers that stage fills and
+            # leaves every other stage in the chapter empty at the rest. That
+            # made a documented chapter *worse* than its undocumented
+            # neighbours: Chapters 8 and 10 paid a Luck 100 chest and Chapter 9,
+            # the one the record actually covers, paid nothing in all ten
+            # sections, because its only documented stage carries one item in A
+            # and one in B. Reported on issue 92 for Chapters 9 and 25; 31 and
+            # 34 had it too.
+            #
+            # Falling back to the bracket is the rule this module already
+            # applies one chapter to either side, so the answer here is the
+            # answer the neighbours were already getting. A documented *stage*
+            # is still never touched: this runs only where the record names no
+            # stage at all.
+            donated = _donor_pools(bracketing_chapters(chapter)).get(tier, ())
+        # A reward an item page places in this exact stage and tier is certain
+        # to be able to drop, which a donated pool cannot promise. It is added
+        # to the donation rather than replacing it, because the item page names
+        # one reward and not the tier's whole contents. Issue 107.
+        return donated + tuple(
+            reward for reward in item_page_rewards(chapter, section, tier) if reward not in donated
+        )
 
 
 @dataclass(frozen=True)

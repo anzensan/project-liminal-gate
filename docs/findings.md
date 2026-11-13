@@ -3187,3 +3187,30 @@ that route bakes `liminal_gate` into `assets/liminal_gate/`.
 
 **Not yet validated on hardware.** A regression test pins the served value to
 the core-story table; the reporting tester has not re-run against this build.
+
+## 2026-11-13: item pages are a second source of chest pools (#107)
+
+- **The symptom.** A tester found about eighteen items whose wiki *item* page
+  says "Luck Treasure Chests (D, Luck 100)" under a Story stage, while the
+  stage's own page carries no chest table. The Heartwood Sword (Story 20-1) was
+  the example. The server rolled a donated chest there, which can never contain
+  an item the record places in that stage.
+- **Why it kept recurring.** The record documents chests from two directions
+  that were never reconciled, and each import read one page family. Chest
+  contents are authored by this server and the client holds no table, so the
+  record is the only source and there is nothing in the APK to cross-check it
+  against.
+- **What was found.** All 180 pages that transclude `Template:Item` were read.
+  Nineteen story stages carry a claim and 36 tier cells were absent from the
+  bundled pools; every non-Story claim already appears in a matching tier. A
+  text search for "Luck Treasure Chests" misses pages (it skipped the Heartwood
+  Sword), which is why the importer enumerates the template's transclusions.
+- **The rule.** `luck_pool_item_page_data` cells are *added* to a stage's tier,
+  never substituted: an item page names one reward and says nothing about the
+  rest. A stage that only item pages name stays undocumented, so interpolation
+  still answers for its other tiers, with the cell merged into the donated pool.
+- **Keeping it closed.** `python -m liminal_gate.luck_pool_item_pages audit`
+  exits non-zero on any claim the bundled pools do not satisfy, and fails on a
+  chest line in a shape it does not recognise. `fetch` refreshes the pages and
+  `generate` rewrites the data module. Needs a server restart, or an APK rebuild
+  for on-device.
