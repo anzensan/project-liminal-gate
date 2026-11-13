@@ -74,6 +74,22 @@ WORLD_MAP_SPECIAL_STAMINA = 25
 # tight refuses honest clears, which is the failure this replaces.
 WORLD_MAP_SPECIAL_EXP_CEILING = 7_720_000
 
+#: The two route-opening character recruits (Shin'en Lambda and Mutoh Lambda),
+#: which the level 4 Luck chests also pay. See `WORLD_MAP_SPECIAL_CHEST_POOLS`.
+WORLD_MAP_SPECIAL_RECRUIT_IDS = (867, 868)
+
+#: Durable Luck a repeated copy of either recruit adds, in the client's tenths.
+#:
+#: A tester on issue 107 found that a duplicate Shin'en Lambda from the chest
+#: announced +1% Luck and +3% Skill Boost on the awards screen, and that only
+#: the Skill Boost survived it. That asymmetry is the wire contract: the client
+#: raises a duplicate's Skill Boost itself and reports it in `chrdata`, while
+#: `Character.ToHashTable` omits `luck`, so a Luck gain the server does not
+#: commit is shown and then lost. The increment is the same +1.0 every other
+#: duplicate acquisition pays (`STRIKES_BACK_DUPLICATE_LUCK`); Skill Boost is
+#: deliberately not granted here, because the client's own report carries it.
+WORLD_MAP_SPECIAL_DUPLICATE_LUCK = 10
+
 
 @dataclass(frozen=True)
 class WorldMapSpecialStage:

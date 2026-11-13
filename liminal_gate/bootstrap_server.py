@@ -213,7 +213,9 @@ from liminal_gate.server_constants import LOCAL_LOGIN_COUNTRY_FIELDS, build_serv
 from liminal_gate.summon_skill_catalog import SummonSkillCatalog, SummonSkillCatalogError, build_bundled_summon_skill_policy, load_summon_skill_catalog
 from liminal_gate.world_map_special import (
     WORLD_MAP_SPECIAL_CHAPTER,
+    WORLD_MAP_SPECIAL_DUPLICATE_LUCK,
     WORLD_MAP_SPECIAL_EXP_CEILING,
+    WORLD_MAP_SPECIAL_RECRUIT_IDS,
     WorldMapSpecialCatalog,
     WorldMapSpecialStage,
     build_bundled_world_map_special_policy,
@@ -3693,7 +3695,12 @@ class BootstrapState:
             # projection afterwards costs.
             if companions is not None:
                 userdata["buddyInfo"] = companions
-            announced = _award_chest_grants(userdata, authored_chest)
+            announced = _award_chest_grants(
+                userdata, authored_chest,
+                _duplicate_luck_contract(
+                    WORLD_MAP_SPECIAL_RECRUIT_IDS, WORLD_MAP_SPECIAL_DUPLICATE_LUCK,
+                ),
+            )
             frontier = self._world_map_special_progress(account, catalog)
             if stage.battle == frontier[stage.route] and stage.battle < catalog.final_battle(stage.route):
                 frontier[stage.route] = stage.battle + 1
