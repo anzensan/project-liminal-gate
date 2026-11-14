@@ -3211,6 +3211,11 @@ the core-story table; the reporting tester has not re-run against this build.
   still answers for its other tiers, with the cell merged into the donated pool.
 - **Keeping it closed.** `python -m liminal_gate.luck_pool_item_pages audit`
   exits non-zero on any claim the bundled pools do not satisfy, and fails on a
-  chest line in a shape it does not recognise. `fetch` refreshes the pages and
-  `generate` rewrites the data module. Needs a server restart, or an APK rebuild
+  chest line in a shape it does not recognise. `fetch` refreshes the item,
+  character and Companion pages and `generate` rewrites the data module.
+  Character and Companion pages name quests but carry no tier, so the audit
+  holds them only to appearing in some bundled pool. Two Companions fail that
+  on purpose and are listed in `UNSERVED_QUEST_REWARDS`: Thunderous Wand
+  (Raijin I) and Sable Wand (Chaos I) come from first quests of three-stage
+  Eidolons, which have no battle in this archive. Needs a server restart, or an APK rebuild
   for on-device.

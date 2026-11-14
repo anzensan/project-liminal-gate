@@ -38,6 +38,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import unicodedata
 import urllib.parse
 import urllib.request
 
@@ -49,7 +50,11 @@ WIKI_API = "https://terrabattle.fandom.com/api.php"
 #: Every item page transcludes this template, so the transclusion list is the
 #: complete item set. A text search for "Luck Treasure Chests" is not: it
 #: silently missed the Heartwood Sword.
-ITEM_TEMPLATE = "Template:Item"
+PAGE_TEMPLATES = {
+    "items": "Template:Item",
+    "characters": "Template:Character",
+    "companions": "Template:Companion",
+}
 
 _STAGE = re.compile(r"\{\{Story\|(\d+)\|(\d+)\}\}")
 _CHEST = re.compile(r"Luck Treasure Chests?(?: \(([^)]*)\))?")
@@ -178,7 +183,53 @@ def _merged_pools() -> dict[tuple[int, int], dict[str, tuple[str, ...]]]:
     }
 
 
-def audit(pages: dict[str, dict], names: dict) -> tuple[list[str], list[str]]:
+#: Character and Companion pages name the quests that chest them but, unlike item
+#: pages, carry no tier, so the most they can be held to is that the reward
+#: appears in some bundled pool. These two are claimed from a quest this archive
+#: cannot serve: Chaos I and Raijin I are the first quests of three-stage
+#: Eidolons, and only the third has a battle behind it (see
+#: `EIDOLON_THIRD_QUEST_REWARDS`). The other first- and second-quest Companions
+#: are held by other families, which is why only these two surface.
+UNSERVED_QUEST_REWARDS: dict[str, str] = {
+    "O20": "Thunderous Wand: Raijin I, not served",
+    "O26": "Sable Wand: Chaos I, not served",
+}
+
+_PEOPLE_KINDS = {"characters": ("M", "characters"), "companions": ("O", "companions")}
+_PAGE_QUALIFIER = re.compile(r"\s+\((?:Companion|Character)\)$")
+
+
+def _normal(name: str) -> str:
+    """A name as the two sources spell it alike: Roman numeral glyphs and Greek
+    capital Omicron folded to ASCII, and runs of spaces collapsed."""
+    return " ".join(unicodedata.normalize("NFKC", name).replace("\u039f", "O").split())
+
+
+def people_claims(corpus: dict, names: dict) -> tuple[list[tuple[str, str]], list[str]]:
+    """(title, reward id) for each character or Companion page that names a chest
+    source, and the titles that did not resolve to exactly one id."""
+    claims: list[tuple[str, str]] = []
+    unresolved: list[str] = []
+    for kind, (prefix, table) in _PEOPLE_KINDS.items():
+        by_name: dict[str, list[str]] = defaultdict(list)
+        for identifier, name in names[table].items():
+            by_name[_normal(name)].append(identifier)
+        for title, page in sorted(corpus.get(kind, {}).items()):
+            lines = [
+                line for line in page["text"].splitlines()
+                if "Luck Treasure Chest" in line and not line.lstrip("* ").startswith("Removed")
+            ]
+            if not lines:
+                continue
+            ids = by_name.get(_normal(_PAGE_QUALIFIER.sub("", title)), [])
+            if len(ids) == 1:
+                claims.append((title, f"{prefix}{ids[0]}"))
+            else:
+                unresolved.append(f"{kind[:-1]} page {title!r}")
+    return claims, unresolved
+
+
+def audit(pages: dict[str, dict], names: dict, corpus: dict | None = None) -> tuple[list[str], list[str]]:
     """Report lines, and the lines that mean the audit failed."""
     claims = all_claims(pages)
     titles = sorted({claim.item for claim in claims})
@@ -211,37 +262,47 @@ def audit(pages: dict[str, dict], names: dict) -> tuple[list[str], list[str]]:
                 f"NOWHERE  {claim.item} ({reward}) claimed for {sorted(wanted)} "
                 f"under {claim.label!r}, and no bundled pool pays it in those tiers"
             )
+    if corpus is not None:
+        people, lost = people_claims(corpus, names)
+        failures += [f"name not uniquely in names.json: {title}" for title in lost]
+        for title, reward in people:
+            if not held.get(reward) and reward not in UNSERVED_QUEST_REWARDS:
+                report.append(f"NOWHERE  {title} ({reward}) names a chest source, and no bundled pool pays it")
     return sorted(set(report)), failures
 
 
 def fetch(out: Path) -> int:
-    """Download every item page's wikitext and revision id."""
+    """Download the wikitext and revision id of every item, character and Companion page."""
     def call(**params: object) -> dict:
         query = urllib.parse.urlencode({**params, "format": "json", "formatversion": "2"})
         request = urllib.request.Request(f"{WIKI_API}?{query}", headers={"User-Agent": "liminal-gate-item-page-audit"})
         with urllib.request.urlopen(request, timeout=60) as response:
             return json.load(response)
 
-    titles: list[str] = []
-    token: dict = {}
-    while True:
-        reply = call(action="query", list="embeddedin", eititle=ITEM_TEMPLATE, eilimit=500, einamespace=0, **token)
-        titles += [row["title"] for row in reply["query"]["embeddedin"]]
-        if "continue" not in reply:
-            break
-        token = {"eicontinue": reply["continue"]["eicontinue"]}
-    pages: dict[str, dict] = {}
-    for start in range(0, len(titles), 40):
-        reply = call(
-            action="query", prop="revisions", rvprop="ids|content", rvslots="main",
-            titles="|".join(titles[start:start + 40]),
-        )
-        for page in reply["query"]["pages"]:
-            revisions = page.get("revisions")
-            if revisions:
-                pages[page["title"]] = {"rev": revisions[0]["revid"], "text": revisions[0]["slots"]["main"]["content"]}
-    out.write_text(json.dumps(pages, indent=1, sort_keys=True), encoding="utf-8")
-    print(f"fetched {len(pages)} item pages -> {out}")
+    def pages_of(template: str) -> dict[str, dict]:
+        titles: list[str] = []
+        token: dict = {}
+        while True:
+            reply = call(action="query", list="embeddedin", eititle=template, eilimit=500, einamespace=0, **token)
+            titles += [row["title"] for row in reply["query"]["embeddedin"]]
+            if "continue" not in reply:
+                break
+            token = {"eicontinue": reply["continue"]["eicontinue"]}
+        pages: dict[str, dict] = {}
+        for start in range(0, len(titles), 40):
+            reply = call(
+                action="query", prop="revisions", rvprop="ids|content", rvslots="main",
+                titles="|".join(titles[start:start + 40]),
+            )
+            for page in reply["query"]["pages"]:
+                revisions = page.get("revisions")
+                if revisions:
+                    pages[page["title"]] = {"rev": revisions[0]["revid"], "text": revisions[0]["slots"]["main"]["content"]}
+        return pages
+
+    corpus = {kind: pages_of(template) for kind, template in PAGE_TEMPLATES.items()}
+    out.write_text(json.dumps(corpus, indent=1, sort_keys=True), encoding="utf-8")
+    print("fetched " + ", ".join(f"{len(pages)} {kind}" for kind, pages in corpus.items()) + f" pages -> {out}")
     return 0
 
 
@@ -289,13 +350,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "fetch":
         return fetch(args.out)
-    pages = json.loads(args.pages.read_text(encoding="utf-8"))
+    corpus = json.loads(args.pages.read_text(encoding="utf-8"))
+    pages = corpus["items"]
     names = json.loads(args.names.read_text(encoding="utf-8"))
     if args.command == "generate":
         args.out.write_text(render_data(pages, names), encoding="utf-8")
         print(f"wrote {args.out}")
         return 0
-    report, failures = audit(pages, names)
+    report, failures = audit(pages, names, corpus)
     for line in report:
         print(line)
     for line in failures:
